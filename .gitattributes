@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+*.luau text diff=lua
+*.lua text diff=lua
+*.md text diff=markdown
+*.json text
+*.toml text
+
+*.rbxl filter=lfs diff=lfs merge=lfs -text
+*.rbxlx filter=lfs diff=lfs merge=lfs -text
+*.rbxm filter=lfs diff=lfs merge=lfs -text
+*.rbxmx filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
