@@ -30,5 +30,9 @@ Do not call an unsupported or narrowed run a pass.
 
 ## Finish
 
-Run the consumer's complete gate. A passing count alone does not prove a complete claim.
-Check provenance, source-loading failures, declared capabilities, and stated limitations.
+Run focused checks for the assigned claim. Let the consumer's integration owner run its complete
+gate once on the frozen candidate; do not rerun an unchanged gate per delegated task.
+Check provenance, source-loading failures, declared capabilities and limitations. Missing capability
+or setup holds the affected claim; report its cause and continue independent authorized work.
+Return the candidate, exact checks and exits, receipt path, covered claims and remaining gaps.
+A passing count alone does not prove a complete claim.

@@ -9,9 +9,8 @@ Test real behavioral boundaries and their falsifiers. Existing APIs and their ow
 justify retaining unused machinery. Check executable, dynamic, generated, CLI and documented
 consumers before cutting a public surface.
 
-For every code review, preserve behavior and public contracts. Prefer clear names and control flow.
-Remove proven redundancy while retaining useful abstractions. Choose clarity over brevity.
-Verify changes with meaningful checks at the affected boundary.
+Keep changed workflows legible and evidence-backed, and review every code change against its falsifier.
+This file owns Verify authority; no other document grants additional tools, roles or permissions.
 
 [The laws](docs/laws.md) own lifecycle, evidence and authority. Source comments are prohibited;
 Luau compiler/tool directives are allowed. Use `@self/child` inside directory modules and sibling
