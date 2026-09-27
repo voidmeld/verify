@@ -37,6 +37,10 @@ The [verification laws](laws.md) define lifecycle and evidence boundaries.
 `Core.createHarness` creates an isolated registry. Register cases. Call `harness:run` to receive their results.
 Importing Verify does not create a shared registry.
 
+`harness:run` returns failed and unsupported results in its report; it does not set the process exit code.
+The caller must judge the report and make its command fail when the required claim is unmet.
+See the [repository runner](../tools/test.luau) for a nonempty, all-passing corpus check.
+
 ```luau
 local tick = 0
 local harness = Core.createHarness {
