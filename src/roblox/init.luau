@@ -1,9 +1,11 @@
 --!strict
 
 local Instances = require "@self/instances"
+local CheckpointPlan = require "@self/checkpoint-plan"
 local ObservationSink = require "@self/observation-sink"
 local PlaceBoot = require "@self/place-boot"
 local ScenarioRunner = require "@self/scenario-runner"
+local ScenarioStepJournal = require "@self/scenario-step-journal"
 local TierLadder = require "@self/tier-ladder"
 local WitnessHost = require "@self/witness-host"
 
@@ -112,6 +114,8 @@ return {
 	PLACE_FRAME_SECONDS = PlaceBoot.FRAME_SECONDS,
 	PLACE_BOOT_STAGES = PlaceBoot.STAGES,
 	scenarioRunner = ScenarioRunner,
+	checkpointPlan = CheckpointPlan,
+	scenarioStepJournal = ScenarioStepJournal,
 	DEFAULT_SCENARIO_REASONS = ScenarioRunner.DEFAULT_REASONS,
 	observeScenario = ScenarioRunner.observe,
 	tierLadder = TierLadder,

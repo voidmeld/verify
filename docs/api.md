@@ -356,6 +356,13 @@ an authorized driver. It selects a new or grown transcript, refuses ambiguous so
 returns bounded readback or a named failure. Consumer predicates define source, completion and
 bindings; core evaluates the collected observations.
 
+`Roblox.checkpointPlan.order(checkpoints, viewports, rows, collectAll)` orders a declared matrix
+with checkpoint first and viewport second. It refuses missing and duplicate checkpoint rows;
+non-checkpoint rows remain available for caller-owned capture policy. `Roblox.scenarioStepJournal.create`
+retains numbered tool outputs and their request/result digests through injected storage and digest
+operations. A binding is copied into call records; the caller owns authorization, tool execution,
+paths, and the meaning of each checkpoint.
+
 `Roblox.tierLadder` provides session, client and journey judgment and receipts. Exact predicate
 rows, run identity, source and environment must agree. `unsupported` applies only when the
 specified capability was unreached and no real defect was observed. See the typed options for
