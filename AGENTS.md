@@ -1,31 +1,26 @@
 # Verify contributor guide
 
-Verify is a host-neutral Luau verification library: claims, execution and receipts. Consumers own
-what to verify, discovery, authorization, actual host operations and release acceptance.
+Verify owns host-neutral Luau claims, execution and receipts. Consumers own discovery, authorization,
+host operations, destinations and release acceptance. [README](README.md) maps packages; read only the
+applicable [contract](docs/README.md).
 
-Read [README](README.md) and the applicable [contract](docs/README.md). Change the smallest useful
-implementation. Run `lute run tools/gate.luau` on final bytes. A focused run is never the gate.
-Test real behavioral boundaries and their falsifiers. Existing APIs and their own tests do not
-justify retaining unused machinery. Check executable, dynamic, generated, CLI and documented
-consumers before cutting a public surface.
+[Laws](docs/laws.md) own lifecycle and evidence. Change the smallest useful implementation and exercise
+real success/failure boundaries. Inspect executable, dynamic, generated, CLI and documented consumers
+before removing a surface; its tests and exports alone do not justify retention.
 
-Keep changed workflows legible and evidence-backed, and review every code change against its falsifier.
-This file owns Verify authority; no other document grants additional tools, roles or permissions.
+This file owns authority. Apply [Execute's agentic
+standard](https://github.com/voidmeld/execute/blob/main/docs/AGENTIC-STANDARD.md) to workflow changes and
+code review. Current Owner direction controls scope within harness permissions.
 
-[The laws](docs/laws.md) own lifecycle, evidence and authority. Source comments are prohibited;
-Luau compiler/tool directives are allowed. Use `@self/child` inside directory modules and sibling
-relative imports inside portable leaf modules. Core imports only core siblings and has no host
-services. Do not add third-party source or dependency manifests. Preserve the MIT grant in
-[provenance](PROVENANCE.md). Tracked framework files must contain no consumer
-identity, product rules, credentials or milestone state.
+Use `@self/child` inside directory modules and sibling-relative imports in portable leaves. Core imports
+only core siblings and has no host services. Add no source comments except compiler/tool directives. Add
+no third-party source or dependency manifests. Keep consumer identity, credentials, policy and milestones
+out; comparisons belong in research.
 
-Author and committer are `voidmeld <158495725+voidmeld@users.noreply.github.com>`; no AI attribution.
-Keep history append-only. Current Owner direction
-controls scope, subject to the execution harness's permission boundaries. Resolve contradictions
-at the owning law or implementation. Do not create another historical exception ledger.
+Run focused checks while editing and `lute run tools/gate.luau` once on final bytes. A narrowed run is
+not the gate; a headless pass proves no unobserved engine, media, input or release claim. Report changed
+behavior, validation and limits.
 
-When consuming Verify, read [the consumer brief](.agents/skills/verify/SKILL.md). Completion reports
-state changed behavior, exact validation and remaining limits. A passing headless gate establishes
-no unobserved engine, image, audio, input or release result.
-
-External end-user product names, adopter identities and competitive comparisons belong only in research repositories. Use neutral requirements and research links here. Required dependency, API, tool and license identifiers remain exact.
+Preserve [MIT provenance](PROVENANCE.md) and append-only history. Use author and committer `voidmeld
+<158495725+voidmeld@users.noreply.github.com>` without attribution trailers. Consumers follow the [Verify
+skill](.agents/skills/verify/SKILL.md).
