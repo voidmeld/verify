@@ -190,8 +190,8 @@ local function buildTree(engine: any, projectPath: string, deps: TreeDeps): Moun
 		return object
 	end
 
-	local function mountPath(path: string, name: string, parent: any): any?
-		if ignored(path, patterns) then
+	local function mountPath(path: string, name: string, parent: any, explicit: boolean?): any?
+		if explicit ~= true and ignored(path, patterns) then
 			return nil
 		end
 		if not files.exists(path) then
@@ -261,7 +261,7 @@ local function buildTree(engine: any, projectPath: string, deps: TreeDeps): Moun
 					end
 				end
 			else
-				object = mountPath(path, name, parent)
+				object = mountPath(path, name, parent, true)
 			end
 			if object == nil then
 				object = engine.newInstance(node["$className"] or IMPLICIT_CLASS_NAME, true)

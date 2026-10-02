@@ -3,6 +3,7 @@
 local Verify = require "../src/core"
 
 local Roblox = require "../src/roblox"
+local luau = require "@std/luau"
 
 local PlaceBoot = Roblox.placeBoot
 
@@ -625,16 +626,27 @@ return function(suite: Verify.Harness)
 		return engine
 	end
 
-	local function bootOnce(project: string, config: any): (any, any)
-		local files = { ["p.project.json"] = project }
+	local function bootOnce(
+		project: string,
+		config: any,
+		sources: { [string]: string }?,
+		directories: { [string]: { { name: string, type: string } } }?
+	): (any, any)
+		local files = table.clone(sources or {})
+		files["p.project.json"] = project
 		local engine = bootEngine()
+		local sourceHost = host(files)
+		sourceHost.compile = luau.compile
+		sourceHost.load = function(bytecode: any, chunkName: string, environment: { [string]: any }): any
+			return luau.load(bytecode, chunkName, environment)
+		end
 		local deps: Roblox.PlaceBootDeps = {
 			newEngine = function(): any
 				return engine
 			end,
-			cache = PlaceBoot.createCache(host(files)),
-			host = host(files),
-			files = fileSystem(files, {}),
+			cache = PlaceBoot.createCache(sourceHost),
+			host = sourceHost,
+			files = fileSystem(files, directories or {}),
 		}
 		local settings: any = {
 			projectPath = "p.project.json",
@@ -651,6 +663,63 @@ return function(suite: Verify.Harness)
 		end
 		return engine, PlaceBoot.run(settings, deps)
 	end
+
+	suite:suite("place boot explicit mounts", function()
+		suite:case("requires an explicitly mounted ignored file without discovering it implicitly", function(check)
+			local project =
+				[[{"globIgnorePaths":["src/Hidden.luau"],"tree":{"ReplicatedStorage":{"Discovered":{"$path":"src"},"Selected":{"$path":"src/Hidden.luau"}}}}]]
+			local engine, report = bootOnce(project, {}, {
+				["src/Hidden.luau"] = "return { value = 42 }",
+			}, { src = { { name = "Hidden.luau", type = "file" } } })
+			local storage = engine.service "ReplicatedStorage"
+			assert(storage:FindFirstChild("Discovered"):FindFirstChild "Hidden" == nil)
+			local selected = storage:FindFirstChild "Selected"
+			check:expect(selected.ClassName):toEqual "ModuleScript"
+			check:expect(report.mounted.sources[selected]):toEqual "src/Hidden.luau"
+			check:expect(report.runtime.requireInstance(selected).value):toEqual(42)
+		end)
+
+		suite:case("mounts an explicitly selected ignored directory while retaining descendant ignores", function(check)
+			local project =
+				[[{"globIgnorePaths":["src/Hidden","src/Hidden/Skip.luau"],"tree":{"ReplicatedStorage":{"Discovered":{"$path":"src"},"Selected":{"$path":"src/Hidden"}}}}]]
+			local engine, report = bootOnce(project, {}, {
+				["src/Hidden/Keep.luau"] = "return 27",
+				["src/Hidden/Skip.luau"] = "return 99",
+			}, {
+				src = { { name = "Hidden", type = "dir" } },
+				["src/Hidden"] = { { name = "Keep.luau", type = "file" }, { name = "Skip.luau", type = "file" } },
+			})
+			local storage = engine.service "ReplicatedStorage"
+			assert(storage:FindFirstChild("Discovered"):FindFirstChild "Hidden" == nil)
+			local selected = storage:FindFirstChild "Selected"
+			check:expect(selected.ClassName):toEqual "Folder"
+			assert(selected:FindFirstChild "Skip" == nil)
+			check:expect(report.runtime.requireInstance(selected:FindFirstChild "Keep")):toEqual(27)
+		end)
+
+		suite:case("keeps a missing explicit ignored source unrequireable", function(check)
+			local project =
+				[[{"globIgnorePaths":["src/Missing.luau"],"tree":{"ReplicatedStorage":{"Selected":{"$path":"src/Missing.luau"}}}}]]
+			local engine, report = bootOnce(project, {})
+			local selected = engine.service("ReplicatedStorage"):FindFirstChild "Selected"
+			check:expect(selected.ClassName):toEqual "Folder"
+			assert(report.mounted.sources[selected] == nil)
+			local ok, failure = pcall(report.runtime.requireInstance, selected)
+			check:expect(ok):toEqual(false)
+			assert(string.find(tostring(failure), "Attempted to require a Folder", 1, true) ~= nil)
+		end)
+
+		suite:case("surfaces invalid source in an explicit ignored module", function(check)
+			local project =
+				[[{"globIgnorePaths":["src/Hidden.luau"],"tree":{"ReplicatedStorage":{"Selected":{"$path":"src/Hidden.luau"}}}}]]
+			local engine, report = bootOnce(project, {}, { ["src/Hidden.luau"] = "return (" })
+			local selected = engine.service("ReplicatedStorage"):FindFirstChild "Selected"
+			check:expect(selected.ClassName):toEqual "ModuleScript"
+			local ok, failure = pcall(report.runtime.requireInstance, selected)
+			check:expect(ok):toEqual(false)
+			assert(string.find(tostring(failure), "Expected", 1, true) ~= nil)
+		end)
+	end)
 
 	suite:suite("place boot sequence", function()
 		suite:case("reaches every stage once, in the order the sequence declares", function(check)
