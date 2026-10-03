@@ -24,7 +24,7 @@ of empty discovery, including the runner's process exit. Run the corpus with `lu
 | --- | --- |
 | `src/core` | Harness, sessions, plans, execution, observations, reports and transport |
 | `src/bdd.luau` | BDD verbs over the same harness |
-| `src/lute` | Worker processes, pool, JSON, corpus and optional viewport inspection |
+| `src/lute` | Worker processes, JSON, corpus and optional viewport inspection |
 | `src/roblox` | Injected capture, transcript, place boot, observation sink and tier judgments |
 | `src/host` | Deterministic host for behavioral failure injection |
 | `src/consumer` | Portable specification and production graph diagnostics |

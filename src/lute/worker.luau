@@ -2,11 +2,8 @@
 
 local fs = require "@std/fs"
 local process = require "@std/process"
-local task = require "@std/task"
 
 local Batch = require "./batch"
-local Files = require "./files"
-local Mailbox = require "./mailbox"
 local Verify = require "../core"
 local Wire = require "./wire"
 
@@ -41,9 +38,6 @@ export type Options = {
 	capabilities: { string }?,
 	environment: { [string]: string }?,
 	caseIdStyle: ("unit-prefixed" | "bare")?,
-
-	idleTimeoutSeconds: number?,
-	pollSeconds: number?,
 }
 
 local DEFAULT_CAPABILITIES = { "local-luau", "worker" }
@@ -152,11 +146,6 @@ local function mainWith(run: (PlanBatch, Options?) -> Report, options: Options?)
 		process.exit(1)
 		return
 	end
-	if batchPath == "--pool" then
-		print "verify worker: this entry point is one-shot; a pooled worker must call poolMain"
-		process.exit(1)
-		return
-	end
 	local batch = Batch.decode(fs.readFileToString(batchPath :: string))
 	local report = run(batch, options)
 	fs.writeStringToFile(resultPath :: string, Wire.encode(report))
@@ -174,97 +163,10 @@ local function mainSelfRegistering(operations: SelfRegisteringOperations, option
 	end, options)
 end
 
-local function poolLoopWith(run: (PlanBatch, Options?) -> Report, options: Options?)
-	local directory = process.args[3]
-	local slotText = process.args[4]
-	local slot = tonumber(slotText)
-	if directory == nil or slot == nil then
-		print "verify worker: usage: <worker>.luau --pool <directory> <slot>"
-		process.exit(1)
-		return
-	end
-
-	local settings: Options = if options ~= nil then options else {}
-	local idleTimeout = settings.idleTimeoutSeconds or 300
-	local poll = settings.pollSeconds or 0.002
-
-	fs.writeStringToFile(Mailbox.readyPath(directory :: string, slot :: number), "ready")
-
-	local lastWork = os.clock()
-	while true do
-		if fs.exists(Mailbox.stopPath(directory :: string)) then
-			return
-		end
-		if os.clock() - lastWork >= idleTimeout then
-			return
-		end
-
-		local pending: { name: string, sequence: number } = { name = "", sequence = 0 }
-
-		local prefix = "w" .. tostring(slot :: number) .. "%-"
-		for _, name in Files.listFileNames(directory :: string) do
-			local sequence = string.match(name, "^" .. prefix .. "(%d+)%-request%.done$")
-			if sequence ~= nil then
-				pending = { name = name, sequence = tonumber(sequence) :: number }
-				break
-			end
-		end
-		if pending.name == "" then
-			task.wait(poll)
-			continue
-		end
-
-		local names = Mailbox.names(directory :: string, slot :: number, pending.sequence)
-
-		if not pcall(fs.remove, names.requestReady) then
-			task.wait(poll)
-			continue
-		end
-		local read, encoded: any = pcall(fs.readFileToString, names.request)
-		if not read then
-			task.wait(poll)
-			continue
-		end
-		pcall(fs.remove, names.request)
-
-		local payload: string
-		local decoded, batch: any = pcall(Batch.decode, encoded :: string)
-		if decoded then
-			local ran, value: any = pcall(run, batch :: PlanBatch, options)
-			if ran then
-				payload = Wire.encode(value :: Report)
-			else
-				payload = Mailbox.RAISED_PREFIX .. tostring(value)
-			end
-		else
-			payload = Mailbox.RAISED_PREFIX .. "undecodable batch: " .. tostring(batch)
-		end
-
-		fs.writeStringToFile(names.response, payload)
-
-		fs.writeStringToFile(names.sentinel, "")
-		lastWork = os.clock()
-	end
-end
-
-local function poolMain(operations: Operations, options: Options?)
-	poolLoopWith(function(batch, opts)
-		return runBatch(batch, operations, opts)
-	end, options)
-end
-
-local function poolMainSelfRegistering(operations: SelfRegisteringOperations, options: Options?)
-	poolLoopWith(function(batch, opts)
-		return runBatchSelfRegistering(batch, operations, opts)
-	end, options)
-end
-
 return {
 	DEFAULT_CAPABILITIES = DEFAULT_CAPABILITIES,
 	runBatch = runBatch,
 	runBatchSelfRegistering = runBatchSelfRegistering,
 	main = main,
 	mainSelfRegistering = mainSelfRegistering,
-	poolMain = poolMain,
-	poolMainSelfRegistering = poolMainSelfRegistering,
 }

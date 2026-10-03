@@ -8,7 +8,7 @@ A recorded verdict provides evidence of that execution. It grants no publication
 | Each harness/source owns its registry. Reset or reentry cannot erase queued work. | `tests/core.spec.luau`, `tests/foundation.spec.luau` |
 | Setup, case, teardown and cleanup failures remain independently visible. Cleanup runs once, newest first. | `tests/core.spec.luau`, `tests/worker.spec.luau` |
 | Missing capability is unsupported; deliberate omission is skipped. Neither passes. Empty, partial and focused runs cannot establish complete acceptance. | `tests/core.spec.luau`, `tests/execution.spec.luau`, `tests/foundation.spec.luau` |
-| A plan accounts for every unit and attempt. Host failures, missing/duplicate results and disagreeing retries cannot become green. | `tests/execution.spec.luau`, `tests/pool.spec.luau` |
+| A plan accounts for every unit and attempt. Host failures, missing/duplicate results and disagreeing retries cannot become green. | `tests/execution.spec.luau`, `tests/worker.spec.luau` |
 | Receipts retain source, executor, environment, failures and limitations. Malformed counts, schema drift, truncated/mixed/conflicting transport and duplicate cases fail closed. | `tests/core.spec.luau`, `tests/foundation.spec.luau`, `tests/adapters.spec.luau` |
 | Sealing freezes observations; only the harness judges them. It does not authenticate the collector. | `tests/foundation.spec.luau`, `tests/tier-ladder.spec.luau` |
 | Capture and transcript selection require the intended current source. Stale, absent, ambiguous, wrong-target and repeated evidence cannot silently qualify. | `tests/scenario-runner.spec.luau`, `tests/witness-host.spec.luau`, `tests/viewport-corners.spec.luau`, `tests/tier-ladder.spec.luau` |

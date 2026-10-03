@@ -34,26 +34,18 @@ reordered, duplicate, forged and disagreeing deliveries using the injected fake 
 ## Lute workers
 
 `Lute.host({worker, command?, directory, capabilities?, ...})` starts one process per batch.
-`Lute.pool({worker, command?, directory, size, recycleAfter?, ...})` bounds persistent workers.
-Close the pool even if execution raises. The pool owns unique mailboxes and readiness/sentinel
-protocol. Poisoned, absent, unresponsive and exhausted workers return named faults. Consumer output
-files remain the consumer's isolation responsibility.
+Use a separate directory for each concurrent run; its batch inputs and reports remain available for
+failure diagnosis. Consumer output files remain the consumer's isolation responsibility.
 
-`worker`/`poolWorker` load a registration function returned by each module.
-`selfRegisteringWorker`/`selfRegisteringPoolWorker` instead call `load(locator, harness)`, so an
-existing BDD surface can register against each unit's private harness. Both run through the same
-session, failure classifier and mailbox lifecycle. No global registry is created on import.
-[One-shot](../examples/self-registering-worker.luau) and
-[pooled](../examples/self-registering-pool-worker.luau) entries show the caller seam.
+`worker` loads a registration function returned by each module. `selfRegisteringWorker` instead calls
+`load(locator, harness)`, so an existing BDD surface can register against each unit's private harness.
+Both use the same session and failure classifier. No global registry is created on import.
+[The self-registering example](../examples/self-registering-worker.luau) shows the caller seam.
 
 `runWorkerBatch` and `runSelfRegisteringWorkerBatch` expose that lifecycle for injected execution.
 An explicit `classifyLoadFailure` may name a recognized prerequisite as skipped/unsupported.
 Unrecognized or throwing classifiers leave a hard failure. Successful loading followed by broken
 registration is a failure. Every missing source remains a named case.
-
-Pool reuse can retain module-local state. `recycleAfter` bounds reuse but cannot make stateful
-consumer modules isolated. Real tests in `tests/pool.spec.luau` check cold/warm verdict equivalence,
-process failures and namespace ownership. These tests establish no production performance claim.
 
 `Lute.corpus` supplies injected discovery rules, require-affinity grouping, literal subset matching,
 worker bounds and stable lock text. A query matching nothing selects nothing. The consumer owns

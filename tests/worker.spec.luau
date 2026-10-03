@@ -212,28 +212,5 @@ return function(suite: Verify.Harness)
 			check:expect(execution.report.passed):toEqual(2)
 			check:expect(execution.report.failed):toEqual(0)
 		end)
-
-		suite:case("runs a real self-registering pooled worker end to end", function(check)
-			local plan = planOf("pooled", { PASSING, SECOND })
-			local pool =
-				Lute.pool { worker = "examples/self-registering-pool-worker.luau", directory = ROOT .. "/pool" }
-			local execution = Verify.execute(plan, pool, { batchCount = 2, parallel = 2 })
-			pool:close()
-			check:expect(execution.report.passed):toEqual(2)
-			check:expect(execution.report.failed):toEqual(0)
-		end)
-
-		suite:case("agrees with the fresh-process host and the pooled host on the same plan", function(check)
-			local plan = planOf("parity", { PASSING, SECOND })
-			local fresh = Verify.execute(
-				plan,
-				Lute.host { worker = "examples/self-registering-worker.luau", directory = ROOT .. "/parity-fresh" }
-			)
-			local pool =
-				Lute.pool { worker = "examples/self-registering-pool-worker.luau", directory = ROOT .. "/parity-pool" }
-			local pooled = Verify.execute(plan, pool, { batchCount = 2, parallel = 2 })
-			pool:close()
-			check:expect((Verify.verdictDigest(pooled.report))):toEqual(Verify.verdictDigest(fresh.report))
-		end)
 	end)
 end

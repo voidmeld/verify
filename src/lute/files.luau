@@ -56,23 +56,8 @@ local function removeIfPresent(path: string)
 	pcall(fs.remove, path)
 end
 
-local function listFileNames(directory: string): { string }
-	local listed, entries: any = pcall(fs.listDirectory, directory)
-	if not listed then
-		return {}
-	end
-	local names: { string } = {}
-	for _, entry in entries :: { { name: string, type: string } } do
-		if entry.type == "file" then
-			table.insert(names, entry.name)
-		end
-	end
-	return names
-end
-
 return {
 	ensureDirectory = ensureDirectory,
 	claimDirectory = claimDirectory,
 	removeIfPresent = removeIfPresent,
-	listFileNames = listFileNames,
 }

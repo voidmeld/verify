@@ -120,7 +120,7 @@ return function(suite: Verify.Harness)
 		end)
 	end)
 
-	suite:suite("concurrent file removal and listing", function()
+	suite:suite("concurrent file removal", function()
 		suite:case("ten callers removing one file at once all succeed", function(check)
 			Files.ensureDirectory(ROOT)
 			local path = ROOT .. "/contended.json"
@@ -137,21 +137,7 @@ return function(suite: Verify.Harness)
 			Files.ensureDirectory(ROOT)
 			check:expect((pcall(Files.removeIfPresent, ROOT .. "/never-written.json"))):toEqual(true)
 		end)
-
-		suite:case("listing a directory that is not there yields nothing", function(check)
-			check:expect((#Files.listFileNames(ROOT .. "/never-created"))):toEqual(0)
-		end)
-
-		suite:case("lists the files in a directory and not its subdirectories", function(check)
-			local directory = ROOT .. "/listing"
-			Files.ensureDirectory(directory .. "/nested")
-			fs.writeStringToFile(directory .. "/one.json", "1")
-			local names = Files.listFileNames(directory)
-			check:expect(#names):toEqual(1)
-			check:expect(names[1]):toEqual "one.json"
-		end)
 	end)
-
 	suite:suite("host filesystem concurrency", function()
 		suite:case("dispatches ten parallel batches into a directory nothing created first", function(check)
 			local units: { Verify.PlanUnitDraft } = {}
