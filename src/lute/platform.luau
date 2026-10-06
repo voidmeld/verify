@@ -147,7 +147,6 @@ local function run(options: Options): Result
 		end
 		if progressPath ~= nil then
 			assert(options.host == "simulator" or options.host == "studio", "this host does not report progress")
-			assert(options.attach == nil, "an attached Studio does not report progress")
 			Files.removeIfPresent(progressPath)
 			Files.removeIfPresent(progressPath .. ".diagnostics")
 		end

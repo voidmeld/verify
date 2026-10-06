@@ -6,6 +6,7 @@ local Core = require "../core"
 local Detached = require "./studio-detached"
 local Files = require "./files"
 local Mcp = require "./studio-mcp"
+local Progress = require "./studio-progress"
 local Reply = require "./studio-reply"
 local Wire = require "./wire"
 
@@ -81,7 +82,8 @@ export type Session = {
 	execute: (datamodel: string, code: string) -> Response,
 	play: (start: boolean) -> Response,
 	capture: (options: CaptureOptions?) -> Response,
-	report: (datamodel: string, code: string, runId: string) -> ReportResponse,
+	console: () -> Response,
+	report: (datamodel: string, code: string, runId: string, onPoll: (() -> ())?) -> ReportResponse,
 	close: () -> Cleanup,
 }
 
@@ -93,12 +95,14 @@ export type RunOptions = {
 	finalCapture: boolean?,
 	deadlineSeconds: number?,
 	directory: string?,
+	progressFile: string?,
 }
 
 local LIST = "list_roblox_studios"
 local EXECUTE = "execute_luau"
 local PLAY = "start_stop_play"
 local CAPTURE = "screen_capture"
+local CONSOLE_READ = "get_console_output"
 local DATAMODELS: { [string]: boolean } = { Edit = true, Server = true, Client = true }
 local DEFAULT_EXECUTABLE = "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP"
 
@@ -418,7 +422,11 @@ local function attach(options: Options): (Session?, Refusal?)
 		return response
 	end
 
-	local function report(datamodel: string, code: string, runId: string): ReportResponse
+	local function console(): Response
+		return dispatch(CONSOLE_READ, argumentsFor "", false)
+	end
+
+	local function report(datamodel: string, code: string, runId: string, onPoll: (() -> ())?): ReportResponse
 		local last: Response? = nil
 		local outcome = Detached.run {
 			execute = function(model: string, source: string): Detached.Reply
@@ -436,6 +444,8 @@ local function attach(options: Options): (Session?, Refusal?)
 			code = code,
 			runId = runId,
 			deadline = runDeadline,
+			pollSeconds = if onPoll ~= nil then 1 else nil,
+			onPoll = onPoll,
 		}
 		local answered = last
 		local response: Response = if answered ~= nil
@@ -499,6 +509,7 @@ local function attach(options: Options): (Session?, Refusal?)
 			return toggle(start, false)
 		end,
 		capture = capture,
+		console = console,
 		report = report,
 		close = close,
 	},
@@ -543,8 +554,28 @@ local function run(options: RunOptions): Core.BatchOutcome
 			end
 		end
 		local token = string.format("%q", directory)
-		local result =
-			opened.report(options.context or "Server", "local runId = " .. token .. "; " .. options.code, directory)
+		local progressPath = options.progressFile
+		local listening: Progress.Listener? = nil
+		local injected = ""
+		if progressPath ~= nil and progressPath ~= "" then
+			listening = Progress.listener(progressPath, directory, function(): string
+				local read = opened.console()
+				if not read.ok or read.text == nil then
+					error(describe("console read", read), 0)
+				end
+				return read.text
+			end)
+			injected = "local progressToken = " .. string.format("%q", (listening :: Progress.Listener).token) .. "; "
+		end
+		local result = opened.report(
+			options.context or "Server",
+			"local runId = " .. token .. "; " .. injected .. options.code,
+			directory,
+			if listening ~= nil then (listening :: Progress.Listener).poll else nil
+		)
+		if listening ~= nil then
+			(listening :: Progress.Listener).finish()
+		end
 		if result.report == nil then
 			outcome = {
 				status = if result.response.expired then "timed_out" else "faulted",
@@ -585,4 +616,4 @@ local function run(options: RunOptions): Core.BatchOutcome
 	return outcome
 end
 
-return { attach = attach, run = run, digest = digest }
+return { attach = attach, run = run, digest = digest, CONSOLE_READ = CONSOLE_READ }

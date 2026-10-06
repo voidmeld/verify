@@ -309,7 +309,7 @@ The poll finds one of these states:
 | Gone | The play session ended or Studio closed. The run faults with `session_lost`. |
 | No answer until `deadlineSeconds` | The run is `timed_out`. |
 
-Each poll also reads the Studio console for progress when the run has a `progressFile`.
+Each poll also reads the Studio console for progress when the run has a `progressFile`. An attached run does the same. See [attached Studio](#attached-studio).
 The code must still be valid code for the engine, and it can yield.
 The engine keeps the result in the attributes of `ReplicatedStorage`, named `VerifyRun<digest>_*`.
 Verify clears them after a fetch.
@@ -377,7 +377,8 @@ Each of its start, poll, fetch and clear requests passes through `authorize` as 
 - `execute(datamodel, code)` for `Edit`, `Server` or `Client`.
 - `play(start)`.
 - `capture({ argumentsJson?, directory?, stem? })`.
-- `report(datamodel, code, runId)` for the ordinary run-bound report channel.
+- `console()` for one `get_console_output` read, a request that `authorize` sees.
+- `report(datamodel, code, runId, onPoll?)` for the ordinary run-bound report channel. `onPoll` runs on each poll.
 - `close()`.
 
 Each response has `ok`, `delivery`, `refused`, `expired`, `detail`, `result` and `text`.
@@ -422,6 +423,14 @@ Faults, timeouts and unacknowledged cleanup are never a pass.
 The open place must already contain what the code requires, such as the mounted entry.
 Verify builds, copies and installs nothing.
 Attached runs do not support `players`.
+
+An attached run accepts `progressFile`, and `onProgress` through `Lute.platform.run`. Verify then injects `local progressToken` into the engine code exactly as a launched run does.
+It reads the console during the detached run's poll loop and once more when the run ends, and appends each new event to `progressFile` in order.
+Rejected frames, foreign output and failed reads are counted in `<progressFile>.diagnostics` and added to the limitations of the first case, as for a launched run.
+A console read never fails the run. A run with no `progressFile` and no `onProgress` reads no console and injects no token.
+The console read is its own request kind. Every read is a `get_console_output` request (`Lute.studio.attach` exposes it as `session.console()`), and `authorize` receives it with `tool = "get_console_output"` and `fields = { studio_id }` before it is sent.
+Refuse it to forbid console reads. The run continues, and the refusal appears in the diagnostics as `console read refused`.
+A host other than the simulator or Studio refuses `progressFile`, as before.
 They share the Studio of the developer with no isolation, so the work can see and change the state of the open place.
 Use a launched run for isolation.
 

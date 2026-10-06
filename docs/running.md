@@ -105,7 +105,8 @@ An event is `{ runId, sequence, actor, caseId, step, phase, status? }`. `phase` 
 A watchdog process reads the file. A `started` event with no `finished` event names the actor and step that is still running.
 A file with no new line for too long means a stalled run.
 A launched Studio run reads the console on every poll of the detached run. See [native Studio execution](execution.md#native-studio-execution).
-A launched Studio run frames each event as hex text with a token, a length and a checksum, because the Studio console tool rewrites path-shaped text. The host counts frames that it rejects and adds the count to the limitations of the first case. It also writes `<progressFile>.diagnostics`.
+An attached Studio run reports progress the same way. Pass `progressFile` or `onProgress`. See [attached Studio](execution.md#attached-studio).
+A Studio run frames each event as hex text with a token, a length and a checksum, because the Studio console tool rewrites path-shaped text. The host counts frames that it rejects and adds the count to the limitations of the first case. It also writes `<progressFile>.diagnostics`.
 `onProgress` receives the same events in order after the run returns, because a worker process blocks the caller.
 A run with no listener and no file behaves as before. The report is the same, and progress never proves a pass.
 

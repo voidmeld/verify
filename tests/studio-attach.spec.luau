@@ -12,7 +12,9 @@ local Detached = require "../src/lute/studio-detached"
 local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
 local Mcp = require "../src/lute/studio-mcp"
+local ProgressFile = require "../src/lute/progress-file"
 local Platform = require "../src/lute/platform"
+local Roblox = require "../src/roblox"
 local Wire = require "../src/lute/wire"
 
 local PNG = "iVBORw0KGgp2ZXJpZnktZnJhbWU="
@@ -34,6 +36,7 @@ type Fake = {
 	lose: { [string]: boolean },
 	requestSeconds: number?,
 	calls_by_source: { string },
+	console: ((runId: string, token: string) -> string)?,
 }
 
 local function text(value: string): unknown
@@ -74,6 +77,7 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 		lose = {},
 		requestSeconds = nil,
 		calls_by_source = {},
+		console = nil,
 		engine = function(datamodel: string, code: string): string
 			if string.find(code, 'local P = "VerifyRun', 1, true) ~= nil then
 				local body = string.match(code, "publish%(pcall%(function%(%)\n(.-)\nend%)%)\nend%)\nreturn 'started'")
@@ -137,6 +141,23 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 					return { status = "answered", detail = '{"message":"Request timeout","code":-32603}' }
 				end
 				return { status = "answered", result = text(output) }
+			elseif tool == "get_console_output" then
+				local make = self.console
+				local runId: string?
+				local token: string?
+				for index = #self.calls_by_source, 1, -1 do
+					local source = self.calls_by_source[index]
+					local foundToken = string.match(source, 'local progressToken = "([^"]+)"')
+					local foundRun = string.match(source, 'local runId = "([^"]+)"')
+					if foundToken ~= nil and foundRun ~= nil then
+						token, runId = foundToken, foundRun
+						break
+					end
+				end
+				if make == nil or runId == nil or token == nil then
+					return { status = "answered", result = text "" }
+				end
+				return { status = "answered", result = text(make(runId, token)) }
 			elseif tool == "start_stop_play" then
 				self.playing = arguments.is_start == true
 				return { status = "answered", result = text "ok" }
@@ -810,6 +831,137 @@ return function(suite: Verify.Harness)
 			check:expect(response.detail):toContain "session_lost"
 			check:expect(os.clock() - began < 6):toBe(true)
 			session.close()
+		end)
+		suite:case(
+			"polls the console for framed progress during an attached run and writes it in order",
+			function(check)
+				local self = fake(ONE)
+				self.console = function(runId: string, token: string): string
+					local lines: { string } = {}
+					local publisher = Roblox.progressChannel.publisher(runId, token, function(value: unknown): string
+						return json.serialize((value :: unknown) :: json.Value)
+					end, function(line: string)
+						table.insert(lines, line)
+					end)
+					publisher.publish("case-1", "server", "first", "started", nil)
+					publisher.publish("case-1", "server", "first", "finished", "passed")
+					return "noise\n" .. table.concat(lines, "\n")
+				end
+				local directory = Files.claimDirectory "/tmp/verify-attach-progress-a"
+				local file = directory .. "/progress.jsonl"
+				local seen: { string } = {}
+				local runIdSeen = ""
+				local frames = self.console :: (string, string) -> string
+				self.console = function(runId: string, token: string): string
+					runIdSeen = runId
+					return frames(runId, token)
+				end
+				local outcome = Lute.studio.run {
+					code = "return 1",
+					directory = directory,
+					progressFile = file,
+					attach = {
+						authorize = function(request): Lute.StudioAuthorization
+							table.insert(seen, request.tool)
+							return allow()
+						end,
+						studioId = "studio-a",
+						transport = self.transport,
+					},
+				}
+				check:expect(outcome.status):toEqual "returned"
+				check:expect(table.find(seen, "get_console_output") ~= nil):toBe(true)
+				local first = table.find(seen, "execute_luau")
+				local read = table.find(seen, "get_console_output")
+				check:expect(first ~= nil and read ~= nil and (first :: number) < (read :: number)):toBe(true)
+				local events = ProgressFile.read(file, runIdSeen)
+				check:expect(#events):toBe(2)
+				check:expect(events[1].sequence):toBe(1)
+				check:expect(events[2].sequence):toBe(2)
+				check:expect(fs.exists(file .. ".diagnostics")):toBe(false)
+				local injected = false
+				for _, source in self.calls_by_source do
+					injected = injected or string.find(source, "local progressToken = ", 1, true) ~= nil
+				end
+				check:expect(injected):toBe(true)
+				pcall(fs.removeDirectory, directory, { recursive = true })
+			end
+		)
+
+		suite:case(
+			"surfaces rejected progress frames and a refused console read without failing the run",
+			function(check)
+				local tampered = fake(ONE)
+				tampered.console = function(runId: string, token: string): string
+					local lines: { string } = {}
+					local publisher = Roblox.progressChannel.publisher(runId, token, function(value: unknown): string
+						return json.serialize((value :: unknown) :: json.Value)
+					end, function(line: string)
+						table.insert(lines, line)
+					end)
+					publisher.publish("case-1", "server", "first", "started", nil)
+					publisher.publish("case-1", "server", "first", "finished", "passed")
+					local head, body = string.match(lines[2], "^(.-|%d+|%x+|)(%x+)$")
+					return lines[1] .. "\n" .. (head :: string) .. string.gsub(body :: string, "%d", "1")
+				end
+				local directory = Files.claimDirectory "/tmp/verify-attach-progress-b"
+				local file = directory .. "/progress.jsonl"
+				local outcome = Lute.studio.run {
+					code = "return 1",
+					directory = directory,
+					progressFile = file,
+					attach = { authorize = allow, studioId = "studio-a", transport = tampered.transport },
+				}
+				check:expect(outcome.status):toEqual "returned"
+				check:expect(fs.exists(file .. ".diagnostics")):toBe(true)
+				pcall(fs.removeDirectory, directory, { recursive = true })
+				local refused = fake(ONE)
+				refused.console = tampered.console
+				local second = Files.claimDirectory "/tmp/verify-attach-progress-c"
+				local outcome2 = Lute.studio.run {
+					code = "return 1",
+					directory = second,
+					progressFile = second .. "/progress.jsonl",
+					attach = {
+						authorize = function(request): Lute.StudioAuthorization
+							return {
+								ok = request.tool ~= "get_console_output",
+								reason = "console reads are not granted",
+							}
+						end,
+						studioId = "studio-a",
+						transport = refused.transport,
+					},
+				}
+				check:expect(outcome2.status):toEqual "returned"
+				local diagnostics = fs.readFileToString(second .. "/progress.jsonl.diagnostics")
+				check:expect(diagnostics):toContain "console read"
+				pcall(fs.removeDirectory, second, { recursive = true })
+			end
+		)
+
+		suite:case("an attached run without a listener never reads the console or injects a token", function(check)
+			local self = fake(ONE)
+			local directory = Files.claimDirectory "/tmp/verify-attach-progress-d"
+			local tools: { string } = {}
+			local outcome = Lute.studio.run {
+				code = "return 1",
+				directory = directory,
+				attach = {
+					authorize = function(request): Lute.StudioAuthorization
+						table.insert(tools, request.tool)
+						return allow()
+					end,
+					studioId = "studio-a",
+					transport = self.transport,
+				},
+			}
+			check:expect(outcome.status):toEqual "returned"
+			check:expect(table.find(tools, "get_console_output")):toBeNil()
+			for _, source in self.calls_by_source do
+				check:expect((string.find(source, "progressToken", 1, true))):toBeNil()
+			end
+			pcall(fs.removeDirectory, directory, { recursive = true })
 		end)
 	end)
 end

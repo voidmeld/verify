@@ -11,8 +11,7 @@ local Detached = require "./studio-detached"
 local Files = require "./files"
 local Wire = require "./wire"
 local Mcp = require "./studio-mcp"
-local ProgressChannel = require "../roblox/progress-channel"
-local ProgressFile = require "./progress-file"
+local Progress = require "./studio-progress"
 local Processes = require "./studio-processes"
 local Reply = require "./studio-reply"
 
@@ -109,47 +108,12 @@ local function worker(path: string)
 		assert(string.find(edit, runId, 1, true) ~= nil, "Studio did not acknowledge run identity")
 		local progressPath = fields.progressFile
 		local polling = type(progressPath) == "string" and progressPath ~= ""
-		local polled = 0
+		local listening: Progress.Listener? = if polling
+			then Progress.listener(progressPath :: string, runId, function(): string
+				return Reply.texts(connection.call("get_console_output", { studio_id = id }))
+			end)
+			else nil
 		local progressToken = Detached.tokenFor(runId)
-		local rejected, foreign, failures = 0, 0, 0
-		local firstProblem: string? = nil
-		local function pollProgress()
-			local text = Reply.texts(connection.call("get_console_output", { studio_id = id }))
-			local collected = ProgressChannel.collect(text, progressToken, runId, Wire.parse)
-			rejected = math.max(rejected, collected.rejected)
-			foreign = math.max(foreign, collected.foreign)
-			if collected.first ~= nil and firstProblem == nil then
-				firstProblem = collected.first
-			end
-			for _, event in collected.events do
-				if event.sequence > polled then
-					polled = event.sequence
-					ProgressFile.append(progressPath :: string, event)
-				end
-			end
-		end
-		local function guardedPoll()
-			local ok, problem: unknown = pcall(pollProgress)
-			if not ok then
-				failures += 1
-				if firstProblem == nil then
-					firstProblem = "progress poll failed: " .. tostring(problem)
-				end
-			end
-		end
-		local function recordProgress()
-			if polling and (rejected > 0 or failures > 0) then
-				fs.writeStringToFile(
-					(progressPath :: string) .. ".diagnostics",
-					json.serialize {
-						rejected = rejected,
-						failures = failures,
-						foreign = foreign,
-						first = firstProblem or "",
-					}
-				)
-			end
-		end
 		local function engine(datamodel: string, code: string): Detached.Reply
 			local limit = math.min(deadline, os.clock() + CALL_SECONDS)
 			local exchange = connection.callRaw(
@@ -219,12 +183,11 @@ local function worker(path: string)
 			runId = runId,
 			deadline = deadline,
 			pollSeconds = 1,
-			onPoll = if polling then guardedPoll else nil,
+			onPoll = if listening ~= nil then listening.poll else nil,
 		}
-		if polling then
-			guardedPoll()
+		if listening ~= nil then
+			listening.finish()
 		end
-		recordProgress()
 		if outcome.status ~= "done" then
 			error(outcome.detail or outcome.status, 0)
 		end
@@ -282,6 +245,7 @@ local function run(options: Options): Core.BatchOutcome
 			finalCapture = options.finalCapture,
 			deadlineSeconds = options.deadlineSeconds,
 			directory = options.directory,
+			progressFile = options.progressFile,
 		}
 	end
 	local workerPath, place = options.worker, options.place
