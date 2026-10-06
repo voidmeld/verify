@@ -99,6 +99,15 @@ return function(suite: Verify.Harness)
 			check:expect(execution.report.passed < execution.report.total):toBe(true)
 		end)
 
+		suite:case("carries an inline attachment in the returned report", function(check)
+			local outcome = hostFor("main", "attach").runBatch(batchOf("attach", { "attach" }))
+			check:expect(outcome.status):toBe "returned"
+			local artifact = (outcome.report :: Verify.Report).results[1].artifacts[1]
+			check:expect(artifact.name):toBe "lune.txt"
+			check:expect(artifact.content):toBe "from lune"
+			check:expect(artifact.mediaType):toBe "text/plain"
+		end)
+
 		suite:case("supports self-registering workers", function(check)
 			local outcome = hostFor("self-registering", "self").runBatch(batchOf("self", { "pass" }))
 			check:expect(outcome.status):toBe "returned"

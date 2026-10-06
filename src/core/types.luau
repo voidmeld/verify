@@ -30,6 +30,7 @@ export type Artifact = {
 	sha256: string?,
 	size: number?,
 	provenance: Provenance.Provenance?,
+	content: string?,
 }
 
 export type Observation = {

@@ -78,6 +78,7 @@ local producers: { Gate.ProducerDraft } = {
 		why = "the Lune host's spec corpus, run in real lune processes",
 		deadlineSeconds = 1800,
 	},
+	check("example-attachments", { "lute", "run", "examples/attachments.luau" }, "behavior"),
 	check("example-quickstart", { "lute", "run", "examples/quickstart.luau" }, "behavior"),
 	check("example-lune-fixture", { "lune", "run", "examples/lune-fixture.luau" }, "behavior"),
 	check("example-lune-run", { "lune", "run", "examples/lune-run.luau" }, "behavior"),

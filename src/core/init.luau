@@ -16,6 +16,7 @@ local Shape = require "@self/shape"
 local ReportModel = require "@self/report"
 local SessionModule = require "@self/session"
 local Spy = require "@self/spy"
+local Attachment = require "@self/attachment"
 local Transport = require "@self/transport"
 local Types = require "@self/types"
 local Wait = require "@self/wait"
@@ -34,6 +35,7 @@ export type Status = Types.Status
 export type Failure = Types.Failure
 export type StepResult = Types.StepResult
 export type Artifact = Types.Artifact
+export type AttachmentLimits = Attachment.Limits
 export type Checkpoint = Types.Checkpoint
 export type Origin = Types.Origin
 export type CaseResult = Types.CaseResult
@@ -166,6 +168,11 @@ return {
 	extract = Transport.extract,
 	reassemble = Transport.reassemble,
 	receipt = Transport.receipt,
+	attachmentDefaults = {
+		maxBytes = Attachment.DEFAULT_MAX_BYTES,
+		maxCount = Attachment.DEFAULT_MAX_COUNT,
+		maxTotalBytes = Attachment.DEFAULT_MAX_TOTAL_BYTES,
+	},
 	segment = Transport.segment,
 	reassembleSegments = Transport.reassembleSegments,
 

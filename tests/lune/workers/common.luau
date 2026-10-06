@@ -32,6 +32,12 @@ local operations: Lune.WorkerOperations = {
 			return function(harness: Verify.Harness)
 				register(harness, false)
 			end
+		elseif locator == "attach" then
+			return function(harness: Verify.Harness)
+				harness:case("attached", function(context)
+					context:attach("lune.txt", "text/plain", "from lune")
+				end)
+			end
 		elseif locator == "load-error" then
 			error("load boom", 0)
 		elseif locator == "not-function" then

@@ -108,6 +108,14 @@ A launched Studio run reads the console on every poll of the detached run. See [
 `onProgress` receives the same events in order after the run returns, because a worker process blocks the caller.
 A run with no listener and no file behaves as before. The report is the same, and progress never proves a pass.
 
+## Attachments
+
+A case can attach text with `context:attach(name, mediaType, text)`.
+`Lute.platform.run` writes each attachment to `<output>/attachments/<case id>/<name>` and replaces it in the report with an artifact entry that has `size` and `sha256`.
+Pass `attachmentSink` to store it elsewhere, and `attachments = { maxBytes?, maxCount?, maxTotalBytes? }` to change the limits.
+The simulator and the launched and attached Studio hosts support attachments. Player and Open Cloud runs fail the case `verify:attachments`.
+The [attachment example](../examples/attachments.luau) shows the result. See [inline attachments](api.md#inline-attachments).
+
 ## Gates and benchmarks
 
 ```sh

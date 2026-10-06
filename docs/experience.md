@@ -22,6 +22,14 @@ Use direct assertions for local functions and typed operations for host interact
 - A query must only read.
 - `context:await(actor, query, input, predicate, pollSeconds)` polls a query with the clock and sleep of the host, within the case deadline. It refuses actions.
 
+### Attachments
+
+A case can attach text that it produced in the engine with `context:attach(name, mediaType, text)`.
+The text travels with the report. The report transport is the same on each host, and Studio returns it in digest-checked segments.
+These hosts carry attachments: the simulator, Lute workers, Lune workers, launched Studio and attached Studio.
+Player and Open Cloud runs report each attachment as unsupported in the `verify:attachments` case. They do not drop it silently.
+See [inline attachments](api.md#inline-attachments) for names, limits and the host step.
+
 ### Binding a host
 
 A host binds through `harness:run({executor, capabilities, environment, bind, cancelled?})`.

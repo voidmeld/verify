@@ -3,6 +3,7 @@
 local Published = require "@self/published-source"
 local Platform = require "@self/platform"
 local Place = require "@self/place"
+local Attachments = require "@self/attachments"
 local Evidence = require "@self/evidence"
 local EvidenceStore = require "@self/evidence-store"
 local Player = require "@self/player"
@@ -22,6 +23,8 @@ local Lock = require "@self/lock"
 local Wire = require "@self/wire"
 local Worker = require "@self/worker"
 
+export type AttachmentSink = Attachments.Sink
+export type AttachmentOptions = Attachments.Options
 export type PlatformOptions = Platform.Options
 export type PlatformResult = Platform.Result
 export type EvidenceRequirement = Evidence.Requirement
@@ -98,6 +101,7 @@ export type SelfRegisteringWorkerOperations = Worker.SelfRegisteringOperations
 return {
 	platform = Platform,
 	place = Place,
+	attachments = Attachments,
 	evidence = Evidence,
 	evidenceStore = EvidenceStore,
 	player = Player,

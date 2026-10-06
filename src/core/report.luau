@@ -159,6 +159,7 @@ local function copyArtifacts(value: unknown, label: string): { Artifact }
 			sha256 = identity.sha256,
 			size = identity.size,
 			provenance = identity.provenance,
+			content = optionalString(raw.content, label .. ".content"),
 		})
 	end
 	return result

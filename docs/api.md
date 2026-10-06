@@ -121,6 +121,7 @@ The context records assertions, steps and artifact references. It owns case-loca
 | `context:step(name, run)` | Record a named step and its outcome. |
 | `context:step(name, { run, actor? })` | Associate a step with an actor. |
 | `context:artifact(name, reference, mediaType?)` | Attach a reference to evidence. |
+| `context:attach(name, mediaType, text)` | Attach text that the case produced. The host stores it. |
 | `context:defer(cleanup)` | Register cleanup for the end of the case. |
 | `context:own(resource)` | Own a cleanup function or a table with `dispose` or `destroy`. |
 | `context:skip(reason)` | Stop the current case with a deliberate skip. |
@@ -142,6 +143,35 @@ Cleanup runs once, newest first.
 Setup, case, teardown and cleanup failures stay visible independently. A later failure does not erase an earlier one.
 Hooks and cleanup use the same invocation contract as the case.
 An artifact reference records a location. It does not save or authenticate bytes.
+
+#### Inline attachments
+
+`context:attach(name, mediaType, text)` records text that the case produced in the engine.
+The text travels in the report. The host then writes it to a file and replaces it with an ordinary artifact entry.
+The entry has `reference`, `mediaType`, `size` and `sha256`. `Evidence.seal` stores it like any other artifact.
+Attachments are data. They never prove that a case passed.
+
+The text must be valid UTF-8 and not empty. Binary content is refused.
+`name` is a relative path. It must not be empty, start with `/`, contain `\`, a control character, an empty segment or a `.` or `..` segment.
+A name is unique within a case.
+
+Limits fail closed. A broken limit raises an error from `attach`, the step fails and cleanup still runs.
+
+| Limit | Default | Option |
+| --- | --- | --- |
+| Bytes of one attachment | 1048576 | `maxBytes` |
+| Attachments in one case | 16 | `maxCount` |
+| Bytes in one report | 4194304 | `maxTotalBytes` |
+
+Set the limits with `attachments` in `Core.createHarness` or in the run options. The run options win.
+`Core.attachmentDefaults` holds the defaults.
+
+`Lute.attachments.materialize(report, { directory, sink?, limits?, supported?, host? }) -> report, issues` is the host step.
+It checks the limits again and writes `<directory>/attachments/<case id>/<name>`.
+A `sink(caseId, name, text, meta) -> reference, reason` replaces the file write. `meta` is `{ mediaType, sha256, size }`.
+`issues` lists each attachment that was refused, not stored or unsupported. `Lute.platform.run` adds them to the report as a failed case `verify:attachments`.
+`Lute.platform.run` accepts `attachments` for the limits and `attachmentSink`.
+`Evidence.validate` also hashes again each sealed artifact of a case, so a changed stored attachment fails validation.
 
 ### `Bdd.create`
 

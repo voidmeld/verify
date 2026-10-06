@@ -1,5 +1,6 @@
 --!strict
 
+local Attachment = require "./attachment"
 local Matchers = require "./matchers"
 local ReportModel = require "./report"
 local Progress = require "./progress"
@@ -69,6 +70,7 @@ export type Context = {
 	skip: (self: Context, reason: string) -> never,
 	step: (self: Context, name: string, definition: (() -> ()) | StepOptions) -> (),
 	artifact: (self: Context, name: string, reference: string, mediaType: string?) -> (),
+	attach: (self: Context, name: string, mediaType: string, text: string) -> (),
 }
 
 export type CaseRun = (context: Context) -> ()
@@ -106,6 +108,7 @@ export type RunOptions = {
 	selection: Selection?,
 	invoke: Invoker?,
 	progress: Progress.Progress?,
+	attachments: Attachment.Limits?,
 }
 
 export type Harness = {
@@ -405,7 +408,12 @@ local function format(report: Report): string
 	return table.concat(lines, "\n")
 end
 
-local function createHarness(options: { now: () -> number, source: string?, prefixIds: boolean? }): Harness
+local function createHarness(options: {
+	now: () -> number,
+	source: string?,
+	prefixIds: boolean?,
+	attachments: Attachment.Limits?,
+}): Harness
 	if type(options) ~= "table" or type(options.now) ~= "function" then
 		error("createHarness requires a monotonic now function", 2)
 	end
@@ -416,11 +424,14 @@ local function createHarness(options: { now: () -> number, source: string?, pref
 		error("createHarness cannot prefix ids without a source", 2)
 	end
 	local now = options.now
+	local attachmentLimits = Attachment.resolve(options.attachments)
+	local configuredLimits = options.attachments
 	local source = options.source
 	local prefixIds = if options.prefixIds ~= nil then options.prefixIds else source ~= nil
 	local root = newSuite("", nil)
 	local current = root
 	local running = false
+	local runAttachmentBytes = 0
 	local caseIds: { [string]: boolean } = {}
 	local harness = {} :: Harness
 
@@ -585,6 +596,8 @@ local function createHarness(options: { now: () -> number, source: string?, pref
 		local host: Operations.Host? = nil
 		local evidence: Types.Evidence = { observations = {}, checkpoints = {}, reviews = {}, measurements = {} }
 		local releasing = false
+		local attachmentNames: { [string]: boolean } = {}
+		local attachmentCount = 0
 		local cleanupDeadline = math.huge
 		local function withinDeadline()
 			if releasing then
@@ -775,6 +788,40 @@ local function createHarness(options: { now: () -> number, source: string?, pref
 				error("artifact media type must not be empty", 2)
 			end
 			table.insert(artifacts, { name = name, reference = reference, mediaType = mediaType })
+		end
+
+		function context:attach(name: string, mediaType: string, text: string)
+			local refusal = Attachment.check(name, mediaType, text, attachmentLimits)
+			if refusal ~= nil then
+				error(refusal, 2)
+			end
+			if attachmentCount >= attachmentLimits.maxCount then
+				error(
+					("attachment %q exceeds the per-case count limit of %d"):format(name, attachmentLimits.maxCount),
+					2
+				)
+			end
+			if runAttachmentBytes + #text > attachmentLimits.maxTotalBytes then
+				error(
+					("attachment %q exceeds the per-report limit of %d bytes"):format(
+						name,
+						attachmentLimits.maxTotalBytes
+					),
+					2
+				)
+			end
+			if attachmentNames[name] then
+				error(("attachment %q is already attached to this case"):format(name), 2)
+			end
+			attachmentNames[name] = true
+			attachmentCount += 1
+			runAttachmentBytes += #text
+			table.insert(artifacts, {
+				name = name,
+				reference = "attachment:" .. name,
+				mediaType = mediaType,
+				content = text,
+			})
 		end
 
 		function context:remainingSeconds(): number
@@ -1067,6 +1114,8 @@ local function createHarness(options: { now: () -> number, source: string?, pref
 			error("run executor must not be empty", 2)
 		end
 		running = true
+		runAttachmentBytes = 0
+		attachmentLimits = Attachment.resolve(runOptions.attachments or configuredLimits)
 		local started = now()
 		local capabilityList = copySortedUnique(runOptions.capabilities, "capability")
 		local environment = copyEnvironment(runOptions.environment)

@@ -4,6 +4,7 @@ local fs = require "@std/fs"
 local process = require "@std/process"
 local Core = require "../core"
 local Entry = require "../roblox/case-entry"
+local Attachments = require "./attachments"
 local Bounded = require "./bounded"
 local Evidence = require "./evidence"
 local OpenCloud = require "./open-cloud"
@@ -15,6 +16,8 @@ local Published = require "./published-source"
 local Studio = require "./studio"
 local Attach = require "./studio-attach"
 local Wire = require "./wire"
+
+type Attachments_Limits = Core.AttachmentLimits
 
 export type Options = {
 	host: Entry.Host,
@@ -36,6 +39,8 @@ export type Options = {
 	players: number?,
 	context: ("Server" | "Client")?,
 	finalCapture: boolean?,
+	attachments: Attachments_Limits?,
+	attachmentSink: Attachments.Sink?,
 	requiredMedia: { string }?,
 	requiredEvidence: { Evidence.Requirement }?,
 }
@@ -282,6 +287,27 @@ local function run(options: Options): Result
 				if completed.status == "timed_out" then "timed_out" else "failed",
 				completed.detail or "host failed"
 			)
+		end
+	end
+	if ok then
+		local carried = false
+		for _, result in report.results do
+			for _, artifact in result.artifacts do
+				carried = carried or artifact.content ~= nil
+			end
+		end
+		if carried then
+			local delivered, issues = Attachments.materialize(report, {
+				directory = directory,
+				sink = options.attachmentSink,
+				limits = options.attachments,
+				supported = options.host == "simulator" or options.host == "studio",
+				host = options.host,
+			})
+			report = delivered
+			if #issues > 0 then
+				report = appendFailure(report, options, "attachments", table.concat(issues, "\n"))
+			end
 		end
 	end
 	local required: { Evidence.Requirement } = table.clone(options.requiredEvidence or {})

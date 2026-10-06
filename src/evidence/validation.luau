@@ -201,6 +201,14 @@ local function validate(report: Types.Report, policy: Policy): Result
 		return true
 	end
 
+	for _, result in report.results do
+		for _, artifact in result.artifacts do
+			if artifact.sha256 ~= nil then
+				intact(artifact, result.id .. " / " .. artifact.name)
+			end
+		end
+	end
+
 	local function sound(
 		artifact: Artifact,
 		result: CaseResult,
