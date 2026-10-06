@@ -145,7 +145,9 @@ local function worker(path: string)
 		local code: string
 		if type(players) == "number" then
 			assert(players >= 1 and players <= 8 and players % 1 == 0, "Studio multiplayer supports 1 to 8 clients")
-			local source = "local runId = "
+			local source = "game:GetService('ReplicatedStorage'):SetAttribute('VerifyRun', "
+				.. token
+				.. "); local runId = "
 				.. token
 				.. "; local ok, result = pcall(function() "
 				.. textField "code"

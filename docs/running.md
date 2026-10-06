@@ -40,6 +40,8 @@ lute run tools/run.luau --entry examples/platform-entry.luau --case instance-sta
 The first two commands run the same assertions against simulated and native instances.
 [The entry](../examples/platform-entry.luau) chooses the host binding.
 It exports a function that receives `simulator`, `studio` or `player` and returns `{ cases, options, now }`.
+On Studio and Open Cloud runs the function also receives the run ID as a second argument. It is nil on the simulator and the Player.
+During a Studio run, `ReplicatedStorage` holds the attribute `VerifyRun` with the run ID. A multiplayer run sets it on the test server before the entry runs, so clients read it by replication. Prefer the second argument on the server.
 
 - `cases` holds `Core.NamedCase` values with explicit unique IDs.
 - `options` is `Core.RunOptions`.

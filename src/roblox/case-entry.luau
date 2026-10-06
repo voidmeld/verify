@@ -8,10 +8,16 @@ export type Entry = {
 	options: Core.RunOptions,
 	now: () -> number,
 }
-export type Factory = (Host) -> Entry
+export type Factory = (Host, string?) -> Entry
 
-local function run(factory: Factory, host: Host, ids: { string }?, progress: Core.RunProgress?): Core.Report
-	local entry = factory(host)
+local function run(
+	factory: Factory,
+	host: Host,
+	ids: { string }?,
+	progress: Core.RunProgress?,
+	runId: string?
+): Core.Report
+	local entry = factory(host, runId)
 	local options = entry.options
 	if progress ~= nil then
 		options = table.clone(options)

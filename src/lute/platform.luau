@@ -82,7 +82,7 @@ local function engineCode(framework: string, entry: string, ids: { string }?, ho
 		.. (host or "studio")
 		.. "', "
 		.. literalIds(ids)
-		.. ", progress)\n"
+		.. ", progress, runId)\n"
 		.. "return game:GetService('HttpService'):JSONEncode(Channel.envelope(runId, report))"
 end
 
