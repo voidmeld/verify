@@ -13,6 +13,7 @@ local Wire = require "./wire"
 local Mcp = require "./studio-mcp"
 local ProgressChannel = require "../roblox/progress-channel"
 local ProgressFile = require "./progress-file"
+local Processes = require "./studio-processes"
 local Reply = require "./studio-reply"
 
 local CALL_SECONDS = 30
@@ -65,6 +66,8 @@ local function worker(path: string)
 	local deadline = os.clock() + seconds
 	local connection = Mcp.connect(textField "mcpExecutable", directory .. "/mcp", deadline)
 	local pid: number? = nil
+	local before = Processes.snapshot()
+	local studioId: string? = nil
 	local ok, reason = pcall(function()
 		local previous = studios(connection)
 		local launched = process.run {
@@ -94,6 +97,7 @@ local function worker(path: string)
 			end
 		end
 		local id = selected :: string
+		studioId = id
 		local token = string.format("%q", runId)
 		local edit = Reply.texts(connection.call("execute_luau", {
 			studio_id = id,
@@ -242,10 +246,24 @@ local function worker(path: string)
 		end
 		fs.writeStringToFile(directory .. "/report", Wire.encode(report))
 	end)
-	if pid ~= nil then
-		process.run { "kill", "-KILL", tostring(pid) }
+	if studioId ~= nil and fields.players ~= nil then
+		pcall(
+			connection.callRaw,
+			"execute_luau",
+			json.serialize {
+				studio_id = studioId,
+				datamodel_type = "Edit",
+				code = "pcall(function() game:GetService('StudioTestService'):EndTest({}) end) return 'ended'",
+			},
+			os.clock() + 5
+		)
 	end
 	connection.close()
+	local cleanup = Processes.reap(before, { root = pid, markers = { textField "placeName" } })
+	fs.writeStringToFile(
+		directory .. "/cleanup",
+		json.serialize { terminated = cleanup.terminated, survivors = cleanup.survivors }
+	)
 	if not ok then
 		if os.clock() >= deadline then
 			process.exit(124)
@@ -309,21 +327,42 @@ local function run(options: Options): Core.BatchOutcome
 			mcpExecutable = options.mcpExecutable or "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP",
 		}
 	)
+	local before = Processes.snapshot()
 	local result = Bounded.run({ "lute", "run", workerPath, input }, seconds + 1)
+	local parentCleanup = Processes.reap(before, { markers = { placeName } })
+	local survivors = parentCleanup.survivors
+	local recorded = Processes.read(directory .. "/cleanup")
+	if recorded ~= nil then
+		for _, pid in recorded.survivors do
+			table.insert(survivors, pid)
+		end
+	end
+	local leftover = if #survivors > 0
+		then ("; Studio processes survived cleanup and need a manual kill: %s"):format(table.concat(survivors, ","))
+		else ""
 	if result.timedOut or result.exitcode == 124 then
 		return {
 			status = "timed_out",
-			detail = "isolated Studio run exceeded its process deadline; diagnostics: " .. directory,
+			detail = "isolated Studio run exceeded its process deadline; diagnostics: " .. directory .. leftover,
 		}
 	end
 	if not result.ok then
-		return { status = "faulted", detail = result.stderr .. result.stdout .. "; diagnostics: " .. directory }
+		return {
+			status = "faulted",
+			detail = result.stderr .. result.stdout .. "; diagnostics: " .. directory .. leftover,
+		}
 	end
 	local decoded, report = pcall(function()
 		return Wire.decode(fs.readFileToString(directory .. "/report"))
 	end)
 	if not decoded then
 		return { status = "faulted", detail = "invalid or missing engine report: " .. tostring(report) }
+	end
+	if #survivors > 0 then
+		local first = (report :: Core.Report).results[1]
+		if first ~= nil then
+			table.insert(first.limitations, leftover:sub(3))
+		end
 	end
 	return { status = "returned", report = report }
 end

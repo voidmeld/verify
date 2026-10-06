@@ -315,6 +315,7 @@ The engine keeps the result in the attributes of `ReplicatedStorage`, named `Ver
 Verify clears them after a fetch.
 
 The default run limit is 90 seconds.
+A launched Studio run owns every Studio process that it starts. The worker records the Studio processes before the launch. On every exit it ends the multiplayer test with `StudioTestService:EndTest`, then sends TERM and then KILL to the Studio processes that appeared for this run: the launched Studio, its descendants, and the `-task StartServer` and `-rbxTransportToken` processes. It never signals a Studio that ran before. A process that survives both signals is listed as a limitation of the report.
 An external watchdog kills the owned worker process group, including Studio and the MCP process, on a timeout.
 Normal success and failure also terminate those owned processes.
 Case budgets stay cooperative inside the engine. The outer run limit holds even when engine code never yields.
