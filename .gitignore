@@ -1,0 +1,12 @@
+.rokit/
+.luau-analyze-cache/
+.DS_Store
+.vscode/
+.idea/
+*.swp
+build/
+.scratch/
+.lute/tmp/
+/.lute/
+.claude/
+/.verify/
