@@ -81,7 +81,7 @@ local function engineCode(framework: string, entry: string, ids: { string }?, ho
 				.. Place.moduleExpression(framework .. "/src/roblox/progress-channel.luau")
 				.. ")\n"
 				.. "local http = game:GetService('HttpService')\n"
-				.. "local progress = Progress.publisher(runId, function(value) return http:JSONEncode(value) end, print)\n"
+				.. "local progress = Progress.publisher(runId, progressToken, function(value) return http:JSONEncode(value) end, print)\n"
 			else "local progress = nil\n")
 		.. "local report = Entry.run(factory, '"
 		.. (host or "studio")
@@ -149,6 +149,7 @@ local function run(options: Options): Result
 			assert(options.host == "simulator" or options.host == "studio", "this host does not report progress")
 			assert(options.attach == nil, "an attached Studio does not report progress")
 			Files.removeIfPresent(progressPath)
+			Files.removeIfPresent(progressPath .. ".diagnostics")
 		end
 		if options.host == "simulator" then
 			local command = {
@@ -248,6 +249,20 @@ local function run(options: Options): Result
 			}
 		end
 	end)
+	local diagnostics: string? = nil
+	if progressPath ~= nil and fs.exists(progressPath .. ".diagnostics") then
+		local read, found = pcall(function()
+			return Wire.parse(fs.readFileToString(progressPath .. ".diagnostics"))
+		end)
+		if read and type(found) == "table" then
+			local record = found :: { [string]: unknown }
+			diagnostics = ("progress was degraded: %s frame(s) rejected, %s poll failure(s); %s"):format(
+				tostring(record.rejected),
+				tostring(record.failures),
+				tostring(record.first)
+			)
+		end
+	end
 	if progressPath ~= nil and options.onProgress ~= nil then
 		for _, event in ProgressFile.read(progressPath, directory) do
 			pcall(options.onProgress, event)
@@ -309,6 +324,9 @@ local function run(options: Options): Result
 				report = appendFailure(report, options, "attachments", table.concat(issues, "\n"))
 			end
 		end
+	end
+	if diagnostics ~= nil and report.results[1] ~= nil then
+		table.insert(report.results[1].limitations, diagnostics)
 	end
 	local required: { Evidence.Requirement } = table.clone(options.requiredEvidence or {})
 	for _, case in report.results do

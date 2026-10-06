@@ -106,13 +106,44 @@ local function worker(path: string)
 		local progressPath = fields.progressFile
 		local polling = type(progressPath) == "string" and progressPath ~= ""
 		local polled = 0
+		local progressToken = Detached.tokenFor(runId)
+		local rejected, foreign, failures = 0, 0, 0
+		local firstProblem: string? = nil
 		local function pollProgress()
 			local text = Reply.texts(connection.call("get_console_output", { studio_id = id }))
-			for _, event in ProgressChannel.collect(text, runId, Wire.parse) do
+			local collected = ProgressChannel.collect(text, progressToken, runId, Wire.parse)
+			rejected = math.max(rejected, collected.rejected)
+			foreign = math.max(foreign, collected.foreign)
+			if collected.first ~= nil and firstProblem == nil then
+				firstProblem = collected.first
+			end
+			for _, event in collected.events do
 				if event.sequence > polled then
 					polled = event.sequence
 					ProgressFile.append(progressPath :: string, event)
 				end
+			end
+		end
+		local function guardedPoll()
+			local ok, problem: unknown = pcall(pollProgress)
+			if not ok then
+				failures += 1
+				if firstProblem == nil then
+					firstProblem = "progress poll failed: " .. tostring(problem)
+				end
+			end
+		end
+		local function recordProgress()
+			if polling and (rejected > 0 or failures > 0) then
+				fs.writeStringToFile(
+					(progressPath :: string) .. ".diagnostics",
+					json.serialize {
+						rejected = rejected,
+						failures = failures,
+						foreign = foreign,
+						first = firstProblem or "",
+					}
+				)
 			end
 		end
 		local function engine(datamodel: string, code: string): Detached.Reply
@@ -149,6 +180,8 @@ local function worker(path: string)
 				.. token
 				.. "); local runId = "
 				.. token
+				.. "; local progressToken = "
+				.. string.format("%q", progressToken)
 				.. "; local ok, result = pcall(function() "
 				.. textField "code"
 				.. " end); game:GetService('StudioTestService'):EndTest(if ok then result else {error = tostring(result)})"
@@ -170,6 +203,8 @@ local function worker(path: string)
 				.. token
 				.. ", 'wrong Verify run'); local runId = "
 				.. token
+				.. "; local progressToken = "
+				.. string.format("%q", progressToken)
 				.. "; "
 				.. textField "code"
 		end
@@ -180,11 +215,12 @@ local function worker(path: string)
 			runId = runId,
 			deadline = deadline,
 			pollSeconds = 1,
-			onPoll = if polling then pollProgress else nil,
+			onPoll = if polling then guardedPoll else nil,
 		}
 		if polling then
-			pcall(pollProgress)
+			guardedPoll()
 		end
+		recordProgress()
 		if outcome.status ~= "done" then
 			error(outcome.detail or outcome.status, 0)
 		end

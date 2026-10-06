@@ -137,27 +137,76 @@ return function(suite: Core.Harness)
 			local events: { Core.ProgressEvent } = {}
 			Core.runCases({ twoActorCase() }, options(events, nil), clock)
 			local lines: { string } = {}
-			local publisher = Roblox.progressChannel.publisher("run-1", function(value: unknown): string
+			local function encode(value: unknown): string
 				return json.serialize((value :: unknown) :: json.Value)
-			end, function(line: string)
+			end
+			local publisher = Roblox.progressChannel.publisher("/tmp/run/1", "abc123", encode, function(line: string)
 				table.insert(lines, line)
 			end)
 			for _, event in events do
 				publisher.publish(event.caseId, event.actor, event.step, event.phase, event.status)
 			end
 			local noise = "unrelated output\n" .. table.concat(lines, "\n") .. "\n" .. table.concat(lines, "\n")
-			local collected = Roblox.progressChannel.collect(noise, "run-1", function(text: string): unknown
+			local function decode(text: string): unknown
 				return json.deserialize(text)
-			end)
-			check:expect(#collected):toBe(#events)
-			for index, event in collected do
+			end
+			local collected = Roblox.progressChannel.collect(noise, "abc123", "/tmp/run/1", decode)
+			check:expect(#collected.events):toBe(#events)
+			check:expect(collected.rejected):toBe(0)
+			for index, event in collected.events do
 				check:expect(event.sequence):toBe(index)
 			end
-			check
-				:expect(#Roblox.progressChannel.collect(noise, "other-run", function(text: string): unknown
-					return json.deserialize(text)
-				end))
-				:toBe(0)
+			local other = Roblox.progressChannel.collect(noise, "zzz999", "/tmp/run/1", decode)
+			check:expect(#other.events):toBe(0)
+			check:expect(other.foreign > 0):toBe(true)
+		end)
+
+		suite:case("survives a console that rewrites path-shaped text and counts frames that it alters", function(check)
+			local lines: { string } = {}
+			local function encode(value: unknown): string
+				return json.serialize((value :: unknown) :: json.Value)
+			end
+			local publisher = Roblox.progressChannel.publisher(
+				"/tmp/verify-studio/run-1791316666-1",
+				"tok0123456789",
+				encode,
+				function(line: string)
+					table.insert(lines, line)
+				end
+			)
+			publisher.publish("dir/case::one", "client/1", "step/one", "started", nil)
+			publisher.publish("dir/case::one", "client/1", "step/one", "finished", "passed")
+			local function decode(text: string): unknown
+				return json.deserialize(text)
+			end
+			local pathRewrite = string.gsub(table.concat(lines, "\n"), "/[%w%-%._]+", "")
+			local survived = Roblox.progressChannel.collect(
+				pathRewrite,
+				"tok0123456789",
+				"/tmp/verify-studio/run-1791316666-1",
+				decode
+			)
+			check:expect(#survived.events):toBe(2)
+			check:expect(survived.events[1].caseId):toBe "dir/case::one"
+			check:expect(survived.rejected):toBe(0)
+			local head, body = string.match(lines[2], "^(.-|%d+|%x+|)(%x+)$")
+			local digitRewrite = (head :: string) .. string.gsub(body :: string, "%d", "1")
+			local altered = Roblox.progressChannel.collect(
+				lines[1] .. "\n" .. digitRewrite,
+				"tok0123456789",
+				"/tmp/verify-studio/run-1791316666-1",
+				decode
+			)
+			check:expect(#altered.events):toBe(1)
+			check:expect(altered.rejected):toBe(1)
+			check:expect(altered.first):toContain "altered"
+			local truncated = Roblox.progressChannel.collect(
+				string.sub(lines[1], 1, #lines[1] - 6),
+				"tok0123456789",
+				"/tmp/verify-studio/run-1791316666-1",
+				decode
+			)
+			check:expect(truncated.rejected):toBe(1)
 		end)
 	end)
 

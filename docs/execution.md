@@ -335,7 +335,7 @@ The default portable gate does not run it and cannot establish native parity.
 Use the native gate when you change engine behavior or the launcher.
 
 Use `basePlace` to run in your own XML place. Verify copies it, mounts the modules and entry scripts, and leaves the rest untouched. See [mounting](running.md#mounting-and-custom-hosts).
-Studio runs report progress through the Studio console. The engine prints one framed `VERIFY_PROGRESS` line for each step event.
+Studio runs report progress through the Studio console. The engine prints one framed `VERIFY_PROGRESS` line for each step event. The frame holds a path-free run token, the length and a checksum of the hex-encoded event, so a rewritten frame is rejected and counted.
 The worker reads the console through `get_console_output` while the run executes and appends each new event to `progressFile`. Only the simulator path was run without Studio.
 Progress is never evidence. See [watch a run](running.md#watch-a-run).
 

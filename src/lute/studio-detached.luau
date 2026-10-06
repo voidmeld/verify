@@ -48,6 +48,10 @@ local function prefixFor(runId: string): string
 	return "VerifyRun" .. string.sub(digest(runId), 1, 24) .. "_"
 end
 
+local function tokenFor(runId: string): string
+	return string.sub(digest(runId), 1, 24)
+end
+
 local function header(prefix: string): string
 	return "local RS = game:GetService('ReplicatedStorage')\nlocal P = " .. string.format("%q", prefix) .. "\n"
 end
@@ -319,6 +323,7 @@ return {
 	digest = digest,
 	SEGMENT_BYTES = SEGMENT_BYTES,
 	prefixFor = prefixFor,
+	tokenFor = tokenFor,
 	statusSource = statusSource,
 	segmentSource = segmentSource,
 }
