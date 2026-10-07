@@ -85,7 +85,7 @@ Both reports must pass.
 It does not certify native physics, replication timing, visual quality, sound or performance.
 Those claims need their own observations and assertions.
 
-Start with [typed local operations](../examples/experience.luau), the [shared instance case](../examples/instance-case.luau) and the [failure and cleanup tests](../tests/semantic-execution.spec.luau).
+Start with [typed local operations](../examples/experience.luau), the [shared instance case](../examples/instance-case.luau) and the [failure and cleanup tests](../tests/semantic-execution.verify.luau).
 
 ## Reusable instance adapter
 
@@ -173,7 +173,7 @@ It is unsupported on a host that only simulates.
 
 This tests authored message handling and isolation.
 It supplies no native replication, physics or rendering parity.
-See the [network tests](../tests/network.spec.luau).
+See the [network tests](../tests/network.verify.luau).
 
 ## Performance observations
 
@@ -196,7 +196,7 @@ Ratio limits also require the matching threshold.
 - Verify has no built-in budget and no built-in environment attribution.
 - Caller labels do not authenticate timing. A real frame-performance claim needs samples from the actual consumer surface.
 
-[Performance tests](../tests/performance.spec.luau) prove the calculations and refusals.
+[Performance tests](../tests/performance.verify.luau) prove the calculations and refusals.
 `context.measure(actor, name, input, limits)` records the evaluation in the case evidence and requires a passed result through the shared harness.
 
 `Roblox.performance.collect({ connect, environment, signal, maximumSamples })` bounds collection from an injected interval signal.

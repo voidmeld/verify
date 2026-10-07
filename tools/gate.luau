@@ -25,12 +25,12 @@ end
 
 local specs = Lute.corpus.discover {
 	listDir = fs.listDirectory,
-	rules = { { root = "tests", pattern = "%.spec%.luau$" } },
+	rules = { { root = "tests", pattern = "%.verify%.luau$", exclude = "%.lune%.verify%.luau$" } },
 }
 assert(#specs > 0, "test corpus is empty: tests")
 local luneSpecs = Lute.corpus.discover {
 	listDir = fs.listDirectory,
-	rules = { { root = "tests/lune", pattern = "%.lune%-test%.luau$" } },
+	rules = { { root = "tests/lune", pattern = "%.lune%.verify%.luau$" } },
 }
 assert(#luneSpecs > 0, "lune test corpus is empty: tests/lune")
 

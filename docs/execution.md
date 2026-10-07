@@ -42,7 +42,7 @@ Fixture and cleanup failures stay visible independently.
 Artifact sinks return references. A reference is not proof of durability or authenticity.
 
 `src/core` exports the types `Host`, `BatchOutcome`, `ExecutionOptions`, `PlanPolicy` and `ExecutionReport`.
-[Behavioral tests](../tests/execution.spec.luau) exercise dropped, reordered, duplicate, forged and disagreeing deliveries with the injected fake host.
+[Behavioral tests](../tests/execution.verify.luau) exercise dropped, reordered, duplicate, forged and disagreeing deliveries with the injected fake host.
 
 ## Case lifecycle and waits
 
@@ -540,7 +540,7 @@ A valid report from an old server is not proof of the new build.
 `backend` can supply the typed `now`, `sleep` and `launch` implementation of another platform.
 Its session provides `read(remainingSeconds)`, `alive(remainingSeconds)` and `close()`.
 Respect deadlines and release partial acquisitions on failure.
-[Launcher tests](../tests/player-launcher.spec.luau) exercise this contract.
+[Launcher tests](../tests/player-launcher.lute.verify.luau) exercise this contract.
 
 Real published Player validation has exercised native character motion, generated fixture execution, selected cases, standard report collection and owned-process cleanup.
 It does not prove multiple authenticated Players or durable screenshots.

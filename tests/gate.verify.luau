@@ -588,7 +588,7 @@ return function(suite: Verify.Harness)
 						id = "specs",
 						kind = "tests",
 						worker = "worker.luau",
-						locators = { "a.spec.luau", "b.spec.luau" },
+						locators = { "a.verify.luau", "b.verify.luau" },
 					},
 				},
 			}
@@ -612,7 +612,7 @@ return function(suite: Verify.Harness)
 				fakeExecutor {
 					specs = {
 						outcome = function()
-							return withReport(exited(0), moduleReport { "a.spec.luau", "b.spec.luau" })
+							return withReport(exited(0), moduleReport { "a.verify.luau", "b.verify.luau" })
 						end,
 					},
 				}
@@ -628,13 +628,13 @@ return function(suite: Verify.Harness)
 				fakeExecutor {
 					specs = {
 						outcome = function()
-							return withReport(exited(0), moduleReport { "a.spec.luau" })
+							return withReport(exited(0), moduleReport { "a.verify.luau" })
 						end,
 					},
 				}
 			)
 			check:expect(recordOf(outcome, "specs").status):toEqual "failed"
-			check:expect(recordOf(outcome, "specs").detail):toContain "b.spec.luau"
+			check:expect(recordOf(outcome, "specs").detail):toContain "b.verify.luau"
 		end)
 
 		suite:case("fails a clean exit without a report", function(check)
@@ -652,7 +652,7 @@ return function(suite: Verify.Harness)
 							id = "specs",
 							kind = "tests",
 							worker = "worker.luau",
-							locators = { "a.spec.luau", "b.spec.luau" },
+							locators = { "a.verify.luau", "b.verify.luau" },
 							silent = silent,
 						},
 					},
@@ -661,15 +661,15 @@ return function(suite: Verify.Harness)
 			local only = fakeExecutor {
 				specs = {
 					outcome = function()
-						return withReport(exited(0), moduleReport { "a.spec.luau" })
+						return withReport(exited(0), moduleReport { "a.verify.luau" })
 					end,
 				},
 			}
-			check:expect(recordOf(go(silentGate { "b.spec.luau" }, only), "specs").status):toEqual "passed"
+			check:expect(recordOf(go(silentGate { "b.verify.luau" }, only), "specs").status):toEqual "passed"
 			local undeclared = go(silentGate {}, only)
 			check:expect(recordOf(undeclared, "specs").status):toEqual "failed"
-			check:expect(recordOf(undeclared, "specs").detail):toContain "b.spec.luau"
-			check:expect((pcall(silentGate, { "c.spec.luau" }))):toEqual(false)
+			check:expect(recordOf(undeclared, "specs").detail):toContain "b.verify.luau"
+			check:expect((pcall(silentGate, { "c.verify.luau" }))):toEqual(false)
 		end)
 
 		suite:case("reports only the modules' own cases without the producer-level case", function(check)
@@ -678,7 +678,7 @@ return function(suite: Verify.Harness)
 				fakeExecutor {
 					specs = {
 						outcome = function()
-							return withReport(exited(0), moduleReport { "a.spec.luau", "b.spec.luau" })
+							return withReport(exited(0), moduleReport { "a.verify.luau", "b.verify.luau" })
 						end,
 					},
 				}
@@ -691,11 +691,11 @@ return function(suite: Verify.Harness)
 
 		suite:case("shards a plan into tests producers that keep groups whole and silent modules named", function(check)
 			local units: { Verify.PlanUnitDraft } = {}
-			for _, locator in { "a.spec.luau", "b.spec.luau", "c.spec.luau", "d.spec.luau", "e.spec.luau" } do
+			for _, locator in { "a.verify.luau", "b.verify.luau", "c.verify.luau", "d.verify.luau", "e.verify.luau" } do
 				table.insert(units, {
 					id = locator,
 					locator = locator,
-					group = if locator == "a.spec.luau" or locator == "e.spec.luau" then "pair" else nil,
+					group = if locator == "a.verify.luau" or locator == "e.verify.luau" then "pair" else nil,
 					weight = 1,
 				})
 			end
@@ -703,7 +703,7 @@ return function(suite: Verify.Harness)
 				prefix = "specs",
 				worker = "worker.luau",
 				count = 2,
-				silent = { "d.spec.luau" },
+				silent = { "d.verify.luau" },
 			})
 			check:expect(#drafts):toEqual(2)
 			local together = false
@@ -713,7 +713,7 @@ return function(suite: Verify.Harness)
 				local locators = draft.locators :: { string }
 				total += #locators
 				carried += #(draft.silent :: { string })
-				if table.find(locators, "a.spec.luau") ~= nil and table.find(locators, "e.spec.luau") ~= nil then
+				if table.find(locators, "a.verify.luau") ~= nil and table.find(locators, "e.verify.luau") ~= nil then
 					together = true
 				end
 			end
@@ -1028,7 +1028,7 @@ return function(suite: Verify.Harness)
 						id = "specs",
 						kind = "tests",
 						worker = "worker.luau",
-						locators = { "a.spec.luau" },
+						locators = { "a.verify.luau" },
 						tier = "fast",
 						cases = more.cases,
 						isolate = more.isolate,
@@ -1055,7 +1055,7 @@ return function(suite: Verify.Harness)
 			end
 			local report = harness:run { executor = "child", selection = selection }
 			for _, result in report.results do
-				result.source = "a.spec.luau"
+				result.source = "a.verify.luau"
 			end
 			return report
 		end
@@ -1139,8 +1139,9 @@ return function(suite: Verify.Harness)
 					end,
 				},
 			}
-			local outcome = go(testsGate(), fake, { selection = { nameContains = "on", sources = { "a.spec.luau" } } })
-			check:expect(jobs[1].args):toEqual { "--name=on", "--source=a.spec.luau" }
+			local outcome =
+				go(testsGate(), fake, { selection = { nameContains = "on", sources = { "a.verify.luau" } } })
+			check:expect(jobs[1].args):toEqual { "--name=on", "--source=a.verify.luau" }
 			check:expect(outcome.acceptance.verdict):toEqual "selected"
 			check:expect(outcome.scope.complete):toEqual(false)
 			check:expect(outcome.scope.nameContains):toEqual "on"
@@ -1191,7 +1192,7 @@ return function(suite: Verify.Harness)
 			}
 			deliberate:skip("later", "needs a device")
 			local skipped = deliberate:run { executor = "child" }
-			skipped.results[1].source = "a.spec.luau"
+			skipped.results[1].source = "a.verify.luau"
 			local refused = go(testsGate(), answering(skipped), { selection = { ids = { "specs" } } })
 			check:expect(recordOf(refused, "specs").status):toEqual "failed"
 			check:expect(recordOf(refused, "specs").deselected):toEqual {}
@@ -1296,7 +1297,7 @@ return function(suite: Verify.Harness)
 		suite:case("proposes a rerun of exactly the failed producers and cases", function(check)
 			local broken = reportOf { { name = "good", pass = true }, { name = "bad", pass = false } }
 			for _, result in broken.results do
-				result.source = "a.spec.luau"
+				result.source = "a.verify.luau"
 			end
 			local outcome = go(testsGate(), answering(broken))
 			local again = Gate.rerun(outcome)

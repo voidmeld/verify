@@ -69,7 +69,7 @@ end
 
 local function fixture(name: string, source: string): string
 	Files.ensureDirectory(ROOT .. "/modules")
-	local path = ("%s/modules/%s.spec.luau"):format(ROOT, name)
+	local path = ("%s/modules/%s.verify.luau"):format(ROOT, name)
 	fs.writeStringToFile(path, source)
 	return path
 end
@@ -231,7 +231,7 @@ return function(suite: Verify.Harness)
 		suite:case("fails a module that registers no case, one that breaks and one that cannot load", function(check)
 			local empty = fixture("empty", "return function(harness) end")
 			local broken = fixture("broken", 'return function(harness) error("registration broke", 0) end')
-			local missing = ROOT .. "/modules/absent.spec.luau"
+			local missing = ROOT .. "/modules/absent.verify.luau"
 			local emptyOutcome = runIn("modules-empty", { modules { empty } })
 			check:expect(recordOf(emptyOutcome, "specs").status):toEqual "failed"
 			check:expect(recordOf(emptyOutcome, "specs").detail):toContain "reported no case"
@@ -247,7 +247,7 @@ return function(suite: Verify.Harness)
 			local gate = Gate.define {
 				id = "no-worker",
 				producers = {
-					{ id = "specs", kind = "tests", worker = "examples/none.luau", locators = { "x.spec.luau" } },
+					{ id = "specs", kind = "tests", worker = "examples/none.luau", locators = { "x.verify.luau" } },
 				},
 			}
 			local outcome = Lute.gate.run(gate, { directory = ROOT, runId = "no-worker" })
@@ -276,21 +276,21 @@ return function(suite: Verify.Harness)
 			fixture("leak-state", "return { leaked = false }")
 			return fixture(
 				"polluter",
-				'local state = require("./leak-state.spec") return function(harness) harness:case("pollutes", function(context) state.leaked = true end) end'
+				'local state = require("./leak-state.verify") return function(harness) harness:case("pollutes", function(context) state.leaked = true end) end'
 			)
 		end
 
 		local function observer(): string
 			return fixture(
 				"observer",
-				'local state = require("./leak-state.spec") return function(harness) harness:case("clean", function(context) context:expect(state.leaked):toBe(false) end) end'
+				'local state = require("./leak-state.verify") return function(harness) harness:case("clean", function(context) context:expect(state.leaked):toBe(false) end) end'
 			)
 		end
 
 		suite:case("runs each source in its own worker process under one producer", function(check)
 			local shared = runIn("shared-process", { specs { polluter(), observer() } })
 			check:expect(recordOf(shared, "specs").status):toEqual "failed"
-			check:expect(recordOf(shared, "specs").detail):toContain "observer.spec.luau::clean"
+			check:expect(recordOf(shared, "specs").detail):toContain "observer.verify.luau::clean"
 			local isolated =
 				runIn("isolated-process", { specs({ polluter(), observer() }, { isolate = true, workers = 2 }) })
 			check:expect(recordOf(isolated, "specs").status):toEqual "passed"
@@ -306,7 +306,7 @@ return function(suite: Verify.Harness)
 			)
 			local broken = fixture("isolated-broken", 'return function(harness) error("registration broke", 0) end')
 			local hung = fixture("isolated-hung", "while true do end")
-			local missing = ROOT .. "/modules/isolated-absent.spec.luau"
+			local missing = ROOT .. "/modules/isolated-absent.verify.luau"
 			local outcome = runIn(
 				"isolated-faults",
 				{ specs({ good, broken, missing, hung }, { isolate = true, workers = 4, deadlineSeconds = 3 }) }
@@ -559,8 +559,8 @@ return function(suite: Verify.Harness)
 			local options = { options = { directory = ROOT .. "/cli-file" } }
 			check:expect(cli.cli(draft { named, other }, { "--file", named }, options)):toEqual(0)
 			check:expect(joined(lines)):toContain "NARROWED"
-			check:expect(cli.cli(draft { named }, { "--file", "nowhere.spec.luau" }, options)):toEqual(2)
-			check:expect(joined(lines)):toContain "no spec file named nowhere.spec.luau"
+			check:expect(cli.cli(draft { named }, { "--file", "nowhere.verify.luau" }, options)):toEqual(2)
+			check:expect(joined(lines)):toContain "no spec file named nowhere.verify.luau"
 			check:expect(cli.cli(draft { named }, { "--name", "garage" }, options)):toEqual(1)
 			check:expect(joined(lines)):toContain "gate: FAILED"
 			check:expect(cli.cli(draft { named }, { "--bogus" }, options)):toEqual(2)

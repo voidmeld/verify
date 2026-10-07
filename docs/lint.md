@@ -25,7 +25,7 @@ lute run tools/verify-check.luau --ruleset generic path/to/specifications
 lute run tools/verify-check.luau --ruleset roblox path/to/specifications
 ```
 
-Both rulesets treat `*.verify.luau` as a portable specification. `*.lute.verify.luau` is an explicit host variant.
+Both rulesets treat `*.verify.luau` as a portable specification. `*.lute.verify.luau` and `*.lune.verify.luau` are explicit host variants.
 The generic ruleset rejects ambient scheduling and clocks in portable specifications.
 It rejects unmeasured `--!native` annotations in every specification.
 The `roblox` ruleset adds three rules. `*.roblox.verify.luau` is a host variant.

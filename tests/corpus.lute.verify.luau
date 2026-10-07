@@ -50,62 +50,62 @@ return function(suite: Verify.Harness)
 			local tree: Tree = {
 				["units"] = {
 					{ name = "nested", type = "dir" },
-					{ name = "Root.spec.luau", type = "file" },
+					{ name = "Root.verify.luau", type = "file" },
 					{ name = "Root.luau", type = "file" },
 				},
 				["units/nested"] = {
-					{ name = "Deep.spec.luau", type = "file" },
+					{ name = "Deep.verify.luau", type = "file" },
 					{ name = "helper.luau", type = "file" },
 				},
 			}
 			local files = Corpus.discover {
 				listDir = listDir(tree),
-				rules = { { root = "units", pattern = "%.spec%.luau$" } },
+				rules = { { root = "units", pattern = "%.verify%.luau$" } },
 			}
-			check:expect(files):toEqual { "units/Root.spec.luau", "units/nested/Deep.spec.luau" }
+			check:expect(files):toEqual { "units/Root.verify.luau", "units/nested/Deep.verify.luau" }
 		end)
 
 		suite:case("drops a file its rule excludes, whatever the pattern says", function(check)
 			local tree: Tree = {
 				["units"] = {
-					{ name = "A.spec.luau", type = "file" },
-					{ name = "B.engine.spec.luau", type = "file" },
+					{ name = "A.verify.luau", type = "file" },
+					{ name = "B.engine.verify.luau", type = "file" },
 				},
 			}
 			local files = Corpus.discover {
 				listDir = listDir(tree),
-				rules = { { root = "units", pattern = "%.spec%.luau$", exclude = "%.engine%.spec%.luau$" } },
+				rules = { { root = "units", pattern = "%.verify%.luau$", exclude = "%.engine%.verify%.luau$" } },
 			}
-			check:expect(files):toEqual { "units/A.spec.luau" }
+			check:expect(files):toEqual { "units/A.verify.luau" }
 		end)
 
 		suite:case("matches a rule against the file name, so an anchored rule names exactly one file", function(check)
 			local tree: Tree = {
 				["units"] = {
-					{ name = "Exact.spec.luau", type = "file" },
-					{ name = "NotExact.spec.luau", type = "file" },
+					{ name = "Exact.verify.luau", type = "file" },
+					{ name = "NotExact.verify.luau", type = "file" },
 				},
 			}
 			local files = Corpus.discover {
 				listDir = listDir(tree),
-				rules = { { root = "units", pattern = "^Exact%.spec%.luau$" } },
+				rules = { { root = "units", pattern = "^Exact%.verify%.luau$" } },
 			}
-			check:expect(files):toEqual { "units/Exact.spec.luau" }
+			check:expect(files):toEqual { "units/Exact.verify.luau" }
 		end)
 
 		suite:case("deduplicates and sorts across overlapping rules, so no plan gains a duplicate", function(check)
 			local tree: Tree = {
-				["units"] = { { name = "nested", type = "dir" }, { name = "Z.spec.luau", type = "file" } },
-				["units/nested"] = { { name = "A.spec.luau", type = "file" } },
+				["units"] = { { name = "nested", type = "dir" }, { name = "Z.verify.luau", type = "file" } },
+				["units/nested"] = { { name = "A.verify.luau", type = "file" } },
 			}
 			local files = Corpus.discover {
 				listDir = listDir(tree),
 				rules = {
-					{ root = "units", pattern = "%.spec%.luau$" },
-					{ root = "units/nested", pattern = "%.spec%.luau$" },
+					{ root = "units", pattern = "%.verify%.luau$" },
+					{ root = "units/nested", pattern = "%.verify%.luau$" },
 				},
 			}
-			check:expect(files):toEqual { "units/Z.spec.luau", "units/nested/A.spec.luau" }
+			check:expect(files):toEqual { "units/Z.verify.luau", "units/nested/A.verify.luau" }
 		end)
 
 		suite:case("refuses a rule with no root or no pattern rather than walking nothing quietly", function(check)
@@ -122,58 +122,60 @@ return function(suite: Verify.Harness)
 
 	suite:suite("corpus fixture grouping", function()
 		suite:case("groups a fixture with every file that requires it", function(check)
-			local files = { "Consumer.spec.luau", "Fixture.spec.luau", "Standalone.spec.luau" }
+			local files = { "Consumer.verify.luau", "Fixture.verify.luau", "Standalone.verify.luau" }
 			local groups = Corpus.groupByRequire(
 				files,
 				reader {
-					["Consumer.spec.luau"] = 'require("@units/Fixture.spec")',
-					["Fixture.spec.luau"] = "return {}",
-					["Standalone.spec.luau"] = "return {}",
+					["Consumer.verify.luau"] = 'require("@units/Fixture.verify")',
+					["Fixture.verify.luau"] = "return {}",
+					["Standalone.verify.luau"] = "return {}",
 				},
 				REQUIRE_PATTERN
 			)
-			check:expect(groups):toEqual { { "Consumer.spec.luau", "Fixture.spec.luau" }, { "Standalone.spec.luau" } }
+			check
+				:expect(groups)
+				:toEqual { { "Consumer.verify.luau", "Fixture.verify.luau" }, { "Standalone.verify.luau" } }
 		end)
 
 		suite:case("merges a transitive chain into one group", function(check)
-			local files = { "One.spec.luau", "Three.spec.luau", "Two.spec.luau" }
+			local files = { "One.verify.luau", "Three.verify.luau", "Two.verify.luau" }
 			local groups = Corpus.groupByRequire(
 				files,
 				reader {
-					["One.spec.luau"] = 'require("@units/Two.spec")',
-					["Two.spec.luau"] = 'require("@units/Three.spec")',
-					["Three.spec.luau"] = "return {}",
+					["One.verify.luau"] = 'require("@units/Two.verify")',
+					["Two.verify.luau"] = 'require("@units/Three.verify")',
+					["Three.verify.luau"] = "return {}",
 				},
 				REQUIRE_PATTERN
 			)
-			check:expect(groups):toEqual { { "One.spec.luau", "Three.spec.luau", "Two.spec.luau" } }
+			check:expect(groups):toEqual { { "One.verify.luau", "Three.verify.luau", "Two.verify.luau" } }
 		end)
 
 		suite:case("ignores a require naming something that is not one of the files", function(check)
-			local files = { "Lonely.spec.luau" }
+			local files = { "Lonely.verify.luau" }
 			local groups = Corpus.groupByRequire(
 				files,
-				reader { ["Lonely.spec.luau"] = 'require("@units/elsewhere/Fixture.spec")' },
+				reader { ["Lonely.verify.luau"] = 'require("@units/elsewhere/Fixture.verify")' },
 				REQUIRE_PATTERN
 			)
-			check:expect(groups):toEqual { { "Lonely.spec.luau" } }
+			check:expect(groups):toEqual { { "Lonely.verify.luau" } }
 		end)
 
 		suite:case("gives a file it could not read no edges rather than abandoning the walk", function(check)
-			local files = { "A.spec.luau", "B.spec.luau" }
-			local groups = Corpus.groupByRequire(files, reader { ["B.spec.luau"] = "return {}" }, REQUIRE_PATTERN)
-			check:expect(groups):toEqual { { "A.spec.luau" }, { "B.spec.luau" } }
+			local files = { "A.verify.luau", "B.verify.luau" }
+			local groups = Corpus.groupByRequire(files, reader { ["B.verify.luau"] = "return {}" }, REQUIRE_PATTERN)
+			check:expect(groups):toEqual { { "A.verify.luau" }, { "B.verify.luau" } }
 		end)
 
 		suite:case("carries the affinity into partitioning at every batch count", function(check)
-			local files = { "A.spec.luau", "B.spec.luau", "C.spec.luau", "D.spec.luau" }
+			local files = { "A.verify.luau", "B.verify.luau", "C.verify.luau", "D.verify.luau" }
 			local groups = Corpus.groupByRequire(
 				files,
 				reader {
-					["A.spec.luau"] = "return {}",
-					["B.spec.luau"] = 'require("@units/A.spec")',
-					["C.spec.luau"] = 'require("@units/A.spec")',
-					["D.spec.luau"] = "return {}",
+					["A.verify.luau"] = "return {}",
+					["B.verify.luau"] = 'require("@units/A.verify")',
+					["C.verify.luau"] = 'require("@units/A.verify")',
+					["D.verify.luau"] = "return {}",
 				},
 				REQUIRE_PATTERN
 			)
@@ -195,8 +197,8 @@ return function(suite: Verify.Harness)
 						home[unit.id] = batch.index
 					end
 				end
-				check:expect(home["B.spec.luau"]):toEqual(home["A.spec.luau"])
-				check:expect(home["C.spec.luau"]):toEqual(home["A.spec.luau"])
+				check:expect(home["B.verify.luau"]):toEqual(home["A.verify.luau"])
+				check:expect(home["C.verify.luau"]):toEqual(home["A.verify.luau"])
 			end
 		end)
 	end)
@@ -219,9 +221,9 @@ return function(suite: Verify.Harness)
 	suite:suite("corpus literal names", function()
 		suite:case("matches a hyphenated name that raw concatenation cannot match at all", function(check)
 			local name = "check-test-corpus"
-			local file = "check-test-corpus.spec.luau"
+			local file = "check-test-corpus.lute.verify.luau"
 			check:expect(string.match(file, Corpus.literal(name)) ~= nil):toEqual(true)
-			check:expect(string.match(file, name .. ".*%.spec%.luau$") ~= nil):toEqual(false)
+			check:expect(string.match(file, name .. ".*%.verify%.luau$") ~= nil):toEqual(false)
 		end)
 
 		suite:case("escapes every character the matcher reads as syntax, the escape included", function(check)
@@ -234,25 +236,25 @@ return function(suite: Verify.Harness)
 
 	suite:suite("corpus selection", function()
 		local FILES = {
-			"shared/BalanceLab.spec.luau",
-			"tools/check-test-corpus-routing.spec.luau",
-			"tools/check-test-corpus.spec.luau",
-			"tools/worker-setup.spec.luau",
+			"shared/BalanceLab.verify.luau",
+			"tools/check-test-corpus-routing.verify.luau",
+			"tools/check-test-corpus.lute.verify.luau",
+			"tools/worker-setup.verify.luau",
 		}
 
 		suite:case("narrows to the files whose name carries a literal fragment", function(check)
-			check:expect((selected(FILES, { name = "worker-setup" }))):toEqual { "tools/worker-setup.spec.luau" }
+			check:expect((selected(FILES, { name = "worker-setup" }))):toEqual { "tools/worker-setup.verify.luau" }
 		end)
 
 		suite:case("uses an already-complete pattern exactly as given rather than doubling it", function(check)
 			check
-				:expect((selected(FILES, { pattern = "^BalanceLab%.spec%.luau$" })))
-				:toEqual { "shared/BalanceLab.spec.luau" }
-			check:expect((#selected(FILES, { pattern = "%.spec%.luau$" }))):toEqual(#FILES)
+				:expect((selected(FILES, { pattern = "^BalanceLab%.verify%.luau$" })))
+				:toEqual { "shared/BalanceLab.verify.luau" }
+			check:expect((#selected(FILES, { pattern = "%.verify%.luau$" }))):toEqual(#FILES)
 		end)
 
 		suite:case("keeps only the files under a named root", function(check)
-			check:expect((selected(FILES, { root = "shared" }))):toEqual { "shared/BalanceLab.spec.luau" }
+			check:expect((selected(FILES, { root = "shared" }))):toEqual { "shared/BalanceLab.verify.luau" }
 		end)
 
 		suite:case("keeps every file when the query names nothing", function(check)
@@ -312,25 +314,31 @@ return function(suite: Verify.Harness)
 		local tree: Tree = {
 			["units"] = {
 				{ name = "b", type = "dir" },
-				{ name = "a.spec.luau", type = "file" },
-				{ name = "b.spec.luau", type = "file" },
+				{ name = "a.verify.luau", type = "file" },
+				{ name = "b.verify.luau", type = "file" },
 			},
 			["units/b"] = {
-				{ name = "z.spec.luau", type = "file" },
-				{ name = "c.spec.luau", type = "file" },
+				{ name = "z.verify.luau", type = "file" },
+				{ name = "c.verify.luau", type = "file" },
 			},
 		}
-		local rules: { Corpus.Rule } = { { root = "units", pattern = "%.spec%.luau$" } }
+		local rules: { Corpus.Rule } = { { root = "units", pattern = "%.verify%.luau$" } }
 
 		suite:case("keeps the walk order when the consumer asks for it", function(check)
 			local walked = Corpus.discover { listDir = listDir(tree), rules = rules, order = "walk" }
-			check
-				:expect(walked)
-				:toEqual { "units/a.spec.luau", "units/b/c.spec.luau", "units/b/z.spec.luau", "units/b.spec.luau" }
+			check:expect(walked):toEqual {
+				"units/a.verify.luau",
+				"units/b/c.verify.luau",
+				"units/b/z.verify.luau",
+				"units/b.verify.luau",
+			}
 			local sorted = Corpus.discover { listDir = listDir(tree), rules = rules }
-			check
-				:expect(sorted)
-				:toEqual { "units/a.spec.luau", "units/b.spec.luau", "units/b/c.spec.luau", "units/b/z.spec.luau" }
+			check:expect(sorted):toEqual {
+				"units/a.verify.luau",
+				"units/b.verify.luau",
+				"units/b/c.verify.luau",
+				"units/b/z.verify.luau",
+			}
 		end)
 
 		suite:case("applies the consumer's comparison to entries and paths", function(check)
@@ -339,16 +347,19 @@ return function(suite: Verify.Harness)
 			end
 			local walked =
 				Corpus.discover { listDir = listDir(tree), rules = rules, order = "walk", compare = descending }
-			check
-				:expect(walked)
-				:toEqual { "units/b.spec.luau", "units/b/z.spec.luau", "units/b/c.spec.luau", "units/a.spec.luau" }
+			check:expect(walked):toEqual {
+				"units/b.verify.luau",
+				"units/b/z.verify.luau",
+				"units/b/c.verify.luau",
+				"units/a.verify.luau",
+			}
 			local sorted = Corpus.discover { listDir = listDir(tree), rules = rules, compare = descending }
-			check:expect(sorted[1]):toEqual "units/b/z.spec.luau"
+			check:expect(sorted[1]):toEqual "units/b/z.verify.luau"
 		end)
 
 		suite:case("does not reorder the entries that the runtime returned", function(check)
 			local entries: { Corpus.DirEntry } =
-				{ { name = "z.spec.luau", type = "file" }, { name = "a.spec.luau", type = "file" } }
+				{ { name = "z.verify.luau", type = "file" }, { name = "a.verify.luau", type = "file" } }
 			Corpus.discover {
 				listDir = function()
 					return entries
@@ -356,7 +367,7 @@ return function(suite: Verify.Harness)
 				rules = rules,
 				order = "walk",
 			}
-			check:expect(entries[1].name):toEqual "z.spec.luau"
+			check:expect(entries[1].name):toEqual "z.verify.luau"
 		end)
 
 		suite:case("refuses an unknown order and a comparison that is not a function", function(check)

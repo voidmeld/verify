@@ -209,14 +209,14 @@ end
 
 local GENERIC: Ruleset = table.freeze {
 	name = "generic",
-	hostVariantSuffixes = table.freeze { ".lute.verify.luau" },
+	hostVariantSuffixes = table.freeze { ".lute.verify.luau", ".lune.verify.luau" },
 	hostGlobals = table.freeze {},
 	externalMutationMembers = table.freeze {},
 }
 
 local ROBLOX: Ruleset = table.freeze {
 	name = "roblox",
-	hostVariantSuffixes = table.freeze { ".lute.verify.luau", ".roblox.verify.luau" },
+	hostVariantSuffixes = table.freeze { ".lute.verify.luau", ".lune.verify.luau", ".roblox.verify.luau" },
 	hostGlobals = table.freeze { "game", "workspace" },
 	externalMutationMembers = table.freeze {
 		"PublishAsync",

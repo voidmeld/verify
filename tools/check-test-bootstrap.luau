@@ -39,11 +39,11 @@ for _, fixture in fixtures do
 		fs.createDirectory(directory, { makeParents = true })
 	end
 	if fixture.source ~= nil then
-		fs.writeStringToFile(directory .. "/bootstrap.spec.luau", fixture.source)
+		fs.writeStringToFile(directory .. "/bootstrap.verify.luau", fixture.source)
 	end
 	local locators: { string } = {}
 	if fixture.source ~= nil then
-		table.insert(locators, directory .. "/bootstrap.spec.luau")
+		table.insert(locators, directory .. "/bootstrap.verify.luau")
 	end
 	local ran, outcome: unknown = pcall(function()
 		local gate = Gate.define {

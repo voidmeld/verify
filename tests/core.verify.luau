@@ -620,7 +620,7 @@ return function(suite: Verify.Harness)
 			local _, misuse: unknown = pcall(function()
 				Verify.expect(1):toBeNear(1, ("wide" :: unknown) :: number)
 			end)
-			check:expect((tostring(misuse))):toContain "core.spec.luau"
+			check:expect((tostring(misuse))):toContain "core.verify.luau"
 		end)
 
 		suite:case("names an unknown matcher instead of failing as a nil call", function(check)

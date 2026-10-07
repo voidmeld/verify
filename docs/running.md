@@ -143,7 +143,7 @@ lute run tools/gate.luau [--native] [--only producer]... [--tier name]... [--cas
 | Goal | Command |
 | --- | --- |
 | Run the whole gate | `lute run tools/gate.luau` |
-| Run one spec file | `lute run tools/gate.luau --file tests/wait.spec.luau` |
+| Run one spec file | `lute run tools/gate.luau --file tests/wait.verify.luau` |
 | Run one case | `lute run tools/gate.luau --only specs --case "<case id>"` |
 | Run the cases whose name contains a text | `lute run tools/gate.luau --only specs --name "door"` |
 | Run one tier (`static` or `behavior`) | `lute run tools/gate.luau --tier behavior` |
