@@ -41,6 +41,16 @@ export type Baseline = {
 	samples: { number }?,
 	tolerance: number,
 	yardstick: number?,
+	yardstickStatistic: YardstickStatistic?,
+	floor: Floor?,
+}
+
+export type YardstickStatistic = "median" | "p95"
+
+export type Floor = {
+	limit: number,
+	metric: Metric?,
+	recorded: number?,
 }
 
 export type Heap = {
@@ -131,6 +141,7 @@ export type Comparison = {
 	limit: number,
 	regressed: boolean,
 	normalized: boolean,
+	floored: boolean,
 }
 
 export type PhaseResult = {
@@ -230,6 +241,31 @@ local function checkBaseline(baseline: Baseline?, declaresYardstick: boolean, la
 	if baseline.yardstick ~= nil then
 		positiveFinite(baseline.yardstick, label .. "baseline.yardstick")
 		assert(declaresYardstick, "a yardstick-normalized baseline needs the benchmark to declare a yardstick")
+	end
+	local statistic = baseline.yardstickStatistic
+	if statistic ~= nil then
+		assert(
+			statistic == "median" or statistic == "p95",
+			label .. "baseline.yardstickStatistic must be median or p95"
+		)
+		assert(baseline.yardstick ~= nil, label .. "baseline.yardstickStatistic needs baseline.yardstick")
+	end
+	local floor = baseline.floor
+	if floor ~= nil then
+		nonnegativeFinite(floor.limit, label .. "baseline.floor.limit")
+		local floorMetric = floor.metric or baseline.metric
+		assert(
+			floorMetric == "p50" or floorMetric == "p95" or floorMetric == "p99" or floorMetric == "mean",
+			label .. "baseline.floor.metric must be p50, p95, p99 or mean"
+		)
+		if floor.recorded ~= nil then
+			nonnegativeFinite(floor.recorded, label .. "baseline.floor.recorded")
+		end
+		assert(
+			floor.recorded ~= nil or baseline.samples ~= nil or floorMetric == baseline.metric,
+			label
+				.. "baseline.floor needs recorded when its metric differs from the baseline metric and the baseline holds no samples"
+		)
 	end
 	assert(
 		baseline.identity ~= "" and baseline.environment ~= "",
@@ -450,6 +486,40 @@ local function readHeap(heap: Heap): number?
 	return nil
 end
 
+local function yardstickNow(spec: Spec, statistic: YardstickStatistic?, before: { number }, after: { number }): number?
+	if statistic == "p95" then
+		local first = summaryOf(spec, before).p95
+		local last = summaryOf(spec, after).p95
+		if first == nil or last == nil then
+			return nil
+		end
+		return (first + last) / 2
+	end
+	local combined = table.clone(before)
+	for _, entry in after do
+		table.insert(combined, entry)
+	end
+	return median(combined)
+end
+
+local function underFloor(spec: Spec, baseline: Baseline, summary: Performance.Summary): boolean
+	local floor = baseline.floor
+	if floor == nil then
+		return false
+	end
+	local floorMetric = floor.metric or baseline.metric
+	local observed = metricValue(summary, floorMetric)
+	local recorded = floor.recorded
+	if recorded == nil then
+		if baseline.samples ~= nil then
+			recorded = metricValue(summaryOf(spec, baseline.samples), floorMetric)
+		else
+			recorded = baseline.value
+		end
+	end
+	return observed ~= nil and recorded ~= nil and observed <= floor.limit and recorded <= floor.limit
+end
+
 local function comparisonOf(
 	spec: Spec,
 	baseline: Baseline?,
@@ -470,37 +540,37 @@ local function comparisonOf(
 		if #before == 0 or #after == 0 then
 			return nil
 		end
-		local combined = table.clone(before)
-		for _, entry in after do
-			table.insert(combined, entry)
-		end
-		local current = median(combined)
-		if current <= 0 then
+		local current = yardstickNow(spec, baseline.yardstickStatistic, before, after)
+		if current == nil or current <= 0 then
 			return nil
 		end
 		local reference = recorded / baseline.yardstick
 		local observed = value / current
 		local limit = reference * (1 + baseline.tolerance)
+		local floored = underFloor(spec, baseline, summary)
 		return {
 			metric = baseline.metric,
 			observed = observed,
 			baseline = reference,
 			limit = limit,
-			regressed = observed > limit,
+			regressed = observed > limit and not floored,
 			normalized = true,
+			floored = floored,
 		}
 	end
 	if baseline.environment ~= spec.environment.observed then
 		return nil
 	end
 	local limit = recorded * (1 + baseline.tolerance)
+	local floored = underFloor(spec, baseline, summary)
 	return {
 		metric = baseline.metric,
 		observed = value,
 		baseline = recorded,
 		limit = limit,
-		regressed = value > limit,
+		regressed = value > limit and not floored,
 		normalized = false,
+		floored = floored,
 	}
 end
 

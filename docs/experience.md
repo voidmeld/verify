@@ -266,6 +266,8 @@ A spec supplies these fields:
 - `environment = { observed, accepted? }`.
 - `maxSpread`, `yardstick` and `baseline`, all optional.
   A `baseline` is a `value` or recorded `samples`. It can include the `yardstick` that was recorded with it, which normalizes the comparison across machines.
+  `yardstickStatistic` selects how the current yardstick is read: `median` (default) is the median of the readings before and after; `p95` is the mean of the p95 before and the p95 after. Record the baseline `yardstick` with the same statistic.
+  `floor = { limit, metric?, recorded? }` holds a result that is below the noise level. `regressed` is false when the observed value of the floor metric and the recorded baseline value are both at or below `limit`. `limit` is in the unit of the spec. `metric` defaults to the baseline metric. `recorded` is the baseline value of the floor metric. It is required when the floor metric differs from the baseline metric and the baseline holds no samples. The comparison reports `floored`.
 - `acceptedBaselines`.
 - `judge`: a callback over the raw samples, the series and the summary. It returns a refusal message.
 - `setup` and `teardown`: run once, untimed.

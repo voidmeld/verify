@@ -547,6 +547,77 @@ return function(suite: Verify.Harness)
 			end
 		)
 
+		suite:case("normalizes by the declared yardstick statistic and holds results under a floor", function(check)
+			local function measured(milliseconds: number, readings: { number }): Benchmark.Spec
+				local timeline = { now = 0, calls = 0 }
+				local result = member(timeline, "scaled", milliseconds)
+				result.clock = function()
+					return timeline.now
+				end
+				result.environment = { observed = "lab-a" }
+				local reading = 0
+				result.yardstick = {
+					run = function()
+						reading += 1
+						timeline.now += readings[(reading - 1) % #readings + 1] / 1000
+					end,
+					samples = #readings,
+					maxSpread = 100,
+					maxDrift = 100,
+				}
+				result.baseline = {
+					identity = "run-9",
+					environment = "laptop",
+					unit = "milliseconds",
+					metric = "p50",
+					value = 2,
+					tolerance = 0.25,
+					yardstick = 1,
+				}
+				return result
+			end
+			local byMedian = Benchmark.run(measured(10, { 1, 1, 1, 5 }))
+			check:expect(assert(byMedian.comparison).observed):toBeCloseTo(10, 1e-9)
+			check:expect(assert(byMedian.comparison).regressed):toEqual(true)
+			local byTail = measured(10, { 1, 1, 1, 5 })
+			assert(byTail.baseline).yardstickStatistic = "p95"
+			local tail = assert(Benchmark.run(byTail).comparison)
+			check:expect(tail.observed):toBeCloseTo(2, 1e-9)
+			check:expect(tail.regressed):toEqual(false)
+			check:expect(tail.floored):toEqual(false)
+
+			local quiet = measured(8, { 1, 1 })
+			assert(quiet.baseline).floor = { limit = 10 }
+			local held = assert(Benchmark.run(quiet).comparison)
+			check:expect(held.observed > held.limit):toEqual(true)
+			check:expect(held.floored):toEqual(true)
+			check:expect(held.regressed):toEqual(false)
+			local loud = measured(8, { 1, 1 })
+			assert(loud.baseline).floor = { limit = 5 }
+			local raised = assert(Benchmark.run(loud).comparison)
+			check:expect(raised.floored):toEqual(false)
+			check:expect(raised.regressed):toEqual(true)
+			local recorded = measured(8, { 1, 1 })
+			assert(recorded.baseline).floor = { limit = 10, metric = "p95", recorded = 12 }
+			check:expect(assert(Benchmark.run(recorded).comparison).regressed):toEqual(true)
+
+			local undeclared = measured(8, { 1, 1 })
+			assert(undeclared.baseline).floor = { limit = 10, metric = "p95" }
+			check
+				:expect(function()
+					Benchmark.run(undeclared)
+				end)
+				:toThrow "baseline.floor needs recorded"
+			local orphan = measured(8, { 1, 1 })
+			assert(orphan.baseline).yardstick = nil
+			assert(orphan.baseline).yardstickStatistic = "p95"
+			check
+				:expect(function()
+					Benchmark.run(orphan)
+				end)
+				:toThrow "yardstickStatistic needs baseline.yardstick"
+		end)
+
 		suite:case("applies a caller-defined judgment to the raw samples after the budget", function(check)
 			local function judged(judge: (view: Benchmark.Judgment) -> string?): Benchmark.Spec
 				local timeline = { now = 0, calls = 0 }
