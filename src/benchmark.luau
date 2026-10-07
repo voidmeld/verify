@@ -507,7 +507,7 @@ local function underFloor(spec: Spec, baseline: Baseline, summary: Performance.S
 	if floor == nil then
 		return false
 	end
-	local floorMetric = floor.metric or baseline.metric
+	local floorMetric: Metric = floor.metric or baseline.metric
 	local observed = metricValue(summary, floorMetric)
 	local recorded = floor.recorded
 	if recorded == nil then
