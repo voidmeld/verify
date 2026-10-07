@@ -221,6 +221,51 @@ return function(suite: Verify.Harness)
 			check:expect(#result.samples):toEqual(8)
 		end)
 
+		suite:case("reads drift from the selected statistic and base", function(check)
+			local function drifted(statistic: Benchmark.YardstickStatistic?, base: Benchmark.DriftBase?): boolean
+				local calls = 0
+				local timeline = { now = 0, calls = 0 }
+				local durations = { 1, 1, 1, 2, 1, 1, 1, 3 }
+				local result = Benchmark.run(spec(timeline, steady(), {
+					yardstick = {
+						run = function()
+							calls += 1
+							timeline.now += durations[calls] / 1000
+						end,
+						samples = 4,
+						maxSpread = 5,
+						maxDrift = 0.45,
+						driftStatistic = statistic,
+						driftBase = base,
+					},
+				}))
+				for _, entry in result.invalid do
+					if entry.reason == "yardstick_drift" then
+						return true
+					end
+				end
+				return false
+			end
+			check:expect(drifted(nil, nil)):toEqual(false)
+			check:expect(drifted("median", "mean")):toEqual(false)
+			check:expect(drifted("p95", nil)):toEqual(true)
+			check:expect(drifted("p95", "first")):toEqual(true)
+			check:expect(drifted("p95", "mean")):toEqual(false)
+			check
+				:expect(function()
+					Benchmark.run(spec({ now = 0, calls = 0 }, steady(), {
+						yardstick = {
+							run = function() end,
+							samples = 1,
+							maxSpread = 1,
+							maxDrift = 1,
+							driftBase = ("last" :: unknown) :: Benchmark.DriftBase,
+						},
+					}))
+				end)
+				:toThrow "driftBase must be first or mean"
+		end)
+
 		suite:case("accepts a steady yardstick", function(check)
 			local timeline = { now = 0, calls = 0 }
 			local result = Benchmark.run(spec(timeline, steady(), {

@@ -30,7 +30,11 @@ export type Yardstick = {
 	samples: number,
 	maxSpread: number,
 	maxDrift: number,
+	driftStatistic: YardstickStatistic?,
+	driftBase: DriftBase?,
 }
+
+export type DriftBase = "first" | "mean"
 
 export type Baseline = {
 	identity: string,
@@ -273,6 +277,21 @@ local function checkBaseline(baseline: Baseline?, declaresYardstick: boolean, la
 	)
 end
 
+local function checkYardstick(tool: Yardstick)
+	assert(type(tool.run) == "function", "yardstick needs a run function")
+	positiveWhole(tool.samples, "yardstick.samples")
+	nonnegativeFinite(tool.maxSpread, "yardstick.maxSpread")
+	nonnegativeFinite(tool.maxDrift, "yardstick.maxDrift")
+	assert(
+		tool.driftStatistic == nil or tool.driftStatistic == "median" or tool.driftStatistic == "p95",
+		"yardstick.driftStatistic must be median or p95"
+	)
+	assert(
+		tool.driftBase == nil or tool.driftBase == "first" or tool.driftBase == "mean",
+		"yardstick.driftBase must be first or mean"
+	)
+end
+
 local function check(spec: Spec, owned: boolean?)
 	assert(type(spec.name) == "string" and string.find(spec.name, "%S") ~= nil, "benchmark needs a name")
 	assert(SCALE[spec.unit] ~= nil, "benchmark unit must be seconds, milliseconds or microseconds")
@@ -313,10 +332,7 @@ local function check(spec: Spec, owned: boolean?)
 	end
 	local yardstick = spec.yardstick
 	if yardstick ~= nil then
-		assert(type(yardstick.run) == "function", "yardstick needs a run function")
-		positiveWhole(yardstick.samples, "yardstick.samples")
-		nonnegativeFinite(yardstick.maxSpread, "yardstick.maxSpread")
-		nonnegativeFinite(yardstick.maxDrift, "yardstick.maxDrift")
+		checkYardstick(yardstick)
 	end
 	local hooks: { [string]: unknown } = {
 		setup = spec.setup,
@@ -431,7 +447,7 @@ local function baselineValue(spec: Spec, baseline: Baseline): number?
 	return metricValue(summaryOf(spec, baseline.samples :: { number }), baseline.metric)
 end
 
-local function yardstickIssues(tool: Yardstick, before: { number }, after: { number }): { Invalid }
+local function yardstickIssues(spec: Spec, tool: Yardstick, before: { number }, after: { number }): { Invalid }
 	local issues: { Invalid } = {}
 	if #before == 0 or #after == 0 then
 		return issues
@@ -447,13 +463,16 @@ local function yardstickIssues(tool: Yardstick, before: { number }, after: { num
 			detail = ("yardstick spread was %.3f, above the allowed %.3f"):format(spread, tool.maxSpread),
 		})
 	end
-	local first = median(before)
-	local last = median(after)
-	local drift = if first == 0 then (if last == 0 then 0 else math.huge) else math.abs(last - first) / first
+	local statistic: YardstickStatistic = tool.driftStatistic or "median"
+	local first = if statistic == "p95" then summaryOf(spec, before).p95 or 0 else median(before)
+	local last = if statistic == "p95" then summaryOf(spec, after).p95 or 0 else median(after)
+	local base = if tool.driftBase == "mean" then (first + last) / 2 else first
+	local drift = if base == 0 then (if last == first then 0 else math.huge) else math.abs(last - first) / base
 	if drift > tool.maxDrift then
 		table.insert(issues, {
 			reason = "yardstick_drift",
-			detail = ("yardstick median moved %.3f between the start and end, above the allowed %.3f"):format(
+			detail = ("yardstick %s moved %.3f between the start and end, above the allowed %.3f"):format(
+				statistic,
 				drift,
 				tool.maxDrift
 			),
@@ -771,7 +790,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 		end
 		local tool = spec.yardstick
 		if tool ~= nil then
-			for _, issue in yardstickIssues(tool, yardstickBefore, yardstickAfter) do
+			for _, issue in yardstickIssues(spec, tool, yardstickBefore, yardstickAfter) do
 				table.insert(invalid, issue)
 			end
 		end
@@ -1063,10 +1082,7 @@ local function checkCollection(collection: Collection)
 	assert(type(collection.name) == "string" and string.find(collection.name, "%S") ~= nil, "collection needs a name")
 	assert(#collection.benchmarks > 0, "collection needs at least one benchmark")
 	local tool = collection.yardstick
-	assert(type(tool.run) == "function", "yardstick needs a run function")
-	positiveWhole(tool.samples, "yardstick.samples")
-	nonnegativeFinite(tool.maxSpread, "yardstick.maxSpread")
-	nonnegativeFinite(tool.maxDrift, "yardstick.maxDrift")
+	checkYardstick(tool)
 	local unit = collection.benchmarks[1].unit
 	for _, member in collection.benchmarks do
 		check(member, true)
@@ -1094,7 +1110,7 @@ local function collect(collection: Collection): CollectionResult
 		end
 		failure = timeYardstick(clock, scale, tool, after)
 		if failure == nil then
-			invalid = yardstickIssues(tool, before, after)
+			invalid = yardstickIssues(collection.benchmarks[1], tool, before, after)
 			for index, result in results do
 				local member = collection.benchmarks[index]
 				result.yardstickBefore = table.clone(before)
