@@ -110,6 +110,7 @@ export type CFrameConstructor = {
 		& ((Vector3Value, Vector3Value?) -> CFrameValue),
 	Angles: (number, number, number) -> CFrameValue,
 	fromEulerAnglesXYZ: (number, number, number) -> CFrameValue,
+	fromMatrix: (Vector3Value, Vector3Value, Vector3Value, Vector3Value?) -> CFrameValue,
 	lookAt: (Vector3Value, Vector3Value, Vector3Value?) -> CFrameValue,
 }
 
@@ -305,6 +306,25 @@ local cframeConstructor = {
 	end,
 	Angles = fromEulerAnglesXYZ,
 	fromEulerAnglesXYZ = fromEulerAnglesXYZ,
+	fromMatrix = function(
+		position: Vector3Value,
+		right: Vector3Value,
+		up: Vector3Value,
+		back: Vector3Value?
+	): CFrameValue
+		local z = back or right:Cross(up).Unit
+		return makeCFrame(position.X, position.Y, position.Z, {
+			right.X,
+			up.X,
+			z.X,
+			right.Y,
+			up.Y,
+			z.Y,
+			right.Z,
+			up.Z,
+			z.Z,
+		})
+	end,
 	lookAt = function(from: Vector3Value, to: Vector3Value, up: Vector3Value?): CFrameValue
 		local worldUp = up or Vector3.new(0, 1, 0)
 		local look = (to - from).Unit
