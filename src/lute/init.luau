@@ -23,6 +23,7 @@ local Lock = require "@self/lock"
 local Wire = require "@self/wire"
 local Worker = require "@self/worker"
 local SpecSuite = require "@self/spec-suite"
+local IsolatedUnits = require "@self/isolated-units"
 
 export type AttachmentSink = Attachments.Sink
 export type AttachmentOptions = Attachments.Options
@@ -101,6 +102,8 @@ export type SelfRegisteringWorkerOperations = Worker.SelfRegisteringOperations
 export type SpecSuiteInvocation = SpecSuite.Invocation
 export type SpecSuiteDefaults = SpecSuite.Defaults
 export type SpecSuiteOptions = SpecSuite.Options
+export type IsolatedUnitRun = IsolatedUnits.Run
+export type IsolatedUnitOptions = IsolatedUnits.Options
 
 return {
 	platform = Platform,
@@ -127,6 +130,7 @@ return {
 
 	worker = Worker.main,
 	specSuite = SpecSuite,
+	isolatedUnits = IsolatedUnits,
 	workerArguments = Worker.arguments,
 	runWorkerBatch = Worker.runBatch,
 

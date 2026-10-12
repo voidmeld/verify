@@ -140,6 +140,14 @@ silent locators and the worker deadline. The original plan remains unchanged; un
 locators and invalid deadline values fail before execution. Pass the returned draft and flags to
 `Lute.gate.cli` with the consumer's ordinary gate options.
 
+`Lute.isolatedUnits.run(batch, execute, options)` executes each unit as its own batch,
+using the unit's deadline or the caller's `deadlineSeconds`. It reports a timeout or
+failed worker as a failed unit and continues with the next unit. Returned reports retain
+their failures; repeated case IDs receive a unit prefix before merging. The caller supplies
+the executor label, environment and optional progress callback. The `execute` function is
+an ordinary batch host such as `Lute.host(options).runBatch`; it owns process isolation and
+deadline enforcement. This adapter does not itself supply an execution host.
+
 `tools/gate.luau` is the one command that checks this repository.
 It runs the static checks, the Lute specs in `tests`, the Lune specs in `tests/lune`, the examples and the boundary checks.
 Every test corpus runs through the `tests` producer.
