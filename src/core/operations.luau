@@ -44,6 +44,15 @@ export type Operation<I, O> = {
 	output: (unknown) -> O,
 }
 export type Endpoint = { run: (unknown, Request) -> unknown, requires: { string }? }
+export type Binding = { key: string, endpoint: Endpoint }
+export type HostOptions = {
+	name: string,
+	environment: { [string]: string },
+	now: () -> number,
+	bound: { Binding },
+	sleep: ((number) -> ())?,
+	capture: ((actor: string, checkpoint: string) -> { Types.Artifact })?,
+}
 
 local function operation<I, O>(definition: Operation<I, O>): Operation<I, O>
 	assert(definition.name ~= "", "operation needs a name")
@@ -57,6 +66,35 @@ local function bind<I, O>(definition: Operation<I, O>, body: (I, Request) -> O):
 			assert(request.kind == definition.kind and request.name == definition.name, "operation binding mismatch")
 			return definition.output(body(definition.input(payload), request))
 		end,
+	}
+end
+
+local function binding<I, O>(definition: Operation<I, O>, body: (I, Request) -> O): Binding
+	return { key = definition.kind .. ":" .. definition.name, endpoint = bind(definition, body) }
+end
+
+local function host(options: HostOptions): Host
+	local endpoints: { [string]: Endpoint } = {}
+	local capabilities: { string } = {}
+	for _, entry in options.bound do
+		endpoints[entry.key] = entry.endpoint
+		table.insert(capabilities, entry.key)
+	end
+	if options.capture ~= nil then
+		table.insert(capabilities, "capture")
+	end
+	return {
+		name = options.name,
+		capabilities = capabilities,
+		environment = options.environment,
+		now = options.now,
+		sleep = options.sleep,
+		invoke = function(request: Request): unknown
+			local endpoint = endpoints[request.kind .. ":" .. request.name]
+			assert(endpoint ~= nil, "unavailable operation " .. request.name)
+			return endpoint.run(request.payload, request)
+		end,
+		capture = options.capture,
 	}
 end
 
@@ -100,4 +138,4 @@ local function snapshot(value: unknown, ancestors: { [unknown]: boolean }?): unk
 	return table.freeze(copy)
 end
 
-return { operation = operation, bind = bind, snapshot = snapshot }
+return { operation = operation, bind = bind, binding = binding, host = host, snapshot = snapshot }

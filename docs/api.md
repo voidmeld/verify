@@ -145,6 +145,13 @@ The context records assertions, steps and artifact references. It owns case-loca
 | `context:remainingSeconds()` | Read the current body or cleanup budget. |
 
 The [one case model](experience.md#one-case-model) owns typed operations, host binding, deadlines and evidence.
+`Core.bindHostOperation(operation, handler)` returns an `OperationBinding` with the operation's
+`kind:name` key and its validated endpoint. The handler receives the typed input and the original
+`OperationRequest`. `Core.operationHost({ name, environment, now, bound, sleep?, capture? })`
+creates a host over these bindings. Its capabilities are the binding keys and `capture` when a
+capture callback exists. Unbound operations fail; endpoint input and output validation still apply.
+Time, environment and capture remain supplied by the consumer. This constructor grants no host
+authorization and makes no native-engine claim.
 `Core.runCase({name, ...caseOptions}, host)` runs one ordinary case and returns the standard report.
 Use `Core.observationParity` to compare the action and query observations of two reports.
 
