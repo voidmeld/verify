@@ -131,6 +131,15 @@ See [declarative gates](execution.md#declarative-gates) and [benchmarks](experie
 
 ## Repository gate
 
+`Lute.specSuite.parse(args, defaults?)` separates positional spec files, shard settings,
+per-spec deadlines and report options from gate flags. Arguments exclude the executable name;
+consumers remove their own policy flags first. Unknown flags remain for the gate to refuse.
+`Lute.specSuite.prepare(plan, invocation, options)` returns a copied plan, a sharded gate draft
+and exact gate flags. The consumer supplies discovery, lanes, worker path, worker and batch counts,
+silent locators and the worker deadline. The original plan remains unchanged; unknown deadline
+locators and invalid deadline values fail before execution. Pass the returned draft and flags to
+`Lute.gate.cli` with the consumer's ordinary gate options.
+
 `tools/gate.luau` is the one command that checks this repository.
 It runs the static checks, the Lute specs in `tests`, the Lune specs in `tests/lune`, the examples and the boundary checks.
 Every test corpus runs through the `tests` producer.

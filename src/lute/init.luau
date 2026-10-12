@@ -22,6 +22,7 @@ local Host = require "@self/host"
 local Lock = require "@self/lock"
 local Wire = require "@self/wire"
 local Worker = require "@self/worker"
+local SpecSuite = require "@self/spec-suite"
 
 export type AttachmentSink = Attachments.Sink
 export type AttachmentOptions = Attachments.Options
@@ -97,6 +98,9 @@ export type WorkerArguments = Worker.Arguments
 export type LoadDisposition = Worker.LoadDisposition
 export type Registrar = Worker.Registrar
 export type SelfRegisteringWorkerOperations = Worker.SelfRegisteringOperations
+export type SpecSuiteInvocation = SpecSuite.Invocation
+export type SpecSuiteDefaults = SpecSuite.Defaults
+export type SpecSuiteOptions = SpecSuite.Options
 
 return {
 	platform = Platform,
@@ -122,6 +126,7 @@ return {
 	directoryLock = Lock.directoryLock,
 
 	worker = Worker.main,
+	specSuite = SpecSuite,
 	workerArguments = Worker.arguments,
 	runWorkerBatch = Worker.runBatch,
 
