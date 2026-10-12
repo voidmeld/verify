@@ -4,6 +4,18 @@ Verify gives each case an isolated lifecycle and records the result in a report.
 Start with cases and assertions.
 Use sessions, plans and host adapters when you coordinate several sources or collect observations on another host.
 
+`Core.sourceCorpus.select(sources, identity, pattern)` filters a caller-supplied collection
+by each identity's `eligible` flag and name pattern, then returns the original source values
+sorted by their identity paths. The caller owns discovery and loading; selection does not
+touch a filesystem or instance tree. `Core.SourceIdentity` contains `name`, `path` and `eligible`.
+
+`Core.sourceCorpus.manifest(id, paths)` records the exact locator count and the digest of
+a bare-case plan with one unit per locator. Locator order does not change the digest;
+the corpus id and locator set do. `Core.sourceCorpus.unreported(paths, report)` returns
+locators with no case result whose `source` matches. A failed, skipped or unsupported
+result still reports its source. Coverage alone is not a passing verdict; the caller
+decides whether a silent source is an error.
+
 | Task | Start here |
 | --- | --- |
 | Write and run a case | [Cases and sessions](#cases-and-sessions) |
