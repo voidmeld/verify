@@ -378,6 +378,10 @@ If you omit an unsuccessful worker from the input, the result cannot establish t
 | `Lute.decode` | JSON text to a validated report. |
 | `Lute.segmentReport`, `reassembleReport` | Reports carried in bounded segments. |
 
+`Core.reassembleSegments(segments: { unknown })` validates decoded rows before using their segment
+fields. It also accepts arrays produced by `Core.segment`. Invalid fields, missing segments and
+digest disagreements return `nil` and a reason; reassembly never changes the supplied rows.
+
 Missing, conflicting and mixed chunks fail.
 **JSON decoding is not report validation.** Validate each received report with `Core.decode`.
 The consumer binds executor identity and owns authenticity.

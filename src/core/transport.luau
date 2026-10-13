@@ -182,31 +182,39 @@ local function segment(payload: string, maxBytes: number): { Segment }
 	return segments
 end
 
-local function reassembleSegments(segments: { Segment }): (string?, string?)
+local function reassembleSegments(segments: { unknown }): (string?, string?)
 	if #segments == 0 then
 		return nil, "no segment was supplied"
 	end
 	local first = segments[1]
-	if type(first) ~= "table" or type(first.count) ~= "number" then
+	if type(first) ~= "table" then
 		return nil, "a segment is malformed"
 	end
-	local count = first.count
-	local totalDigest = first.totalDigest
-	local totalBytes = first.totalBytes
+	local firstFields = first :: { [string]: unknown }
+	if type(firstFields.count) ~= "number" then
+		return nil, "a segment is malformed"
+	end
+	local count = firstFields.count
+	local totalDigest = firstFields.totalDigest
+	local totalBytes = firstFields.totalBytes
 
 	local seen: { [number]: Segment } = {}
-	for _, piece in segments do
+	for _, raw in segments do
+		if type(raw) ~= "table" then
+			return nil, "a segment is malformed"
+		end
+		local fields = raw :: { [string]: unknown }
 		if
-			type(piece) ~= "table"
-			or type(piece.index) ~= "number"
-			or type(piece.count) ~= "number"
-			or type(piece.digest) ~= "string"
-			or type(piece.totalDigest) ~= "string"
-			or type(piece.totalBytes) ~= "number"
-			or type(piece.payload) ~= "string"
+			type(fields.index) ~= "number"
+			or type(fields.count) ~= "number"
+			or type(fields.digest) ~= "string"
+			or type(fields.totalDigest) ~= "string"
+			or type(fields.totalBytes) ~= "number"
+			or type(fields.payload) ~= "string"
 		then
 			return nil, "a segment is malformed"
 		end
+		local piece = raw :: Segment
 		if piece.count ~= count then
 			return nil, ("segments disagree about the total count: %d and %d"):format(count, piece.count)
 		end
@@ -242,7 +250,7 @@ local function reassembleSegments(segments: { Segment }): (string?, string?)
 	end
 	local whole = table.concat(pieces)
 	if #whole ~= totalBytes then
-		return nil, ("reassembled %d bytes but the segments claimed %d: truncated"):format(#whole, totalBytes)
+		return nil, ("reassembled %d bytes but the segments claimed %d: truncated"):format(#whole, totalBytes :: number)
 	end
 	if fingerprint(whole) ~= totalDigest then
 		return nil, "reassembled payload failed its whole-payload digest check"

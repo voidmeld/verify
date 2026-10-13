@@ -171,6 +171,41 @@ return function(suite: Verify.Harness)
 			check:expect((tostring(problem))):toContain "no segment was supplied"
 		end)
 
+		suite:case("validates decoded segment rows before trusting their fields", function(check)
+			local segments = Verify.segment("decoded payload", 64)
+			local decoded: { unknown } = { segments[1] }
+			local recovered, problem = Verify.reassembleSegments(decoded)
+			check:expect(recovered):toEqual "decoded payload"
+			check:expect(problem):toEqual(nil)
+			local malformed: { unknown } = { false, "segment", {}, { count = "one" } }
+			for _, row in malformed do
+				local value, reason = Verify.reassembleSegments { row }
+				check:expect(value):toEqual(nil)
+				check:expect(reason):toEqual "a segment is malformed"
+			end
+		end)
+
+		suite:case("refuses every malformed field in a decoded segment without modifying its input", function(check)
+			local segment = Verify.segment("decoded payload", 64)[1]
+			local wire: { [string]: unknown } = {
+				index = segment.index,
+				count = segment.count,
+				digest = segment.digest,
+				totalDigest = segment.totalDigest,
+				totalBytes = segment.totalBytes,
+				payload = segment.payload,
+			}
+			for _, field in { "index", "count", "digest", "totalDigest", "totalBytes", "payload" } do
+				local invalid = table.clone(wire)
+				invalid[field] = false
+				local value, reason = Verify.reassembleSegments { invalid }
+				check:expect(value):toEqual(nil)
+				check:expect(reason):toEqual "a segment is malformed"
+				check:expect(invalid[field]):toEqual(false)
+				check:expect(wire[field]):toEqual(segment[field])
+			end
+		end)
+
 		suite:case("refuses a non-positive or fractional segment size", function(check)
 			check:expect((pcall(Verify.segment, "x", 0))):toEqual(false)
 			check:expect((pcall(Verify.segment, "x", -1))):toEqual(false)
