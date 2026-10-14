@@ -5,6 +5,7 @@ local Performance = require "@self/performance"
 
 local Capability = require "@self/capability"
 local Execution = require "@self/execution"
+local Format = require "@self/format"
 local HarnessModule = require "@self/harness"
 local Progress = require "@self/progress"
 local Matchers = require "@self/matchers"
@@ -105,7 +106,7 @@ return {
 	runCase = HarnessModule.runCase,
 	runCases = HarnessModule.runCases,
 	syntheticReport = HarnessModule.syntheticReport,
-	format = HarnessModule.format,
+	format = Format.format,
 	createSession = SessionModule.create,
 	execute = Execution.execute,
 	expect = Matchers.expect,

@@ -1,7 +1,7 @@
 --!strict
 --!nolint DeprecatedApi
 
-local Audit = require "./ui-audit"
+local Audit = require "./ui-audit-dump"
 
 export type Options = {
 	game: unknown?,

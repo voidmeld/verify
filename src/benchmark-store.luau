@@ -2,6 +2,7 @@
 
 local Core = require "./core"
 local Performance = require "./core/performance"
+local Types = require "./benchmark-types"
 
 export type StoredMeasurement = {
 	name: string,
@@ -293,9 +294,60 @@ local function spread(runs: { Stored }, options: SpreadOptions?): SpreadSummary
 	return { runs = #checked, noise = noise, incomplete = incomplete }
 end
 
+local function store(name: string, results: { Types.Result }): Stored
+	assert(type(name) == "string" and string.find(name, "%S") ~= nil, "a stored run needs a name")
+	assert(#results > 0, "a stored run needs at least one result")
+	local measurements: { StoredMeasurement } = {}
+	for _, result in results do
+		local environment = result.summary.context.environment
+		if #result.phases == 0 then
+			local entry: StoredMeasurement = {
+				name = result.name,
+				unit = result.unit,
+				environment = environment,
+				samples = table.clone(result.samples),
+			}
+			table.insert(measurements, entry)
+		end
+		for _, phase in result.phases do
+			local entry: StoredMeasurement = {
+				name = phase.measurement,
+				unit = result.unit,
+				environment = environment,
+				samples = table.clone(phase.samples),
+			}
+			table.insert(measurements, entry)
+		end
+	end
+	return decode { schemaVersion = SCHEMA_VERSION, name = name, measurements = measurements }
+end
+
+local function storeReport(name: string, report: Core.Report): Stored
+	assert(type(name) == "string" and string.find(name, "%S") ~= nil, "a stored run needs a name")
+	assert(type(report) == "table" and type(report.results) == "table", "a stored run needs a report")
+	local measurements: { StoredMeasurement } = {}
+	for _, result in report.results do
+		if result.evidence ~= nil then
+			for _, measurement in result.evidence.measurements do
+				local entry: StoredMeasurement = {
+					name = measurement.name,
+					unit = measurement.input.unit,
+					environment = measurement.input.context.environment,
+					samples = table.clone(measurement.input.samples),
+				}
+				table.insert(measurements, entry)
+			end
+		end
+	end
+	assert(#measurements > 0, "the report carries no measurement evidence")
+	return decode { schemaVersion = SCHEMA_VERSION, name = name, measurements = measurements }
+end
+
 return {
 	SCHEMA_VERSION = SCHEMA_VERSION,
 	decode = decode,
 	compare = compare,
 	spread = spread,
+	store = store,
+	storeReport = storeReport,
 }
