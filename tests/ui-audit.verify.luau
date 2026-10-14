@@ -285,6 +285,12 @@ return function(suite: Verify.Harness)
 			context:expect(paths(report, "outside-safe-area")):toEqual { "Gui.Notch" }
 			context:expect(paths(report, "touch-target-small")):toEqual { "Gui.Tiny" }
 			context:expect(paths(report, "interactive-overlap")):toEqual { "Gui.Over" }
+			local layered = Audit.analyze(dump {
+				button(1, 0, 0, { path = "Gui.Scrim", rect = rect(0, 0, 800, 400) }),
+				button(2, 300, 150, { path = "Gui.Close" }),
+				button(3, 320, 160, { path = "Gui.Partial" }),
+			})
+			context:expect(paths(layered, "interactive-overlap")):toEqual { "Gui.Partial" }
 			local scaled = Audit.analyze(dump({ button(1, 100, 100) }, { scale = 2 }))
 			context:expect(count(scaled, "touch-target-small")):toBe(1)
 			local mouse =

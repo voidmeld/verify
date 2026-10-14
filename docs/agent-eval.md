@@ -240,7 +240,7 @@ The collector reads each property in a protected call, so a missing property rea
 | `offscreen` | high | A visible control or text extends past the screen. |
 | `outside-safe-area` | medium | A visible control or text extends past the safe area. |
 | `touch-target-small` | medium | A control is smaller than `minTouchTarget` (default 44) times the scale, on a touch device. |
-| `interactive-overlap` | medium | Two controls in the same root overlap, and neither contains the other. |
+| `interactive-overlap` | medium | Two controls in the same root partly overlap. A control that is the ancestor of the other, or whose rectangle holds the whole rectangle of the other (for example a full-screen scrim behind a dialog), does not count. |
 | `gamepad-unreachable` | medium | A control is not selectable, or no selection path from the selected or top-left control reaches it. |
 | `focus-hidden` | medium | A selectable control has an invisible `SelectionImageObject`. |
 | `selection-link-broken` | low | `NextSelection*` names a control that is hidden or not selectable. |

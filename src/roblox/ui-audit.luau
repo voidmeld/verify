@@ -451,6 +451,11 @@ local function analyze(dump: Dump, options: Options?): Report
 			if left.root ~= right.root or ancestorOf(left.index, right) or ancestorOf(right.index, left) then
 				continue
 			end
+			local leftRect = visibleRects[left.index] :: Rect
+			local rightRect = visibleRects[right.index] :: Rect
+			if inside(leftRect, rightRect, EDGE) or inside(rightRect, leftRect, EDGE) then
+				continue
+			end
 			local shared = Dump.intersect(visibleRects[left.index], visibleRects[right.index]) :: Rect
 			if shared.width > EDGE and shared.height > EDGE then
 				add(
