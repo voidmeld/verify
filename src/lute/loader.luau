@@ -11,6 +11,8 @@ export type Options = {
 	aliases: { [string]: string }?,
 	hostPaths: { string }?,
 	requireHost: ((module: string) -> unknown)?,
+	globals: Environment?,
+	transform: ((path: string, source: string) -> string)?,
 }
 
 export type Loader = {
@@ -75,9 +77,12 @@ local function new(options: Options?): Loader
 	local loaded: { [string]: unknown } = {}
 	local loading: { [string]: boolean } = {}
 	local environments = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [unknown]: Environment }
-	local globals = (
-		setmetatable({ warn = warn, typeof = Datatypes.typeof }, { __index = _G }) :: unknown
-	) :: Environment
+	local base: Environment = { warn = warn, typeof = Datatypes.typeof }
+	local supplied: Environment = settings.globals or {}
+	for name, value in supplied do
+		base[name] = value
+	end
+	local globals = (setmetatable(base, { __index = _G }) :: unknown) :: Environment
 
 	local function file(module: string): string
 		local known = resolved[module]
@@ -141,10 +146,12 @@ local function new(options: Options?): Loader
 		end
 		loading[path] = true
 		local ok, value = pcall(function(): unknown
-			return Chunk.load(
-				fs.readFileToString(path),
-				{ name = "./" .. path, environment = environment, injectGlobals = false }
-			)()
+			local source = fs.readFileToString(path)
+			local transform = settings.transform
+			if transform ~= nil then
+				source = transform(path, source)
+			end
+			return Chunk.load(source, { name = "./" .. path, environment = environment, injectGlobals = false })()
 		end)
 		loading[path] = nil
 		if not ok then

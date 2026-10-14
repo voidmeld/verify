@@ -108,5 +108,31 @@ return { kind = kind, environment = getfenv(0), own = getfenv(kind) }
 				end))
 				:toContain "unknown alias"
 		end)
+
+		suite:case("gives every module the caller's globals and the transformed source", function(check)
+			local root = ROOT .. "/globals"
+			write(root .. "/game.luau", 'return { service = game:GetService("Players"), size = SIZE }\n')
+			local requested: { string } = {}
+			local players = { name = "Players" }
+			local fakeGame = {
+				GetService = function(_self: unknown, name: string): unknown
+					table.insert(requested, name)
+					return players
+				end,
+			}
+			local globals: { [string]: unknown } = { game = fakeGame, SIZE = 1 }
+			local loader = Lute.loader.new {
+				globals = globals,
+				transform = function(path: string, source: string): string
+					return if string.find(path, "game.luau", 1, true)
+						then string.gsub(source, "SIZE", "SIZE + 1")
+						else source
+				end,
+			}
+			local result = loader.require(root .. "/game") :: { service: unknown, size: number }
+			check:expect(result.service == players):toBe(true)
+			check:expect(result.size):toBe(2)
+			check:expect(requested[1]):toBe "Players"
+		end)
 	end)
 end
