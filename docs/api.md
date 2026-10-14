@@ -879,6 +879,7 @@ Each module runs in its own environment:
 - `require` resolves `./` and `../` paths, `@self/` children and the aliases in `options.aliases`. `@std/` and `@lute/` load from the runtime.
 - Each name in `options.globals` is a global, for example `game`, `Instance` or `Enum` from an engine fixture. A name in `options.globals` replaces `typeof` and `warn`.
 - `options.transform(path, source)` returns the source to load for a file. Use it to change one module in a test.
+- `require` also takes a reference from `loader.reference(path)`. A reference gives a child reference for each indexed name, so `require(game.ReplicatedStorage.shared.rules)` loads `<path>/rules` when `game.ReplicatedStorage.shared` is `loader.reference("<path>")`. The loader reads `options.globals` on each access, so a global can hold references that the loader makes.
 
 The loader loads each file once and keeps the resolved paths. A require cycle, a missing module and an unknown alias raise with the module named.
 A file under a prefix in `options.hostPaths` loads with `options.requireHost(module)` instead, as an ordinary host module.

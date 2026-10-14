@@ -109,6 +109,18 @@ return { kind = kind, environment = getfenv(0), own = getfenv(kind) }
 				:toContain "unknown alias"
 		end)
 
+		suite:case("requires a module through an instance-path reference", function(check)
+			local root = ROOT .. "/references"
+			write(root .. "/shared/rules/score.luau", "return { points = 3 }\n")
+			write(root .. "/client.luau", "return require(game.ReplicatedStorage.shared.rules.score)\n")
+			local holder: { [string]: unknown } = {}
+			local loader = Lute.loader.new { globals = holder }
+			holder.game = { ReplicatedStorage = { shared = loader.reference(root .. "/shared") } }
+			local score = loader.require(root .. "/client") :: { points: number }
+			check:expect(score.points):toBe(3)
+			check:expect(loader.require(root .. "/shared/rules/score") == score):toBe(true)
+		end)
+
 		suite:case("gives every module the caller's globals and the transformed source", function(check)
 			local root = ROOT .. "/globals"
 			write(root .. "/game.luau", 'return { service = game:GetService("Players"), size = SIZE }\n')

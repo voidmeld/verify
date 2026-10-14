@@ -15,8 +15,11 @@ export type Options = {
 	transform: ((path: string, source: string) -> string)?,
 }
 
+export type Reference = { modulePath: string }
+
 export type Loader = {
 	require: (path: string) -> unknown,
+	reference: (path: string) -> Reference,
 }
 
 local requireRuntime = (require :: unknown) :: (string) -> unknown
@@ -77,12 +80,22 @@ local function new(options: Options?): Loader
 	local loaded: { [string]: unknown } = {}
 	local loading: { [string]: boolean } = {}
 	local environments = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [unknown]: Environment }
-	local base: Environment = { warn = warn, typeof = Datatypes.typeof }
+	local defaults: Environment = { warn = warn, typeof = Datatypes.typeof }
 	local supplied: Environment = settings.globals or {}
-	for name, value in supplied do
-		base[name] = value
-	end
-	local globals = (setmetatable(base, { __index = _G }) :: unknown) :: Environment
+	local globals = (
+		setmetatable({}, {
+			__index = function(_: Environment, name: string): unknown
+				local value = supplied[name]
+				if value == nil then
+					value = defaults[name]
+				end
+				if value == nil then
+					value = (_G :: Environment)[name]
+				end
+				return value
+			end,
+		}) :: unknown
+	) :: Environment
 
 	local function file(module: string): string
 		local known = resolved[module]
@@ -120,7 +133,11 @@ local function new(options: Options?): Loader
 		end
 		local directory = if string.sub(path, -10) == "/init.luau" then parent(module) else parent(path)
 		local environment = (setmetatable({}, { __index = globals }) :: unknown) :: Environment
-		environment.require = function(request: string): unknown
+		environment.require = function(target: string | Reference): unknown
+			if type(target) == "table" then
+				return import(file(normalize(target.modulePath)))
+			end
+			local request = target
 			if string.sub(request, 1, 5) == "@std/" or string.sub(request, 1, 6) == "@lute/" then
 				return requireRuntime(request)
 			end
@@ -151,7 +168,9 @@ local function new(options: Options?): Loader
 			if transform ~= nil then
 				source = transform(path, source)
 			end
-			return Chunk.load(source, { name = "./" .. path, environment = environment, injectGlobals = false })()
+			local loaded: unknown =
+				Chunk.load(source, { name = "./" .. path, environment = environment, injectGlobals = false })()
+			return loaded
 		end)
 		loading[path] = nil
 		if not ok then
@@ -164,10 +183,21 @@ local function new(options: Options?): Loader
 		return value
 	end
 
+	local function reference(path: string): Reference
+		return (
+			setmetatable({ modulePath = path }, {
+				__index = function(_: Reference, child: string): Reference
+					return reference(path .. "/" .. child)
+				end,
+			}) :: unknown
+		) :: Reference
+	end
+
 	return {
 		require = function(path: string): unknown
 			return import(file(normalize(path)))
 		end,
+		reference = reference,
 	}
 end
 
