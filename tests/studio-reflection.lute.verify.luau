@@ -26,6 +26,7 @@ local engine = Roblox.datatypes.create {
 		ContentSourceType = { { name = "None", value = 0 }, { name = "Uri", value = 1 } },
 		KeyCode = { { name = "Unknown", value = 0 }, { name = "A", value = 97 } },
 		Material = { { name = "Plastic", value = 256 } },
+		SecurityCapability = { { name = "Plugin", value = 25 } },
 	},
 	brickColors = {
 		colors = {
@@ -114,7 +115,19 @@ local PROPERTIES: { [string]: { Member } } = {
 	Folder = {},
 	GuiService = { property("GuiService", "AutoSelectGuiEnabled", "bool", permits("Read", "Write")) },
 	Hint = {},
+	PluginGui = { property("PluginGui", "Title", "string", permits("Read", "Write")) },
 }
+
+local PLUGIN_SECURITY = table.freeze { capability = "Plugin" }
+local PLUGIN_CLASS: Member = { Name = "PluginGui", Superclass = "Instance", Permits = {}, Display = {} }
+
+local function visible(filter: unknown): { Member }
+	local classes = table.clone(CLASSES)
+	if type(filter) == "table" and (filter :: Fields).Security == PLUGIN_SECURITY then
+		table.insert(classes, PLUGIN_CLASS)
+	end
+	return classes
+end
 
 local function inherited(name: string): { Member }
 	local out: { Member } = {}
@@ -124,7 +137,7 @@ local function inherited(name: string): { Member }
 			table.insert(out, member)
 		end
 		local super: string? = nil
-		for _, class in CLASSES do
+		for _, class in visible { Security = PLUGIN_SECURITY } do
 			if class.Name == current then
 				super = class.Superclass
 			end
@@ -158,22 +171,27 @@ end
 
 local function studio(log: { string }?): Fields
 	local reflection = {
-		GetClasses = function(): { Member }
-			return table.clone(CLASSES)
+		GetClasses = function(_: unknown, filter: unknown): { Member }
+			return visible(filter)
 		end,
-		GetClass = function(_: unknown, name: string): Member?
-			for _, class in CLASSES do
+		GetClass = function(_: unknown, name: string, filter: unknown): Member?
+			for _, class in visible(filter) do
 				if class.Name == name then
 					return class
 				end
 			end
 			return nil
 		end,
-		GetPropertiesOfClass = function(_: unknown, name: string): { Member }
+		GetPropertiesOfClass = function(_: unknown, name: string, filter: unknown): { Member }
 			if log ~= nil then
 				table.insert(log, name)
 			end
-			return inherited(name)
+			for _, class in visible(filter) do
+				if class.Name == name then
+					return inherited(name)
+				end
+			end
+			return {}
 		end,
 	}
 	local game = {
@@ -200,6 +218,15 @@ local function studio(log: { string }?): Fields
 		version = function(): string
 			return "0.0.test"
 		end,
+		SecurityCapabilities = {
+			fromCurrent = function(): Fields
+				return {
+					Add = function(_: unknown, capability: unknown): unknown
+						return if capability == engine.Enum.SecurityCapability.Plugin then PLUGIN_SECURITY else nil
+					end,
+				}
+			end,
+		},
 	}
 end
 
@@ -231,6 +258,14 @@ return function(suite: Verify.Harness)
 			check:expect(snapshot.classes.TextLabel.superclass):toBe "GuiObject"
 			check:expect(snapshot.schemaVersion):toBe(Roblox.reflectionSnapshot.SCHEMA_VERSION)
 			check:expect(snapshot.engineVersion):toBe "0.0.test"
+		end)
+
+		suite:case("exports plugin-security classes that the default reflection filter hides", function(check)
+			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "PluginGui" } })
+			local plugin = snapshot.classes.PluginGui
+			check:expect(plugin.superclass):toBe "Instance"
+			check:expect(plugin.tags):toEqual { "NotCreatable" }
+			check:expect(plugin.properties.Title.datatype):toBe "String"
 		end)
 
 		suite:case("names datatypes, scriptability and tags the way the Lune database does", function(check)
@@ -326,7 +361,7 @@ return function(suite: Verify.Harness)
 			for _ in snapshot.classes do
 				count += 1
 			end
-			check:expect(count):toBe(#CLASSES)
+			check:expect(count):toBe(#CLASSES + 1)
 			check:expect(snapshot.classes.Hint.tags):toEqual { "Deprecated" }
 			check:expect(assert(snapshot.enums).Material ~= nil):toBe(true)
 		end)
@@ -336,8 +371,10 @@ return function(suite: Verify.Harness)
 			local calls: { string } = {}
 			Lute.fixture.exportStudio(executor(studio(requested), calls), { batchSize = 2 })
 			table.sort(requested)
-			check:expect(requested):toEqual { "Folder", "GuiObject", "GuiService", "Hint", "Instance", "TextLabel" }
-			check:expect(#calls):toBe(1 + 3 + 2 + 1)
+			check
+				:expect(requested)
+				:toEqual { "Folder", "GuiObject", "GuiService", "Hint", "Instance", "PluginGui", "TextLabel" }
+			check:expect(#calls):toBe(1 + 4 + 2 + 1)
 		end)
 
 		suite:case("refuses an unknown class or enum before it reads a class", function(check)

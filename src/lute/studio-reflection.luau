@@ -29,8 +29,8 @@ local DATATYPE_ENUMS = {
 	"FontWeight",
 	"KeyInterpolationMode",
 }
-local GLOBALS =
-	"{ game = game, Instance = Instance, Enum = Enum, BrickColor = BrickColor, Font = Font, typeof = typeof, version = version }"
+local GLOBALS = "{ game = game, Instance = Instance, Enum = Enum, BrickColor = BrickColor, Font = Font, typeof = typeof,"
+	.. " version = version, security = SecurityCapabilities.fromCurrent():Add(Enum.SecurityCapability.Plugin) }"
 
 local function literal(names: { string }): string
 	local quoted: { string } = {}

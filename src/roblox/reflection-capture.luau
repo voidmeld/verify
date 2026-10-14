@@ -11,6 +11,7 @@ type Globals = {
 	Font: { fromEnum: (unknown) -> unknown },
 	typeof: (unknown) -> string,
 	version: (() -> string)?,
+	security: unknown,
 }
 type Request = {
 	part: string,
@@ -53,6 +54,10 @@ end
 
 local function reflection(globals: Globals): unknown
 	return call(globals.game, "GetService", "ReflectionService")
+end
+
+local function filter(globals: Globals): Fields
+	return { Security = globals.security }
 end
 
 local function sorted(values: { string }): { string }
@@ -116,9 +121,9 @@ end
 
 local function class(globals: Globals, encode: Encode, name: string, services: boolean): Fields
 	local service = reflection(globals)
-	local reflected = call(service, "GetClass", name) :: ReflectedMember
+	local reflected = call(service, "GetClass", name, filter(globals)) :: ReflectedMember
 	assert(reflected ~= nil, "Studio reflection has no class " .. name)
-	local members = call(service, "GetPropertiesOfClass", name) :: { ReflectedMember }
+	local members = call(service, "GetPropertiesOfClass", name, filter(globals)) :: { ReflectedMember }
 	local permits: { [string]: unknown } = reflected.Permits or {}
 	local tags: { string } = {}
 	if permits.New == nil then
@@ -159,7 +164,7 @@ end
 
 local function index(globals: Globals): Fields
 	local classes: { Fields } = {}
-	for _, reflected in call(reflection(globals), "GetClasses") :: { ReflectedMember } do
+	for _, reflected in call(reflection(globals), "GetClasses", filter(globals)) :: { ReflectedMember } do
 		local entry: Fields = {}
 		entry.name, entry.superclass = reflected.Name, reflected.Superclass
 		table.insert(classes, entry)
