@@ -338,7 +338,7 @@ The Studio launcher and the attached Studio support macOS and Windows.
 On Windows, Verify finds Studio in the newest directory under `%LOCALAPPDATA%/Roblox/Versions` that holds `RobloxStudioBeta.exe`.
 It drives the standard input of the Studio MCP server through a Windows PowerShell bridge, because Windows has no `mkfifo` and Lute cannot write to the standard input of a running process.
 It lists processes with `Get-CimInstance Win32_Process` and stops them with `taskkill`.
-The MCP bridge has listed open Studios on Windows, and `Lute.studio.launch` has started, driven and stopped a Studio on Windows 11. The native conformance check and a launched `Lute.studio.run` have not yet run on Windows.
+On Windows 11 the native conformance check and the native multiplayer check passed, and `Lute.studio.launch` started, drove and stopped a Studio.
 
 The reference Player launcher supports macOS only.
 On Windows, one launch starts more than one Player process, and no open-file query binds the report log to one process.
