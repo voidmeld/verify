@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "treatment": "treatment",
+  "baseline": "baseline",
+  "confidence": 0.95,
+  "resamples": 500,
+  "seed": 7,
+  "minimumTasks": 2,
+  "rules": [
+    { "id": "passes-at-least-as-often", "metric": "passRate", "lower": -0.01 },
+    { "id": "audits-higher", "metric": "auditScore", "lower": 0 },
+    { "id": "spends-fewer-tokens", "metric": "totalTokens", "upper": 1 }
+  ]
+}

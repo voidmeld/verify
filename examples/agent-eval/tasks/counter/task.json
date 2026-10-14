@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "counter",
+  "title": "Counter module",
+  "tier": "core",
+  "brief": "brief.md",
+  "starter": "starter",
+  "checks": [
+    {
+      "id": "module",
+      "kind": "command",
+      "argv": ["lute", "run", "{task}/hidden/check.luau", "{workspace}/counter.luau", "increment", "{scores}"],
+      "scores": true
+    },
+    {
+      "id": "cases",
+      "kind": "verify",
+      "argv": ["lute", "run", "{task}/hidden/cases.luau", "{workspace}/counter.luau", "{report}", "{run}"],
+      "after": ["module"]
+    },
+    {
+      "id": "interface",
+      "kind": "audit",
+      "dump": "{workspace}/ui-dump.json",
+      "perDevice": true,
+      "audit": { "minTouchTarget": 44 }
+    }
+  ]
+}

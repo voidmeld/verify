@@ -87,6 +87,7 @@ local producers: { Gate.ProducerDraft } = {
 	check("example-multiplayer", { "lute", "run", "examples/multiplayer.luau", "simulator" }, "behavior"),
 	check("example-benchmark", { "lute", "run", "examples/benchmark.luau" }, "behavior"),
 	check("example-gate", { "lute", "run", "examples/gate.luau" }, "behavior"),
+	check("example-agent-eval", { "lute", "run", "examples/agent-eval.luau" }, "behavior"),
 	check(
 		"consumer-diagnostics",
 		{ "lute", "run", "tools/verify-check.luau", "--ruleset", "roblox", "examples" },

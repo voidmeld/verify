@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "counter-reset",
+  "title": "Counter reset change request",
+  "tier": "change",
+  "brief": "brief.md",
+  "from": "counter",
+  "checks": [
+    {
+      "id": "module",
+      "kind": "command",
+      "argv": ["lute", "run", "{task}/../counter/hidden/check.luau", "{workspace}/counter.luau", "reset", "{scores}"],
+      "scores": true
+    },
+    {
+      "id": "interface",
+      "kind": "audit",
+      "dump": "{workspace}/ui-dump.json",
+      "perDevice": true
+    }
+  ]
+}
