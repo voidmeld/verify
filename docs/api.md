@@ -793,7 +793,7 @@ A snapshot is a JSON file with schema version 2. A loader refuses every other ve
 
 | Field | Content |
 | --- | --- |
-| `classes` | For each class: `superclass`, `tags`, `properties` with `datatype`, `scriptability` and `tags`, and tagged `defaults`. |
+| `classes` | For each class: `superclass`, `tags`, `properties` with `datatype`, `scriptability` and `tags`, tagged `defaults`, and the `events` that the class declares. An instance has the events of its class and of each superclass. |
 | `enums` | For each family: the items in engine order, each `{ name, value }`. |
 | `brickColors` | `colors`, each `{ number, name, color }`, and the 128 `palette` numbers. |
 | `fonts` | For each `Enum.Font` item that `Font.fromEnum` accepts: `{ family, weight, style }`. |

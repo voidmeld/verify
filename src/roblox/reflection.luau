@@ -9,6 +9,7 @@ export type Class = {
 	Properties: { [string]: Property },
 	DefaultProperties: { [string]: unknown },
 	Tags: { string },
+	Events: { string }?,
 }
 export type Database = { GetClassNames: (Database) -> { string }, GetClass: (Database, string) -> Class? }
 export type Options = {
@@ -60,6 +61,7 @@ local function create(options: Options): Environment.Environment
 			super = super,
 			creatable = table.find(class.Tags, "NotCreatable") == nil and table.find(class.Tags, "Service") == nil,
 			properties = declared,
+			events = class.Events,
 		}
 		properties[name], defaults[name] = members, values
 		active[name] = nil
@@ -75,7 +77,14 @@ local function create(options: Options): Environment.Environment
 		if overlay.creatable ~= nil then
 			merged.creatable = overlay.creatable
 		end
-		merged.events, merged.methods = overlay.events, overlay.methods
+		local events: { string } = table.clone(base.events or {})
+		local extra: { string } = overlay.events or {}
+		for _, event in extra do
+			if table.find(events, event) == nil then
+				table.insert(events, event)
+			end
+		end
+		merged.events, merged.methods = events, overlay.methods
 		local declared = table.clone(base.properties or {})
 		local added: { [string]: unknown } = overlay.properties or {}
 		for key, value in added do

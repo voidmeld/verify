@@ -78,6 +78,29 @@ return function(suite: Verify.Harness)
 			check:expect(env.createInstance("Part").Anchored):toBe(false)
 		end)
 
+		suite:case("gives instances the events the snapshot records for their classes", function(check)
+			local bridge = Roblox.reflectionSnapshot.bridge {
+				schemaVersion = 2,
+				classes = {
+					Base = { tags = {}, properties = {}, defaults = {}, events = { "Pinged" } },
+					Leaf = { superclass = "Base", tags = {}, properties = {}, defaults = {}, events = { "Popped" } },
+				},
+			}
+			local leaf = bridge.environment.createInstance "Leaf"
+			local fired: { string } = {}
+			local pinged = leaf.Pinged :: { Connect: (unknown, () -> ()) -> unknown }
+			local popped = leaf.Popped :: { Connect: (unknown, () -> ()) -> unknown }
+			pinged:Connect(function()
+				table.insert(fired, "Pinged")
+			end)
+			popped:Connect(function()
+				table.insert(fired, "Popped")
+			end)
+			bridge.environment.fire(leaf, "Pinged")
+			bridge.environment.fire(leaf, "Popped")
+			check:expect(fired):toEqual { "Pinged", "Popped" }
+		end)
+
 		suite:case("decodes non-finite numbers carried as tagged strings", function(check)
 			local database = Roblox.reflectionSnapshot.database {
 				schemaVersion = 2,

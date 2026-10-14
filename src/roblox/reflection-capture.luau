@@ -142,6 +142,12 @@ local function class(globals: Globals, encode: Encode, name: string, services: b
 			properties[member.Name] = property(member)
 		end
 	end
+	local events: { string } = {}
+	for _, member in call(service, "GetEventsOfClass", name, scope) :: { ReflectedMember } do
+		if member.Owner == name then
+			table.insert(events, member.Name)
+		end
+	end
 	local defaults: Fields = {}
 	if permits.New ~= nil then
 		local created, object = pcall(globals.Instance.new, name)
@@ -160,6 +166,7 @@ local function class(globals: Globals, encode: Encode, name: string, services: b
 		tags = sorted(tags),
 		properties = properties,
 		defaults = defaults,
+		events = sorted(events),
 	}
 end
 

@@ -182,6 +182,11 @@ local function studio(log: { string }?): Fields
 			end
 			return nil
 		end,
+		GetEventsOfClass = function(_: unknown, name: string, _filter: unknown): { Member }
+			return if name == "GuiObject" or name == "TextLabel"
+				then { { Name = "InputBegan", Owner = "GuiObject", Permits = {}, Display = {} } }
+				else {}
+		end,
 		GetPropertiesOfClass = function(_: unknown, name: string, filter: unknown): { Member }
 			if log ~= nil then
 				table.insert(log, name)
@@ -299,6 +304,8 @@ return function(suite: Verify.Harness)
 			check:expect(snapshot.classes.Instance.tags):toEqual { "NotCreatable" }
 			check:expect(snapshot.classes.TextLabel.tags):toEqual {}
 			check:expect(snapshot.classes.GuiService.tags):toEqual { "NotCreatable", "Service" }
+			check:expect(snapshot.classes.GuiObject.events):toEqual { "InputBegan" }
+			check:expect(snapshot.classes.TextLabel.events):toEqual {}
 		end)
 
 		suite:case("reads defaults from a new instance and encodes engine values", function(check)
