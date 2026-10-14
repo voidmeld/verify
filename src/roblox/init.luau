@@ -23,6 +23,8 @@ local ObservationSink = require "@self/observation-sink"
 local PlaceBoot = require "@self/place-boot"
 local Scheduler = require "@self/scheduler"
 local ConsolePatterns = require "@self/console-patterns"
+local UiAudit = require "@self/ui-audit"
+local UiAuditCollect = require "@self/ui-audit-collect"
 
 export type CaseEntry = CaseEntry.Entry
 export type CaseEntryFactory = CaseEntry.Factory
@@ -144,6 +146,12 @@ export type ObservationSeam<N = ObservationNode> = ObservationSink.Seam<N>
 export type ObservationSeamDeps<N = ObservationNode, O = ObservationOwner> = ObservationSink.SeamDeps<N, O>
 export type ObservationSeamState<N = ObservationNode> = ObservationSink.SeamState<N>
 export type ObservationAcquire<N = ObservationNode> = ObservationSink.Acquire<N>
+export type UiAuditDump = UiAudit.Dump
+export type UiAuditElement = UiAudit.Element
+export type UiAuditOptions = UiAudit.Options
+export type UiAuditReport = UiAudit.Report
+export type UiAuditViolation = UiAudit.Violation
+export type UiAuditCollectOptions = UiAuditCollect.Options
 
 return {
 	caseEntry = CaseEntry,
@@ -192,4 +200,12 @@ return {
 	pooledObservationSeam = ObservationSink.pooledSeam,
 	armObservationSink = ObservationSink.arm,
 	publishObservations = ObservationSink.publish,
+	uiAudit = {
+		SCHEMA_VERSION = UiAudit.SCHEMA_VERSION,
+		RULES = UiAudit.RULES,
+		collect = UiAuditCollect.collect,
+		decode = UiAudit.decode,
+		analyze = UiAudit.analyze,
+		contrastRatio = UiAudit.contrastRatio,
+	},
 }
