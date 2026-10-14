@@ -482,7 +482,7 @@ The consumer owns tool execution, request digests, storage paths, authorization 
 `Lute.model` reads a Roblox XML model (`.rbxmx`) or place (`.rbxlx`) so that a case can assert on a built file.
 
 - `read(text)` returns the root instances. Each instance is `{ className, name, path, properties, children }`.
-  `name` is the `Name` property, or the class name when the file stores no name. `path` joins the names from the root with `/`.
+  `name` is the `Name` property, or the class name when the file stores no name or an empty name, so that each path segment is not empty. `path` joins the names from the root with `/`.
   `properties[name]` is `{ type, value }`: the XML tag of the value, such as `string`, `ProtectedString` or `bool`, and its decoded text.
 - `descendants(roots)` lists every instance in document order.
 - `find(roots, path)` returns the first instance with that path, or `nil`.

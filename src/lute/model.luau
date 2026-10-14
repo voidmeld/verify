@@ -24,7 +24,7 @@ local function instance(item: Xml.Element, prefix: string): Instance
 			end
 		end
 	end
-	local name = if properties.Name ~= nil then properties.Name.value else className
+	local name = if properties.Name ~= nil and properties.Name.value ~= "" then properties.Name.value else className
 	local path = if prefix == "" then name else prefix .. "/" .. name
 	local built: Instance = { className = className, name = name, path = path, properties = properties, children = {} }
 	for _, child in Xml.children(item, "Item") do

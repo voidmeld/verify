@@ -10,6 +10,7 @@ local MODEL = table.concat({
 	'<ProtectedString name="Source"><![CDATA[return "<x>"\r\n]]></ProtectedString>',
 	'<bool name="Archivable">true</bool></Properties></Item>\r\n',
 	'<Item class="Configuration"><Properties/></Item>\r\n',
+	'<Item class="StringValue"><Properties><string name="Name"></string></Properties></Item>\r\n',
 	"</Item>\r\n</roblox>\r\n",
 }, "")
 
@@ -27,13 +28,14 @@ return function(suite: Verify.Harness)
 			local folder = roots[1]
 			check:expect(folder.className):toBe "Folder"
 			check:expect(folder.path):toBe "Lib"
-			check:expect(#folder.children):toBe(2)
+			check:expect(#folder.children):toBe(3)
 			local module = folder.children[1]
 			check:expect(module.name):toBe "a & b"
 			check:expect(module.path):toBe "Lib/a & b"
 			check:expect(module.properties.Source):toEqual { type = "ProtectedString", value = 'return "<x>"\n' }
 			check:expect(module.properties.Archivable):toEqual { type = "bool", value = "true" }
 			check:expect(folder.children[2].name):toBe "Configuration"
+			check:expect(folder.children[3].path):toBe "Lib/StringValue"
 		end)
 
 		suite:case("walks the tree in document order and finds an instance by path", function(check)
@@ -42,7 +44,7 @@ return function(suite: Verify.Harness)
 			for _, item in Lute.model.descendants(roots) do
 				table.insert(paths, item.path)
 			end
-			check:expect(paths):toEqual { "Lib", "Lib/a & b", "Lib/Configuration" }
+			check:expect(paths):toEqual { "Lib", "Lib/a & b", "Lib/Configuration", "Lib/StringValue" }
 			check
 				:expect((Lute.model.find(roots, "Lib/Configuration") :: Lute.ModelInstance).className)
 				:toBe "Configuration"
