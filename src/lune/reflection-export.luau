@@ -1,6 +1,7 @@
 --!strict
 
 local Reflection = require "../roblox/reflection"
+local Encoding = require "../roblox/reflection-encoding"
 local Snapshot = require "../roblox/reflection-snapshot"
 
 export type Native = {
@@ -14,56 +15,18 @@ export type Options = {
 
 local load = require :: (string) -> unknown
 
-local function number(value: unknown): number
-	return value :: number
-end
-
-local function encode(value: unknown, kind: string): unknown
-	if kind == "number" then
-		local magnitude = value :: number
-		if magnitude ~= magnitude then
-			return { ["$"] = "number", v = "nan" }
-		elseif magnitude == math.huge then
-			return { ["$"] = "number", v = "inf" }
-		elseif magnitude == -math.huge then
-			return { ["$"] = "number", v = "-inf" }
-		end
-		return value
-	elseif kind == "string" then
-		local text = value :: string
-		if utf8.len(text) == nil then
-			return {
-				["$"] = "bytes",
-				v = (string.gsub(text, ".", function(character: string): string
-					return string.format("%02x", string.byte(character))
-				end)),
-			}
-		end
-		return text
-	elseif kind == "boolean" then
-		return value
-	end
-	local fields = value :: { [string]: unknown }
-	if kind == "Vector3" then
-		return { ["$"] = kind, v = { number(fields.X), number(fields.Y), number(fields.Z) } }
-	elseif kind == "Vector2" then
-		return { ["$"] = kind, v = { number(fields.X), number(fields.Y) } }
-	elseif kind == "Color3" then
-		return { ["$"] = kind, v = { number(fields.R), number(fields.G), number(fields.B) } }
-	elseif kind == "UDim" then
-		return { ["$"] = kind, v = { number(fields.Scale), number(fields.Offset) } }
-	elseif kind == "UDim2" then
-		local x = fields.X :: { [string]: unknown }
-		local y = fields.Y :: { [string]: unknown }
-		return { ["$"] = kind, v = { number(x.Scale), number(x.Offset), number(y.Scale), number(y.Offset) } }
-	elseif kind == "CFrame" then
-		return { ["$"] = kind, v = { (fields.GetComponents :: (unknown) -> ...number)(value) } }
-	elseif kind == "EnumItem" then
-		local family = string.gsub(tostring(fields.EnumType), "^Enum%.", "")
-		return { ["$"] = kind, family = family, name = fields.Name }
-	end
-	return nil
-end
+local ENCODED: { [string]: boolean } = {
+	boolean = true,
+	number = true,
+	string = true,
+	Vector3 = true,
+	Vector2 = true,
+	Color3 = true,
+	UDim = true,
+	UDim2 = true,
+	CFrame = true,
+	EnumItem = true,
+}
 
 local function sorted(values: { string }): { string }
 	local copy = table.clone(values)
@@ -103,7 +66,8 @@ local function export(native: Native, options: Options): Snapshot.Snapshot
 		end
 		local defaults: { [string]: unknown } = {}
 		for key, value in class.DefaultProperties do
-			local encoded = encode(value, options.typeName(value))
+			local kind = options.typeName(value)
+			local encoded = if ENCODED[kind] then Encoding.encode(value, kind) else nil
 			if encoded ~= nil then
 				defaults[key] = encoded
 			end
@@ -118,60 +82,6 @@ local function export(native: Native, options: Options): Snapshot.Snapshot
 	return { schemaVersion = Snapshot.SCHEMA_VERSION, classes = classes }
 end
 
-local ESCAPES: { [string]: string } = {
-	["\\"] = "\\\\",
-	['"'] = '\\"',
-	["\n"] = "\\n",
-	["\r"] = "\\r",
-	["\t"] = "\\t",
-}
-
-local function quote(value: string): string
-	local escaped = string.gsub(value, '[%c"\\]', function(character: string): string
-		return ESCAPES[character] or string.format("\\u%04x", string.byte(character))
-	end)
-	return '"' .. escaped .. '"'
-end
-
-local function serialize(value: unknown): string
-	local kind = type(value)
-	if kind == "string" then
-		return quote(value :: string)
-	elseif kind == "number" then
-		local whole = value :: number
-		if whole ~= whole then
-			return '"nan"'
-		elseif whole == math.huge then
-			return '"inf"'
-		elseif whole == -math.huge then
-			return '"-inf"'
-		end
-		return if whole % 1 == 0 and math.abs(whole) < 2 ^ 53
-			then string.format("%d", whole)
-			else string.format("%.17g", whole)
-	elseif kind == "boolean" then
-		return tostring(value)
-	end
-	local table_ = value :: { [unknown]: unknown }
-	if #table_ > 0 or next(table_) == nil then
-		local items: { string } = {}
-		for index, item in table_ :: { unknown } do
-			items[index] = serialize(item)
-		end
-		return "[" .. table.concat(items, ",") .. "]"
-	end
-	local keys: { string } = {}
-	for key in table_ do
-		table.insert(keys, key :: string)
-	end
-	table.sort(keys)
-	local pieces: { string } = {}
-	for _, key in keys do
-		table.insert(pieces, quote(key) .. ":" .. serialize(table_[key]))
-	end
-	return "{" .. table.concat(pieces, ",") .. "}"
-end
-
 local function create(options: { classes: { string }? }?): Snapshot.Snapshot
 	local native = load "@lune/roblox" :: Native
 	return export(native, {
@@ -182,4 +92,4 @@ local function create(options: { classes: { string }? }?): Snapshot.Snapshot
 	})
 end
 
-return { export = export, create = create, serialize = serialize }
+return { export = export, create = create, serialize = Encoding.serialize }

@@ -154,6 +154,8 @@ local function create(options: Options): Environment.Environment
 				valid = actual == "string" or actual == expected
 			elseif expected == "Ref" then
 				valid = value == nil or Environment.isInstance(value)
+			elseif expected == "OptionalCFrame" then
+				valid = value == nil or actual == "CFrame"
 			elseif expected:sub(1, 5) == "Enum." then
 				local enumType = if actual == "EnumItem" and options.enumType then options.enumType(value) else ""
 				valid = enumType == expected or enumType == expected:sub(6)

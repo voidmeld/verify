@@ -6,6 +6,7 @@ local Roblox = require "../src/roblox"
 local Verify = require "../src/core"
 
 local FIXTURE = "tests/fixtures/reflection-snapshot.json"
+local STUDIO = "tests/fixtures/studio-reflection.json"
 
 local function accepts(body: () -> unknown): boolean
 	return (pcall(body))
@@ -79,7 +80,7 @@ return function(suite: Verify.Harness)
 
 		suite:case("decodes non-finite numbers carried as tagged strings", function(check)
 			local database = Roblox.reflectionSnapshot.database {
-				schemaVersion = 1,
+				schemaVersion = 2,
 				classes = {
 					Probe = {
 						superclass = nil,
@@ -108,7 +109,7 @@ return function(suite: Verify.Harness)
 			root.Marker = true
 			check:expect(root.Marker):toBe(true)
 			local sound = Roblox.reflectionSnapshot.bridge {
-				schemaVersion = 1,
+				schemaVersion = 2,
 				classes = {
 					Instance = { tags = { "NotCreatable" }, properties = {}, defaults = {} },
 					Sound = {
@@ -160,20 +161,151 @@ return function(suite: Verify.Harness)
 			end
 		)
 
+		suite:case("accepts nil or a CFrame for an optional CFrame property", function(check)
+			local bridge = Roblox.reflectionSnapshot.bridge {
+				schemaVersion = 2,
+				classes = {
+					Instance = { tags = { "NotCreatable" }, properties = {}, defaults = {} },
+					Pivot = {
+						superclass = "Instance",
+						tags = {},
+						properties = {
+							Offset = { datatype = "OptionalCFrame", scriptability = "ReadWrite", tags = {} },
+						},
+						defaults = {},
+					},
+				},
+			}
+			local object = bridge.environment.createInstance "Pivot"
+			local verdicts = {
+				accepts(function(): unknown
+					object.Offset = Datatypes.CFrame.new(1, 2, 3)
+					return nil
+				end),
+				accepts(function(): unknown
+					object.Offset = nil
+					return nil
+				end),
+				accepts(function(): unknown
+					object.Offset = Datatypes.Vector3.new()
+					return nil
+				end),
+			}
+			check:expect(verdicts):toEqual { true, true, false }
+		end)
+
 		suite:case("refuses a snapshot of another schema or with a malformed class", function(check)
 			check
 				:expect(accepts(function(): unknown
-					return Roblox.reflectionSnapshot.database { schemaVersion = 2, classes = {} }
+					return Roblox.reflectionSnapshot.database { schemaVersion = 1, classes = {} }
 				end))
 				:toBe(false)
 			check
 				:expect(accepts(function(): unknown
 					return Roblox.reflectionSnapshot.database {
-						schemaVersion = 1,
+						schemaVersion = 2,
 						classes = { Bad = (5 :: unknown) :: Roblox.ReflectionSnapshotClass },
 					}
 				end))
 				:toBe(false)
+		end)
+	end)
+
+	suite:suite("reflection snapshot exported from Studio", function()
+		suite:case("creates GUI instances with the defaults that Instance.new gave in Studio", function(check)
+			local snapshot = Lute.fixture.load(STUDIO)
+			local types = Roblox.reflectionSnapshot.library(snapshot)
+			local env = Lute.fixture.bridge(snapshot).environment
+			local label = env.createInstance "TextLabel"
+			check:expect(label.Text):toBe "Label"
+			check:expect(label.TextXAlignment):toBe(types.Enum.TextXAlignment.Center)
+			check:expect(label.FontFace):toBe(types.Font.fromEnum(types.Enum.Font.Legacy))
+			check:expect((label.TextColor3 :: Roblox.DatatypeColor3):ToHex()):toBe "1b2a35"
+			check:expect(label.Size):toBe(types.UDim2.new())
+			check:expect(label.Visible):toBe(true)
+			check:expect(label:IsA "GuiObject"):toBe(true)
+			local corner = env.createInstance "UICorner"
+			check:expect(corner.CornerRadius):toBe(types.UDim.new(0, 8))
+			local list = env.createInstance "UIListLayout"
+			check:expect(list.SortOrder):toBe(types.Enum.SortOrder.Name)
+			local part = env.createInstance "Part"
+			check:expect(part.BrickColor):toBe(types.BrickColor.new "Medium stone grey")
+			check:expect(part.Material):toBe(types.Enum.Material.Plastic)
+			check:expect(part.Size):toBe(types.Vector3.new(4, 1.2, 2))
+			check:expect(part.CFrame):toBe(types.CFrame.new())
+		end)
+
+		suite:case("validates writes with the bound datatypes and enums", function(check)
+			local snapshot = Lute.fixture.load(STUDIO)
+			local types = Roblox.reflectionSnapshot.library(snapshot)
+			local env = Lute.fixture.bridge(snapshot).environment
+			local label = env.createInstance "TextLabel"
+			label.Size = types.UDim2.fromOffset(10, 20) + types.UDim2.fromScale(0.5, 0)
+			check:expect(tostring(label.Size)):toBe "{0.5, 10}, {0, 20}"
+			label.TextXAlignment = types.Enum.TextXAlignment.Left
+			label.TextColor3 = types.Color3.fromHSV(0.5, 0.5, 0.5)
+			label.FontFace = types.Font.fromName("GothamSSm", types.Enum.FontWeight.Bold)
+			check:expect((label.FontFace :: Roblox.DatatypeFont).Bold):toBe(true)
+			local verdicts = {
+				accepts(function(): unknown
+					label.TextXAlignment = types.Enum.FontWeight.Bold
+					return nil
+				end),
+				accepts(function(): unknown
+					label.Text = 5
+					return nil
+				end),
+				accepts(function(): unknown
+					label.AbsoluteSize = types.Vector2.zero
+					return nil
+				end),
+				accepts(function(): unknown
+					label.Size = types.Vector2.zero
+					return nil
+				end),
+				accepts(function(): unknown
+					label.Rotation = 45
+					return nil
+				end),
+			}
+			check:expect(verdicts):toEqual { false, false, false, false, true }
+		end)
+
+		suite:case("keeps engine class tags and refuses enums the snapshot lacks", function(check)
+			local snapshot = Lute.fixture.load(STUDIO)
+			local types = Roblox.reflectionSnapshot.library(snapshot)
+			local bridge = Lute.fixture.bridge(snapshot)
+			check:expect(snapshot.classes.GuiService.tags):toEqual { "NotCreatable", "Service" }
+			check:expect(snapshot.classes.GuiObject.tags):toEqual { "NotCreatable" }
+			check
+				:expect(accepts(function(): unknown
+					return bridge.environment.createInstance "GuiObject"
+				end))
+				:toBe(false)
+			check
+				:expect(accepts(function(): unknown
+					return ((types.Enum :: unknown) :: { [string]: unknown }).KeyCode
+				end))
+				:toBe(false)
+			check:expect(type(snapshot.engineVersion)):toBe "string"
+		end)
+
+		suite:case("gives the engine seam constructors that produce the bound datatypes", function(check)
+			local snapshot = Lute.fixture.load(STUDIO)
+			local types = Roblox.reflectionSnapshot.library(snapshot)
+			local engine = Lute.fixture.bridge(snapshot).engine
+			local datatypes = engine.datatypes
+			local vector = (datatypes.Vector2 :: (number, number) -> Roblox.EnvironmentEngineVector2)(1, 2)
+			check:expect(engine.typeName(vector)):toBe "Vector2"
+			check:expect(vector):toBe(types.Vector2.new(1, 2))
+			type MakeFrame = (Roblox.EnvironmentEngineVector3, { number }) -> Roblox.EnvironmentEngineCFrame
+			local position = (types.Vector3.new(1, 2, 3) :: unknown) :: Roblox.EnvironmentEngineVector3
+			local frame = (datatypes.CFrame :: MakeFrame)(position, { 1, 0, 0, 0, 1, 0, 0, 0, 1 })
+			check:expect(engine.typeName(frame)):toBe "CFrame"
+			local readCFrame =
+				engine.readCFrame :: (Roblox.EnvironmentEngineCFrame) -> (number, number, number, { number })
+			local x, y, z = readCFrame(frame)
+			check:expect({ x, y, z }):toEqual { 1, 2, 3 }
 		end)
 	end)
 end
