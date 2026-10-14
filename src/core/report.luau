@@ -688,8 +688,6 @@ local function compose(payloads: { Types.ShardPayload }, executor: string, envir
 	return finish(into, executor, environment)
 end
 
-local TIMING_FIELDS: { string } = { "durationMicros" }
-
 local function sortedKeys(map: { [string]: string }): { string }
 	local keys: { string } = {}
 	for key in map do
@@ -856,7 +854,6 @@ end
 
 return {
 	SCHEMA_VERSION = SCHEMA_VERSION,
-	TIMING_FIELDS = TIMING_FIELDS,
 	counts = counts,
 	decode = decode,
 	merge = merge,

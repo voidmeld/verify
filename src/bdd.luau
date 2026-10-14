@@ -137,8 +137,6 @@ export type Surface = {
 	useHarness: (harness: Harness, run: () -> ()) -> (),
 }
 
-local REGISTRATION_VERBS: { string } = { "describe", "it", "itSkip", "beforeEach", "afterEach" }
-
 local function surface(options: SurfaceOptions): Surface
 	local api = {} :: Surface
 	local sessionOptions: Verify.SessionProvidedOptions<Bdd> = {
@@ -324,7 +322,6 @@ end
 return {
 	create = create,
 	surface = surface,
-	REGISTRATION_VERBS = REGISTRATION_VERBS,
 	counts = counts,
 	formatResults = formatResults,
 	formatFailures = formatFailures,

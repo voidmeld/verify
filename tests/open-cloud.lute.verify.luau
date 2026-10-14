@@ -1,5 +1,6 @@
 --!strict
 
+local Plan = require "../src/core/plan"
 local fs = require "@std/fs"
 local json = require "@std/json"
 local Verify = require "../src/core"
@@ -511,7 +512,7 @@ return function(suite: Verify.Harness)
 					return "run-1"
 				end,
 			}
-			local plan = Verify.validatePlan {
+			local plan = Plan.validate {
 				id = "open-cloud",
 				units = { { id = "case", locator = "case" } },
 			} :: Verify.Plan

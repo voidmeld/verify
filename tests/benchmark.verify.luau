@@ -787,8 +787,6 @@ return function(suite: Verify.Harness)
 			check:expect(unsupported.results[1].missingCapabilities):toEqual { "measurement:heap_unsupported" }
 			local lateLoss = execute(withHeap({ 100 }, nil))
 			check:expect(lateLoss.results[1].missingCapabilities):toEqual { "measurement:heap_unsupported" }
-			local reading = Benchmark.luauHeap.probe()
-			check:expect(reading == nil or reading > 0):toEqual(true)
 		end)
 	end)
 end

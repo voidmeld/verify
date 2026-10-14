@@ -25,14 +25,9 @@ end
 
 local specs = Lute.corpus.discover {
 	listDir = fs.listDirectory,
-	rules = { { root = "tests", pattern = "%.verify%.luau$", exclude = "%.lune%.verify%.luau$" } },
+	rules = { { root = "tests", pattern = "%.verify%.luau$" } },
 }
 assert(#specs > 0, "test corpus is empty: tests")
-local luneSpecs = Lute.corpus.discover {
-	listDir = fs.listDirectory,
-	rules = { { root = "tests/lune", pattern = "%.lune%.verify%.luau$" } },
-}
-assert(#luneSpecs > 0, "lune test corpus is empty: tests/lune")
 
 local SOURCES = { "src", "tests", "tools", "examples", "lint.config.luau" }
 local lsp: { string } = {
@@ -66,24 +61,10 @@ local producers: { Gate.ProducerDraft } = {
 		why = "the repository's own spec corpus",
 		deadlineSeconds = 1800,
 	},
-	check("reflection", { "lune", "run", "tools/check-reflection.luau" }, "behavior"),
 	check("example-experience", { "lute", "run", "examples/experience.luau" }, "behavior"),
-	{
-		id = "lune-specs",
-		kind = "tests",
-		worker = "tools/lune-worker.luau",
-		command = { "lune", "run" },
-		locators = luneSpecs,
-		tier = "behavior",
-		why = "the Lune host's spec corpus, run in real lune processes",
-		deadlineSeconds = 1800,
-	},
 	check("example-attachments", { "lute", "run", "examples/attachments.luau" }, "behavior"),
 	check("example-quickstart", { "lute", "run", "examples/quickstart.luau" }, "behavior"),
-	check("example-lune-fixture", { "lune", "run", "examples/lune-fixture.luau" }, "behavior"),
-	check("example-lune-run", { "lune", "run", "examples/lune-run.luau" }, "behavior"),
-	check("example-evidence-lute", { "lute", "run", "examples/evidence-provenance/lute.luau" }, "behavior"),
-	check("example-evidence-lune", { "lune", "run", "examples/evidence-provenance/lune.luau" }, "behavior"),
+	check("example-evidence", { "lute", "run", "examples/evidence-provenance.luau" }, "behavior"),
 	check("example-multiplayer", { "lute", "run", "examples/multiplayer.luau", "simulator" }, "behavior"),
 	check("example-benchmark", { "lute", "run", "examples/benchmark.luau" }, "behavior"),
 	check("example-gate", { "lute", "run", "examples/gate.luau" }, "behavior"),

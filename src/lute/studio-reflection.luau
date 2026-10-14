@@ -229,8 +229,6 @@ end
 
 return {
 	export = export,
-	program = program,
 	probeStudio = probeStudio,
 	probeLocal = probeLocal,
-	DATATYPE_ENUMS = DATATYPE_ENUMS,
 }

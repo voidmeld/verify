@@ -275,7 +275,7 @@ return function(suite: Verify.Harness)
 			check:expect(snapshot.classes.Instance.properties.PluginOnly):toBe(nil)
 		end)
 
-		suite:case("names datatypes, scriptability and tags the way the Lune database does", function(check)
+		suite:case("names datatypes, scriptability and tags the way the reflection database does", function(check)
 			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "GuiService" } })
 			local gui = snapshot.classes.GuiObject.properties
 			local label = snapshot.classes.TextLabel.properties

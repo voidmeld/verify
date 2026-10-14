@@ -688,40 +688,6 @@ return function(suite: Verify.Harness)
 			check:expect(cases.total):toEqual(2)
 			check:expect(cases.passed):toEqual(2)
 		end)
-
-		suite:case("shards a plan into tests producers that keep groups whole and silent modules named", function(check)
-			local units: { Verify.PlanUnitDraft } = {}
-			for _, locator in { "a.verify.luau", "b.verify.luau", "c.verify.luau", "d.verify.luau", "e.verify.luau" } do
-				table.insert(units, {
-					id = locator,
-					locator = locator,
-					group = if locator == "a.verify.luau" or locator == "e.verify.luau" then "pair" else nil,
-					weight = 1,
-				})
-			end
-			local drafts = Gate.shard({ id = "plan", units = units }, {
-				prefix = "specs",
-				worker = "worker.luau",
-				count = 2,
-				silent = { "d.verify.luau" },
-			})
-			check:expect(#drafts):toEqual(2)
-			local together = false
-			local carried = 0
-			local total = 0
-			for _, draft in drafts do
-				local locators = draft.locators :: { string }
-				total += #locators
-				carried += #(draft.silent :: { string })
-				if table.find(locators, "a.verify.luau") ~= nil and table.find(locators, "e.verify.luau") ~= nil then
-					together = true
-				end
-			end
-			check:expect(total):toEqual(5)
-			check:expect(together):toEqual(true)
-			check:expect(carried):toEqual(1)
-			check:expect(#Gate.define({ id = "g", producers = drafts }).producers):toEqual(2)
-		end)
 	end)
 
 	suite:suite("hosts and deferral", function()

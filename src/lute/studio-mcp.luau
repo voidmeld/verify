@@ -5,7 +5,6 @@ local process = require "@std/process"
 local system = require "@std/system"
 local task = require "@std/task"
 local json = require "@std/json"
-local Binding = require "../runtime/binding"
 local Bounded = require "./bounded"
 local Files = require "./files"
 local Powershell = require "./powershell"
@@ -140,7 +139,7 @@ local function windowsPipe(executable: string, directory: string, deadline: numb
 			Powershell.command(BRIDGE),
 			{ env = { VERIFY_MCP_DIRECTORY = directory, VERIFY_MCP_EXECUTABLE = executable } }
 		)
-		bridge.detail = if ran then (result :: Binding.ProcessResult).stderr else tostring(result)
+		bridge.detail = if ran then (result :: Runtime.ProcessResult).stderr else tostring(result)
 		bridge.done = true
 	end)
 	while not fs.exists(pidPath) and not bridge.done and os.clock() < deadline do

@@ -1,6 +1,6 @@
 --!strict
 
-local Verify = require "../core"
+local Verify = require "../src/core"
 
 type Artifact = Verify.Artifact
 type BatchOutcome = Verify.BatchOutcome
@@ -219,5 +219,4 @@ end
 
 return {
 	create = create,
-	DEFAULT_CAPABILITIES = DEFAULT_CAPABILITIES,
 }

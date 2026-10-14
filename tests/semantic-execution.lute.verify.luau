@@ -1,5 +1,6 @@
 --!strict
 
+local ReportModel = require "../src/core/report"
 local Verify = require "../src/core"
 local Bdd = require "../src/bdd"
 local Operations = require "../src/core/operations"
@@ -80,7 +81,7 @@ return function(suite: Verify.Harness)
 				return 2
 			end
 			local second = Verify.runCase(case, host)
-			check:expect(Verify.canonical(first) == Verify.canonical(second)):toBe(false)
+			check:expect(ReportModel.canonical(first) == ReportModel.canonical(second)):toBe(false)
 			local evidence = second.results[1].evidence :: Operations.Evidence
 			evidence.observations[1].step = 99
 			local decoded = pcall(Verify.decode, second)

@@ -6,7 +6,6 @@ local system = require "@std/system"
 local task = require "@std/task"
 
 local Files = require "../src/lute/files"
-local RuntimeFiles = require "../src/runtime/files"
 local Lute = require "../src/lute"
 local Verify = require "../src/core"
 
@@ -169,7 +168,7 @@ return function(suite: Verify.Harness)
 		suite:case("creates each parent of a drive path with either separator", function(check)
 			local made: { string } = {}
 			local present: { [string]: boolean } = { ["C:"] = true }
-			local bound = RuntimeFiles.create {
+			local bound = Files.create {
 				read = function(): string
 					return ""
 				end,

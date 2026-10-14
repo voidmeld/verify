@@ -23,7 +23,7 @@ A document describes a contract. Only a run produces evidence.
 | Write cases with `describe` and `it`, or load cases from many source files | `Bdd.surface`. |
 | Run named cases on the simulator, Studio, a Player or Open Cloud | `tools/run.luau`, or `Lute.platform.run` from code. |
 | Run a whole corpus in worker processes | A `tests` producer of a gate. |
-| Check a repository with tests, commands, builds and benchmarks | `Gate.define`, then `Lute.gate.run` or `Lune.gate.run`. |
+| Check a repository with tests, commands, builds and benchmarks | `Gate.define`, then `Lute.gate.run`. |
 | Measure a workload | `Benchmark.case` or `Benchmark.collection`. |
 | Compare coding agents on a task corpus | `tools/agent-eval.luau`, or `AgentEval.run` from code. |
 | Score a Roblox interface | `Roblox.uiAudit.collect` in the engine, then `Roblox.uiAudit.analyze`. |
@@ -40,7 +40,7 @@ Each document uses these terms with one meaning.
 | caller | The code that calls a Verify function. The caller is the consumer or a host adapter of the consumer. |
 | case | One named check with an isolated lifecycle. |
 | report | The structured record of a run. It states what passed, failed, was skipped or could not run. |
-| host | A system that runs cases: the simulator, Lute, Lune, Studio, Player or Open Cloud. |
+| host | A system that runs cases: the simulator, Lute, Studio, Player or Open Cloud. |
 | capability | A statement of what a host can observe or do. It grants no permission. |
 | actor | A named participant in a case, such as a client or the server. |
 | checkpoint | A named point in a case where a host records an observation for an actor. |
@@ -51,4 +51,4 @@ Each document uses these terms with one meaning.
 | plan | A finite set of units, declared capabilities and policy that Verify executes. |
 | gate | A declared set of producers with an acceptance verdict. |
 | producer | One unit of work in a gate: tests, a command, a build, a benchmark or a native check. |
-| receipt | The run-bound file or envelope that a worker returns with its report. |
+| receipt | The run-bound envelope that a native host returns with its report. |

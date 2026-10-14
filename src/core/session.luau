@@ -259,5 +259,4 @@ type Creator = (<S>(options: ProvidedOptions<S>) -> Session<S>) & ((options: Def
 
 return {
 	create = (create :: unknown) :: Creator,
-	DEFAULT_RUNTIME_VERBS = DEFAULT_RUNTIME_VERBS,
 }

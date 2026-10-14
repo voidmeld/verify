@@ -1,6 +1,9 @@
 --!strict
 
-local Lute = require "../src/lute"
+local Capability = require "../src/core/capability"
+local Plan = require "../src/core/plan"
+local Batch = require "../src/lute/batch"
+
 local Verify = require "../src/core"
 
 local function unit(id: string, group: string?, tags: { string }?, requires: { string }?): Verify.PlanUnitDraft
@@ -37,8 +40,8 @@ end
 return function(suite: Verify.Harness)
 	suite:suite("execution plan", function()
 		suite:case("normalizes a draft into a versioned plan", function(check)
-			local plan = Verify.validatePlan(BASE)
-			check:expect(plan.schemaVersion):toEqual(Verify.PLAN_SCHEMA_VERSION)
+			local plan = Plan.validate(BASE)
+			check:expect(plan.schemaVersion):toEqual(Plan.SCHEMA_VERSION)
 			check:expect(plan.policy.maxParallelBatches):toEqual(1)
 			check:expect(plan.policy.failFast):toEqual(false)
 			check:expect(plan.policy.caseIdStyle):toEqual "unit-prefixed"
@@ -48,12 +51,12 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("refuses a duplicate unit id and a duplicate locator", function(check)
-			local duplicateId = pcall(Verify.validatePlan, {
+			local duplicateId = pcall(Plan.validate, {
 				id = "p",
 				units = { unit "a", { id = "a", locator = "b.verify.luau" } },
 			})
 			check:expect(duplicateId):toEqual(false)
-			local duplicateLocator = pcall(Verify.validatePlan, {
+			local duplicateLocator = pcall(Plan.validate, {
 				id = "p",
 				units = { unit "a", { id = "b", locator = "a.verify.luau" } },
 			})
@@ -61,7 +64,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("refuses a retry policy that names a correctness outcome", function(check)
-			local ok, thrown: unknown = pcall(Verify.validatePlan, {
+			local ok, thrown: unknown = pcall(Plan.validate, {
 				id = "p",
 				policy = { retry = { maxAttempts = 3, on = { "failed" } } },
 				units = { unit "a" },
@@ -71,7 +74,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("refuses more than one attempt with nothing eligible", function(check)
-			local ok = pcall(Verify.validatePlan, {
+			local ok = pcall(Plan.validate, {
 				id = "p",
 				policy = { retry = { maxAttempts = 2, on = {} } },
 				units = { unit "a" },
@@ -80,28 +83,26 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("selects by id, tag, group and capability without reordering", function(check)
-			check:expect((idsOf(Verify.selectPlan(BASE, { tags = { "neutral" } }).units))):toEqual {
+			check:expect((idsOf(Plan.select(BASE, { tags = { "neutral" } }).units))):toEqual {
 				"alpha/one",
 				"alpha/two",
 				"gamma/one",
 				"delta/one",
 			}
 			check
-				:expect((idsOf(Verify.selectPlan(BASE, { groups = { "alpha" } }).units)))
+				:expect((idsOf(Plan.select(BASE, { groups = { "alpha" } }).units)))
 				:toEqual { "alpha/one", "alpha/two" }
-			check
-				:expect((idsOf(Verify.selectPlan(BASE, { capabilities = { "local-luau" } }).units)))
-				:toEqual { "beta/one" }
-			check:expect((idsOf(Verify.selectPlan(BASE, { ids = { "gamma/one", "alpha/one" } }).units))):toEqual {
+			check:expect((idsOf(Plan.select(BASE, { capabilities = { "local-luau" } }).units))):toEqual { "beta/one" }
+			check:expect((idsOf(Plan.select(BASE, { ids = { "gamma/one", "alpha/one" } }).units))):toEqual {
 				"alpha/one",
 				"gamma/one",
 			}
-			check:expect(#Verify.selectPlan(BASE, nil).units):toEqual(5)
+			check:expect(#Plan.select(BASE, nil).units):toEqual(5)
 		end)
 
 		suite:case("narrows by predicate over the same selection subject a harness sees", function(check)
 			local seen: { Verify.SelectionSubject } = {}
-			local selected = Verify.selectPlan(BASE, {
+			local selected = Plan.select(BASE, {
 				predicate = function(subject: Verify.SelectionSubject): boolean
 					table.insert(seen, subject)
 					return string.find(subject.source :: string, "alpha", 1, true) ~= nil
@@ -116,7 +117,7 @@ return function(suite: Verify.Harness)
 			check:expect(seen[1].tags):toEqual { "neutral" }
 			check:expect(seen[1].requires):toEqual {}
 			check
-				:expect((idsOf(Verify.selectPlan(BASE, {
+				:expect((idsOf(Plan.select(BASE, {
 					groups = { "alpha" },
 					predicate = function(subject: Verify.SelectionSubject): boolean
 						return subject.id ~= "alpha/two"
@@ -126,8 +127,8 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("keeps a group whole and partitions the same way every time", function(check)
-			local first = batchIds(Verify.partitionPlan(BASE, 3))
-			local second = batchIds(Verify.partitionPlan(BASE, 3))
+			local first = batchIds(Plan.partition(BASE, 3))
+			local second = batchIds(Plan.partition(BASE, 3))
 			check:expect(first):toEqual(second)
 			local alphaBatch = nil
 			for index, ids in first do
@@ -147,7 +148,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("returns exactly the batch count asked for, empty batches included", function(check)
-			local batches = Verify.partitionPlan({ id = "p", units = { unit "only" } }, 4)
+			local batches = Plan.partition({ id = "p", units = { unit "only" } }, 4)
 			check:expect(#batches):toEqual(4)
 			check:expect(#batches[1].units):toEqual(1)
 			check:expect(#batches[4].units):toEqual(0)
@@ -156,50 +157,36 @@ return function(suite: Verify.Harness)
 
 		suite:case("covers every unit exactly once across batches", function(check)
 			local seen: { [string]: number } = {}
-			for _, batch in Verify.partitionPlan(BASE, 3) do
+			for _, batch in Plan.partition(BASE, 3) do
 				for _, id in idsOf(batch.units) do
 					seen[id] = (seen[id] or 0) + 1
 				end
 			end
-			for _, entry in Verify.validatePlan(BASE).units do
+			for _, entry in Plan.validate(BASE).units do
 				check:expect(seen[entry.id]):toEqual(1)
 			end
 		end)
 
 		suite:case("composes stable case ids in both styles", function(check)
 			check
-				:expect((Verify.caseId("alpha/one", { "inventory", "release" }, "frees")))
+				:expect((Plan.caseId("alpha/one", { "inventory", "release" }, "frees")))
 				:toEqual "alpha/one::inventory > release > frees"
-			check:expect((Verify.caseId("alpha/one", { "inventory" }, "frees", "bare"))):toEqual "inventory > frees"
-			check:expect((pcall(Verify.caseId, "alpha/one", {}, "frees", "invented"))):toEqual(false)
+			check:expect((Plan.caseId("alpha/one", { "inventory" }, "frees", "bare"))):toEqual "inventory > frees"
+			check:expect((pcall(Plan.caseId, "alpha/one", {}, "frees", "invented"))):toEqual(false)
 		end)
 
 		suite:case("digests a plan by its meaning and notices every change to it", function(check)
-			local base = Verify.planDigest(BASE)
-			check:expect(base):toEqual(Verify.planDigest(Verify.validatePlan(BASE)))
+			local base = Plan.digest(BASE)
+			check:expect(base):toEqual(Plan.digest(Plan.validate(BASE)))
 			local reordered = table.clone(BASE)
 			reordered.units = { BASE.units[2], BASE.units[1], BASE.units[3], BASE.units[4], BASE.units[5] }
-			assert(Verify.planDigest(reordered) ~= base)
+			assert(Plan.digest(reordered) ~= base)
 			local retagged: Verify.PlanDraft = {
 				id = "example",
 				policy = { failFast = true },
 				units = BASE.units,
 			}
-			assert(Verify.planDigest(retagged) ~= base)
-		end)
-
-		suite:case("bridges a schema-v1 manifest into a plan without losing a field", function(check)
-			local plan = Verify.planFromManifest {
-				schemaVersion = 1,
-				entries = {
-					{ id = "a", source = "a.verify.luau", group = "g", tags = { "neutral" }, requires = {} },
-					{ id = "b", source = "b.lute.verify.luau", group = "g", tags = { "lute" }, requires = { "lute" } },
-				},
-			}
-			check:expect((idsOf(plan.units))):toEqual { "a", "b" }
-			check:expect(plan.units[2].locator):toEqual "b.lute.verify.luau"
-			check:expect(plan.units[2].requires):toEqual { "lute" }
-			check:expect(plan.units[1].group):toEqual "g"
+			assert(Plan.digest(retagged) ~= base)
 		end)
 	end)
 
@@ -227,14 +214,14 @@ return function(suite: Verify.Harness)
 		end
 
 		suite:case("defaults every unit to weight one", function(check)
-			local plan = Verify.validatePlan { id = "p", units = { { id = "a", locator = "a.luau" } } }
+			local plan = Plan.validate { id = "p", units = { { id = "a", locator = "a.luau" } } }
 			check:expect(plan.units[1].weight):toEqual(1)
 		end)
 
 		suite:case("refuses a weight that is not a positive number", function(check)
 			local function withWeight(weight: unknown): () -> ()
 				return function()
-					Verify.validatePlan {
+					Plan.validate {
 						id = "p",
 						units = { { id = "a", locator = "a.luau", weight = weight :: number } },
 					}
@@ -248,8 +235,8 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("balances declared weight instead of unit count", function(check)
-			local counted = Verify.partitionPlan(WEIGHTED, 4, "count")
-			local weighted = Verify.partitionPlan(WEIGHTED, 4, "weighted")
+			local counted = Plan.partition(WEIGHTED, 4, "count")
+			local weighted = Plan.partition(WEIGHTED, 4, "weighted")
 			local countedWeights: { number } = {}
 			local weightedWeights: { number } = {}
 			for index = 1, 4 do
@@ -280,8 +267,8 @@ return function(suite: Verify.Harness)
 				},
 			}
 			for count = 1, 5 do
-				local counted = Verify.partitionPlan(plan, count, "count")
-				local weighted = Verify.partitionPlan(plan, count, "weighted")
+				local counted = Plan.partition(plan, count, "count")
+				local weighted = Plan.partition(plan, count, "weighted")
 				for index = 1, count do
 					check:expect((idsOf(weighted[index].units))):toEqual(idsOf(counted[index].units))
 				end
@@ -297,7 +284,7 @@ return function(suite: Verify.Harness)
 					{ id = "c", locator = "c.luau", weight = 1 },
 				},
 			}
-			local weighted = Verify.partitionPlan(plan, 3, "weighted")
+			local weighted = Plan.partition(plan, 3, "weighted")
 			for _, batch in weighted do
 				local ids = idsOf(batch.units)
 				if table.find(ids, "a") ~= nil then
@@ -307,9 +294,9 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("is a pure function of the plan and never of a timing", function(check)
-			local first = Verify.partitionPlan(WEIGHTED, 3, "weighted")
+			local first = Plan.partition(WEIGHTED, 3, "weighted")
 			for _ = 1, 10 do
-				local again = Verify.partitionPlan(WEIGHTED, 3, "weighted")
+				local again = Plan.partition(WEIGHTED, 3, "weighted")
 				for index = 1, 3 do
 					check:expect((idsOf(again[index].units))):toEqual(idsOf(first[index].units))
 				end
@@ -330,13 +317,13 @@ return function(suite: Verify.Harness)
 					{ id = "h", locator = "h.luau" },
 				},
 			}
-			check:expect((Verify.planDigest(WEIGHTED) ~= Verify.planDigest(heavier))):toEqual(true)
+			check:expect((Plan.digest(WEIGHTED) ~= Plan.digest(heavier))):toEqual(true)
 		end)
 
 		suite:case("refuses a batching mode it does not implement", function(check)
 			check
 				:expect((pcall(function()
-					((Verify.partitionPlan :: unknown) :: (Verify.PlanDraft, number, string) -> unknown)(
+					((Plan.partition :: unknown) :: (Verify.PlanDraft, number, string) -> unknown)(
 						WEIGHTED,
 						2,
 						"measured"
@@ -346,8 +333,8 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("carries declared weight across the worker wire", function(check)
-			local batches = Verify.partitionPlan(WEIGHTED, 1, "weighted")
-			local decoded = Lute.decodeBatch(Lute.encodeBatch(batches[1]))
+			local batches = Plan.partition(WEIGHTED, 1, "weighted")
+			local decoded = Batch.decode(Batch.encode(batches[1]))
 			check:expect(decoded.units[1].weight):toEqual(10)
 			check:expect(decoded.units[2].weight):toEqual(1)
 		end)
@@ -355,49 +342,25 @@ return function(suite: Verify.Harness)
 
 	suite:suite("capability negotiation", function()
 		suite:case("names what is missing and what the host declared", function(check)
-			local negotiation = Verify.negotiate({ "local-luau", "worker" }, { "worker", "engine-datamodel" })
+			local negotiation = Capability.negotiate({ "local-luau", "worker" }, { "worker", "engine-datamodel" })
 			check:expect(negotiation.satisfied):toEqual(false)
 			check:expect(negotiation.missing):toEqual { "engine-datamodel" }
 			check:expect(negotiation.declared):toEqual { "local-luau", "worker" }
-			check:expect((Verify.explainCapabilities(negotiation))):toContain "missing engine-datamodel"
-			check:expect((Verify.explainCapabilities(negotiation))):toContain "the host declared local-luau, worker"
+			check:expect((Capability.explain(negotiation))):toContain "missing engine-datamodel"
+			check:expect((Capability.explain(negotiation))):toContain "the host declared local-luau, worker"
 		end)
 
 		suite:case("is satisfied by an empty requirement set and never by an empty declaration", function(check)
-			check:expect(Verify.negotiate({}, {}).satisfied):toEqual(true)
-			check:expect(Verify.negotiate({}, { "anything" }).satisfied):toEqual(false)
-			check:expect((Verify.explainCapabilities(Verify.negotiate({}, { "anything" })))):toContain "declared none"
+			check:expect(Capability.negotiate({}, {}).satisfied):toEqual(true)
+			check:expect(Capability.negotiate({}, { "anything" }).satisfied):toEqual(false)
+			check:expect((Capability.explain(Capability.negotiate({}, { "anything" })))):toContain "declared none"
 		end)
 
 		suite:case("does not depend on the order a host listed its capabilities", function(check)
-			local left = Verify.negotiate({ "b", "a" }, { "a" })
-			local right = Verify.negotiate({ "a", "b" }, { "a" })
+			local left = Capability.negotiate({ "b", "a" }, { "a" })
+			local right = Capability.negotiate({ "a", "b" }, { "a" })
 			check:expect(left.declared):toEqual(right.declared)
 			check:expect(left.satisfied):toEqual(right.satisfied)
-		end)
-	end)
-
-	suite:suite("manifest admission", function()
-		suite:case("preserves explicit source order and refuses ambiguous identities", function(check)
-			local entries: { Verify.ManifestEntry } = {
-				{ id = "second", source = "b.verify.luau", tags = { "x", "x" } },
-				{ id = "first", source = "a.verify.luau" },
-			}
-			local manifest = Verify.validateManifest { schemaVersion = 1, entries = entries }
-			check:expect(manifest.entries[1].id):toEqual "second"
-			check:expect(manifest.entries[1].tags):toEqual { "x" }
-			check:expect(Verify.planFromManifest(manifest).units[2].locator):toEqual "a.verify.luau"
-			for _, broken in
-				{
-					{ schemaVersion = 2, entries = entries },
-					{ schemaVersion = 1, entries = { entries[1], entries[1] } },
-					{ schemaVersion = 1, entries = { { id = "other", source = "b.verify.luau" }, entries[1] } },
-					{ schemaVersion = 1, entries = { { id = "", source = "b.verify.luau" } } },
-					{ schemaVersion = 1, entries = { { id = "x", source = "b.luau" } } },
-				}
-			do
-				check:expect((pcall(Verify.validateManifest, broken))):toEqual(false)
-			end
 		end)
 	end)
 end

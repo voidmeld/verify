@@ -354,7 +354,6 @@ end
 
 return {
 	parseClaudeStream = parseClaudeStream,
-	emptyUsage = emptyUsage,
 	total = total,
 	union = union,
 }

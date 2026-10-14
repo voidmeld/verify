@@ -17,14 +17,10 @@ local TypePolicy = require "@self/type-policy"
 local Batch = require "@self/batch"
 local Bounded = require "@self/bounded"
 local Gate = require "@self/gate"
-local WindowCapture = require "@self/window-capture"
 local Corpus = require "@self/corpus"
 local Host = require "@self/host"
-local Lock = require "@self/lock"
 local Wire = require "@self/wire"
 local Worker = require "@self/worker"
-local SpecSuite = require "@self/spec-suite"
-local IsolatedUnits = require "@self/isolated-units"
 
 export type AttachmentSink = Attachments.Sink
 export type AttachmentOptions = Attachments.Options
@@ -72,26 +68,6 @@ export type OpenCloudSubmission = OpenCloud.Submission
 export type OpenCloudLogs = OpenCloud.LogsOutcome
 export type OpenCloudHostOptions = OpenCloud.HostOptions
 
-export type WindowCaptureWindow = WindowCapture.Window
-export type WindowCaptureList = WindowCapture.WindowList
-export type WindowCaptureSelection = WindowCapture.Selection
-export type WindowCaptureViewportTarget = WindowCapture.ViewportTarget
-export type WindowCaptureViewportRect = WindowCapture.ViewportRect
-export type WindowCaptureCropOutcome = WindowCapture.CropOutcome
-export type WindowCaptureFrame = WindowCapture.Frame
-export type WindowCaptureDeps = WindowCapture.CaptureDeps
-export type WindowCaptureReasons = WindowCapture.CaptureReasons
-export type WindowCaptureLimits = WindowCapture.CaptureLimits
-export type WindowCaptureOptions = WindowCapture.CaptureOptions
-export type WindowCaptureChangeDeps = WindowCapture.ChangeDeps
-export type WindowCaptureChangeReasons = WindowCapture.ChangeReasons
-export type WindowCaptureCheckpointFrame = WindowCapture.CheckpointFrame
-export type WindowCaptureCheckpointFramesOptions = WindowCapture.CheckpointFramesOptions
-export type CaptureRecord = WindowCapture.CaptureRecord
-export type CaptureRecordOutcome = WindowCapture.RecordOutcome
-export type CaptureRecordOptions = WindowCapture.RecordOptions
-export type CaptureCheckOptions = WindowCapture.CheckCaptureOptions
-
 export type BoundedResult = Bounded.Result
 export type GateOptions = Gate.Options
 export type HostOptions = Host.Options
@@ -102,15 +78,9 @@ export type LockSection = Corpus.LockSection
 export type LockField = Corpus.LockField
 export type WorkerOperations = Worker.Operations
 export type WorkerOptions = Worker.Options
-export type WorkerArguments = Worker.Arguments
 export type LoadDisposition = Worker.LoadDisposition
 export type Registrar = Worker.Registrar
 export type SelfRegisteringWorkerOperations = Worker.SelfRegisteringOperations
-export type SpecSuiteInvocation = SpecSuite.Invocation
-export type SpecSuiteDefaults = SpecSuite.Defaults
-export type SpecSuiteOptions = SpecSuite.Options
-export type IsolatedUnitRun = IsolatedUnits.Run
-export type IsolatedUnitOptions = IsolatedUnits.Options
 
 return {
 	platform = Platform,
@@ -125,29 +95,12 @@ return {
 	chunk = Chunk,
 	gate = Gate,
 	typePolicy = TypePolicy,
+	corpus = Corpus,
+	host = Host.create,
+	worker = Worker.main,
+	selfRegisteringWorker = Worker.mainSelfRegistering,
 	encode = Wire.encode,
 	parse = Wire.parse,
 	decode = Wire.decode,
-
-	segmentReport = Wire.segmentReport,
-	reassembleReport = Wire.reassembleReport,
-
-	host = Host.create,
-	runBounded = Bounded.run,
-	directoryLock = Lock.directoryLock,
-
-	worker = Worker.main,
-	specSuite = SpecSuite,
-	isolatedUnits = IsolatedUnits,
-	workerArguments = Worker.arguments,
-	runWorkerBatch = Worker.runBatch,
-
-	selfRegisteringWorker = Worker.mainSelfRegistering,
-	runSelfRegisteringWorkerBatch = Worker.runBatchSelfRegistering,
-	encodeBatch = Batch.encode,
 	decodeBatch = Batch.decode,
-	HOST_CAPABILITIES = Host.DEFAULT_CAPABILITIES,
-
-	corpus = Corpus,
-	windowCapture = WindowCapture,
 }

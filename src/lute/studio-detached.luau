@@ -322,8 +322,5 @@ return {
 	run = run,
 	digest = digest,
 	SEGMENT_BYTES = SEGMENT_BYTES,
-	prefixFor = prefixFor,
 	tokenFor = tokenFor,
-	statusSource = statusSource,
-	segmentSource = segmentSource,
 }

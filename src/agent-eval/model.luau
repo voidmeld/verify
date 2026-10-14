@@ -678,7 +678,6 @@ end
 return {
 	SCHEMA_VERSION = SCHEMA_VERSION,
 	decodeSuite = decodeSuite,
-	decodeTask = decodeTask,
 	plan = plan,
 	runPath = runPath,
 	merge = merge,

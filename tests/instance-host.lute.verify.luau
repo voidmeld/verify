@@ -1,7 +1,7 @@
 --!strict
 
 local Verify = require "../src/core"
-local Lute = require "../src/lute"
+local Worker = require "../src/lute/worker"
 local Bdd = require "../src/bdd"
 local Roblox = require "../src/roblox"
 local Example = require "../examples/instance-case"
@@ -22,7 +22,7 @@ return function(suite: Verify.Harness)
 		)
 		suite:case("worker batches execute the same case with fresh host bindings", function(check)
 			local simulation = Instances.simulated "server"
-			local report = Lute.runWorkerBatch({
+			local report = Worker.runBatch({
 				id = "instances",
 				index = 1,
 				units = {

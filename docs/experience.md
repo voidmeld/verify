@@ -26,7 +26,7 @@ Use direct assertions for local functions and typed operations for host interact
 
 A case can attach text that it produced in the engine with `context:attach(name, mediaType, text)`.
 The text travels with the report. The report transport is the same on each host, and Studio returns it in digest-checked segments.
-These hosts carry attachments: the simulator, Lute workers, Lune workers, launched Studio and attached Studio.
+These hosts carry attachments: the simulator, Lute workers, launched Studio and attached Studio.
 Player and Open Cloud runs report each attachment as unsupported in the `verify:attachments` case. They do not drop it silently.
 See [inline attachments](api.md#inline-attachments) for names, limits and the host step.
 
@@ -377,7 +377,5 @@ The verdict follows these rules:
 | `heap_unsupported` | The probe returned no reading. |
 | `deadline_exceeded` | The benchmark passed its deadline. |
 
-`Benchmark.luauHeap` reads `collectgarbage('count')` where the runtime exposes it.
-Lune exposes it. Lute 1.0 does not, so it reports `heap_unsupported`.
-It never forces a collection.
+A heap probe is the `heap` option that the consumer supplies. Verify never forces a collection.
 A summary also carries `total` and `deviation`.

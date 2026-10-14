@@ -13,7 +13,6 @@ A passing run proves only what the host can observe.
 | --- | --- | --- | --- | --- |
 | Simulator | `--host simulator` (default) | The case in the Lute process, over the [simulated environment](api.md#simulated-environment). | Lute. | Proves Luau logic over the declared surface. It proves no rendering, physics, replication or input. |
 | Lute worker | `Lute.host` | One Lute process per batch. | Lute. See [platform support](#platform-support). | Proves Luau logic under Lute. See [Lute workers](execution.md#lute-workers). |
-| Lune worker | `Lune.host` | One `lune run` process per batch. | `lune` on `PATH`. On Windows also `lute`. | Proves Luau logic under Lune. See [Lune workers](execution.md#lune-workers). |
 | Studio, launched | `--host studio` | A disposable Studio on a copy of an XML place. | Installed, authenticated Studio with its MCP tools. macOS reference. See [platform support](#platform-support) for Windows. | One Studio per run. Supports 1 to 8 clients. Saves a final view for one client. See [native Studio execution](execution.md#native-studio-execution). |
 | Studio, attached | `attach` option of `Lute.platform.run` | The case in a Studio that the developer already has open. | An open Studio and an `authorize` function. | No isolation. No `players`. The command line cannot attach. See [attached Studio](execution.md#attached-studio). |
 | Player | `--host player` | The case in a published place, through the signed-in Player. | A published test place and a closed Player. macOS only. | One client per machine. No durable screenshots. See [published Player execution](execution.md#published-player-execution). |
@@ -131,27 +130,9 @@ See [declarative gates](execution.md#declarative-gates) and [benchmarks](experie
 
 ## Repository gate
 
-`Lute.specSuite.parse(args, defaults?)` separates positional spec files, shard settings,
-per-spec deadlines and report options from gate flags. Arguments exclude the executable name;
-consumers remove their own policy flags first. Unknown flags remain for the gate to refuse.
-`Lute.specSuite.prepare(plan, invocation, options)` returns a copied plan, a sharded gate draft
-and exact gate flags. The consumer supplies discovery, lanes, worker path, worker and batch counts,
-silent locators and the worker deadline. The original plan remains unchanged; unknown deadline
-locators and invalid deadline values fail before execution. Pass the returned draft and flags to
-`Lute.gate.cli` with the consumer's ordinary gate options.
-
-`Lute.isolatedUnits.run(batch, execute, options)` executes each unit as its own batch,
-using the unit's deadline or the caller's `deadlineSeconds`. It reports a timeout or
-failed worker as a failed unit and continues with the next unit. Returned reports retain
-their failures; repeated case IDs receive a unit prefix before merging. The caller supplies
-the executor label, environment and optional progress callback. The `execute` function is
-an ordinary batch host such as `Lute.host(options).runBatch`; it owns process isolation and
-deadline enforcement. This adapter does not itself supply an execution host.
-
 `tools/gate.luau` is the one command that checks this repository.
-It runs the static checks, the Lute specs in `tests`, the Lune specs in `tests/lune`, the examples and the boundary checks.
-Every test corpus runs through the `tests` producer.
-The Lune specs run in real `lune` processes, so `lune` must be on `PATH`.
+It runs the static checks, the specs in `tests`, the examples and the boundary checks.
+The spec corpus runs through the `specs` producer of kind `tests`.
 
 ```sh
 lute run tools/gate.luau [--native] [--only producer]... [--tier name]... [--case id]... [--file spec]... [--name text] [--rerun] [--explain id] [--list]
@@ -160,18 +141,18 @@ lute run tools/gate.luau [--native] [--only producer]... [--tier name]... [--cas
 | Goal | Command |
 | --- | --- |
 | Run the whole gate | `lute run tools/gate.luau` |
-| Run one spec file | `lute run tools/gate.luau --file tests/wait.verify.luau` |
+| Run one spec file | `lute run tools/gate.luau --file tests/shape.verify.luau` |
 | Run one case | `lute run tools/gate.luau --only specs --case "<case id>"` |
 | Run the cases whose name contains a text | `lute run tools/gate.luau --only specs --name "door"` |
 | Run one tier (`static` or `behavior`) | `lute run tools/gate.luau --tier behavior` |
-| Run one producer | `lute run tools/gate.luau --only lune-specs` |
+| Run one producer | `lute run tools/gate.luau --only lint` |
 | Repeat what the last run did not pass | `lute run tools/gate.luau --rerun` |
 | Explain why a producer or case ran, failed or was skipped | `lute run tools/gate.luau --explain specs` |
 | List the producers | `lute run tools/gate.luau --list` |
 | Include the native Studio checks | `lute run tools/gate.luau --native` |
 
-A case ID has the form `<spec file>::<suite> > <case>`. Use `--only lune-specs` with a Lune spec case.
-`--file` takes a spec file from either corpus and selects its producer.
+A case ID has the form `<spec file>::<suite> > <case>`.
+`--file` takes a spec file and selects its producer.
 `--name` matches a plain substring of the case name. A name that matches no case fails the run.
 A narrowed run prints `NARROWED`. It is not the gate.
 Deferred native producers need `--native` and the reference Studio host.
@@ -180,8 +161,7 @@ After a `--file` run, the producer set changes. Use the same `--file` again.
 
 ## Gate command line
 
-`Lute.gate.cli(draft, args, options?)` is the command line of `tools/gate.luau`.
-`Lune.gate.cli` is the same function for Lune. It defines the gate, runs it and returns the exit code.
+`Lute.gate.cli(draft, args, options?)` is the command line of `tools/gate.luau`. It defines the gate, runs it and returns the exit code.
 `args` holds the flags without the script name. The output is the output of `tools/gate.luau`.
 
 A consumer gate script defines the gate and calls the command line:
@@ -339,21 +319,19 @@ They produce the same cases and reports.
 ## Platform support
 
 The portable layers assume no operating system. They are core, gate, evidence, benchmark and the simulator.
-The Lute and Lune layers support macOS, Linux and Windows. The mechanism that bounds a process differs by platform:
+The Lute layer supports macOS, Linux and Windows. The mechanism that bounds a process differs by platform:
 
 | Platform | Mechanism | Capabilities |
 | --- | --- | --- |
 | macOS, Linux | `sh` from `PATH` puts the command in a process group and kills the group at the limit. It needs one way to create the group: shell job control, `setsid` or `perl`. A dash shell without a terminal has no job control. | `posix-process-groups`, `process-tree-kill` |
-| Windows | A Lute watchdog runs the command under a reporter process and kills the tree of the reporter with `taskkill /T /F` at the limit. A Lune binding starts the watchdog with `lute` from `PATH`. | `process-tree-kill` |
+| Windows | A Lute watchdog runs the command under a reporter process and kills the tree of the reporter with `taskkill /T /F` at the limit. | `process-tree-kill` |
 
-Bounded runs are `Lute.runBounded`, `Lune.runBounded`, gate commands and worker hosts.
+Gate commands and worker hosts run bounded.
 A run that cannot create its group or start its watchdog does not start the command. It returns `unsupported = true`.
 Require `process-tree-kill` when a case must run on every platform.
 On Windows, a descendant whose parent exited before the limit is not in the tree, so `taskkill` cannot find it.
 The watchdog does not wait for such a descendant, so the limit still holds.
 A command that reaches the limit on Windows returns no output.
-
-`Lute.directoryLock` uses the file system. It checks a holder process with `kill -0` on POSIX and with `tasklist` on Windows.
 
 The Studio launcher and the attached Studio support macOS and Windows.
 On Windows, Verify finds Studio in the newest directory under `%LOCALAPPDATA%/Roblox/Versions` that holds `RobloxStudioBeta.exe`.
@@ -365,8 +343,6 @@ The reference Player launcher supports macOS only.
 On Windows, one launch starts more than one Player process, and no open-file query binds the report log to one process.
 `--host player` then reports the case `verify:execution` as `unsupported` with the missing capability `roblox-player-launcher`.
 `Lute.player.run` accepts a `backend` for another platform.
-
-`Lute.windowCapture` runs no command. It decides from window rows that you inject, so it works on each platform that can supply them.
 
 These defaults depend on the platform:
 

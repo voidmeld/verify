@@ -1326,18 +1326,6 @@ local function collectionCase(collection: Collection): Harness.CaseOptions
 	}
 end
 
-local luauHeap: Heap = {
-	unit = "kilobytes",
-	probe = function(): number?
-		local compiled = if loadstring ~= nil then loadstring "return collectgarbage('count')" else nil
-		if compiled == nil then
-			return nil
-		end
-		local ok, value: unknown = pcall(compiled)
-		return if ok and type(value) == "number" then value else nil
-	end,
-}
-
 local function store(name: string, results: { Result }): Stored
 	assert(type(name) == "string" and string.find(name, "%S") ~= nil, "a stored run needs a name")
 	assert(#results > 0, "a stored run needs at least one result")
@@ -1399,6 +1387,5 @@ return {
 	case = case,
 	collect = collect,
 	collection = collectionCase,
-	luauHeap = luauHeap,
 	limits = limitsOf,
 }

@@ -1,12 +1,13 @@
 --!strict
 
+local ReportModel = require "../src/core/report"
 local fs = require "@std/fs"
 
 local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
 local Verify = require "../src/core"
 local Worker = require "../src/lute/worker"
-local Parsing = require "../src/runtime/worker"
+local Parsing = require "../src/lute/worker"
 
 local function unit(id: string, locator: string): Verify.PlanUnit
 	return { id = id, locator = locator, group = nil, tags = {}, requires = {}, deadlineSeconds = nil, weight = 1 }
@@ -145,7 +146,9 @@ return function(suite: Verify.Harness)
 					end)
 				end,
 			})
-			check:expect((Verify.verdictDigest(selfRegisteringReport))):toEqual(Verify.verdictDigest(returnedReport))
+			check
+				:expect((ReportModel.verdictDigest(selfRegisteringReport)))
+				:toEqual(ReportModel.verdictDigest(returnedReport))
 			check:expect(selfRegisteringReport.passed):toEqual(returnedReport.passed)
 		end)
 	end)
@@ -233,15 +236,11 @@ return function(suite: Verify.Harness)
 			return session:run()
 		end
 
-		suite:case("separates the run id from pass-through arguments", function(check)
-			local bound = Parsing.parseArguments { "batch.json", "result.json", "run-1", "--", "--tier=fast", "--mine" }
-			check:expect(bound.runId):toEqual "run-1"
-			check:expect(bound.extras):toEqual { "--tier=fast", "--mine" }
-			local plain = Parsing.parseArguments { "batch.json", "result.json", "--", "--mine" }
-			check:expect(plain.runId):toEqual(nil)
-			check:expect(plain.extras):toEqual { "--mine" }
+		suite:case("collects the arguments after the separator", function(check)
+			local plain = Parsing.parseArguments { "batch.json", "result.json", "--", "--tier=fast", "--mine" }
+			check:expect(plain.extras):toEqual { "--tier=fast", "--mine" }
 			local bare = Parsing.parseArguments { "batch.json", "result.json" }
-			check:expect(bare.runId):toEqual(nil)
+			check:expect(bare.extras):toEqual {}
 			check:expect(bare.selection):toEqual(nil)
 		end)
 

@@ -3,16 +3,13 @@
 A plan is a finite set of units, declared capabilities and policy. Verify executes the plan.
 The consumer defines each locator and supplies the authorized host.
 
-`Core.validatePlan(draft)` normalizes IDs, locators, groups, tags, requirements, weights and policy.
+`Core.execute` validates the plan draft. It normalizes IDs, locators, groups, tags, requirements, weights and policy.
 Duplicate IDs, duplicate locators and malformed fields fail.
-
-- `selectPlan` narrows a plan by IDs, tags, capabilities, groups or a predicate.
-  The predicate sees the same source-bearing subject that harness and session selection use.
-- `partitionPlan(plan, count, mode?)` assigns every unit once and keeps fixture groups whole.
-  Count batching and weighted batching are deterministic functions of the authored metadata.
-- `planDigest` binds the meaning of a plan, not its timing.
-- `caseId` composes stable IDs.
-- `planFromManifest` accepts a manifest that you validated explicitly. `validateManifest` is the input boundary.
+Selection narrows the plan by IDs, tags, capabilities, groups or a predicate.
+The predicate sees the same source-bearing subject that harness and session selection use.
+Partitioning assigns every unit once and keeps fixture groups whole.
+Count batching and weighted batching are deterministic functions of the authored metadata.
+The plan digest binds the meaning of a plan, not its timing.
 
 All selection and partitioning use the plan.
 Consumers own discovery and changed-file reachability. Verify has no second scheduler.
@@ -30,7 +27,7 @@ Consumers own discovery and changed-file reachability. Verify has no second sche
 A host supplies `runBatch`. Optional parallel dispatch and artifact routing keep the same report semantics.
 A batch outcome is `returned`, `faulted`, `timed_out` or `cancelled`. Only a returned valid report carries verdicts.
 The host must stop timed-out and cancelled work and account for every dispatched batch.
-A clean exit without the expected receipt is a fault.
+A clean exit without the expected report is a fault.
 
 `execute` derives completeness from the original plan.
 Narrowing, missing results, infrastructure faults and contradictory retries stay explicit facts.
@@ -56,21 +53,13 @@ Every host uses the [ordinary harness context](experience.md#one-case-model).
 The harness retains body failures and cleanup failures independently.
 Verify has no separate lifecycle, actor runner or transcript verdict model.
 
-These host utilities are not alternative case formats:
-
-- `Core.waitUntil` is the standalone read-only polling primitive.
-- `Lute.runBounded(argv, seconds, runner?, options?)` enforces an external process-tree deadline. `options` sets `env` and `cwd`.
-- `Lute.directoryLock(root)` provides cross-process resource ownership.
-
-`Core.accountPlan(plan, execution)` reports what ran, the unsupported units and completeness.
-`Core.mediaProbeSummary`, `mediaAudioWindow`, `mediaAudioMeasurement` and `mediaSampleCommands` decode media measurements.
-Decoding alone provides no visual or audible judgment.
+Use `Lute.host` for an external process-tree deadline. It bounds each worker process.
 
 ## Lute workers
 
-`Lute.host({worker, command?, directory, capabilities?, arguments?, ...})` starts one process per batch.
-The host appends `arguments` after a `--` that follows the run ID.
-`Lute.workerArguments()` returns them with the run ID and with the selection that the worker derives from `--case=`, `--tag=`, `--tier=`, `--name=` (a case-name substring) and `--source=`.
+`Lute.host({worker, command?, directory?, capabilities?, arguments?, deadlineSeconds?, ...})` starts one process per batch.
+The host runs `<command> <worker> <batch.json> <result.json>`. It appends `arguments` after a `--`.
+The worker derives a selection from `--case=`, `--tag=`, `--tier=`, `--name=` (a case-name substring) and `--source=`.
 
 The batch deadline or the host `deadlineSeconds` (default 60) bounds the process tree of the worker.
 Use a separate directory for each concurrent run. The batch inputs and reports stay available for failure diagnosis.
@@ -84,11 +73,14 @@ Two worker styles exist:
 Both styles use the same session and failure classifier. Importing them creates no global registry.
 [The self-registering example](../examples/self-registering-worker.luau) shows the caller seam.
 
-`runWorkerBatch` and `runSelfRegisteringWorkerBatch` expose that lifecycle for injected execution.
 An explicit `classifyLoadFailure` can name a recognized prerequisite as skipped or unsupported.
 An unrecognized or throwing classifier leaves a hard failure.
 A successful load followed by a broken registration is a failure.
 Every missing source stays a named case.
+
+The host returns the report that the worker writes. It does not use the exit status of the worker.
+A missing or unreadable report is a fault. A timeout is `timed_out`.
+Load, registration and empty-discovery outcomes are ordinary case results and `Core.execute` facts.
 
 `Lute.corpus` supplies these parts:
 
@@ -101,46 +93,7 @@ Every missing source stays a named case.
 A query that matches nothing selects nothing.
 The consumer owns filesystem discovery and the committed complete corpus.
 A static require scan cannot infer dynamic edges.
-`encodeBatch` and `decodeBatch` transport the existing plan-batch schema.
-
-## Lune workers
-
-`Lune.host({worker, command?, directory?, deadlineSeconds?, ...})` from `src/lune` is the Lute host with a different runtime binding.
-It starts one real `lune run` process per batch.
-It uses the same plan batches, session, load and registration classification and report schema.
-`Lune.worker`, `selfRegisteringWorker`, `runWorkerBatch`, `runSelfRegisteringWorkerBatch`, `runBounded`, `encodeBatch` and `decodeBatch` mirror the Lute names.
-Run `lune run examples/lune-run.luau` for a consumer run with three batches: a passing unit, a failing unit and a missing unit.
-
-The logic lives once in `src/runtime`, over a `Runtime` binding `{ name, defaultCommand, defaultDirectory, json, fs, process, time, stdio, bounded? }`.
-`src/lute/runtime.luau` and `src/lune/runtime.luau` supply the services. `Binding.validate` refuses an incomplete binding.
-A third runtime needs only a binding. The Lute entry points keep the plain-report protocol.
-
-### Receipts
-
-A Lune host defaults to `receipts = "bound"`.
-
-1. The host passes a unique run ID as the third argument of the worker.
-2. The worker writes `{ receiptVersion, runId, batchId, report }` to a per-run file.
-3. The host returns a report only when all of these conditions hold:
-   - The receipt parses and belongs to this run and batch.
-   - The receipt decodes as a valid report.
-   - The worker exited with zero.
-
-These cases are faults or timeouts, never a pass:
-
-- A missing, malformed, stale (other run), foreign (other batch) or invalid receipt.
-- A nonzero exit beside a receipt.
-- An unstartable or absent worker.
-- Every timeout.
-
-One exception exists.
-A worker can exit nonzero beside a valid receipt that records a failed or unsupported load (`unit:<id>:load`).
-The host returns that report and does not fault it, because Lune exits with 1 after a module raised at `require`, even inside `pcall`.
-Any other nonzero exit beside a receipt stays a fault.
-
-The host keeps the worker output beside the receipt as `*-worker.log` and names it in the fault detail.
-`receipts = "report"` is the Lute default. It accepts a plain report and ignores the exit status.
-Load, registration and empty-discovery outcomes are ordinary case results and `Core.execute` facts.
+`Lute.decodeBatch` reads the plan-batch file that a worker receives.
 
 ### Limits
 
@@ -150,28 +103,20 @@ The batch deadline kills the process tree of the worker, including grandchildren
 - On Windows, the Lute watchdog `src/lute/tree-watchdog.luau` starts a reporter process that records its process ID and runs the command. At the limit, the watchdog kills the tree of the reporter with `taskkill /T /F`. The watchdog returns the exit code, stdout and stderr in one length-framed record.
 
 If no mechanism works, the run does not start the command. It returns `unsupported = true` and `ok = false`, so the capabilities `posix-process-groups` and `process-tree-kill` are never claimed falsely.
-A runtime binding names its mechanism in `bounded = { mechanism, watchdog?, shell? }`. The Lute and Lune bindings select `tree` on Windows and leave the POSIX default elsewhere.
-
-- Lune workers run on macOS, Linux and Windows. On Windows, `lute` must be on `PATH` to start the watchdog.
-- `lune` must be on `PATH` or named in `command`.
-- Each worker resolves its own `require` paths relative to its script.
-- `@lune/*` services load dynamically, so static analysis does not type them.
-- A pass proves Luau logic under Lune. It does not prove Lute, Studio or Player behavior.
-
-The `lune-specs` producer of the [repository gate](running.md#repository-gate) drives real `lune` subprocesses for these claims.
+`src/lute/runtime.luau` selects `tree` on Windows and the POSIX mechanism elsewhere.
+Each worker resolves its own `require` paths relative to its script.
 
 ## Declarative gates
 
 `Gate.define({ id, producers, policy? })` declares what a run must produce.
-`Lute.gate.run(gate, options?)` and `Lune.gate.run` execute it through `Core.execute`.
+`Lute.gate.run(gate, options?)` executes it through `Core.execute`.
 The result is one plan and one `Core.Report`. No second scheduler and no second record exist.
-Both are bindings over `src/runtime/gate.luau`.
 Another host calls `Gate.run(gate, executor, { runId, ... })` with an injected `{ now, wait, start }`.
 
 | Producer | Fields | Runs |
 | --- | --- | --- |
-| `tests` | `worker`, `locators`, `command?`, `silent?`, `isolate?`, `workers?`, `sourceDeadlineSeconds?`, `args?`, `cases?` | Ordinary spec modules in one [Lute worker](#lute-workers) process. `command` replaces the worker command of the gate, for example `{ "lune", "run" }` for a [Lune worker](#lune-workers). With `isolate`, one worker process runs per locator, `workers` at a time. The gate accounts them as this one producer. |
-| `command`, `build`, `native` | `argv`, `env?`, `cwd?`, `exit?`, `report?` | An argument vector in a bounded process tree. `env` adds to the inherited environment. `cwd` is set through the runtime binding. No shell wrapper runs. `native` must name its host in `requires`. |
+| `tests` | `worker`, `locators`, `command?`, `silent?`, `isolate?`, `workers?`, `sourceDeadlineSeconds?`, `args?`, `cases?` | Ordinary spec modules in one [Lute worker](#lute-workers) process. `command` replaces the worker command of the gate. With `isolate`, one worker process runs per locator, `workers` at a time. The gate accounts them as this one producer. |
+| `command`, `build`, `native` | `argv`, `env?`, `cwd?`, `exit?`, `report?` | An argument vector in a bounded process tree. `env` adds to the inherited environment. `cwd` sets the working directory. No shell wrapper runs. `native` must name its host in `requires`. |
 | `benchmark` | `benchmark` or `collection` | A [benchmark](experience.md#benchmarks) or a benchmark collection in this process, alone by default. A producer names one of the two. |
 
 Fields of the `tests` producer:
@@ -183,14 +128,6 @@ Fields of the `tests` producer:
 - `cases` declares the exact case census. A missing case or an unexpected case fails the producer.
 - `args` go to each worker after `--`.
 - A load, registration, hang or fault of one isolated source becomes a failed or timed-out case. The case names the locator of that source and counts once.
-
-`Gate.shard(plan, { prefix, worker, count, mode?, silent?, ... })` turns a plan of the consumer into drafts of `tests` producers.
-It uses `partitionPlan`, so fixture groups stay whole and weights balance.
-It carries the `silent` names that fall in each shard.
-With `policy.concurrency`, the shards run in parallel and keep the structure of the plan.
-
-`Gate.testCases(outcome)` returns the execution report without the producer-level case that each `tests` producer adds.
-The counts then show only the cases of the modules. It uses the `without` of the report and does not recount.
 
 ### Producer and policy fields
 
@@ -207,7 +144,7 @@ Policy sets `concurrency` (default 1), the whole-run `deadlineSeconds`, `failFas
 - **Order and concurrency.** Producers start in declaration order after everything that they run `after` has passed.
   No more than `concurrency` producers run at once. An exclusive producer runs alone.
   A producer after one that did not pass is `blocked`.
-- **Deadlines.** Each command is bounded as `runBounded` bounds it. Verify kills its process tree at the limit, in whole seconds rounded up.
+- **Deadlines.** Verify bounds each command as it bounds a worker. It kills its process tree at the limit, in whole seconds rounded up.
   The run deadline clamps each start. Producers that the deadline prevents from starting are `timed_out`.
 - **Exit and reports.**
   - Exit zero passes, unless `exit` maps the code to `passed`, `failed`, `deferred` or `unsupported`.
@@ -228,7 +165,7 @@ Policy sets `concurrency` (default 1), the whole-run `deadlineSeconds`, `failFas
   - `tiers` and `cases` reach every `tests` worker as `--tier=` and `--case=`. They reach a command as the placeholders `{tier}` and `{cases}`.
   - `nameContains` and `sources` reach every `tests` worker as `--name=` and `--source=`. A command does not receive them.
     Without `ids`, tiers or tags, they select the `tests` producers. A filter that matches no case in any selected producer fails the run.
-  - A worker that `Lute.worker` or `Lune.worker` starts runs a case tagged `tier:<name>` only in that tier. It runs untagged cases in every tier.
+  - A worker that `Lute.worker` starts runs a case tagged `tier:<name>` only in that tier. It runs untagged cases in every tier.
     It records each other case as `skipped` with a `deselected:` reason (`Selection.account`).
     A deselected case is neither a pass nor a failure. Verify never recounts it, and it keeps the run `selected`.
   - Named `cases` that no selected producer reported fail the run.
@@ -237,11 +174,11 @@ Policy sets `concurrency` (default 1), the whole-run `deadlineSeconds`, `failFas
   - `Gate.rerun(outcome)` returns the selection of the producers that did not pass. It narrows to their failing cases when every one of them reported such cases.
   - `Gate.explain(outcome, id)` says why a producer or case was selected, pulled in, not selected (with the reason), deferred, blocked, failed or reused.
   - `Gate.list(gate)` lists the producers.
-  - `Lute.gate.run` and `Lune.gate.run` keep `outcome.json` in the run directory and `latest.json` in the base directory.
+  - `Lute.gate.run` keeps `outcome.json` in the run directory and `latest.json` in the base directory.
     `last(gate)` returns it only for the same gate digest.
   - The `--file` flag narrows the census of a `tests` producer to the case IDs that start with `<spec file>::` for the kept files. It drops the census when an ID names no declared file.
     `--name`, `--case` and `--source` keep the whole census, because the worker accounts for each deselected case.
-  - `Lute.gate.cli(draft, args, options?)` and `Lune.gate.cli` parse the flags, run the entry points and return the exit code. See [the gate command line](running.md#gate-command-line).
+  - `Lute.gate.cli(draft, args, options?)` parses the flags, runs the entry points and returns the exit code. See [the gate command line](running.md#gate-command-line).
   - `tools/gate.luau` exposes these entry points as `--tier`, `--case`, `--name`, `--rerun`, `--explain` and `--list`.
 - **Acceptance.** `outcome.acceptance.verdict` is `release`, `deferred`, `selected` or `failed`. Only `release` is `releasable`.
   - A missing host capability is `unsupported` and fails.

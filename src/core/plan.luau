@@ -330,25 +330,6 @@ local function digest(plan: PlanDraft): string
 	return ("%08x-%d"):format(hash, #text)
 end
 
-local function fromManifest(manifest: Types.Manifest, policy: PlanPolicyDraft?): Plan
-	local units: { Types.PlanUnitDraft } = {}
-	for _, entry in manifest.entries do
-		table.insert(units, {
-			id = entry.id,
-			locator = entry.source,
-			group = entry.group,
-			tags = entry.tags,
-			requires = entry.requires,
-		})
-	end
-	return validate {
-		schemaVersion = SCHEMA_VERSION,
-		id = ("manifest-v%d"):format(manifest.schemaVersion),
-		policy = policy,
-		units = units,
-	}
-end
-
 return {
 	SCHEMA_VERSION = SCHEMA_VERSION,
 	validate = validate,
@@ -356,5 +337,4 @@ return {
 	partition = partition,
 	caseId = caseId,
 	digest = digest,
-	fromManifest = fromManifest,
 }

@@ -31,32 +31,6 @@ local function denseRows(value: unknown, count: number): boolean
 	return true
 end
 
-local function deeplyFinite(value: unknown): boolean
-	if type(value) == "number" then
-		return finite(value)
-	end
-	if type(value) ~= "table" then
-		return true
-	end
-	for key, child in value :: { [unknown]: unknown } do
-		if not deeplyFinite(key) or not deeplyFinite(child) then
-			return false
-		end
-	end
-	return true
-end
-
-local function safeId(value: unknown): boolean
-	return type(value) == "string"
-		and #(value :: string) >= 1
-		and #(value :: string) <= 64
-		and string.match(value :: string, "^[A-Za-z0-9][A-Za-z0-9._-]*$") ~= nil
-end
-
-local function nonempty(value: unknown): boolean
-	return type(value) == "string" and #(value :: string) > 0
-end
-
 local function exactKeys(value: unknown, fields: { [string]: boolean }): boolean
 	if type(value) ~= "table" or ((getmetatable :: unknown) :: (unknown) -> unknown)(value) ~= nil then
 		return false
@@ -68,18 +42,6 @@ local function exactKeys(value: unknown, fields: { [string]: boolean }): boolean
 	end
 	for key in fields do
 		if (value :: { [string]: unknown })[key] == nil then
-			return false
-		end
-	end
-	return true
-end
-
-local function hasOnlyFields(value: unknown, fields: { [string]: boolean }): boolean
-	if type(value) ~= "table" then
-		return false
-	end
-	for key in value :: { [unknown]: unknown } do
-		if type(key) ~= "string" or fields[key] ~= true then
 			return false
 		end
 	end
@@ -122,10 +84,5 @@ return {
 	finiteNonnegative = finiteNonnegative,
 	nonnegativeInteger = nonnegativeInteger,
 	denseRows = denseRows,
-	deeplyFinite = deeplyFinite,
-	safeId = safeId,
-	nonempty = nonempty,
 	exact = exactKeys,
-	exactKeys = exactKeys,
-	hasOnlyFields = hasOnlyFields,
 }

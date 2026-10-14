@@ -7,30 +7,18 @@ local Capability = require "@self/capability"
 local Execution = require "@self/execution"
 local HarnessModule = require "@self/harness"
 local Progress = require "@self/progress"
-local Manifest = require "@self/manifest"
 local Matchers = require "@self/matchers"
-local Media = require "@self/media"
-local Plan = require "@self/plan"
 local Provenance = require "@self/provenance"
-local Shape = require "@self/shape"
 local ReportModel = require "@self/report"
 local SessionModule = require "@self/session"
 local Spy = require "@self/spy"
 local Attachment = require "@self/attachment"
 local Transport = require "@self/transport"
 local Types = require "@self/types"
-local Wait = require "@self/wait"
-local Console = require "@self/console"
-local SourceCorpus = require "@self/source-corpus"
-
-export type SourceIdentity = SourceCorpus.Identity
-export type SourceCorpusManifest = SourceCorpus.Manifest
 
 export type OperationRequest = Operations.Request
 export type CaseHost = Operations.Host
 export type Operation<I, O> = Operations.Operation<I, O>
-export type OperationBinding = Operations.Binding
-export type OperationHostOptions = Operations.HostOptions
 export type NamedCase = HarnessModule.NamedCase
 export type PerformanceInput = Performance.Input
 export type PerformanceSummary = Performance.Summary
@@ -102,20 +90,6 @@ export type EvidenceContent = Provenance.Content
 export type EvidenceMeta = Provenance.Meta
 export type EvidenceStat = Provenance.Stat
 
-export type MediaAudioWindow = Media.AudioWindow
-export type MediaResolvedAudioWindow = Media.ResolvedAudioWindow
-export type MediaRecording = Media.Recording
-export type MediaProbe = Media.Probe
-export type MediaProbeStream = Media.ProbeStream
-export type MediaSummary = Media.Summary
-export type MediaAudioMeasurement = Media.AudioMeasurement
-export type MediaSampleCommand = Media.SampleCommand
-
-export type WaitOps = Wait.Ops
-export type WaitProbe = Wait.Probe
-export type WaitSpec = Wait.Spec
-export type WaitResult = Wait.Result
-
 export type Negotiation = Capability.Negotiation
 export type Session<S = { [string]: unknown }> = SessionModule.Session<S>
 export type SessionOptions<S = { [string]: unknown }> = SessionModule.Options<S>
@@ -125,85 +99,31 @@ export type Segment = Transport.Segment
 export type ProgressEvent = Progress.Event
 export type RunProgress = Progress.Progress
 
-export type ClassifyConsoleOptions = Console.ClassifyOptions
-
 return {
-	sourceCorpus = SourceCorpus,
-	operation = Operations.operation,
-	bindOperation = Operations.bind,
-	bindHostOperation = Operations.binding,
-	operationHost = Operations.host,
-	DESELECTED_PREFIX = HarnessModule.DESELECTED_PREFIX,
+	SCHEMA_VERSION = ReportModel.SCHEMA_VERSION,
+	createHarness = HarnessModule.createHarness,
 	runCase = HarnessModule.runCase,
 	runCases = HarnessModule.runCases,
-	progress = Progress,
-	performance = Performance,
-	SCHEMA_VERSION = ReportModel.SCHEMA_VERSION,
-	MANIFEST_SCHEMA_VERSION = Manifest.SCHEMA_VERSION,
-	PLAN_SCHEMA_VERSION = Plan.SCHEMA_VERSION,
-	EXECUTION_SCHEMA_VERSION = Execution.SCHEMA_VERSION,
-	TIMING_FIELDS = ReportModel.TIMING_FIELDS,
-
-	createHarness = HarnessModule.createHarness,
 	syntheticReport = HarnessModule.syntheticReport,
 	format = HarnessModule.format,
+	createSession = SessionModule.create,
+	execute = Execution.execute,
 	expect = Matchers.expect,
 	float32 = Matchers.float32,
 	spy = Spy.on,
-
-	validateManifest = Manifest.validate,
-
-	validatePlan = Plan.validate,
-	selectPlan = Plan.select,
-	partitionPlan = Plan.partition,
-	planDigest = Plan.digest,
-	planFromManifest = Plan.fromManifest,
-	caseId = Plan.caseId,
-
-	negotiate = Capability.negotiate,
-	explainCapabilities = Capability.explain,
-
-	execute = Execution.execute,
-	accountPlan = Execution.account,
-	createSession = SessionModule.create,
-	waitUntil = Wait.waitUntil,
+	operation = Operations.operation,
+	bindOperation = Operations.bind,
+	progress = Progress,
+	performance = Performance,
 	memorySink = Provenance.memorySink,
-	mediaAudioWindow = Media.audioWindow,
-	mediaProbeSummary = Media.probeSummary,
-	mediaAudioMeasurement = Media.audioMeasurement,
-	mediaSampleCommands = Media.sampleCommands,
-
+	decode = ReportModel.decode,
+	merge = ReportModel.merge,
+	compose = ReportModel.compose,
+	observationParity = ReportModel.observationParity,
 	frame = Transport.frame,
 	extract = Transport.extract,
 	reassemble = Transport.reassemble,
 	receipt = Transport.receipt,
-	attachmentDefaults = {
-		maxBytes = Attachment.DEFAULT_MAX_BYTES,
-		maxCount = Attachment.DEFAULT_MAX_COUNT,
-		maxTotalBytes = Attachment.DEFAULT_MAX_TOTAL_BYTES,
-	},
 	segment = Transport.segment,
 	reassembleSegments = Transport.reassembleSegments,
-
-	finite = Shape.finite,
-	finiteNonnegative = Shape.finiteNonnegative,
-	nonnegativeInteger = Shape.nonnegativeInteger,
-	denseRows = Shape.denseRows,
-	deeplyFinite = Shape.deeplyFinite,
-	safeId = Shape.safeId,
-	nonempty = Shape.nonempty,
-	exact = Shape.exact,
-	exactKeys = Shape.exactKeys,
-	hasOnlyFields = Shape.hasOnlyFields,
-	decode = ReportModel.decode,
-	merge = ReportModel.merge,
-	compose = ReportModel.compose,
-	canonical = ReportModel.canonical,
-	verdictDigest = ReportModel.verdictDigest,
-	verdictDifferences = ReportModel.verdictDifferences,
-	observationParity = ReportModel.observationParity,
-
-	classifyConsole = Console.classifyConsole,
-	classifyConsoleText = Console.classifyConsoleText,
-	splitConsoleLines = Console.splitConsoleLines,
 }

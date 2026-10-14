@@ -1509,51 +1509,6 @@ local function rerun(outcome: GateTypes.Outcome): GateTypes.Selection?
 	return { ids = ids, cases = if narrowable then cases else nil }
 end
 
-export type ShardOptions = {
-	prefix: string,
-	worker: string,
-	count: number,
-	mode: Types.BatchingMode?,
-	silent: { string }?,
-	tier: string?,
-	tags: { string }?,
-	requires: { string }?,
-	deadlineSeconds: number?,
-}
-
-local function shard(plan: Types.PlanDraft, options: ShardOptions): { GateTypes.ProducerDraft }
-	local silent: { [string]: boolean } = {}
-	local declared: { string } = options.silent or {}
-	for _, locator in declared do
-		silent[locator] = true
-	end
-	local drafts: { GateTypes.ProducerDraft } = {}
-	for _, batch in Plan.partition(plan, options.count, options.mode) do
-		local locators: { string } = {}
-		local quiet: { string } = {}
-		for _, unit in batch.units do
-			table.insert(locators, unit.locator)
-			if silent[unit.locator] then
-				table.insert(quiet, unit.locator)
-			end
-		end
-		if #locators > 0 then
-			table.insert(drafts, {
-				id = ("%s-%d"):format(options.prefix, batch.index),
-				kind = "tests",
-				worker = options.worker,
-				locators = locators,
-				silent = quiet,
-				tier = options.tier,
-				tags = options.tags,
-				requires = options.requires,
-				deadlineSeconds = options.deadlineSeconds,
-			})
-		end
-	end
-	return drafts
-end
-
 local function testCases(outcome: GateTypes.Outcome): Report
 	local own: { string } = {}
 	for _, record in outcome.producers do
@@ -1566,9 +1521,7 @@ end
 
 return {
 	SCHEMA_VERSION = SCHEMA_VERSION,
-	shard = shard,
 	testCases = testCases,
-	DEFAULT_COMMAND_DEADLINE = DEFAULT_COMMAND_DEADLINE,
 	define = define,
 	run = run,
 	format = format,

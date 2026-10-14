@@ -227,7 +227,6 @@ local function lockText(sections: { LockSection }): string
 end
 
 return {
-	LOCK_SCHEMA_VERSION = LOCK_SCHEMA_VERSION,
 	discover = discover,
 	groupByRequire = groupByRequire,
 	workers = workers,

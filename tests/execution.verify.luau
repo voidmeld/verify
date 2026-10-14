@@ -1,6 +1,9 @@
 --!strict
 
-local Host = require "../src/host"
+local ReportModel = require "../src/core/report"
+local Execution = require "../src/core/execution"
+local Plan = require "../src/core/plan"
+local Host = require "./fake-host"
 local Verify = require "../src/core"
 
 local function passing(name: string): Host.UnitRun
@@ -69,7 +72,8 @@ end
 return function(suite: Verify.Harness)
 	suite:suite("focused runs are never the gate", function()
 		suite:case("marks a narrowed run incomplete and names what it did not run", function(check)
-			local focused = Verify.execute(PLAN, Host.fake { units = UNITS }, { selection = { ids = { "beta/one" } } })
+			local focused =
+				Verify.execute(PLAN, Host.create { units = UNITS }, { selection = { ids = { "beta/one" } } })
 			check:expect(focused.provenance.complete):toEqual(false)
 			check:expect(focused.provenance.unitCount):toEqual(1)
 			check:expect(focused.provenance.planUnitCount):toEqual(4)
@@ -80,7 +84,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("marks the complete plan complete and says nothing about focus", function(check)
-			local whole = Verify.execute(PLAN, Host.fake { units = UNITS })
+			local whole = Verify.execute(PLAN, Host.create { units = UNITS })
 			check:expect(whole.provenance.complete):toEqual(true)
 			check:expect(whole.provenance.unitCount):toEqual(whole.provenance.planUnitCount)
 			check:expect((hasFact(whole, "focused-run"))):toEqual(false)
@@ -89,26 +93,26 @@ return function(suite: Verify.Harness)
 		suite:case("cannot be told it was complete when it was not", function(check)
 			local everything = Verify.execute(
 				PLAN,
-				Host.fake { units = UNITS },
+				Host.create { units = UNITS },
 				{ selection = { ids = { "alpha/one", "alpha/two", "beta/one", "gamma/one" } } }
 			)
 			check:expect(everything.provenance.complete):toEqual(true)
 			check:expect((hasFact(everything, "focused-run"))):toEqual(false)
 
-			local narrowed = Verify.execute(PLAN, Host.fake { units = UNITS }, { selection = { tags = { "slow" } } })
+			local narrowed = Verify.execute(PLAN, Host.create { units = UNITS }, { selection = { tags = { "slow" } } })
 			check:expect(narrowed.provenance.complete):toEqual(false)
 		end)
 	end)
 
 	suite:suite("execution equivalence", function()
 		suite:case("produces the same report serially and four ways in parallel", function(check)
-			local serial = Verify.execute(PLAN, Host.fake { units = UNITS }, { batchCount = 4, parallel = 1 })
+			local serial = Verify.execute(PLAN, Host.create { units = UNITS }, { batchCount = 4, parallel = 1 })
 			local parallel = Verify.execute(
 				PLAN,
-				Host.fake { units = UNITS, maxParallelBatches = 4, completionOrder = "reverse" },
+				Host.create { units = UNITS, maxParallelBatches = 4, completionOrder = "reverse" },
 				{ batchCount = 4, parallel = 4 }
 			)
-			check:expect((Verify.canonical(parallel.report))):toEqual(Verify.canonical(serial.report))
+			check:expect((ReportModel.canonical(parallel.report))):toEqual(ReportModel.canonical(serial.report))
 			check:expect(serial.provenance.parallelism):toEqual(1)
 			check:expect(parallel.provenance.parallelism):toEqual(4)
 			check:expect(serial.provenance.planDigest):toEqual(parallel.provenance.planDigest)
@@ -116,21 +120,21 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("produces the same report at every batch count", function(check)
-			local one = Verify.execute(PLAN, Host.fake { units = UNITS }, { batchCount = 1 })
+			local one = Verify.execute(PLAN, Host.create { units = UNITS }, { batchCount = 1 })
 			for count = 2, 5 do
 				local other = Verify.execute(
 					PLAN,
-					Host.fake { units = UNITS, maxParallelBatches = count, completionOrder = "reverse" },
+					Host.create { units = UNITS, maxParallelBatches = count, completionOrder = "reverse" },
 					{ batchCount = count, parallel = count }
 				)
-				check:expect((Verify.canonical(other.report))):toEqual(Verify.canonical(one.report))
+				check:expect((ReportModel.canonical(other.report))):toEqual(ReportModel.canonical(one.report))
 			end
 		end)
 
 		suite:case("never exceeds the parallelism the host declares", function(check)
 			local execution = Verify.execute(
 				PLAN,
-				Host.fake { units = UNITS, maxParallelBatches = 2 },
+				Host.create { units = UNITS, maxParallelBatches = 2 },
 				{ batchCount = 4, parallel = 8 }
 			)
 			check:expect(execution.provenance.parallelism):toEqual(2)
@@ -140,20 +144,20 @@ return function(suite: Verify.Harness)
 		suite:case("keeps a failing case failing however the run was scheduled", function(check)
 			local units = table.clone(UNITS)
 			units["beta/one"] = failing "beta one"
-			local serial = Verify.execute(PLAN, Host.fake { units = units }, { batchCount = 4, parallel = 1 })
+			local serial = Verify.execute(PLAN, Host.create { units = units }, { batchCount = 4, parallel = 1 })
 			local parallel = Verify.execute(
 				PLAN,
-				Host.fake { units = units, maxParallelBatches = 4, completionOrder = "reverse" },
+				Host.create { units = units, maxParallelBatches = 4, completionOrder = "reverse" },
 				{ batchCount = 4, parallel = 4 }
 			)
-			check:expect((Verify.canonical(parallel.report))):toEqual(Verify.canonical(serial.report))
+			check:expect((ReportModel.canonical(parallel.report))):toEqual(ReportModel.canonical(serial.report))
 			check:expect(serial.report.failed):toEqual(1)
 		end)
 	end)
 
 	suite:suite("execution capability negotiation", function()
 		suite:case("never dispatches a unit whose requirement the host lacks", function(check)
-			local host = Host.fake { units = UNITS, capabilities = { "in-memory" } }
+			local host = Host.create { units = UNITS, capabilities = { "in-memory" } }
 			local plan = table.clone(PLAN)
 			plan.units = {
 				{ id = "alpha/one", locator = "alpha/one.verify.luau" },
@@ -170,7 +174,7 @@ return function(suite: Verify.Harness)
 
 		suite:case("carries the declared capability set into the report", function(check)
 			local execution =
-				Verify.execute(PLAN, Host.fake { units = UNITS, capabilities = { "in-memory", "worker" } })
+				Verify.execute(PLAN, Host.create { units = UNITS, capabilities = { "in-memory", "worker" } })
 			check:expect(execution.capabilities):toEqual { "in-memory", "worker" }
 			check:expect(execution.report.capabilities):toEqual { "in-memory", "worker" }
 		end)
@@ -178,7 +182,7 @@ return function(suite: Verify.Harness)
 		suite:case("makes an unservable plan unsupported rather than failed", function(check)
 			local plan = table.clone(PLAN)
 			plan.requires = { "engine-datamodel" }
-			local execution = Verify.execute(plan, Host.fake { units = UNITS })
+			local execution = Verify.execute(plan, Host.create { units = UNITS })
 			check:expect(execution.report.unsupported):toEqual(4)
 			check:expect(execution.report.passed):toEqual(0)
 			check:expect((hasFact(execution, "plan-capability-missing"))):toEqual(true)
@@ -187,7 +191,7 @@ return function(suite: Verify.Harness)
 
 	suite:suite("execution provenance and artifacts", function()
 		suite:case("stamps the plan identity and digest onto the report environment", function(check)
-			local execution = Verify.execute(PLAN, Host.fake { units = UNITS })
+			local execution = Verify.execute(PLAN, Host.create { units = UNITS })
 			check:expect(execution.report.environment["verify.plan"]):toEqual "example"
 			check:expect(execution.report.environment["verify.planDigest"]):toEqual(execution.provenance.planDigest)
 			check:expect(execution.report.environment["verify.planSchema"]):toEqual "1"
@@ -205,7 +209,7 @@ return function(suite: Verify.Harness)
 				end,
 			}
 			local plan: Verify.PlanDraft = { id = "p", units = { { id = "alpha/one", locator = "a.verify.luau" } } }
-			local execution = Verify.execute(plan, Host.fake { units = units, artifactPrefix = "store://" })
+			local execution = Verify.execute(plan, Host.create { units = units, artifactPrefix = "store://" })
 			check
 				:expect(execution.report.results[1].artifacts[1].reference)
 				:toEqual "store://a.verify.luau::emits/trace.json"
@@ -225,7 +229,7 @@ return function(suite: Verify.Harness)
 					{ id = "alpha/two", locator = "alpha/two.verify.luau" },
 				},
 			}
-			local execution = Verify.execute(plan, Host.fake { units = units })
+			local execution = Verify.execute(plan, Host.create { units = units })
 			local ran = execution.report.results[1]
 			local missing = execution.report.results[2]
 			check:expect(ran.source):toEqual "alpha/one.verify.luau"
@@ -242,7 +246,7 @@ return function(suite: Verify.Harness)
 				end,
 			}
 			local plan: Verify.PlanDraft = { id = "p", units = { { id = "alpha/one", locator = "a.verify.luau" } } }
-			local execution = Verify.execute(plan, Host.fake { units = units, artifactFailsFor = "trace" })
+			local execution = Verify.execute(plan, Host.create { units = units, artifactFailsFor = "trace" })
 			check:expect(execution.report.results[1].artifacts[1].reference):toEqual "trace.json"
 			check:expect((hasFact(execution, "artifact-sink-failed"))):toEqual(true)
 		end)
@@ -251,7 +255,7 @@ return function(suite: Verify.Harness)
 	suite:suite("execution fixtures", function()
 		suite:case("releases fixtures newest-first, exactly once", function(check)
 			local order: { string } = {}
-			local execution = Verify.execute(PLAN, Host.fake { units = UNITS }, {
+			local execution = Verify.execute(PLAN, Host.create { units = UNITS }, {
 				fixtures = {
 					{
 						name = "outer",
@@ -278,7 +282,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("dispatches nothing when a fixture will not acquire", function(check)
-			local host = Host.fake { units = UNITS }
+			local host = Host.create { units = UNITS }
 			local released = false
 			local fixtures: { Verify.Fixture } = {
 				{
@@ -306,7 +310,7 @@ return function(suite: Verify.Harness)
 
 		suite:case("keeps releasing after a release fails, and names the one that failed", function(check)
 			local releases: { string } = {}
-			local execution = Verify.execute(PLAN, Host.fake { units = UNITS }, {
+			local execution = Verify.execute(PLAN, Host.create { units = UNITS }, {
 				fixtures = {
 					{
 						name = "outer",
@@ -341,7 +345,7 @@ return function(suite: Verify.Harness)
 		suite:case("never retries a batch that returned failing cases", function(check)
 			local units = table.clone(UNITS)
 			units["alpha/one"] = failing "alpha one"
-			local host = Host.fake { units = units }
+			local host = Host.create { units = units }
 			local plan = table.clone(PLAN)
 			plan.policy = { retry = { maxAttempts = 3, on = { "faulted", "timed_out" } } }
 			local execution = Verify.execute(plan, host, { batchCount = 4 })
@@ -355,7 +359,7 @@ return function(suite: Verify.Harness)
 		suite:case("retries an infrastructure fault and keeps every attempt", function(check)
 			local plan = table.clone(PLAN)
 			plan.policy = { retry = { maxAttempts = 3, on = { "faulted" } } }
-			local host = Host.fake {
+			local host = Host.create {
 				units = UNITS,
 				faults = {
 					{
@@ -383,7 +387,7 @@ return function(suite: Verify.Harness)
 		suite:case("stops retrying at the attempt ceiling and accounts for every unit", function(check)
 			local plan = table.clone(PLAN)
 			plan.policy = { retry = { maxAttempts = 2, on = { "faulted" } } }
-			local host = Host.fake {
+			local host = Host.create {
 				units = UNITS,
 				faults = { { batch = "batch-1", status = "faulted" :: Verify.BatchStatus, detail = "worker vanished" } },
 			}
@@ -397,7 +401,7 @@ return function(suite: Verify.Harness)
 		suite:case("does not retry a timeout the policy did not name", function(check)
 			local plan = table.clone(PLAN)
 			plan.policy = { retry = { maxAttempts = 3, on = { "faulted" } } }
-			local host = Host.fake {
+			local host = Host.create {
 				units = UNITS,
 				faults = {
 					{
@@ -426,7 +430,7 @@ return function(suite: Verify.Harness)
 				phase = "case",
 				message = "it failed the first time",
 			}
-			local host = Host.fake {
+			local host = Host.create {
 				units = UNITS,
 				faults = {
 					{
@@ -452,7 +456,7 @@ return function(suite: Verify.Harness)
 		suite:case("names a batch the host never delivered an outcome for", function(check)
 			local execution = Verify.execute(
 				PLAN,
-				Host.fake { units = UNITS, maxParallelBatches = 4, dropped = { "batch-2" } },
+				Host.create { units = UNITS, maxParallelBatches = 4, dropped = { "batch-2" } },
 				{ batchCount = 4, parallel = 4 }
 			)
 			check:expect((hasFact(execution, "missing-batch-outcome"))):toEqual(true)
@@ -463,7 +467,7 @@ return function(suite: Verify.Harness)
 		suite:case("keeps one outcome when the host delivers a batch twice", function(check)
 			local execution = Verify.execute(
 				PLAN,
-				Host.fake { units = UNITS, maxParallelBatches = 4, duplicated = { "batch-3" } },
+				Host.create { units = UNITS, maxParallelBatches = 4, duplicated = { "batch-3" } },
 				{ batchCount = 4, parallel = 4 }
 			)
 			check:expect((hasFact(execution, "duplicate-batch-outcome"))):toEqual(true)
@@ -474,7 +478,7 @@ return function(suite: Verify.Harness)
 		suite:case("names an undecodable payload as a fault rather than believing it", function(check)
 			local execution = Verify.execute(
 				PLAN,
-				Host.fake {
+				Host.create {
 					units = UNITS,
 					faults = {
 						{
@@ -492,7 +496,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("names a host that raised mid-batch", function(check)
-			local host = Host.fake { units = UNITS }
+			local host = Host.create { units = UNITS }
 			local wrapped: Verify.Host = host
 			wrapped.runBatch = function(): Verify.BatchOutcome
 				error("the host exploded", 0)
@@ -509,7 +513,7 @@ return function(suite: Verify.Harness)
 			local plan = table.clone(PLAN)
 
 			plan.policy = { runDeadlineSeconds = 0.000001 }
-			local host = Host.fake { units = UNITS }
+			local host = Host.create { units = UNITS }
 			local execution = Verify.execute(plan, host, { batchCount = 4 })
 			check:expect(#host.dispatched):toEqual(0)
 			check:expect((hasFact(execution, "run-deadline-exceeded"))):toEqual(true)
@@ -517,7 +521,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("marks what a cancellation stopped as cancelled", function(check)
-			local host = Host.fake { units = UNITS, cancelAfter = 2 }
+			local host = Host.create { units = UNITS, cancelAfter = 2 }
 			local execution = Verify.execute(PLAN, host, { batchCount = 4 })
 			check:expect(#host.dispatched):toEqual(2)
 			check:expect((hasFact(execution, "cancelled"))):toEqual(true)
@@ -531,7 +535,7 @@ return function(suite: Verify.Harness)
 			units["alpha/one"] = failing "alpha one"
 			local plan = table.clone(PLAN)
 			plan.policy = { failFast = true }
-			local host = Host.fake { units = units }
+			local host = Host.create { units = units }
 			local execution = Verify.execute(plan, host, { batchCount = 4, parallel = 1 })
 			check:expect(#host.dispatched):toEqual(1)
 			check:expect((hasFact(execution, "fail-fast-stopped"))):toEqual(true)
@@ -546,7 +550,7 @@ return function(suite: Verify.Harness)
 			plan.policy = { failFast = true }
 			local execution = Verify.execute(
 				plan,
-				Host.fake { units = UNITS, maxParallelBatches = 4 },
+				Host.create { units = UNITS, maxParallelBatches = 4 },
 				{ batchCount = 4, parallel = 4 }
 			)
 			check:expect((hasFact(execution, "fail-fast-granularity"))):toEqual(true)
@@ -554,7 +558,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("fails a run that proved nothing", function(check)
-			local execution = Verify.execute({ id = "empty", units = {} }, Host.fake { units = {} })
+			local execution = Verify.execute({ id = "empty", units = {} }, Host.create { units = {} })
 			check:expect((hasFact(execution, "no-cases"))):toEqual(true)
 			check:expect((statusOf(execution.report, "execution:no-cases:empty"))):toEqual "failed"
 		end)
@@ -622,7 +626,7 @@ return function(suite: Verify.Harness)
 
 		suite:suite("selection accounting", function()
 			suite:case("says exactly what ran, what the host could not run and what was not run", function(check)
-				local plan = Verify.validatePlan {
+				local plan = Plan.validate {
 					id = "catalogue",
 					units = {
 						{ id = "unit/a", locator = "a.luau", tags = { "unit" } },
@@ -637,19 +641,19 @@ return function(suite: Verify.Harness)
 				}
 				local execution = Verify.execute(
 					plan,
-					Host.fake { units = units, capabilities = { "in-memory" } },
+					Host.create { units = units, capabilities = { "in-memory" } },
 					{ selection = { tags = { "unit" } } }
 				)
-				local account = Verify.accountPlan(plan, execution)
+				local account = Execution.account(plan, execution)
 				check:expect(account.ran):toEqual { "unit/a", "unit/b" }
 				check:expect(account.unsupported):toEqual { ["e2e/c"] = { "player" } }
 				check:expect(account.notRun):toEqual {}
 				check:expect(account.complete):toEqual(false)
-				local narrowed = Verify.accountPlan(
+				local narrowed = Execution.account(
 					plan,
 					Verify.execute(
 						plan,
-						Host.fake { units = units, capabilities = { "in-memory", "player" } },
+						Host.create { units = units, capabilities = { "in-memory", "player" } },
 						{ selection = { ids = { "unit/a" } } }
 					)
 				)

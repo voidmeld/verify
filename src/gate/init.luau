@@ -5,7 +5,6 @@ local GateTypes = require "@self/gate-types"
 
 export type Draft = GateTypes.GateDraft
 export type ProducerDraft = GateTypes.ProducerDraft
-export type ShardOptions = Gate.ShardOptions
 export type PolicyDraft = GateTypes.PolicyDraft
 export type Definition = GateTypes.Gate
 export type Selection = GateTypes.Selection
@@ -25,7 +24,6 @@ export type Outcome = GateTypes.Outcome
 return {
 	SCHEMA_VERSION = Gate.SCHEMA_VERSION,
 	define = Gate.define,
-	shard = Gate.shard,
 	testCases = Gate.testCases,
 	run = Gate.run,
 	format = Gate.format,

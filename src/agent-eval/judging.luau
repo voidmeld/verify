@@ -240,5 +240,4 @@ return {
 	comparisons = comparisons,
 	run = run,
 	load = load,
-	decodeJudgment = decodeJudgment,
 }

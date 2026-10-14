@@ -81,10 +81,6 @@ local function check(name: string, mediaType: string, text: string, limits: Reso
 end
 
 return {
-	DEFAULT_MAX_BYTES = DEFAULT_MAX_BYTES,
-	DEFAULT_MAX_COUNT = DEFAULT_MAX_COUNT,
-	DEFAULT_MAX_TOTAL_BYTES = DEFAULT_MAX_TOTAL_BYTES,
 	resolve = resolve,
 	check = check,
-	unsafeName = unsafeName,
 }

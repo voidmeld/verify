@@ -8,7 +8,7 @@ local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
 local Verify = require "../src/core"
 local Gate = require "../src/gate"
-local GateRuntime = require "../src/runtime/gate"
+local GateRuntime = require "../src/lute/gate"
 local LuteRuntime = require "../src/lute/runtime"
 
 local ROOT = ".lute/tmp/verify-gate-test"

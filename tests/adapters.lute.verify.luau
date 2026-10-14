@@ -1,8 +1,10 @@
 --!strict
 
+local Plan = require "../src/core/plan"
 local json = require "@std/json"
 
 local Verify = require "../src/core"
+local Batch = require "../src/lute/batch"
 local Lute = require "../src/lute"
 
 local function statusOfCase(report: Verify.Report, id: string): string?
@@ -74,7 +76,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("round-trips a batch across the worker wire", function(check)
-			local batches = Verify.partitionPlan({
+			local batches = Plan.partition({
 				id = "wire",
 				units = {
 					{
@@ -87,7 +89,7 @@ return function(suite: Verify.Harness)
 					{ id = "b", locator = "b.verify.luau", group = "g" },
 				},
 			}, 1)
-			local decoded = Lute.decodeBatch(Lute.encodeBatch(batches[1]))
+			local decoded = Batch.decode(Batch.encode(batches[1]))
 			check:expect(decoded.id):toEqual(batches[1].id)
 			check:expect(decoded.index):toEqual(1)
 			check:expect(#decoded.units):toEqual(2)

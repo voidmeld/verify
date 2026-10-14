@@ -13,7 +13,7 @@ One model has these benefits:
 
 ## Use cases
 
-- Run cases on Lute, Lune, the simulator, Studio (launched or attached), a published Player or an Open Cloud task.
+- Run cases on Lute, the simulator, Studio (launched or attached), a published Player or an Open Cloud task.
 - Declare a gate over tests, commands, builds, benchmarks and native checks, with tiers, selection, deferrals and an acceptance verdict.
 - Benchmark a workload with warmup, phases, sampling, baselines, stored-run comparison and stability checks.
 - Seal and validate evidence: run, build, device and review provenance on a report.
@@ -78,11 +78,8 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 | [`src/benchmark.luau`](src/benchmark.luau) | Warmup, sampling, baseline and stability checks, reported as an ordinary case. Host side only. |
 | [`src/evidence`](src/evidence) | Sealing and validating provenance on a report. Host side only. |
 | [`src/bdd.luau`](src/bdd.luau) | BDD verbs, case metadata and report printing over the same harness. |
-| [`src/lune`](src/lune) | The Lune host, Lune workers and the native-database fixture bridge. |
-| [`src/runtime`](src/runtime) | Runtime-neutral worker, host, receipt and file logic. |
-| [`src/lute`](src/lute) | The run command, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk loading, bounded workers, Studio or Player launch and window capture. |
+| [`src/lute`](src/lute) | The run command, workers, hosts and gates, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk loading, bounded processes and Studio or Player launch. |
 | [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes, the interface audit and the simulator. |
-| [`src/host`](src/host) | Deterministic execution host for failure injection. |
 | [`src/codec`](src/codec) | Base64 and image signatures for captures and the judge. Portable. |
 | [`src/consumer`](src/consumer) | Portable specification and production graph diagnostics. |
 | [`src/agent-eval`](src/agent-eval) | Agent evaluation runs, adapters, the judge, statistics and the command `tools/agent-eval.luau`. Host side only. |

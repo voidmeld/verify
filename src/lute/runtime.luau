@@ -1,13 +1,62 @@
 --!strict
 
 local fs = require "@std/fs"
-local json = require "@std/json"
 local path = require "@std/path"
 local process = require "@std/process"
 local system = require "@std/system"
 local task = require "@std/task"
 
-local Binding = require "../runtime/binding"
+export type Fs = {
+	read: (path: string) -> string,
+	write: (path: string, contents: string) -> (),
+	exists: (path: string) -> boolean,
+	createDirectory: (path: string) -> (),
+	remove: (path: string) -> (),
+}
+
+export type ProcessResult = {
+	ok: boolean,
+	exitcode: number,
+	stdout: string,
+	stderr: string,
+}
+
+export type RunOptions = {
+	env: { [string]: string }?,
+	cwd: string?,
+}
+
+export type Process = {
+	arguments: { string },
+	exit: (code: number) -> (),
+	run: (argv: { string }, options: RunOptions?) -> ProcessResult,
+}
+
+export type Time = {
+	clock: () -> number,
+	spawn: (task: () -> ()) -> (),
+	wait: (seconds: number) -> (),
+}
+
+export type Stdio = {
+	print: (line: string) -> (),
+}
+
+export type BoundedMechanism = "auto" | "job" | "setsid" | "perl" | "tree" | "none"
+
+export type BoundedSettings = {
+	shell: string?,
+	mechanism: BoundedMechanism?,
+	watchdog: { string }?,
+}
+
+export type Runtime = {
+	fs: Fs,
+	process: Process,
+	time: Time,
+	stdio: Stdio,
+	bounded: BoundedSettings?,
+}
 
 local function arguments(): { string }
 	local result: { string } = {}
@@ -17,7 +66,7 @@ local function arguments(): { string }
 	return result
 end
 
-local function bounded(): Binding.BoundedSettings?
+local function bounded(): BoundedSettings?
 	if not system.win32 then
 		return nil
 	end
@@ -26,18 +75,7 @@ local function bounded(): Binding.BoundedSettings?
 	return { mechanism = "tree", watchdog = { path.format(process.execPath()), "run", watchdog } }
 end
 
-local runtime: Binding.Runtime = {
-	name = "lute",
-	defaultCommand = { "lute", "run" },
-	defaultDirectory = ".lute/tmp/verify",
-	json = {
-		encode = function(value: unknown): string
-			return json.serialize(value :: json.Value)
-		end,
-		decode = function(encoded: string): unknown
-			return json.deserialize(encoded)
-		end,
-	},
+local runtime: Runtime = {
 	fs = {
 		read = fs.readFileToString,
 		write = fs.writeStringToFile,
@@ -50,7 +88,7 @@ local runtime: Binding.Runtime = {
 		exit = function(code: number)
 			process.exit(code)
 		end,
-		run = function(argv: { string }, options: Binding.RunOptions?): Binding.ProcessResult
+		run = function(argv: { string }, options: RunOptions?): ProcessResult
 			local settings: process.ProcessRunOptions = { cwd = nil, stdio = nil, env = nil, timeout = nil }
 			if options ~= nil then
 				settings.cwd = options.cwd

@@ -1,5 +1,6 @@
 --!strict
 
+local Plan = require "../src/core/plan"
 local Corpus = require "../src/lute/corpus"
 local Verify = require "../src/core"
 
@@ -34,7 +35,7 @@ local function planOf(files: { string }): Verify.PlanDraft
 end
 
 local function selected(files: { string }, query: Corpus.Query?): { string }
-	local narrowed = Verify.selectPlan(planOf(files), Corpus.selection(files, query))
+	local narrowed = Plan.select(planOf(files), Corpus.selection(files, query))
 	local ids: { string } = {}
 	for _, unit in narrowed.units do
 		table.insert(ids, unit.id)
@@ -190,7 +191,7 @@ return function(suite: Verify.Harness)
 				table.insert(units, { id = file, locator = file, group = groupOf[file] })
 			end
 			for batchCount = 1, 5 do
-				local batches = Verify.partitionPlan({ id = "corpus", units = units }, batchCount)
+				local batches = Plan.partition({ id = "corpus", units = units }, batchCount)
 				local home: { [string]: number } = {}
 				for _, batch in batches do
 					for _, unit in batch.units do

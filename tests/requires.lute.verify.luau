@@ -8,7 +8,6 @@ local ENGINE_MOUNTABLE: { [string]: boolean } = {
 	["src/bdd.luau"] = true,
 	["src/consumer"] = true,
 	["src/core"] = true,
-	["src/host"] = true,
 	["src/roblox"] = true,
 }
 
@@ -19,7 +18,6 @@ local ENTRY_POINTS = {
 	"src/bdd.luau",
 	"src/roblox/init.luau",
 	"src/consumer/init.luau",
-	"src/host/init.luau",
 }
 
 local function isInit(path: string): boolean

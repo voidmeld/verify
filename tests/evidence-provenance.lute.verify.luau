@@ -1,5 +1,6 @@
 --!strict
 
+local ReportModel = require "../src/core/report"
 local fs = require "@std/fs"
 local Core = require "../src/core"
 local Evidence = require "../src/evidence"
@@ -178,7 +179,7 @@ return function(suite: Core.Harness)
 			local fixture = build(check)
 			local decoded = Wire.decode(Wire.encode(fixture.report))
 			check:expect(Evidence.validate(decoded, fixture.policy).ok):toEqual(true)
-			check:expect(Core.canonical(decoded)):toEqual(Core.canonical(fixture.report))
+			check:expect(ReportModel.canonical(decoded)):toEqual(ReportModel.canonical(fixture.report))
 		end)
 
 		suite:case("the local directory sink stores by content and re-validates from disk", function(check)

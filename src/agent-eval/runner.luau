@@ -798,5 +798,4 @@ return {
 	run = run,
 	load = load,
 	copyTree = copyTree,
-	expandChecks = expandChecks,
 }

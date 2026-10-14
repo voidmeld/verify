@@ -259,7 +259,6 @@ local function reassembleSegments(segments: { unknown }): (string?, string?)
 end
 
 return {
-	DEFAULT_MAX_PAYLOAD_BYTES = DEFAULT_MAX_PAYLOAD_BYTES,
 	frame = frame,
 	extract = extract,
 	reassemble = reassemble,

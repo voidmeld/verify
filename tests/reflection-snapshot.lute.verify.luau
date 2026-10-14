@@ -14,7 +14,7 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
-		suite:case("builds the bridge from the exported file with no Lune at test time", function(check)
+		suite:case("builds the bridge from the exported file", function(check)
 			local bridge = Lute.fixture.bridge(FIXTURE)
 			local env = bridge.environment
 			local part = env.createInstance "Part"

@@ -805,9 +805,7 @@ end
 return {
 	connect = connect,
 	host = host,
-	canonicalTaskPath = canonicalTaskPath,
 	describe = describe,
 	refusedCapabilities = refusedCapabilities,
-	CAPABILITIES = DEFAULT_CAPABILITIES,
 	UNSUPPORTED = UNSUPPORTED_NAMES,
 }
