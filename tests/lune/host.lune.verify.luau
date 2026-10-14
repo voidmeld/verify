@@ -8,6 +8,7 @@ local fs = load "@lune/fs" :: {
 	writeDir: (string) -> (),
 }
 local task = load "@lune/task" :: { wait: (number?) -> number }
+local WINDOWS = (load "@lune/process" :: { os: string }).os == "windows"
 
 local Bounded = require "../../src/runtime/bounded"
 local Lune = require "../../src/lune"
@@ -197,35 +198,70 @@ return function(suite: Verify.Harness)
 			check:expect(survived):toBe(false)
 		end)
 
-		suite:case("kills descendants under dash and fails closed when no group can be made", function(check)
-			fs.writeDir(SCRATCH .. "shells")
-			local runs = 0
-			for _, shell in { "sh", "/bin/dash" } do
-				for _, mechanism in { "auto", "none" } do
-					runs += 1
-					local marker = ("%sshells/marker-%d"):format(SCRATCH, runs)
-					local result = Bounded.run(
-						{ "/bin/sh", "-c", ("(sleep 2; echo late > %s) & sleep 8"):format(marker) },
-						1,
-						Lune.runtime.process.run,
-						nil,
-						{ shell = shell, mechanism = mechanism :: Bounded.Mechanism }
-					)
-					check:expect(result.ok):toBe(false)
-					check:expect(result.timedOut or result.unsupported):toBe(true)
-					check:expect(mechanism ~= "none" or result.unsupported):toBe(true)
-					task.wait(2.5)
-					check:expect(fs.isFile(marker)):toBe(false)
-				end
-			end
-		end)
+		if WINDOWS then
+			suite:case("kills descendants through the tree watchdog and fails closed without one", function(check)
+				fs.writeDir(SCRATCH .. "tree")
+				local marker = SCRATCH .. "tree/marker"
+				local result = Lune.runBounded({
+					"cmd",
+					"/c",
+					("start /b lute run tests/programs/late-marker.luau %s 2 & ping -n 9 127.0.0.1 >nul"):format(
+						marker
+					),
+				}, 1)
+				check:expect(result.ok):toBe(false)
+				check:expect(result.timedOut):toBe(true)
+				task.wait(2.5)
+				check:expect(fs.isFile(marker)):toBe(false)
+				local absent = Bounded.run({ "cmd", "/c", "echo ran" }, 5, Lune.runtime.process.run, nil, {
+					mechanism = "tree",
+				})
+				check:expect(absent.ok):toBe(false)
+				check:expect(absent.unsupported):toBe(true)
+			end)
 
-		suite:case("the descendant marker is observable when nothing kills it", function(check)
-			fs.writeDir(SCRATCH .. "control")
-			local marker = SCRATCH .. "control/marker"
-			local result = Lune.runBounded({ "/bin/sh", "-c", "(sleep 1; echo ok > " .. marker .. ") & wait" }, 10)
-			check:expect(result.ok):toBe(true)
-			check:expect(fs.isFile(marker)):toBe(true)
-		end)
+			suite:case("the descendant marker is observable when nothing kills it", function(check)
+				fs.writeDir(SCRATCH .. "control")
+				local marker = SCRATCH .. "control/marker"
+				local result = Lune.runBounded({
+					"cmd",
+					"/c",
+					("start /b lute run tests/programs/late-marker.luau %s 1"):format(marker),
+				}, 20)
+				check:expect(result.ok):toBe(true)
+				check:expect(fs.isFile(marker)):toBe(true)
+			end)
+		else
+			suite:case("kills descendants under dash and fails closed when no group can be made", function(check)
+				fs.writeDir(SCRATCH .. "shells")
+				local runs = 0
+				for _, shell in { "sh", "/bin/dash" } do
+					for _, mechanism in { "auto", "none" } do
+						runs += 1
+						local marker = ("%sshells/marker-%d"):format(SCRATCH, runs)
+						local result = Bounded.run(
+							{ "/bin/sh", "-c", ("(sleep 2; echo late > %s) & sleep 8"):format(marker) },
+							1,
+							Lune.runtime.process.run,
+							nil,
+							{ shell = shell, mechanism = mechanism :: Bounded.Mechanism }
+						)
+						check:expect(result.ok):toBe(false)
+						check:expect(result.timedOut or result.unsupported):toBe(true)
+						check:expect(mechanism ~= "none" or result.unsupported):toBe(true)
+						task.wait(2.5)
+						check:expect(fs.isFile(marker)):toBe(false)
+					end
+				end
+			end)
+
+			suite:case("the descendant marker is observable when nothing kills it", function(check)
+				fs.writeDir(SCRATCH .. "control")
+				local marker = SCRATCH .. "control/marker"
+				local result = Lune.runBounded({ "/bin/sh", "-c", "(sleep 1; echo ok > " .. marker .. ") & wait" }, 10)
+				check:expect(result.ok):toBe(true)
+				check:expect(fs.isFile(marker)):toBe(true)
+			end)
+		end
 	end)
 end

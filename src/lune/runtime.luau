@@ -18,6 +18,8 @@ type LuneExecOptions = { cwd: string?, env: { [string]: string }? }
 
 type LuneProcess = {
 	args: { string },
+	os: string,
+	cwd: string,
 	exit: (code: number?) -> (),
 	exec: (program: string, params: { string }?, options: LuneExecOptions?) -> LuneProcessResult,
 }
@@ -43,6 +45,21 @@ local process = load "@lune/process" :: LuneProcess
 local task = load "@lune/task" :: LuneTask
 local serde = load "@lune/serde" :: LuneSerde
 local stdio = load "@lune/stdio" :: LuneStdio
+
+local function bounded(): Binding.BoundedSettings?
+	if process.os ~= "windows" then
+		return nil
+	end
+	local source = debug.info(1, "s")
+	if string.match(source, "^%a:[/\\]") == nil and string.match(source, "^[/\\]") == nil then
+		source = process.cwd .. source
+	end
+	local root = string.match(source, "^(.*)[/\\][^/\\]+[/\\][^/\\]+$")
+	if root == nil then
+		return { mechanism = "tree" }
+	end
+	return { mechanism = "tree", watchdog = { "lute", "run", root .. "/lute/tree-watchdog.luau" } }
+end
 
 local runtime: Binding.Runtime = {
 	name = "lune",
@@ -104,6 +121,7 @@ local runtime: Binding.Runtime = {
 			stdio.write(line .. "\n")
 		end,
 	},
+	bounded = bounded(),
 }
 
 return runtime

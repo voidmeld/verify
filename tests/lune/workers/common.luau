@@ -7,6 +7,7 @@ local load = require :: (string) -> unknown
 local fs = load "@lune/fs" :: { readFile: (string) -> string, writeFile: (string, string) -> () }
 local process = load "@lune/process" :: {
 	args: { string },
+	os: string,
 	exit: (number?) -> (),
 	exec: (string, { string }?) -> { ok: boolean, code: number, stdout: string, stderr: string },
 }
@@ -75,6 +76,7 @@ return {
 	operations = operations,
 	produce = produce,
 	args = process.args,
+	os = process.os,
 	exit = function(code: number)
 		process.exit(code)
 	end,

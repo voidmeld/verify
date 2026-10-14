@@ -32,6 +32,7 @@ local function memory(arguments: { string }, script: Script?): Memory
 	runtime.name = "memory"
 	runtime.defaultCommand = { "worker-runtime" }
 	runtime.defaultDirectory = "out"
+	runtime.bounded = nil
 	runtime.fs = {
 		read = function(path: string): string
 			return files[path] or error("missing " .. path, 0)

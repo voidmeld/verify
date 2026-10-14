@@ -1,6 +1,8 @@
 --!strict
 
 local fs = require "@std/fs"
+local process = require "@std/process"
+local system = require "@std/system"
 
 local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
@@ -11,17 +13,47 @@ local LuteRuntime = require "../src/lute/runtime"
 
 local ROOT = ".lute/tmp/verify-gate-test"
 
+local WINDOWS = system.win32
+
+local NEWLINE = if WINDOWS then "\r\n" else "\n"
+
+local CMD: { [string]: string } = {
+	["echo fine"] = "echo fine",
+	["echo ok"] = "echo ok",
+	["echo never"] = "echo never",
+	["true"] = "exit 0",
+	["exit 3"] = "exit 3",
+	["sleep 1"] = "ping -n 2 127.0.0.1 >nul",
+	["sleep 6"] = "ping -n 7 127.0.0.1 >nul",
+	["sleep 8; echo late"] = "ping -n 9 127.0.0.1 >nul&echo late",
+	["echo to-out; echo to-err >&2; exit 4"] = "echo to-out&(echo to-err)1>&2&exit 4",
+	['printf "not json" > "$1"'] = "exit 2",
+	['test "$GATE_PROBE" = yes'] = "if %GATE_PROBE%==yes (exit 0) else (exit 1)",
+	['test "$GATE_PROBE" = yes && test -n "$HOME" && test "$(basename "$(pwd)")" = cwd'] = "if %GATE_PROBE%==yes (if defined SystemRoot (cd | findstr /e cwd) else (exit 1)) else (exit 1)",
+}
+
 type ShOptions = { deadlineSeconds: number?, report: Gate.ReportExpectation? }
 
 local function sh(id: string, script: string, extra: ShOptions?): Gate.ProducerDraft
 	local more: ShOptions = extra or {}
+	local argv = { "/bin/sh", "-c", script, "sh" }
+	if WINDOWS then
+		argv = { "cmd", "/c", (assert(CMD[script], "no Windows command for " .. script)) }
+	end
 	return {
 		id = id,
 		kind = "command",
-		argv = { "/bin/sh", "-c", script, "sh" },
+		argv = argv,
 		deadlineSeconds = more.deadlineSeconds,
 		report = more.report,
 	}
+end
+
+local function copy(source: string): { string }
+	if WINDOWS then
+		return { tostring(process.execPath()), "run", "tests/programs/copy.luau", source, "{report}" }
+	end
+	return { "/bin/cp", source, "{report}" }
 end
 
 type Extras = {
@@ -85,7 +117,7 @@ return function(suite: Verify.Harness)
 			local bad = recordOf(outcome, "bad")
 			check:expect(bad.status):toEqual "failed"
 			check:expect(bad.exitcode):toEqual(4)
-			check:expect(bad.log ~= nil and bad.log.stderr):toEqual "to-err\n"
+			check:expect(bad.log ~= nil and bad.log.stderr):toEqual("to-err" .. NEWLINE)
 			local reference = assert(bad.log and bad.log.reference)
 			local text = fs.readFileToString(reference)
 			check:expect(text):toContain "to-out"
@@ -148,7 +180,9 @@ return function(suite: Verify.Harness)
 				return {
 					id = id,
 					kind = "command",
-					argv = { "/bin/sh", "-c", 'printf "%s " "$1" >> ' .. marker, "sh", id },
+					argv = if WINDOWS
+						then { "cmd", "/c", ("echo %s>>%s"):format(id, (string.gsub(marker, "/", "\\"))) }
+						else { "/bin/sh", "-c", 'printf "%s " "$1" >> ' .. marker, "sh", id },
 					after = after,
 				}
 			end
@@ -157,7 +191,9 @@ return function(suite: Verify.Harness)
 				{ appender("third", { "second" }), appender("second", { "first" }), appender("first", nil) }
 			)
 			check:expect(outcome.acceptance.verdict):toEqual "release"
-			check:expect(fs.readFileToString(marker)):toEqual "first second third "
+			check
+				:expect(fs.readFileToString(marker))
+				:toEqual(if WINDOWS then "first\r\nsecond\r\nthird\r\n" else "first second third ")
 		end)
 	end)
 
@@ -179,10 +215,10 @@ return function(suite: Verify.Harness)
 				{
 					id = "current",
 					kind = "command",
-					argv = { "/bin/cp", current, "{report}" },
+					argv = copy(current),
 					report = { cases = { "check-one" } },
 				},
-				{ id = "foreign", kind = "command", argv = { "/bin/cp", foreign, "{report}" }, report = {} },
+				{ id = "foreign", kind = "command", argv = copy(foreign), report = {} },
 				sh("garbage", 'printf "not json" > "$1"', { report = {} }),
 			}, nil, runId)
 			check:expect(recordOf(outcome, "silent").status):toEqual "failed"
@@ -416,7 +452,9 @@ return function(suite: Verify.Harness)
 					{
 						id = "probe",
 						kind = "command",
-						argv = { "/bin/sh", "-c", 'test "$1" = fast', "sh", "{tier}" },
+						argv = if WINDOWS
+							then { "cmd", "/c", "if x{tier}==xfast (exit 0) else (exit 1)" }
+							else { "/bin/sh", "-c", 'test "$1" = fast', "sh", "{tier}" },
 						tier = "fast",
 					},
 					sh("other", "echo ok"),

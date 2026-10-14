@@ -42,7 +42,15 @@ export type Gate = {
 	cli: (draft: Gate.Draft, args: { string }, options: CliOptions?) -> number,
 }
 
-local DEFAULT_CAPABILITIES = { "local-luau", "process", Bounded.CAPABILITY }
+local function capabilities(runtime: Binding.Runtime?): { string }
+	local declared = { "local-luau", "process" }
+	for _, capability in Bounded.capabilities(if runtime ~= nil then runtime.bounded else nil) do
+		table.insert(declared, capability)
+	end
+	return declared
+end
+
+local DEFAULT_CAPABILITIES = capabilities()
 
 local sequence = 0
 
@@ -72,6 +80,8 @@ end
 
 local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?): Gate
 	Binding.validate(runtime)
+	local defaults = capabilities(runtime)
+	local hostDefaults = Host.capabilities(runtime)
 	local files = Files.create(runtime.fs)
 	local wire = Wire.create(runtime.json)
 
@@ -190,7 +200,7 @@ local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?)
 						reports[index] = Verify.syntheticReport {
 							executor = name,
 							environment = { runtime = runtime.name },
-							capabilities = Host.DEFAULT_CAPABILITIES,
+							capabilities = hostDefaults,
 							id = ("unit:%s:worker"):format(unit.id),
 							source = locator,
 							name = unit.id,
@@ -212,7 +222,7 @@ local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?)
 									reports[index] = Verify.syntheticReport {
 										executor = name,
 										environment = { runtime = runtime.name },
-										capabilities = Host.DEFAULT_CAPABILITIES,
+										capabilities = hostDefaults,
 										id = ("unit:%s:worker"):format(unitFor(job.locators[index]).id),
 										source = job.locators[index],
 										name = job.locators[index],
@@ -250,8 +260,13 @@ local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?)
 			files.removeIfPresent(logPath)
 			local argv = substitute(job.argv, reportPath, job)
 			runtime.time.spawn(function()
-				local ran =
-					Bounded.run(argv, job.deadlineSeconds, runtime.process.run, { env = job.env, cwd = job.cwd })
+				local ran = Bounded.run(
+					argv,
+					job.deadlineSeconds,
+					runtime.process.run,
+					{ env = job.env, cwd = job.cwd },
+					runtime.bounded
+				)
 				local started = ran.exitcode ~= -1 or ran.stderr == ""
 				local document: unknown = nil
 				local detail: string? = if started then nil else ran.stderr
@@ -306,10 +321,10 @@ local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?)
 		local settings: Options = if options ~= nil then options else {}
 		local runId = settings.runId or newRunId()
 		local directory = ("%s/%s"):format(baseOf(settings), safeName(runId))
-		local capabilities: { string } = table.clone(DEFAULT_CAPABILITIES)
+		local declared: { string } = table.clone(defaults)
 		local extra: { string } = if settings.capabilities ~= nil then settings.capabilities else {}
 		for _, capability in extra do
-			table.insert(capabilities, capability)
+			table.insert(declared, capability)
 		end
 		local environment: { [string]: string } = { runtime = runtime.name }
 		local supplied: { [string]: string } = if settings.environment ~= nil then settings.environment else {}
@@ -321,7 +336,7 @@ local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?)
 			build = settings.build,
 			selection = settings.selection,
 			reuse = settings.reuse,
-			capabilities = capabilities,
+			capabilities = declared,
 			environment = environment,
 			name = settings.name,
 			logBytes = settings.logBytes,
@@ -463,7 +478,7 @@ local function create(runtime: Binding.Runtime, receipts: ("report" | "bound")?)
 	return {
 		cli = cli,
 		DEFAULT_DIRECTORY = baseOf {},
-		DEFAULT_CAPABILITIES = DEFAULT_CAPABILITIES,
+		DEFAULT_CAPABILITIES = defaults,
 		run = run,
 		executor = executor,
 		writeReport = writeReport,

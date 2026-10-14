@@ -13,7 +13,15 @@ export type Result = {
 
 export type Runner = (argv: { string }, options: Binding.RunOptions?) -> Binding.ProcessResult
 
+export type Mechanism = Binding.BoundedMechanism
+
+export type Settings = Binding.BoundedSettings
+
 local CAPABILITY = "posix-process-groups"
+
+local TREE_CAPABILITY = "process-tree-kill"
+
+local TREE_HEADER = "^verify%-tree%-watchdog (%-?%d+) ([01]) (%d+) (%d+)\n"
 
 local MARKER = "verify_bounded_timeout"
 
@@ -57,12 +65,77 @@ local WATCHDOG = table.concat({
 	'dog=$!; { wait "$child"; } 2>/dev/null; status=$?; kill "$dog" 2>/dev/null; exit "$status"',
 }, "\n")
 
-export type Mechanism = "auto" | "job" | "setsid" | "perl" | "none"
+local function refused(stderr: string, unsupported: boolean): Result
+	return {
+		ok = false,
+		exitcode = -1,
+		stdout = "",
+		stderr = stderr,
+		timedOut = false,
+		unsupported = unsupported,
+	}
+end
 
-export type Settings = {
-	shell: string?,
-	mechanism: Mechanism?,
-}
+local function tree(
+	argv: { string },
+	seconds: number,
+	runner: Runner,
+	options: Binding.RunOptions?,
+	watchdog: { string }?
+): Result
+	if watchdog == nil or #watchdog == 0 then
+		return refused("no tree watchdog is configured, so no process tree can be bounded", true)
+	end
+	local command = table.clone(watchdog)
+	table.insert(command, "watch")
+	table.insert(command, tostring(math.ceil(seconds)))
+	table.insert(command, "--")
+	for _, value in argv do
+		table.insert(command, value)
+	end
+	local called, result = pcall(runner, command, options)
+	if not called then
+		return refused("the tree watchdog could not be started: " .. tostring(result), true)
+	end
+	local ran = result :: Binding.ProcessResult
+	local code, flag, outBytes, errBytes = string.match(ran.stdout, TREE_HEADER)
+	local header = string.find(ran.stdout, "\n", 1, true)
+	local outLength = tonumber(outBytes)
+	local errLength = tonumber(errBytes)
+	if
+		code == nil
+		or header == nil
+		or outLength == nil
+		or errLength == nil
+		or #ran.stdout ~= header + outLength + errLength
+	then
+		return {
+			ok = false,
+			exitcode = if ran.exitcode ~= 0 then ran.exitcode else -1,
+			stdout = "",
+			stderr = "the tree watchdog returned no complete result: " .. ran.stderr .. ran.stdout,
+			timedOut = false,
+			unsupported = false,
+		}
+	end
+	local exitcode = tonumber(code) :: number
+	local timedOut = flag == "1"
+	return {
+		ok = exitcode == 0 and not timedOut,
+		exitcode = exitcode,
+		stdout = string.sub(ran.stdout, header + 1, header + outLength),
+		stderr = string.sub(ran.stdout, header + outLength + 1),
+		timedOut = timedOut,
+		unsupported = false,
+	}
+end
+
+local function capabilities(settings: Settings?): { string }
+	if settings ~= nil and settings.mechanism == "tree" then
+		return { TREE_CAPABILITY }
+	end
+	return { CAPABILITY, TREE_CAPABILITY }
+end
 
 local function run(
 	argv: { string },
@@ -73,6 +146,9 @@ local function run(
 ): Result
 	assert(#argv > 0 and seconds > 0 and seconds < math.huge, "bounded run needs a command and a positive limit")
 	local chosen: Settings = settings or {}
+	if chosen.mechanism == "tree" then
+		return tree(argv, seconds, runner, options, chosen.watchdog)
+	end
 	local command = {
 		chosen.shell or "sh",
 		"-c",
@@ -86,28 +162,14 @@ local function run(
 	end
 	local called, result = pcall(runner, command, options)
 	if not called then
-		return {
-			ok = false,
-			exitcode = -1,
-			stdout = "",
-			stderr = tostring(result),
-			timedOut = false,
-			unsupported = false,
-		}
+		return refused(tostring(result), false)
 	end
 	local ran = result :: Binding.ProcessResult
 	local stderr = string.gsub(ran.stderr, "%[%d+%][%+%-]?%s+[^\n]*\n?", "")
 	local timedOut = string.find(stderr, MARKER, 1, true) ~= nil
 	local unsupported = string.find(stderr, UNSUPPORTED, 1, true) ~= nil
 	if unsupported then
-		return {
-			ok = false,
-			exitcode = -1,
-			stdout = "",
-			stderr = "no mechanism could create a process group for the command (job control, setsid or perl)",
-			timedOut = false,
-			unsupported = true,
-		}
+		return refused("no mechanism could create a process group for the command (job control, setsid or perl)", true)
 	end
 	return {
 		ok = ran.exitcode == 0 and not timedOut,
@@ -121,5 +183,7 @@ end
 
 return {
 	CAPABILITY = CAPABILITY,
+	TREE_CAPABILITY = TREE_CAPABILITY,
+	capabilities = capabilities,
 	run = run,
 }

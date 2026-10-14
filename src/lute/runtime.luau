@@ -2,7 +2,9 @@
 
 local fs = require "@std/fs"
 local json = require "@std/json"
+local path = require "@std/path"
 local process = require "@std/process"
+local system = require "@std/system"
 local task = require "@std/task"
 
 local Binding = require "../runtime/binding"
@@ -13,6 +15,15 @@ local function arguments(): { string }
 		table.insert(result, process.args[index])
 	end
 	return result
+end
+
+local function bounded(): Binding.BoundedSettings?
+	if not system.win32 then
+		return nil
+	end
+	local directory = path.dirname(path.resolve(debug.info(1, "s")))
+	local watchdog = path.format(path.join(directory, "tree-watchdog.luau"))
+	return { mechanism = "tree", watchdog = { path.format(process.execPath()), "run", watchdog } }
 end
 
 local runtime: Binding.Runtime = {
@@ -71,6 +82,7 @@ local runtime: Binding.Runtime = {
 			print(line)
 		end,
 	},
+	bounded = bounded(),
 }
 
 return runtime

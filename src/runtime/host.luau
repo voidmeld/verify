@@ -27,7 +27,15 @@ export type Options = {
 	arguments: { string }?,
 }
 
-local DEFAULT_CAPABILITIES = { "local-luau", "worker", Bounded.CAPABILITY }
+local function capabilities(runtime: Binding.Runtime?): { string }
+	local declared = { "local-luau", "worker" }
+	for _, capability in Bounded.capabilities(if runtime ~= nil then runtime.bounded else nil) do
+		table.insert(declared, capability)
+	end
+	return declared
+end
+
+local DEFAULT_CAPABILITIES = capabilities()
 
 local runSequence = 0
 
@@ -64,7 +72,7 @@ local function create(runtime: Binding.Runtime, options: Options): Verify.Host
 		error("the host needs the path of a worker to start", 2)
 	end
 	local name = options.name or runtime.name
-	local capabilities = options.capabilities or DEFAULT_CAPABILITIES
+	local declared = options.capabilities or capabilities(runtime)
 	local environment = options.environment or { runtime = runtime.name }
 	local directory = options.directory or runtime.defaultDirectory
 	local command = options.command or runtime.defaultCommand
@@ -104,8 +112,14 @@ local function create(runtime: Binding.Runtime, options: Options): Verify.Host
 			end
 		end
 
-		local started, result: unknown =
-			pcall(Bounded.run, argv, batch.deadlineSeconds or options.deadlineSeconds or 60, runtime.process.run)
+		local started, result: unknown = pcall(
+			Bounded.run,
+			argv,
+			batch.deadlineSeconds or options.deadlineSeconds or 60,
+			runtime.process.run,
+			nil,
+			runtime.bounded
+		)
 		if not started then
 			return { status = "faulted", detail = ("the worker could not be started: %s"):format(tostring(result)) }
 		end
@@ -167,7 +181,7 @@ local function create(runtime: Binding.Runtime, options: Options): Verify.Host
 
 	local host = {} :: Verify.Host
 	host.name = name
-	host.capabilities = capabilities
+	host.capabilities = declared
 	host.environment = environment
 	host.now = options.now or runtime.time.clock
 	host.maxParallelBatches = options.maxParallelBatches
@@ -203,5 +217,6 @@ end
 
 return {
 	DEFAULT_CAPABILITIES = DEFAULT_CAPABILITIES,
+	capabilities = capabilities,
 	create = create,
 }

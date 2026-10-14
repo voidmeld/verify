@@ -41,6 +41,14 @@ export type Stdio = {
 	print: (line: string) -> (),
 }
 
+export type BoundedMechanism = "auto" | "job" | "setsid" | "perl" | "tree" | "none"
+
+export type BoundedSettings = {
+	shell: string?,
+	mechanism: BoundedMechanism?,
+	watchdog: { string }?,
+}
+
 export type Runtime = {
 	name: string,
 	defaultCommand: { string },
@@ -50,6 +58,7 @@ export type Runtime = {
 	process: Process,
 	time: Time,
 	stdio: Stdio,
+	bounded: BoundedSettings?,
 }
 
 local function validate(runtime: Runtime): Runtime
@@ -74,6 +83,7 @@ local function validate(runtime: Runtime): Runtime
 		end
 	end
 	assert(type(runtime.process.arguments) == "table", "runtime binding process.arguments must be a list")
+	assert(runtime.bounded == nil or type(runtime.bounded) == "table", "runtime binding bounded must be a table")
 	return runtime
 end
 

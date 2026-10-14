@@ -41,7 +41,7 @@ local function host(options: HostOptions): Verify.Host
 end
 
 local function runBounded(argv: { string }, seconds: number): Bounded.Result
-	return Bounded.run(argv, seconds, Runtime.process.run)
+	return Bounded.run(argv, seconds, Runtime.process.run, nil, Runtime.bounded)
 end
 
 return {
@@ -65,5 +65,5 @@ return {
 	exportReflection = ReflectionExport.create,
 	serializeSnapshot = ReflectionExport.serialize,
 	fixtureFrom = LuneReflection.createFrom,
-	HOST_CAPABILITIES = Host.DEFAULT_CAPABILITIES,
+	HOST_CAPABILITIES = Host.capabilities(Runtime),
 }

@@ -2,12 +2,22 @@
 
 local load = require :: (string) -> unknown
 local fs = load "@lune/fs" :: { readFile: (string) -> string }
+local WINDOWS = (load "@lune/process" :: { os: string }).os == "windows"
 
 local Lune = require "../../src/lune"
 local Verify = require "../../src/core"
 local Gate = require "../../src/gate"
 
 local SCRATCH = ".verify/lune-test/gate"
+
+local SAY_OK: { string } = if WINDOWS then { "cmd", "/c", "echo ok" } else { "/bin/sh", "-c", "echo ok" }
+local FAIL_LOUDLY: { string } = if WINDOWS
+	then { "cmd", "/c", "(echo oops)1>&2&exit 3" }
+	else { "/bin/sh", "-c", "echo oops >&2; exit 3" }
+local CHECK_CONTEXT: { string } = if WINDOWS
+	then { "cmd", "/c", "if %GATE_PROBE%==yes (cd | findstr /e workers) else (exit 1)" }
+	else { "/bin/sh", "-c", 'test "$GATE_PROBE" = yes && test "$(basename "$(pwd)")" = workers' }
+local HANG: { string } = if WINDOWS then { "cmd", "/c", "ping -n 9 127.0.0.1 >nul" } else { "/bin/sh", "-c", "sleep 8" }
 
 local function recordOf(outcome: Gate.Outcome, id: string): Gate.Record
 	for _, record in outcome.producers do
@@ -27,12 +37,12 @@ return function(suite: Verify.Harness)
 	suite:suite("gate on the Lune runtime (real lune subprocesses)", function()
 		suite:case("classifies exits, passes environment and working directory, and keeps logs", function(check)
 			local outcome = run("lune-commands", {
-				{ id = "good", kind = "command", argv = { "/bin/sh", "-c", "echo ok" } },
-				{ id = "bad", kind = "command", argv = { "/bin/sh", "-c", "echo oops >&2; exit 3" } },
+				{ id = "good", kind = "command", argv = SAY_OK },
+				{ id = "bad", kind = "command", argv = FAIL_LOUDLY },
 				{
 					id = "context",
 					kind = "command",
-					argv = { "/bin/sh", "-c", 'test "$GATE_PROBE" = yes && test "$(basename "$(pwd)")" = workers' },
+					argv = CHECK_CONTEXT,
 					env = { GATE_PROBE = "yes" },
 					cwd = "tests/lune/workers",
 				},
@@ -48,10 +58,8 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("bounds a command at its deadline", function(check)
-			local outcome = run(
-				"lune-deadline",
-				{ { id = "hung", kind = "command", argv = { "/bin/sh", "-c", "sleep 8" }, deadlineSeconds = 1 } }
-			)
+			local outcome =
+				run("lune-deadline", { { id = "hung", kind = "command", argv = HANG, deadlineSeconds = 1 } })
 			check:expect(recordOf(outcome, "hung").status):toBe "timed_out"
 		end)
 
@@ -141,7 +149,7 @@ return function(suite: Verify.Harness)
 						tier = "fast",
 						deadlineSeconds = 60,
 					},
-					{ id = "other", kind = "command", argv = { "/bin/sh", "-c", "echo ok" }, tier = "slow" },
+					{ id = "other", kind = "command", argv = SAY_OK, tier = "slow" },
 				},
 			}
 			local outcome =
