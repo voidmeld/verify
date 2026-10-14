@@ -20,6 +20,7 @@ One model has these benefits:
 - Simulate Roblox instances, input, multiplayer and UI with the simulator and the fixture bridge, over Roblox datatypes in pure Luau and a reflection snapshot that Studio exports.
 - Split a test corpus across bounded worker processes and combine their reports.
 - Check consumer specifications and production graphs with `verify-check`.
+- Evaluate coding agents on a task corpus: isolated runs, hidden checks, a Roblox interface audit, a blind screenshot judge and threshold statistics.
 
 ## Getting started
 
@@ -64,6 +65,7 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 | [Experience verification](docs/experience.md) | One case model for Roblox hosts, benchmarks and simulation. |
 | [Laws](docs/laws.md) | Lifecycle and evidence rules, with the tests that detect a violation. |
 | [Consumer diagnostics](docs/lint.md) | Lint policy and `verify-check`. |
+| [Agent evaluation](docs/agent-eval.md) | Task and suite files, agent runs, hidden checks, the interface audit, the judge and threshold statistics. |
 | [Consumer skill](.agents/skills/verify/SKILL.md) | How another repository adopts Verify. |
 | [Contributor guide](AGENTS.md) | How to change and validate this repository. |
 
@@ -79,9 +81,10 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 | [`src/lune`](src/lune) | The Lune host, Lune workers and the native-database fixture bridge. |
 | [`src/runtime`](src/runtime) | Runtime-neutral worker, host, receipt and file logic. |
 | [`src/lute`](src/lute) | The run command, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk loading, bounded workers, Studio or Player launch and window capture. |
-| [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes and the simulator. |
+| [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes, the interface audit and the simulator. |
 | [`src/host`](src/host) | Deterministic execution host for failure injection. |
 | [`src/consumer`](src/consumer) | Portable specification and production graph diagnostics. |
+| [`src/agent-eval`](src/agent-eval) | Agent evaluation runs, adapters, the judge, statistics and the command `tools/agent-eval.luau`. Host side only. |
 
 ## Validate
 

@@ -27,6 +27,7 @@ decides whether a silent source is an error.
 | Plan captures, classify console output or capture a window | [Host adapters](#host-adapters) |
 | Test engine-facing logic without Roblox | [Simulated environment](#simulated-environment) |
 | Compose reflection, UI fakes and the engine seam | [Reflection and explicit UI fakes](#reflection-and-explicit-ui-fakes) |
+| Score a Roblox interface or evaluate coding agents | [Agent evaluation](agent-eval.md) |
 
 Examples use these package names. Replace the paths with the locations of your mounted packages:
 
