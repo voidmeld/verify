@@ -267,6 +267,7 @@ See [Open Cloud execution](execution.md#open-cloud-execution) for guarantees and
 ## Launch or attach
 
 By default, `--host studio` launches a disposable Studio on a copy of an XML place and closes it.
+A programmatic caller that needs several engine calls in one disposable Studio uses `Lute.studio.launch`. See [launched Studio session](execution.md#launched-studio-session).
 A programmatic caller can pass `attach` to `Lute.platform.run` with `host = "studio"`.
 The run then uses a Studio that is already open:
 
@@ -337,7 +338,7 @@ The Studio launcher and the attached Studio support macOS and Windows.
 On Windows, Verify finds Studio in the newest directory under `%LOCALAPPDATA%/Roblox/Versions` that holds `RobloxStudioBeta.exe`.
 It drives the standard input of the Studio MCP server through a Windows PowerShell bridge, because Windows has no `mkfifo` and Lute cannot write to the standard input of a running process.
 It lists processes with `Get-CimInstance Win32_Process` and stops them with `taskkill`.
-The MCP bridge has listed open Studios on Windows. The native conformance check and a launched Studio run have not yet run on Windows.
+The MCP bridge has listed open Studios on Windows, and `Lute.studio.launch` has started, driven and stopped a Studio on Windows 11. The native conformance check and a launched `Lute.studio.run` have not yet run on Windows.
 
 The reference Player launcher supports macOS only.
 On Windows, one launch starts more than one Player process, and no open-file query binds the report log to one process.
@@ -351,4 +352,4 @@ These defaults depend on the platform:
 | Studio executable | `/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio` | `RobloxStudioBeta.exe` in the newest Studio version directory | `studioExecutable` |
 | Studio MCP executable | `/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP` | `StudioMCP.exe` in the same directory | `mcpExecutable` |
 | Player launcher | `/Applications/Roblox.app`, `/usr/bin/open`, `/usr/bin/pgrep`, `/bin/ps`, `/usr/sbin/lsof` | None | `backend` |
-| Run directories | `/tmp/verify-studio`, `/tmp/verify-studio-attach` | `verify-studio` and `verify-studio-attach` in the system temporary directory | `directory` |
+| Run directories | `/tmp/verify-studio`, `/tmp/verify-studio-attach`, `/tmp/verify-studio-launch` | `verify-studio`, `verify-studio-attach` and `verify-studio-launch` in the system temporary directory | `directory` |

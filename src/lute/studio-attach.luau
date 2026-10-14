@@ -624,4 +624,11 @@ local function run(options: RunOptions): Core.BatchOutcome
 	return outcome
 end
 
-return { attach = attach, run = run, digest = digest, CONSOLE_READ = CONSOLE_READ }
+return {
+	attach = attach,
+	run = run,
+	digest = digest,
+	transport = mcpTransport,
+	discovered = discovered,
+	CONSOLE_READ = CONSOLE_READ,
+}

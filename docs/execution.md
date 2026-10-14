@@ -376,6 +376,26 @@ A host other than the simulator or Studio refuses `progressFile`, as before.
 They share the Studio of the developer with no isolation, so the work can see and change the state of the open place.
 Use a launched run for isolation.
 
+## Launched Studio session
+
+`Lute.studio.launch(options)` starts a disposable Studio on a copy of an XML place and returns a session that you drive, `launched, problem`.
+Use it when one run needs more than one engine call: for example several play sessions, calls on both the server and the client, or captures at more than one checkpoint.
+`Lute.studio.run` stays the choice for one report from one call.
+
+`options` is `{ place, directory?, studioExecutable?, mcpExecutable?, launchSeconds?, callSeconds?, runSeconds?, cleanupSeconds?, authorize? }`.
+
+1. It copies the place to `Verify-<pid>-<run>.rbxlx` in a new run directory. The default parent is `verify-studio-launch` in the system temporary directory.
+2. It lists the open Studios through the Studio MCP server, starts Studio on the copy and waits up to `launchSeconds` (default 180) for a new Studio with that file name.
+3. It attaches to that Studio, exactly as [attached Studio](#attached-studio) does, in `edit` mode. `authorize` defaults to a hook that accepts every request, because the Studio and the place copy belong to the run.
+
+`launched` is `{ session, directory, place, name, pid, close }`. `session` is the attached session with `execute`, `play`, `capture`, `console`, `report` and `call`.
+`close()` closes the session, which returns Studio to edit mode, and then stops the Studio processes that appeared for this launch, as a launched run does. It returns `{ session, terminated, survivors }`. A second call returns the same result.
+A Studio that was open before the launch is never selected and never stopped.
+
+When Studio does not start, does not appear in time or appears twice, `launched` is `nil`, `problem` names the cause and the launch stops the processes that it started.
+`transport`, `start` and `processes` replace the MCP transport, the process start and the process listing in tests.
+The launch was run on Windows 11 with the Studio MCP server: Studio appeared in the list after about 7 seconds, and play, client calls, a capture and the cleanup worked.
+
 ## Open Cloud execution
 
 `Lute.openCloud.connect({ universeId, placeId, versionId, request, authorize, requestSeconds?, pollSeconds?, pollIntervalSeconds?, logPages?, logBytes?, now?, sleep? })` runs the ordinary entry as a Luau execution task on an exact published place version.

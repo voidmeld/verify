@@ -105,6 +105,29 @@ local function spawn(argv: { string }, marker: string, deadline: number, list: (
 	)
 end
 
+local function start(executable: string, place: string, marker: string, deadline: number, log: string): number
+	if system.win32 then
+		return spawn(
+			{ executable, "-task", "EditFile", "-localPlaceFile", (string.gsub(place, "/", "\\")) },
+			marker,
+			deadline
+		)
+	end
+	local launched = process.run {
+		"sh",
+		"-c",
+		'"$1" -task EditFile -localPlaceFile "$2" >"$3" 2>&1 & echo $!',
+		"verify-studio",
+		executable,
+		place,
+		log,
+	}
+	assert(launched.ok, launched.stderr)
+	local pid = tonumber(string.match(launched.stdout, "%d+"))
+	assert(pid ~= nil, "Studio launch did not return a process id")
+	return pid
+end
+
 local function snapshot(deps: Deps?): { [number]: boolean }
 	local active = deps or defaults()
 	local before: { [number]: boolean } = {}
@@ -233,4 +256,5 @@ return {
 	defaults = defaults,
 	parse = parse,
 	spawn = spawn,
+	start = start,
 }

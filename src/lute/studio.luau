@@ -16,6 +16,7 @@ local Progress = require "./studio-progress"
 local Processes = require "./studio-processes"
 local Reply = require "./studio-reply"
 local Install = require "./studio-install"
+local Launch = require "./studio-launch"
 
 local CALL_SECONDS = 30
 
@@ -54,22 +55,6 @@ local function studios(connection: Mcp.Connection): { [string]: string }
 	return result
 end
 
-local function launchPosix(executable: string, place: string, log: string): number
-	local launched = process.run {
-		"sh",
-		"-c",
-		'"$1" -task EditFile -localPlaceFile "$2" >"$3" 2>&1 & echo $!',
-		"verify-studio",
-		executable,
-		place,
-		log,
-	}
-	assert(launched.ok, launched.stderr)
-	local pid = tonumber(string.match(launched.stdout, "%d+"))
-	assert(pid ~= nil, "Studio launch did not return a process id")
-	return pid
-end
-
 local function worker(path: string)
 	local fields = Mcp.record(Wire.parse(fs.readFileToString(path)))
 	local function textField(name: string): string
@@ -87,15 +72,13 @@ local function worker(path: string)
 	local studioId: string? = nil
 	local ok, reason = pcall(function()
 		local previous = studios(connection)
-		pid = if system.win32
-			then Processes.spawn({
-				textField "studioExecutable",
-				"-task",
-				"EditFile",
-				"-localPlaceFile",
-				(string.gsub(textField "place", "/", "\\")),
-			}, textField "placeName", deadline)
-			else launchPosix(textField "studioExecutable", textField "place", directory .. "/studio.log")
+		pid = Processes.start(
+			textField "studioExecutable",
+			textField "place",
+			textField "placeName",
+			deadline,
+			directory .. "/studio.log"
+		)
 		local selected: string? = nil
 		while selected == nil do
 			local candidates: { string } = {}
@@ -392,4 +375,4 @@ local function host(options: HostOptions): Core.Host
 	}
 end
 
-return { run = run, worker = worker, host = host, attach = Attach.attach }
+return { run = run, worker = worker, host = host, attach = Attach.attach, launch = Launch.launch }
