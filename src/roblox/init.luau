@@ -101,6 +101,20 @@ export type DatatypeColor3 = Datatypes.Color3Value
 export type DatatypeUDim = Datatypes.UDimValue
 export type DatatypeUDim2 = Datatypes.UDim2Value
 export type DatatypeEnum = Datatypes.EnumValue
+export type DatatypeEnumCategory = Datatypes.EnumCategory
+export type DatatypeEnumItem = Datatypes.EnumMember
+export type DatatypeVector2int16 = Datatypes.Vector2int16Value
+export type DatatypeVector3int16 = Datatypes.Vector3int16Value
+export type DatatypeRect = Datatypes.RectValue
+export type DatatypeNumberRange = Datatypes.NumberRangeValue
+export type DatatypeNumberSequence = Datatypes.NumberSequenceValue
+export type DatatypeColorSequence = Datatypes.ColorSequenceValue
+export type DatatypeBrickColor = Datatypes.BrickColorValue
+export type DatatypeFont = Datatypes.FontValue
+export type DatatypeTweenInfo = Datatypes.TweenInfoValue
+export type DatatypeContent = Datatypes.ContentValue
+export type DatatypeCatalog = Datatypes.Catalog
+export type DatatypeLibrary = Datatypes.Library
 export type VirtualScheduler = Scheduler.Scheduler
 export type VirtualTask<A... = ...unknown, R... = ...unknown> = Scheduler.Task<A..., R...>
 export type VirtualCallback<A... = ...unknown, R... = ...unknown> = Scheduler.Callback<A..., R...>

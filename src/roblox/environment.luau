@@ -699,9 +699,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		local kind = type(value)
 		if kind ~= "string" and kind ~= "number" and kind ~= "boolean" and value ~= nil then
-			local described = if kind == "table"
-				then (if isObject(value) then "Instance" else Datatypes.typeName(value) or kind)
-				else typeof(value)
+			local described = if kind == "table" and isObject(value)
+				then "Instance"
+				else Datatypes.typeName(value) or typeof(value)
 			if not Datatypes.isAttributeType(described) then
 				error(("attribute %q cannot hold a %s"):format(name, described), 4)
 			end

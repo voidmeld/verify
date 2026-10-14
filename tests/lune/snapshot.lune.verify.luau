@@ -3,6 +3,7 @@
 local load = require :: (string) -> unknown
 local fs = load "@lune/fs" :: { readFile: (string) -> string }
 
+local Datatypes = require "../../src/roblox/datatypes"
 local Export = require "../../src/lune/reflection-export"
 local FixtureBridge = require "../../src/roblox/fixture-bridge"
 local LuneReflection = require "../../src/lune/reflection"
@@ -102,9 +103,9 @@ return function(suite: Verify.Harness)
 			check:expect(default(loaded, "Part", "Anchored")):toBe(default(native, "Part", "Anchored"))
 			check:expect(field(default(loaded, "Part", "Size"), "X")):toBe(field(default(native, "Part", "Size"), "X"))
 			check
-				:expect(field(default(loaded, "TextLabel", "TextXAlignment"), "_enum"))
+				:expect(field(default(loaded, "TextLabel", "TextXAlignment"), "Name"))
 				:toBe(field(default(native, "TextLabel", "TextXAlignment"), "Name"))
-			check:expect(field(default(loaded, "TextLabel", "TextXAlignment"), "_family")):toBe "TextXAlignment"
+			check:expect(Datatypes.enumType(default(loaded, "TextLabel", "TextXAlignment"))):toBe "TextXAlignment"
 		end)
 
 		suite:case(
@@ -160,7 +161,6 @@ return function(suite: Verify.Harness)
 				roblox.Enum.Material.Plastic,
 				roblox.Enum.KeyCode.A
 			)
-			local Datatypes = require "../../src/roblox/datatypes"
 			local snapshotVerdicts = verdicts(
 				Snapshot.bridge(snapshot),
 				Datatypes.Vector3.new(1, 2, 3),
