@@ -17,7 +17,7 @@ One model has these benefits:
 - Declare a gate over tests, commands, builds, benchmarks and native checks, with tiers, selection, deferrals and an acceptance verdict.
 - Benchmark a workload with warmup, phases, sampling, baselines, stored-run comparison and stability checks.
 - Seal and validate evidence: run, build, device and review provenance on a report.
-- Simulate Roblox instances, input, multiplayer and UI with the simulator and the Lune fixture bridge.
+- Simulate Roblox instances, input, multiplayer and UI with the simulator and the fixture bridge, over Roblox datatypes in pure Luau and a reflection snapshot that Studio exports.
 - Split a test corpus across bounded worker processes and combine their reports.
 - Check consumer specifications and production graphs with `verify-check`.
 
@@ -78,8 +78,8 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 | [`src/bdd.luau`](src/bdd.luau) | BDD verbs, case metadata and report printing over the same harness. |
 | [`src/lune`](src/lune) | The Lune host, Lune workers and the native-database fixture bridge. |
 | [`src/runtime`](src/runtime) | Runtime-neutral worker, host, receipt and file logic. |
-| [`src/lute`](src/lute) | The run command, evidence bundles, fixture mounting, bounded workers, Studio or Player launch and window capture. |
-| [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection, UI fakes and the simulator. |
+| [`src/lute`](src/lute) | The run command, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk loading, bounded workers, Studio or Player launch and window capture. |
+| [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes and the simulator. |
 | [`src/host`](src/host) | Deterministic execution host for failure injection. |
 | [`src/consumer`](src/consumer) | Portable specification and production graph diagnostics. |
 
