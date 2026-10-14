@@ -59,7 +59,7 @@ Verify has no separate lifecycle, actor runner or transcript verdict model.
 These host utilities are not alternative case formats:
 
 - `Core.waitUntil` is the standalone read-only polling primitive.
-- `Lute.runBounded(argv, seconds)` enforces an external process-group deadline.
+- `Lute.runBounded(argv, seconds, runner?, options?)` enforces an external process-tree deadline. `options` sets `env` and `cwd`.
 - `Lute.directoryLock(root)` provides cross-process resource ownership.
 
 `Core.accountPlan(plan, execution)` reports what ran, the unsupported units and completeness.
@@ -72,7 +72,7 @@ Decoding alone provides no visual or audible judgment.
 The host appends `arguments` after a `--` that follows the run ID.
 `Lute.workerArguments()` returns them with the run ID and with the selection that the worker derives from `--case=`, `--tag=`, `--tier=`, `--name=` (a case-name substring) and `--source=`.
 
-The batch deadline or the host `deadlineSeconds` (default 60) bounds the worker process group.
+The batch deadline or the host `deadlineSeconds` (default 60) bounds the process tree of the worker.
 Use a separate directory for each concurrent run. The batch inputs and reports stay available for failure diagnosis.
 The consumer isolates its own output files.
 
@@ -111,7 +111,7 @@ It uses the same plan batches, session, load and registration classification and
 `Lune.worker`, `selfRegisteringWorker`, `runWorkerBatch`, `runSelfRegisteringWorkerBatch`, `runBounded`, `encodeBatch` and `decodeBatch` mirror the Lute names.
 Run `lune run examples/lune-run.luau` for a consumer run with three batches: a passing unit, a failing unit and a missing unit.
 
-The logic lives once in `src/runtime`, over a `Runtime` binding `{ name, defaultCommand, defaultDirectory, json, fs, process, time, stdio }`.
+The logic lives once in `src/runtime`, over a `Runtime` binding `{ name, defaultCommand, defaultDirectory, json, fs, process, time, stdio, bounded? }`.
 `src/lute/runtime.luau` and `src/lune/runtime.luau` supply the services. `Binding.validate` refuses an incomplete binding.
 A third runtime needs only a binding. The Lute entry points keep the plain-report protocol.
 
@@ -144,11 +144,15 @@ Load, registration and empty-discovery outcomes are ordinary case results and `C
 
 ### Limits
 
-The batch deadline kills the POSIX process group of the worker, including grandchildren, through `sh`.
-Verify creates the group without a terminal. It tries shell job control, then `setsid`, then `perl` `setsid`, and it proves that the group exists before it starts the command.
-If no mechanism works, the run does not start the command. It returns `unsupported = true` and `ok = false`, so the capability `posix-process-groups` is never claimed falsely.
+The batch deadline kills the process tree of the worker, including grandchildren.
 
-- Lune workers run on macOS and Linux only.
+- On POSIX, `sh` kills the process group of the worker. Verify creates the group without a terminal. It tries shell job control, then `setsid`, then `perl` `setsid`, and it proves that the group exists before it starts the command.
+- On Windows, the Lute watchdog `src/lute/tree-watchdog.luau` starts a reporter process that records its process ID and runs the command. At the limit, the watchdog kills the tree of the reporter with `taskkill /T /F`. The watchdog returns the exit code, stdout and stderr in one length-framed record.
+
+If no mechanism works, the run does not start the command. It returns `unsupported = true` and `ok = false`, so the capabilities `posix-process-groups` and `process-tree-kill` are never claimed falsely.
+A runtime binding names its mechanism in `bounded = { mechanism, watchdog?, shell? }`. The Lute and Lune bindings select `tree` on Windows and leave the POSIX default elsewhere.
+
+- Lune workers run on macOS, Linux and Windows. On Windows, `lute` must be on `PATH` to start the watchdog.
 - `lune` must be on `PATH` or named in `command`.
 - Each worker resolves its own `require` paths relative to its script.
 - `@lune/*` services load dynamically, so static analysis does not type them.
@@ -167,7 +171,7 @@ Another host calls `Gate.run(gate, executor, { runId, ... })` with an injected `
 | Producer | Fields | Runs |
 | --- | --- | --- |
 | `tests` | `worker`, `locators`, `command?`, `silent?`, `isolate?`, `workers?`, `sourceDeadlineSeconds?`, `args?`, `cases?` | Ordinary spec modules in one [Lute worker](#lute-workers) process. `command` replaces the worker command of the gate, for example `{ "lune", "run" }` for a [Lune worker](#lune-workers). With `isolate`, one worker process runs per locator, `workers` at a time. The gate accounts them as this one producer. |
-| `command`, `build`, `native` | `argv`, `env?`, `cwd?`, `exit?`, `report?` | An argument vector in a bounded process group. `env` adds to the inherited environment. `cwd` is set through the runtime binding. No shell wrapper runs. `native` must name its host in `requires`. |
+| `command`, `build`, `native` | `argv`, `env?`, `cwd?`, `exit?`, `report?` | An argument vector in a bounded process tree. `env` adds to the inherited environment. `cwd` is set through the runtime binding. No shell wrapper runs. `native` must name its host in `requires`. |
 | `benchmark` | `benchmark` or `collection` | A [benchmark](experience.md#benchmarks) or a benchmark collection in this process, alone by default. A producer names one of the two. |
 
 Fields of the `tests` producer:
@@ -203,7 +207,7 @@ Policy sets `concurrency` (default 1), the whole-run `deadlineSeconds`, `failFas
 - **Order and concurrency.** Producers start in declaration order after everything that they run `after` has passed.
   No more than `concurrency` producers run at once. An exclusive producer runs alone.
   A producer after one that did not pass is `blocked`.
-- **Deadlines.** Each command is bounded as `runBounded` bounds it. Verify kills its process group at the limit, in whole seconds rounded up.
+- **Deadlines.** Each command is bounded as `runBounded` bounds it. Verify kills its process tree at the limit, in whole seconds rounded up.
   The run deadline clamps each start. Producers that the deadline prevents from starting are `timed_out`.
 - **Exit and reports.**
   - Exit zero passes, unless `exit` maps the code to `passed`, `failed`, `deferred` or `unsupported`.
@@ -269,7 +273,8 @@ Limits:
 3. It starts play and executes `code` in `Server` (default) or `Client`.
 
 Use the provided `tools/studio-worker.luau` as `worker`.
-macOS is the reference platform. The launcher uses POSIX process groups.
+macOS is the reference platform. The launcher also runs on Windows. See [platform support](running.md#platform-support).
+The outer run limit uses the bounded process tree of the platform.
 `run` never attaches unless you give it `attach`. See [attached Studio](#attached-studio).
 Studio must already be installed, authenticated and configured for its MCP tools.
 
@@ -315,8 +320,8 @@ The engine keeps the result in the attributes of `ReplicatedStorage`, named `Ver
 Verify clears them after a fetch.
 
 The default run limit is 90 seconds.
-A launched Studio run owns every Studio process that it starts. The worker records the Studio processes before the launch. On every exit it ends the multiplayer test with `StudioTestService:EndTest`, then sends TERM and then KILL to the Studio processes that appeared for this run: the launched Studio, its descendants, and the `-task StartServer` and `-rbxTransportToken` processes. It never signals a Studio that ran before. A process that survives both signals is listed as a limitation of the report.
-An external watchdog kills the owned worker process group, including Studio and the MCP process, on a timeout.
+A launched Studio run owns every Studio process that it starts. The worker records the Studio processes before the launch. On every exit it ends the multiplayer test with `StudioTestService:EndTest`, then sends TERM and then KILL to the Studio processes that appeared for this run (on Windows, `taskkill` and then `taskkill /F`): the launched Studio, its descendants, and the `-task StartServer` and `-rbxTransportToken` processes. It never signals a Studio that ran before. A process that survives both signals is listed as a limitation of the report.
+An external watchdog kills the owned process tree of the worker, including Studio and the MCP process, on a timeout.
 Normal success and failure also terminate those owned processes.
 Case budgets stay cooperative inside the engine. The outer run limit holds even when engine code never yields.
 Temporary run directories keep the input, the engine and MCP diagnostics and one report for diagnosis.
@@ -525,6 +530,7 @@ Each player can execute only one request per join.
 It opens the documented Roblox deep link with the signed-in account.
 
 - The macOS reference backend requires Roblox.app and no existing Player process.
+- On Windows the reference backend is unsupported. See [platform support](running.md#platform-support).
 - It reads the log that the new PID holds open, validates the ordinary framed report and the run identity, and stops that owned process.
 - `logPath` saves the collected raw log before cleanup.
 - The default deadline is 90 seconds.

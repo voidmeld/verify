@@ -12,11 +12,11 @@ A passing run proves only what the host can observe.
 | Host | Start it with | Runs | Needs | Limits |
 | --- | --- | --- | --- | --- |
 | Simulator | `--host simulator` (default) | The case in the Lute process, over the [simulated environment](api.md#simulated-environment). | Lute. | Proves Luau logic over the declared surface. It proves no rendering, physics, replication or input. |
-| Lute worker | `Lute.host` | One Lute process per batch. | Lute. POSIX. | Proves Luau logic under Lute. See [Lute workers](execution.md#lute-workers). |
-| Lune worker | `Lune.host` | One `lune run` process per batch. | `lune` on `PATH`. POSIX. | Proves Luau logic under Lune. See [Lune workers](execution.md#lune-workers). |
-| Studio, launched | `--host studio` | A disposable Studio on a copy of an XML place. | Installed, authenticated Studio with its MCP tools. macOS reference. | One Studio per run. Supports 1 to 8 clients. Saves a final view for one client. See [native Studio execution](execution.md#native-studio-execution). |
+| Lute worker | `Lute.host` | One Lute process per batch. | Lute. See [platform support](#platform-support). | Proves Luau logic under Lute. See [Lute workers](execution.md#lute-workers). |
+| Lune worker | `Lune.host` | One `lune run` process per batch. | `lune` on `PATH`. On Windows also `lute`. | Proves Luau logic under Lune. See [Lune workers](execution.md#lune-workers). |
+| Studio, launched | `--host studio` | A disposable Studio on a copy of an XML place. | Installed, authenticated Studio with its MCP tools. macOS reference. See [platform support](#platform-support) for Windows. | One Studio per run. Supports 1 to 8 clients. Saves a final view for one client. See [native Studio execution](execution.md#native-studio-execution). |
 | Studio, attached | `attach` option of `Lute.platform.run` | The case in a Studio that the developer already has open. | An open Studio and an `authorize` function. | No isolation. No `players`. The command line cannot attach. See [attached Studio](execution.md#attached-studio). |
-| Player | `--host player` | The case in a published place, through the signed-in Player. | A published test place and a closed Player. macOS reference. | One client per machine. No durable screenshots. See [published Player execution](execution.md#published-player-execution). |
+| Player | `--host player` | The case in a published place, through the signed-in Player. | A published test place and a closed Player. macOS only. | One client per machine. No durable screenshots. See [published Player execution](execution.md#published-player-execution). |
 | Open Cloud | `--host open-cloud` | The case as a Luau execution task on an exact place version. | A caller module for `request` and `authorize`. | Server only. No input, physics, replication, rendering, audio or capture. See [Open Cloud execution](execution.md#open-cloud-execution). |
 
 A capability states what a host can observe. It grants no permission.
@@ -27,7 +27,7 @@ A case that requires a capability that the host lacks reports `unsupported`.
 Run these commands from a workspace that contains both the framework and the test modules.
 Paths are relative to the working directory.
 Lute cannot resolve a test module outside its loading root, so use their common parent as the working directory.
-Do not pass an entry that is outside the workspace, such as a file under `/tmp`.
+Do not pass an entry that is outside the workspace, such as a file in the temporary directory.
 
 From this repository:
 
@@ -338,21 +338,41 @@ They produce the same cases and reports.
 
 ## Platform support
 
-The portable layers assume no operating system. They are core, gate, evidence, benchmark, simulator and Lune workers.
-These parts need a POSIX system:
+The portable layers assume no operating system. They are core, gate, evidence, benchmark and the simulator.
+The Lute and Lune layers support macOS, Linux and Windows. The mechanism that bounds a process differs by platform:
 
-- Bounded runs (`Lute.runBounded`, gate commands and worker hosts) start `sh` from `PATH`.
-  They need job control and process-group kill.
-  They declare the capability `posix-process-groups`. A host without it is unsupported.
-  They need one way to create a process group: shell job control, `setsid` or `perl`. A dash shell without a terminal has no job control.
-- `Lute.directoryLock` runs `mkdir`, `kill` and `rm` from `PATH`.
-
-The reference Studio, Player and window capture adapters support macOS only.
-They hold these absolute paths:
-
-| Path | Used by | Override |
+| Platform | Mechanism | Capabilities |
 | --- | --- | --- |
-| `/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio` | Studio launch | `studioExecutable` |
-| `/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP` | Studio launch and attach | `mcpExecutable` |
-| `/Applications/Roblox.app`, `/usr/bin/open`, `/usr/bin/pgrep`, `/bin/ps`, `/usr/sbin/lsof` | Player launcher | `backend` |
-| `/tmp/verify-studio`, `/tmp/verify-studio-attach` | Run directories | `directory` |
+| macOS, Linux | `sh` from `PATH` puts the command in a process group and kills the group at the limit. It needs one way to create the group: shell job control, `setsid` or `perl`. A dash shell without a terminal has no job control. | `posix-process-groups`, `process-tree-kill` |
+| Windows | A Lute watchdog runs the command under a reporter process and kills the tree of the reporter with `taskkill /T /F` at the limit. A Lune binding starts the watchdog with `lute` from `PATH`. | `process-tree-kill` |
+
+Bounded runs are `Lute.runBounded`, `Lune.runBounded`, gate commands and worker hosts.
+A run that cannot create its group or start its watchdog does not start the command. It returns `unsupported = true`.
+Require `process-tree-kill` when a case must run on every platform.
+On Windows, a descendant whose parent exited before the limit is not in the tree, so `taskkill` cannot find it.
+The watchdog does not wait for such a descendant, so the limit still holds.
+A command that reaches the limit on Windows returns no output.
+
+`Lute.directoryLock` uses the file system. It checks a holder process with `kill -0` on POSIX and with `tasklist` on Windows.
+
+The Studio launcher and the attached Studio support macOS and Windows.
+On Windows, Verify finds Studio in the newest directory under `%LOCALAPPDATA%/Roblox/Versions` that holds `RobloxStudioBeta.exe`.
+It drives the standard input of the Studio MCP server through a Windows PowerShell bridge, because Windows has no `mkfifo` and Lute cannot write to the standard input of a running process.
+It lists processes with `Get-CimInstance Win32_Process` and stops them with `taskkill`.
+The MCP bridge has listed open Studios on Windows. The native conformance check and a launched Studio run have not yet run on Windows.
+
+The reference Player launcher supports macOS only.
+On Windows, one launch starts more than one Player process, and no open-file query binds the report log to one process.
+`--host player` then reports the case `verify:execution` as `unsupported` with the missing capability `roblox-player-launcher`.
+`Lute.player.run` accepts a `backend` for another platform.
+
+`Lute.windowCapture` runs no command. It decides from window rows that you inject, so it works on each platform that can supply them.
+
+These defaults depend on the platform:
+
+| Default | macOS | Windows | Override |
+| --- | --- | --- | --- |
+| Studio executable | `/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio` | `RobloxStudioBeta.exe` in the newest Studio version directory | `studioExecutable` |
+| Studio MCP executable | `/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP` | `StudioMCP.exe` in the same directory | `mcpExecutable` |
+| Player launcher | `/Applications/Roblox.app`, `/usr/bin/open`, `/usr/bin/pgrep`, `/bin/ps`, `/usr/sbin/lsof` | None | `backend` |
+| Run directories | `/tmp/verify-studio`, `/tmp/verify-studio-attach` | `verify-studio` and `verify-studio-attach` in the system temporary directory | `directory` |
