@@ -1,6 +1,7 @@
 --!strict
 
-local Base64 = require "./base64"
+local Base64 = require "../codec/base64"
+local Media = require "../codec/image"
 local Paths = require "./paths"
 local Random = require "./random"
 local Schema = require "./schema"
@@ -393,22 +394,6 @@ local function compare(comparison: Comparison, options: CompareOptions): Judgmen
 	return judgment
 end
 
-local function mediaType(bytes: string): string?
-	if string.sub(bytes, 1, 8) == "\137PNG\r\n\26\n" then
-		return "image/png"
-	end
-	if string.sub(bytes, 1, 3) == "\255\216\255" then
-		return "image/jpeg"
-	end
-	if string.sub(bytes, 1, 6) == "GIF87a" or string.sub(bytes, 1, 6) == "GIF89a" then
-		return "image/gif"
-	end
-	if string.sub(bytes, 1, 4) == "RIFF" and string.sub(bytes, 9, 12) == "WEBP" then
-		return "image/webp"
-	end
-	return nil
-end
-
 local function field(value: unknown, key: string): unknown
 	if type(value) ~= "table" then
 		return nil
@@ -427,7 +412,7 @@ local function anthropic(options: AnthropicOptions): Transport
 				table.insert(content, { type = "text", text = part.text } :: { [string]: unknown })
 			elseif part.image ~= nil then
 				local bytes = options.read(part.image :: string)
-				local kind = mediaType(bytes)
+				local kind = Media.mediaType(bytes)
 				if kind == nil then
 					return {
 						text = nil,
@@ -697,7 +682,6 @@ return {
 	compare = compare,
 	anthropic = anthropic,
 	claudeCli = claudeCli,
-	mediaType = mediaType,
 	decodeLabels = decodeLabels,
 	calibrate = calibrate,
 }

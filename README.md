@@ -83,6 +83,7 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 | [`src/lute`](src/lute) | The run command, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk loading, bounded workers, Studio or Player launch and window capture. |
 | [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes, the interface audit and the simulator. |
 | [`src/host`](src/host) | Deterministic execution host for failure injection. |
+| [`src/codec`](src/codec) | Base64 and image signatures for captures and the judge. Portable. |
 | [`src/consumer`](src/consumer) | Portable specification and production graph diagnostics. |
 | [`src/agent-eval`](src/agent-eval) | Agent evaluation runs, adapters, the judge, statistics and the command `tools/agent-eval.luau`. Host side only. |
 

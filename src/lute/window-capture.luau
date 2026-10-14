@@ -1,5 +1,6 @@
 --!strict
 
+local Image = require "../codec/image"
 local Console = require "../core/console"
 
 export type Window = {
@@ -79,8 +80,6 @@ local DEFAULT_REASONS: CaptureReasons = table.freeze {
 	frameNotPng = "window_capture_frame_not_png",
 }
 
-local PNG_MAGIC = "\137PNG\r\n\26\n"
-
 local function refuse(reason: string, detail: string): Refusal
 	return { ok = false, reason = reason, detail = detail }
 end
@@ -153,20 +152,6 @@ local function selectWindow(
 		)
 	end
 	return { ok = true, window = chosen }
-end
-
-local function pngSize(bytes: string): (number?, number?)
-	if #bytes < 24 or string.sub(bytes, 1, 8) ~= PNG_MAGIC or string.sub(bytes, 13, 16) ~= "IHDR" then
-		return nil, nil
-	end
-	local function be32(offset: number): number
-		local value = 0
-		for index = offset, offset + 3 do
-			value = value * 256 + string.byte(bytes, index)
-		end
-		return value
-	end
-	return be32(17), be32(21)
 end
 
 local function parsePid(value: string?): number?
@@ -268,7 +253,7 @@ local function captureFrame(options: CaptureOptions): Frame
 	if bytes == nil then
 		return refuse(reasons.frameMissing, ("nothing was written to %s"):format(outPath))
 	end
-	if string.sub(bytes, 1, 8) ~= PNG_MAGIC then
+	if Image.mediaType(bytes) ~= "image/png" then
 		return refuse(reasons.frameNotPng, ("%s does not begin with the PNG signature"):format(outPath))
 	end
 	if #bytes < limits.minimumBytes then
@@ -277,7 +262,7 @@ local function captureFrame(options: CaptureOptions): Frame
 			("%s is %d bytes, under the %d a real frame carries"):format(outPath, #bytes, limits.minimumBytes)
 		)
 	end
-	local width, height = pngSize(bytes)
+	local width, height = Image.pngSize(bytes)
 	if width == nil or height == nil then
 		return refuse(reasons.frameNotPng, ("%s carries no readable IHDR"):format(outPath))
 	end
@@ -508,7 +493,7 @@ local function recordCapture(options: RecordOptions): RecordOutcome
 		if scale ~= nil and (scale <= 0 or scale ~= scale or scale == math.huge) then
 			return refusal("window_scale_invalid", tostring(scale))
 		end
-		local shotWidth, shotHeight = pngSize(options.screenshot :: string)
+		local shotWidth, shotHeight = Image.pngSize(options.screenshot :: string)
 		if
 			shotWidth ~= nil
 			and shotHeight ~= nil
@@ -644,7 +629,6 @@ return {
 	DEFAULT_WHOLE_WINDOW_TOLERANCE = DEFAULT_WHOLE_WINDOW_TOLERANCE,
 	parseWindowRows = parseWindowRows,
 	selectWindow = selectWindow,
-	pngSize = pngSize,
 	parsePid = parsePid,
 	documentWindowSize = documentWindowSize,
 	captureFrame = captureFrame,

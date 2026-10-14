@@ -1,7 +1,7 @@
 --!strict
 
 local Adapters = require "@self/adapters"
-local Base64 = require "@self/base64"
+local Base64 = require "./codec/base64"
 local Cli = require "@self/cli"
 local Judge = require "@self/judge"
 local Judging = require "@self/judging"

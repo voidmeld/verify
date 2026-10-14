@@ -532,6 +532,13 @@ It runs no command. It decides from facts that you inject.
 A capture record is not the run-bound worker receipt. It claims no judgment.
 The consumer owns run freshness, image custody and clean-image coverage.
 
+### Codecs
+
+`src/codec` holds portable leaves that the capture adapters and the judge share. They need no host services.
+
+- `codec/base64.luau`: `encode(bytes)` returns standard base64 with padding. `decode(text)` returns the bytes, or `nil` when the text is not padded base64. `AgentEval.base64` is the same module.
+- `codec/image.luau`: `mediaType(bytes)` returns `image/png`, `image/jpeg`, `image/gif`, `image/webp` or `nil` from the file signature. `pngSize(bytes)` returns the width and height from the PNG `IHDR` chunk, or `nil` when the bytes are not a PNG.
+
 ### Observation sinks and place fixtures
 
 `Roblox.observationSink` provides these parts:
