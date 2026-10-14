@@ -216,7 +216,7 @@ return function(suite: Core.Harness)
 			{
 				timeoutSeconds = 40,
 				run = function(check: Core.Context)
-					local root = Files.claimDirectory "/tmp/verify-progress-tests"
+					local root = Files.claimDirectory(Files.temporary "verify-progress-tests")
 					check:defer(function()
 						fs.removeDirectory(root, { recursive = true })
 					end)
@@ -257,11 +257,11 @@ return function(suite: Core.Harness)
 				host = "player",
 				entry = "examples/platform-entry.luau",
 				placeId = 1,
-				output = "/tmp/verify-progress-refused",
-				progressFile = "/tmp/verify-progress-refused/p.jsonl",
+				output = Files.temporary "verify-progress-refused",
+				progressFile = Files.temporary "verify-progress-refused" .. "/p.jsonl",
 			}
 			check:expect(result.report.failed):toBe(1)
-			fs.removeDirectory("/tmp/verify-progress-refused", { recursive = true })
+			fs.removeDirectory(Files.temporary "verify-progress-refused", { recursive = true })
 		end)
 	end)
 end

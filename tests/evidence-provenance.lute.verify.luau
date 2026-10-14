@@ -62,7 +62,7 @@ end
 
 local function build(check: Core.Context, setup: Setup?): Fixture
 	local options: Setup = setup or {}
-	local root = Files.claimDirectory "/tmp/verify-provenance-tests"
+	local root = Files.claimDirectory(Files.temporary "verify-provenance-tests")
 	check:defer(function()
 		fs.removeDirectory(root, { recursive = true })
 	end)
@@ -182,7 +182,7 @@ return function(suite: Core.Harness)
 		end)
 
 		suite:case("the local directory sink stores by content and re-validates from disk", function(check)
-			local root = Files.claimDirectory "/tmp/verify-provenance-sink"
+			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -408,7 +408,7 @@ return function(suite: Core.Harness)
 
 	suite:suite("evidence tamper and availability", function()
 		suite:case("rejects an artifact changed on disk by content, size or removal", function(check)
-			local root = Files.claimDirectory "/tmp/verify-provenance-sink"
+			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -464,7 +464,7 @@ return function(suite: Core.Harness)
 		end)
 
 		suite:case("sealing reports unreadable references, a bad clock and a bad hash without sealing", function(check)
-			local root = Files.claimDirectory "/tmp/verify-provenance-sink"
+			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -579,7 +579,7 @@ return function(suite: Core.Harness)
 
 	suite:suite("local directory sink", function()
 		suite:case("refuses mismatched identities, outside references and divergent content", function(check)
-			local root = Files.claimDirectory "/tmp/verify-provenance-sink"
+			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -608,7 +608,7 @@ return function(suite: Core.Harness)
 		local SUBJECT: Core.EvidenceSubject = { runId = "run-9", build = BUILD }
 
 		local function sealed(check: Core.Context, subject: Core.EvidenceSubject): (Core.Report, string)
-			local root = Files.claimDirectory "/tmp/verify-provenance-outcome"
+			local root = Files.claimDirectory(Files.temporary "verify-provenance-outcome")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)

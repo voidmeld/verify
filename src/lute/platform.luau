@@ -1,7 +1,6 @@
 --!strict
 
 local fs = require "@std/fs"
-local process = require "@std/process"
 local Core = require "../core"
 local Entry = require "../roblox/case-entry"
 local Attachments = require "./attachments"
@@ -51,9 +50,7 @@ export type Result = {
 	cloud: OpenCloud.Outcome?,
 }
 
-local function absolute(path: string): string
-	return if path:sub(1, 1) == "/" then path else tostring(process.cwd()) .. "/" .. path
-end
+local absolute = Files.absolute
 
 local function literalIds(ids: { string }?): string
 	if ids == nil then
@@ -161,12 +158,10 @@ local function run(options: Options): Result
 			for _, id in options.caseIds or ({} :: { string }) do
 				table.insert(command, id)
 			end
-			if progressPath ~= nil then
-				table.insert(command, 1, "VERIFY_PROGRESS_RUN=" .. directory)
-				table.insert(command, 1, "VERIFY_PROGRESS_FILE=" .. absolute(progressPath))
-				table.insert(command, 1, "/usr/bin/env")
-			end
-			local result = Bounded.run(command, seconds)
+			local environment: { [string]: string }? = if progressPath ~= nil
+				then { VERIFY_PROGRESS_FILE = absolute(progressPath), VERIFY_PROGRESS_RUN = directory }
+				else nil
+			local result = Bounded.run(command, seconds, nil, { env = environment })
 			fs.writeStringToFile(directory .. "/host.log", result.stdout .. result.stderr)
 			if result.timedOut then
 				outcome = { status = "timed_out", detail = "simulator process exceeded deadline" }

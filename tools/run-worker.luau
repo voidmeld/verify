@@ -1,7 +1,9 @@
 --!strict
 
 local fs = require "@std/fs"
+local pathlib = require "@std/path"
 local process = require "@std/process"
+local system = require "@std/system"
 local Core = require "../src/core"
 local Entry = require "../src/roblox/case-entry"
 local ProgressFile = require "../src/lute/progress-file"
@@ -15,7 +17,7 @@ for index = 4, #process.args do
 end
 local function parts(value: string): { string }
 	local result: { string } = {}
-	for part in value:gmatch "[^/]+" do
+	for part in value:gmatch(if system.win32 then "[^/\\]+" else "[^/]+") do
 		if part == ".." then
 			table.remove(result)
 		elseif part ~= "." then
@@ -25,14 +27,20 @@ local function parts(value: string): { string }
 	return result
 end
 local worker = process.args[1]
-if worker:sub(1, 1) ~= "/" then
+if not pathlib.isAbsolute(worker) then
 	worker = tostring(process.cwd()) .. "/" .. worker
 end
 local base = parts(worker)
 table.remove(base)
 local target = parts((entry:gsub("%.luau$", "")))
 local common = 0
-while base[common + 1] ~= nil and base[common + 1] == target[common + 1] do
+local function same(left: string?, right: string?): boolean
+	if left == nil or right == nil then
+		return false
+	end
+	return if system.win32 then string.lower(left) == string.lower(right) else left == right
+end
+while same(base[common + 1], target[common + 1]) do
 	common += 1
 end
 local relative = string.rep("../", #base - common)

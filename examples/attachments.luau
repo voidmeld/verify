@@ -4,7 +4,7 @@ local fs = require "@std/fs"
 local Files = require "../src/lute/files"
 local Platform = require "../src/lute/platform"
 
-local root = Files.claimDirectory "/tmp/verify-attachments-example"
+local root = Files.claimDirectory(Files.temporary "verify-attachments-example")
 local result = Platform.run {
 	host = "simulator",
 	entry = "examples/attachments-entry.luau",

@@ -1,7 +1,6 @@
 --!strict
 
 local fs = require "@std/fs"
-local process = require "@std/process"
 local Core = require "../core"
 local Attachment = require "../core/attachment"
 local EvidenceStore = require "./evidence-store"
@@ -18,9 +17,7 @@ export type Options = {
 	host: string?,
 }
 
-local function absolute(value: string): string
-	return if string.sub(value, 1, 1) == "/" then value else tostring(process.cwd()) .. "/" .. value
-end
+local absolute = Files.absolute
 
 local function safeSegment(value: string): string
 	return string.sub(string.gsub(value, "[^%w._-]", "_"), 1, 80)

@@ -1,6 +1,7 @@
 --!strict
 
 local process = require "@std/process"
+local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
 local Platform = Lute.platform
 local Core = require "../src/core"
@@ -12,7 +13,7 @@ local result = Platform.run {
 	players = 2,
 	clientEntry = "examples/multiplayer/client.luau",
 	deadlineSeconds = 90,
-	output = "/tmp/verify-multiplayer",
+	output = Files.temporary "verify-multiplayer",
 }
 print(Core.format(result.report))
 assert(result.report.total == 1 and result.report.passed == 1, "multiplayer case failed")

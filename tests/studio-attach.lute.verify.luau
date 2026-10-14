@@ -13,6 +13,7 @@ local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
 local Mcp = require "../src/lute/studio-mcp"
 local ProgressFile = require "../src/lute/progress-file"
+local Reply = require "../src/lute/studio-reply"
 local Platform = require "../src/lute/platform"
 local Roblox = require "../src/roblox"
 local Wire = require "../src/lute/wire"
@@ -590,11 +591,11 @@ return function(suite: Verify.Harness)
 			local outcome = Lute.studio.run {
 				code = body,
 				deadlineSeconds = 1.2,
-				directory = Files.claimDirectory "/tmp/verify-attach-tests-never",
+				directory = Files.claimDirectory(Files.temporary "verify-attach-tests-never"),
 				attach = { authorize = allow, studioId = "studio-a", transport = self.transport },
 			}
 			check:expect(outcome.status):toEqual "timed_out"
-			pcall(fs.removeDirectory, "/tmp/verify-attach-tests-never", { recursive = true })
+			pcall(fs.removeDirectory, Files.temporary "verify-attach-tests-never", { recursive = true })
 		end)
 
 		suite:case("classifies a run that vanished or a lost session as session_lost", function(check)
@@ -619,7 +620,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("captures an image to a file", function(check)
-			local root = Files.claimDirectory "/tmp/verify-attach-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -631,13 +632,24 @@ return function(suite: Verify.Harness)
 			check:expect(artifact.mediaType):toEqual "image/png"
 			check:expect(fs.readFileToString(artifact.reference):sub(1, 8)):toEqual "\137PNG\r\n\26\n"
 		end)
+
+		suite:case("decodes capture data in Luau for every padding length and refuses malformed data", function(check)
+			check:expect(Reply.decodeBase64 "TWFu"):toEqual "Man"
+			check:expect(Reply.decodeBase64 "TWE="):toEqual "Ma"
+			check:expect(Reply.decodeBase64 "TQ=="):toEqual "M"
+			check:expect(Reply.decodeBase64 "iVBO\nRw0K\r\nGgo="):toEqual "\137PNG\r\n\26\n"
+			check:expect(Reply.decodeBase64 ""):toEqual ""
+			check:expect((pcall(Reply.decodeBase64, "TWF"))):toEqual(false)
+			check:expect((pcall(Reply.decodeBase64, "T*Fu"))):toEqual(false)
+			check:expect((pcall(Reply.decodeBase64, "T=Fu"))):toEqual(false)
+		end)
 	end)
 
 	suite:suite("one authored case, launched or attached", function()
 		suite:case("platform.run in studio host attaches, starts play, reports and stops", {
 			timeoutSeconds = 20,
 			run = function(check: Verify.Context)
-				local root = Files.claimDirectory "/tmp/verify-attach-tests"
+				local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)
@@ -675,7 +687,7 @@ return function(suite: Verify.Harness)
 		suite:case("a hung attached run times out and still stops play", {
 			timeoutSeconds = 20,
 			run = function(check: Verify.Context)
-				local root = Files.claimDirectory "/tmp/verify-attach-tests"
+				local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)
@@ -699,7 +711,7 @@ return function(suite: Verify.Harness)
 				local self = fake(ONE)
 				local refused = Lute.studio.run {
 					code = "return 1",
-					directory = "/tmp/verify-attach-tests-refused",
+					directory = Files.temporary "verify-attach-tests-refused",
 					attach = {
 						authorize = function(): Lute.StudioAuthorization
 							return { ok = false, reason = "no grant" }
@@ -719,16 +731,16 @@ return function(suite: Verify.Harness)
 				check:expect(players.status):toEqual "faulted"
 				local absent = Lute.studio.run {
 					code = "return 1",
-					directory = "/tmp/verify-attach-tests-refused",
+					directory = Files.temporary "verify-attach-tests-refused",
 					attach = { authorize = allow, studioId = "gone", transport = self.transport },
 				}
 				check:expect(absent.detail):toContain "absent"
-				pcall(fs.removeDirectory, "/tmp/verify-attach-tests-refused", { recursive = true })
+				pcall(fs.removeDirectory, Files.temporary "verify-attach-tests-refused", { recursive = true })
 			end
 		)
 
 		suite:case("the Studio host attaches per batch with the same code builder", function(check)
-			local root = Files.claimDirectory "/tmp/verify-attach-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -764,7 +776,7 @@ return function(suite: Verify.Harness)
 		local ARGS = '{"studio_id":"studio-a"}'
 
 		local function child(check: Verify.Context): (string, string)
-			local root = Files.claimDirectory "/tmp/verify-mcp-exit-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-mcp-exit-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -847,7 +859,7 @@ return function(suite: Verify.Harness)
 					publisher.publish("case-1", "server", "first", "finished", "passed")
 					return "noise\n" .. table.concat(lines, "\n")
 				end
-				local directory = Files.claimDirectory "/tmp/verify-attach-progress-a"
+				local directory = Files.claimDirectory(Files.temporary "verify-attach-progress-a")
 				local file = directory .. "/progress.jsonl"
 				local seen: { string } = {}
 				local runIdSeen = ""
@@ -904,7 +916,7 @@ return function(suite: Verify.Harness)
 					local head, body = string.match(lines[2], "^(.-|%d+|%x+|)(%x+)$")
 					return lines[1] .. "\n" .. (head :: string) .. string.gsub(body :: string, "%d", "1")
 				end
-				local directory = Files.claimDirectory "/tmp/verify-attach-progress-b"
+				local directory = Files.claimDirectory(Files.temporary "verify-attach-progress-b")
 				local file = directory .. "/progress.jsonl"
 				local outcome = Lute.studio.run {
 					code = "return 1",
@@ -917,7 +929,7 @@ return function(suite: Verify.Harness)
 				pcall(fs.removeDirectory, directory, { recursive = true })
 				local refused = fake(ONE)
 				refused.console = tampered.console
-				local second = Files.claimDirectory "/tmp/verify-attach-progress-c"
+				local second = Files.claimDirectory(Files.temporary "verify-attach-progress-c")
 				local outcome2 = Lute.studio.run {
 					code = "return 1",
 					directory = second,
@@ -942,7 +954,7 @@ return function(suite: Verify.Harness)
 
 		suite:case("an attached run without a listener never reads the console or injects a token", function(check)
 			local self = fake(ONE)
-			local directory = Files.claimDirectory "/tmp/verify-attach-progress-d"
+			local directory = Files.claimDirectory(Files.temporary "verify-attach-progress-d")
 			local tools: { string } = {}
 			local outcome = Lute.studio.run {
 				code = "return 1",

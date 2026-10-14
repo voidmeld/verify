@@ -6,7 +6,7 @@ local Place = require "../src/lute/place"
 local Files = require "../src/lute/files"
 
 local function directory(context: Core.Context): string
-	local root = Files.claimDirectory "/tmp/verify-place-tests"
+	local root = Files.claimDirectory(Files.temporary "verify-place-tests")
 	context:defer(function()
 		fs.removeDirectory(root, { recursive = true })
 	end)

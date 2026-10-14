@@ -1,11 +1,16 @@
 --!strict
 
 local process = require "@std/process"
+local system = require "@std/system"
 
 local Lute = require "../src/lute"
 local Gate = require "../src/gate"
 
 local checksum = 0
+
+local function echo(text: string): { string }
+	return if system.win32 then { "cmd", "/c", "echo " .. text } else { "/bin/echo", text }
+end
 
 local gate = Gate.define {
 	id = "example-gate",
@@ -13,7 +18,7 @@ local gate = Gate.define {
 		{
 			id = "prepare",
 			kind = "build",
-			argv = { "/bin/echo", "prepared" },
+			argv = echo "prepared",
 			tier = "fast",
 			why = "stages the inputs",
 		},
@@ -49,7 +54,7 @@ local gate = Gate.define {
 		{
 			id = "interactive",
 			kind = "native",
-			argv = { "/bin/echo", "would drive an interactive editor" },
+			argv = echo "would drive an interactive editor",
 			requires = { "native-studio" },
 			tier = "slow",
 		},

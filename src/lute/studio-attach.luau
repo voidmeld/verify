@@ -234,7 +234,7 @@ local function attach(options: Options): (Session?, Refusal?)
 	local transport = options.transport
 		or mcpTransport(
 			options.mcpExecutable or DEFAULT_EXECUTABLE,
-			options.directory or Files.claimDirectory "/tmp/verify-attach"
+			options.directory or Files.claimDirectory(Files.temporary "verify-attach")
 		)
 	local runDeadline = os.clock() + runSeconds
 	local studio: StudioInfo? = nil
@@ -531,7 +531,7 @@ local function run(options: RunOptions): Core.BatchOutcome
 	if not (seconds > 0 and seconds < math.huge) then
 		return { status = "faulted", detail = "Studio deadline must be finite and positive" }
 	end
-	local directory = Files.claimDirectory(options.directory or "/tmp/verify-studio-attach")
+	local directory = Files.claimDirectory(options.directory or Files.temporary "verify-studio-attach")
 	local settings = table.clone(options.attach)
 	settings.runSeconds = seconds
 	settings.directory = settings.directory or directory

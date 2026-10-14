@@ -15,7 +15,7 @@ local ENTRY = "examples/attachments-entry.luau"
 local BUILD: Core.EvidenceBuild = { commit = "c0ffee", tree = "7ee", clean = true, digest = "build-1" }
 
 local function simulate(check: Core.Context, id: string, patch: ((Lute.PlatformOptions) -> ())?): Platform.Result
-	local root = Files.claimDirectory "/tmp/verify-attachment-tests"
+	local root = Files.claimDirectory(Files.temporary "verify-attachment-tests")
 	check:defer(function()
 		fs.removeDirectory(root, { recursive = true })
 	end)
@@ -138,12 +138,16 @@ return function(suite: Core.Harness)
 				capabilities = {},
 				attachments = { maxCount = 5 },
 			}
-			local _, issues =
-				Lute.attachments.materialize(report, { directory = "/tmp/unused", limits = { maxCount = 2 } })
+			local _, issues = Lute.attachments.materialize(
+				report,
+				{ directory = Files.temporary "verify-attachment-unused", limits = { maxCount = 2 } }
+			)
 			check:expect(#issues):toEqual(1)
 			check:expect(issues[1]):toContain "per-case count limit of 2"
-			local _, totals =
-				Lute.attachments.materialize(report, { directory = "/tmp/unused", limits = { maxTotalBytes = 7 } })
+			local _, totals = Lute.attachments.materialize(
+				report,
+				{ directory = Files.temporary "verify-attachment-unused", limits = { maxTotalBytes = 7 } }
+			)
 			check:expect(totals[1]):toContain "per-report limit of 7"
 		end)
 
@@ -151,7 +155,7 @@ return function(suite: Core.Harness)
 			local report = reportWith "text"
 			local copy, issues = Lute.attachments.materialize(
 				report,
-				{ directory = "/tmp/unused", supported = false, host = "open-cloud" }
+				{ directory = Files.temporary "verify-attachment-unused", supported = false, host = "open-cloud" }
 			)
 			check:expect(#issues):toEqual(1)
 			check:expect(issues[1]):toContain "unsupported on host open-cloud"
@@ -159,7 +163,7 @@ return function(suite: Core.Harness)
 		end)
 
 		suite:case("seals and validates, and a modified stored file fails validation", function(check)
-			local root = Files.claimDirectory "/tmp/verify-attachment-seal"
+			local root = Files.claimDirectory(Files.temporary "verify-attachment-seal")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -238,7 +242,7 @@ return function(suite: Core.Harness)
 		suite:case("a 300 KB attachment crosses in segments and materializes", {
 			timeoutSeconds = 30,
 			run = function(check: Core.Context)
-				local root = Files.claimDirectory "/tmp/verify-attachment-studio"
+				local root = Files.claimDirectory(Files.temporary "verify-attachment-studio")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)

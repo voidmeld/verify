@@ -5,7 +5,7 @@ local Core = require "../src/core"
 local Files = require "../src/lute/files"
 local Published = require "../src/lute/published-source"
 local function fixture(context: Core.Context): string
-	local directory = Files.claimDirectory "/tmp/verify-published-source-tests"
+	local directory = Files.claimDirectory(Files.temporary "verify-published-source-tests")
 	context:defer(function()
 		fs.removeDirectory(directory, { recursive = true })
 	end)

@@ -1,9 +1,12 @@
 --!strict
 
 local fs = require "@std/fs"
+local process = require "@std/process"
+local system = require "@std/system"
 local task = require "@std/task"
 
 local Files = require "../src/lute/files"
+local RuntimeFiles = require "../src/runtime/files"
 local Lute = require "../src/lute"
 local Verify = require "../src/core"
 
@@ -159,6 +162,54 @@ return function(suite: Verify.Harness)
 			check:expect((table.concat(faulted, "; "))):toEqual ""
 			check:expect(execution.report.passed):toEqual(CALLERS)
 			check:expect(execution.report.failed):toEqual(0)
+		end)
+	end)
+
+	suite:suite("platform paths", function()
+		suite:case("creates each parent of a drive path with either separator", function(check)
+			local made: { string } = {}
+			local present: { [string]: boolean } = { ["C:"] = true }
+			local bound = RuntimeFiles.create {
+				read = function(): string
+					return ""
+				end,
+				write = function() end,
+				exists = function(path: string): boolean
+					return present[path] == true
+				end,
+				createDirectory = function(path: string)
+					table.insert(made, path)
+					present[path] = true
+				end,
+				remove = function() end,
+			}
+			bound.ensureDirectory "C:\\work\\run/leaf"
+			check:expect(made):toEqual { "C:\\work", "C:\\work\\run", "C:\\work\\run/leaf" }
+			table.clear(made)
+			bound.ensureDirectory "relative\\name/leaf"
+			check:expect(made):toEqual { "relative\\name", "relative\\name/leaf" }
+		end)
+
+		suite:case("resolves, names and places paths in the form of the host platform", function(check)
+			local cwd = tostring(process.cwd())
+			if system.win32 then
+				local slashed = string.gsub(cwd, "\\", "/")
+				local temporary = string.gsub(tostring(system.tmpdir()), "\\", "/")
+				check:expect(Files.absolute "C:\\work\\a"):toEqual "C:/work/a"
+				check:expect(Files.absolute "rel\\a"):toEqual(slashed .. "/rel/a")
+				check:expect(Files.hasScheme "C:/work/a.png"):toBe(false)
+				check:expect(Files.hasScheme "C:\\work\\a.png"):toBe(false)
+				check:expect(Files.temporary "verify-x"):toEqual(temporary .. "/verify-x")
+			else
+				check:expect(Files.absolute "/work/a"):toEqual "/work/a"
+				check:expect(Files.absolute "rel/a"):toEqual(cwd .. "/rel/a")
+				check:expect(Files.hasScheme "C:/work/a.png"):toBe(true)
+				check:expect(Files.temporary "verify-x"):toEqual "/tmp/verify-x"
+			end
+			check:expect(Files.hasScheme "rbxtemp://1"):toBe(true)
+			check:expect(Files.hasScheme "https://example.com/a.png"):toBe(true)
+			check:expect(Files.hasScheme "artifacts/a.png"):toBe(false)
+			check:expect((pcall(Files.temporary, "a/b"))):toBe(false)
 		end)
 	end)
 end

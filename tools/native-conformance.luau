@@ -6,8 +6,9 @@ local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 local case = require "../examples/instance-case"
 
+local Files = require "../src/lute/files"
 local Place = require "../src/lute/place"
-local place = process.args[2] or "/tmp/Verify-Conformance.rbxlx"
+local place = process.args[2] or Files.temporary "Verify-Conformance.rbxlx"
 Place.build {
 	output = place,
 	roots = { "src/core", "src/roblox" },

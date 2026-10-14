@@ -1,7 +1,6 @@
 --!strict
 
 local fs = require "@std/fs"
-local process = require "@std/process"
 local Core = require "../core"
 local Files = require "./files"
 local Wire = require "./wire"
@@ -10,9 +9,7 @@ export type Requirement = { caseId: string, actor: string?, checkpoint: string?,
 export type Result = { report: Core.Report, issues: { string }, reportPath: string }
 type Captured = { caseId: string, actor: string?, checkpoint: string?, mediaType: string? }
 
-local function absolute(value: string): string
-	return if string.sub(value, 1, 1) == "/" then value else tostring(process.cwd()) .. "/" .. value
-end
+local absolute = Files.absolute
 
 local function safe(value: string): string
 	local normalized = string.gsub(value, "[^%w._-]", "_")
@@ -46,7 +43,7 @@ local function write(report: Core.Report, directory: string, required: { Require
 			.. artifact.name
 		local reference = artifact.reference
 		local ok, reason = pcall(function()
-			assert(reference ~= "" and not string.match(reference, "^%a[%w+.-]*:"), "reference is not a local file")
+			assert(reference ~= "" and not Files.hasScheme(reference), "reference is not a local file")
 			local source = absolute(reference)
 			local metadata = fs.metadata(source)
 			assert(metadata.type == "file" and metadata.size > 0, "local reference must be a nonempty regular file")

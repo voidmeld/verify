@@ -2,7 +2,6 @@
 
 local crypto = require "@lute/crypto"
 local fs = require "@std/fs"
-local process = require "@std/process"
 local Core = require "../core"
 local Evidence = require "../evidence"
 local Files = require "./files"
@@ -44,12 +43,10 @@ local function sha256(bytes: string): string
 	return table.concat(out)
 end
 
-local function absolute(value: string): string
-	return if string.sub(value, 1, 1) == "/" then value else tostring(process.cwd()) .. "/" .. value
-end
+local absolute = Files.absolute
 
 local function readFile(reference: string): (string?, string?)
-	if reference == "" or string.match(reference, "^%a[%w+.-]*:") ~= nil then
+	if reference == "" or Files.hasScheme(reference) then
 		return nil, "reference is not a local file"
 	end
 	local ok, bytes: unknown = pcall(function(): string

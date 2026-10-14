@@ -139,7 +139,7 @@ return function(suite: Verify.Harness)
 		suite:case("saves requested raw log evidence before cleanup", function(check)
 			local bytes = reportBytes "new"
 			local backend, state = fixture(bytes)
-			local directory = Files.claimDirectory "/tmp/verify-player-test"
+			local directory = Files.claimDirectory(Files.temporary "verify-player-test")
 			local path = directory .. "/host.log"
 			local result = Player.run { placeId = 123, runId = "new", backend = backend, logPath = path }
 			check:expect(result.status):toBe "returned"

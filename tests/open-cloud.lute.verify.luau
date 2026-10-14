@@ -521,7 +521,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("platform runs the open-cloud host with the same selection and report path", function(check)
-			local root = Files.claimDirectory "/tmp/verify-open-cloud-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-open-cloud-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)

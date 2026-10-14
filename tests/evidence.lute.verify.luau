@@ -35,7 +35,7 @@ end
 return function(suite: Core.Harness)
 	suite:suite("durable report evidence", function()
 		suite:case("copies colliding names by actor without mutating the source report", function(check)
-			local root = Files.claimDirectory "/tmp/verify-evidence-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-evidence-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -61,7 +61,7 @@ return function(suite: Core.Harness)
 			check:expect(fs.readFileToString(root .. "/out/summary.txt")):toContain "client-2 / view"
 		end)
 		suite:case("temporary, remote, missing and empty references never satisfy requirements", function(check)
-			local root = Files.claimDirectory "/tmp/verify-evidence-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-evidence-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
@@ -81,7 +81,7 @@ return function(suite: Core.Harness)
 			end
 		end)
 		suite:case("selectors cannot borrow media from another actor or nonexistent case", function(check)
-			local root = Files.claimDirectory "/tmp/verify-evidence-tests"
+			local root = Files.claimDirectory(Files.temporary "verify-evidence-tests")
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)

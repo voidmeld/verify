@@ -3,13 +3,14 @@
 local fs = require "@std/fs"
 local process = require "@std/process"
 
+local Files = require "../src/lute/files"
 local Verify = require "../src/core"
 local Lute = require "../src/lute"
 
 return function(suite: Verify.Harness)
 	suite:suite("named directory lock", function()
 		suite:case("serializes holders, releases and takes over a dead holder", function(check)
-			local root = ("/tmp/verify-lock-%d-%d"):format(process.pid(), os.time())
+			local root = Files.temporary(("verify-lock-%d-%d"):format(process.pid(), os.time()))
 			local acquire, release = Lute.directoryLock(root)
 			local first = acquire "desktop"
 			check:expect(first ~= nil):toEqual(true)
@@ -26,7 +27,7 @@ return function(suite: Verify.Harness)
 			check:expect(taken ~= nil):toEqual(true)
 			assert(taken ~= nil)
 			release(taken)
-			process.run { "rm", "-rf", root }
+			fs.removeDirectory(root, { recursive = true })
 		end)
 	end)
 end

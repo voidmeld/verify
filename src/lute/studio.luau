@@ -263,7 +263,7 @@ local function run(options: Options): Core.BatchOutcome
 	assert(not options.finalCapture or options.players == nil, "final capture requires a single active Studio client")
 	local seconds = options.deadlineSeconds or 90
 	assert(seconds > 0 and seconds < math.huge, "Studio deadline must be finite and positive")
-	local directory = Files.claimDirectory(options.directory or "/tmp/verify-studio")
+	local directory = Files.claimDirectory(options.directory or Files.temporary "verify-studio")
 	local input = directory .. "/request"
 	local placeName = "Verify-"
 		.. tostring(process.pid())

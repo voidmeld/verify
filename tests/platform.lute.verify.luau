@@ -12,7 +12,7 @@ return function(suite: Core.Harness)
 		suite:case("simulator subprocess runs selected ordinary case and persists its report", {
 			timeoutSeconds = 20,
 			run = function(check: Core.Context)
-				local root = Files.claimDirectory "/tmp/verify-platform-tests"
+				local root = Files.claimDirectory(Files.temporary "verify-platform-tests")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)
@@ -31,7 +31,7 @@ return function(suite: Core.Harness)
 		suite:case("unknown and empty explicit selection fail instead of running all cases", {
 			timeoutSeconds = 20,
 			run = function(check: Core.Context)
-				local root = Files.claimDirectory "/tmp/verify-platform-tests"
+				local root = Files.claimDirectory(Files.temporary "verify-platform-tests")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)
@@ -52,7 +52,7 @@ return function(suite: Core.Harness)
 		suite:case("required absent media adds a failure and updates the persisted summary", {
 			timeoutSeconds = 20,
 			run = function(check: Core.Context)
-				local root = Files.claimDirectory "/tmp/verify-platform-tests"
+				local root = Files.claimDirectory(Files.temporary "verify-platform-tests")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)
@@ -74,7 +74,7 @@ return function(suite: Core.Harness)
 		suite:case("nonyielding simulator is killed by the parent deadline", {
 			timeoutSeconds = 15,
 			run = function(check: Core.Context)
-				local root = Files.claimDirectory "/tmp/verify-platform-tests"
+				local root = Files.claimDirectory(Files.temporary "verify-platform-tests")
 				check:defer(function()
 					fs.removeDirectory(root, { recursive = true })
 				end)

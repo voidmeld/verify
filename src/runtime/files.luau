@@ -22,8 +22,9 @@ local function create(fs: Binding.Fs): Files
 		end
 		local thrown: unknown = nil
 		local index = 1
+		local drive = string.match(path, "^%a:[/\\]") ~= nil
 		while true do
-			local separator = string.find(path, "/", index, true)
+			local separator = if drive then string.find(path, "[/\\]", index) else string.find(path, "/", index, true)
 			local prefix = if separator ~= nil then string.sub(path, 1, separator - 1) else path
 			if prefix ~= "" then
 				if not present(prefix) then
