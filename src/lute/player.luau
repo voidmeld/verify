@@ -1,6 +1,7 @@
 --!strict
 
 local fs = require "@std/fs"
+local system = require "@std/system"
 local task = require "@std/task"
 local json = require "@std/json"
 local Core = require "../core"
@@ -84,7 +85,19 @@ local function identity(pid: number, seconds: number): string
 	return if result.ok then result.stdout else ""
 end
 
+local WINDOWS_UNSUPPORTED =
+	"the reference Player launcher supports macOS only: on Windows one launch starts more than one Player process and no open-file query binds the report log to one of them; supply a backend"
+
+local function supported(): (boolean, string?)
+	if system.win32 then
+		return false, WINDOWS_UNSUPPORTED
+	end
+	return true, nil
+end
+
 local function nativeLaunch(address: string, deadline: number): Session
+	local able, reason = supported()
+	assert(able, reason)
 	assert(fs.exists "/Applications/Roblox.app", "reference Player launcher requires Roblox.app on macOS")
 	assert(#pids(deadline - os.clock()) == 0, "close existing Roblox Player before launching an isolated test")
 	local opened = command({ "/usr/bin/open", address }, deadline - os.clock())
@@ -214,4 +227,4 @@ local function run(options: Options): Core.BatchOutcome
 	return { status = "returned", report = result :: Core.Report }
 end
 
-return { run = run, url = url }
+return { run = run, url = url, supported = supported }

@@ -119,6 +119,7 @@ local function run(options: Options): Result
 	local seconds = options.deadlineSeconds or 90
 	local outcome: Core.BatchOutcome
 	local cloud: OpenCloud.Outcome? = nil
+	local unsupported: string? = nil
 	local progressPath: string? = nil
 	local ok, thrown = pcall(function()
 		assert(seconds > 0 and seconds < math.huge, "deadline must be finite and positive")
@@ -233,14 +234,20 @@ local function run(options: Options): Result
 					detail = OpenCloud.describe(finished),
 				}
 		else
-			outcome = Player.run {
-				placeId = assert(options.placeId, "Player requires --place-id"),
-				runId = directory,
-				logPath = directory .. "/host.log",
-				entry = options.entry,
-				caseIds = options.caseIds,
-				deadlineSeconds = seconds,
-			}
+			local able, reason = Player.supported()
+			if not able then
+				unsupported = reason
+				outcome = { status = "faulted", detail = reason }
+			else
+				outcome = Player.run {
+					placeId = assert(options.placeId, "Player requires --place-id"),
+					runId = directory,
+					logPath = directory .. "/host.log",
+					entry = options.entry,
+					caseIds = options.caseIds,
+					deadlineSeconds = seconds,
+				}
+			end
 		end
 	end)
 	local diagnostics: string? = nil
@@ -290,6 +297,16 @@ local function run(options: Options): Result
 			else
 				report = failure(options, "failed", tostring(value))
 			end
+		elseif unsupported ~= nil then
+			report = Core.syntheticReport {
+				executor = "verify-run",
+				environment = { host = options.host :: string, entry = options.entry },
+				id = "verify:execution",
+				name = "host execution",
+				status = "unsupported",
+				missingCapabilities = { "roblox-player-launcher" },
+				limitations = { unsupported :: string },
+			}
 		else
 			report = failure(
 				options,

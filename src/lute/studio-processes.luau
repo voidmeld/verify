@@ -1,7 +1,10 @@
 --!strict
 
 local process = require "@std/process"
+local system = require "@std/system"
 local task = require "@std/task"
+
+local Powershell = require "./powershell"
 
 export type Proc = { pid: number, ppid: number, command: string }
 
@@ -29,23 +32,43 @@ local function studioProcs(procs: { Proc }): { Proc }
 	return found
 end
 
+local LISTING = table.concat({
+	"Get-CimInstance Win32_Process | ForEach-Object {",
+	"  '{0} {1} {2}' -f $_.ProcessId, $_.ParentProcessId, ($_.CommandLine -replace '[\\r\\n]', ' ')",
+	"}",
+}, "\n")
+
+local function parse(text: string): { Proc }
+	local procs: { Proc } = {}
+	for line in string.gmatch(text, "[^\r\n]+") do
+		local pid, ppid, command = string.match(line, "^%s*(%d+)%s+(%d+)%s*(.*)$")
+		if pid ~= nil then
+			table.insert(
+				procs,
+				{ pid = tonumber(pid) :: number, ppid = tonumber(ppid) :: number, command = command :: string }
+			)
+		end
+	end
+	return procs
+end
+
 local function defaults(): Deps
 	return {
 		list = function(): { Proc }
-			local result = process.run { "ps", "-Ao", "pid=,ppid=,command=" }
-			local procs: { Proc } = {}
-			for line in string.gmatch(result.stdout, "[^\n]+") do
-				local pid, ppid, command = string.match(line, "^%s*(%d+)%s+(%d+)%s+(.*)$")
-				if pid ~= nil then
-					table.insert(
-						procs,
-						{ pid = tonumber(pid) :: number, ppid = tonumber(ppid) :: number, command = command :: string }
-					)
-				end
+			if system.win32 then
+				return parse(process.run(Powershell.command(LISTING)).stdout)
 			end
-			return procs
+			return parse(process.run({ "ps", "-Ao", "pid=,ppid=,command=" }).stdout)
 		end,
 		signal = function(pid: number, name: "TERM" | "KILL")
+			if system.win32 then
+				process.run(
+					if name == "KILL"
+						then { "taskkill", "/F", "/PID", tostring(pid) }
+						else { "taskkill", "/PID", tostring(pid) }
+				)
+				return
+			end
 			process.run { "kill", "-" .. name, tostring(pid) }
 		end,
 		wait = function(seconds: number)
@@ -53,6 +76,33 @@ local function defaults(): Deps
 		end,
 		now = os.clock,
 	}
+end
+
+local function spawn(argv: { string }, marker: string, deadline: number, list: (() -> { Proc })?): number
+	local listing = list or defaults().list
+	local quiet: process.ProcessRunOptions = { stdio = "none" }
+	local launch: { failure: string?, exited: boolean } = { failure = nil, exited = false }
+	task.spawn(function()
+		local ran, result = pcall(process.run, argv, quiet)
+		if not ran then
+			launch.failure = tostring(result)
+		end
+		launch.exited = true
+	end)
+	local parent = process.pid()
+	while not launch.exited and os.clock() < deadline do
+		for _, proc in listing() do
+			if proc.ppid == parent and string.find(proc.command, marker, 1, true) ~= nil then
+				return proc.pid
+			end
+		end
+		task.wait(0.25)
+	end
+	error(
+		"the launched process was not observed: "
+			.. (launch.failure or if launch.exited then "it exited first" else "the deadline passed"),
+		0
+	)
 end
 
 local function snapshot(deps: Deps?): { [number]: boolean }
@@ -175,4 +225,12 @@ local function read(path: string): Cleanup?
 	return { terminated = {}, survivors = survivors }
 end
 
-return { read = read, snapshot = snapshot, reap = reap, owned = owned, defaults = defaults }
+return {
+	read = read,
+	snapshot = snapshot,
+	reap = reap,
+	owned = owned,
+	defaults = defaults,
+	parse = parse,
+	spawn = spawn,
+}

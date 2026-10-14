@@ -1,6 +1,9 @@
 --!strict
 
+local process = require "@std/process"
+
 local Core = require "../src/core"
+local Files = require "../src/lute/files"
 local Processes = require "../src/lute/studio-processes"
 
 type Fake = {
@@ -88,5 +91,58 @@ return function(suite: Core.Harness)
 			}
 			check:expect(Processes.owned(procs, {}, 20, nil)):toEqual { 20, 25 }
 		end)
+
+		suite:case("owns Windows Studio processes by the same names, flags and descent", function(check)
+			local studio = '"C:\\Users\\a\\AppData\\Local\\Roblox\\Versions\\version-1\\RobloxStudioBeta.exe"'
+			local procs: { Processes.Proc } = {
+				{ pid = 10, ppid = 1, command = studio },
+				{ pid = 20, ppid = 2, command = studio .. " -task EditFile -localPlaceFile C:/t/Verify-1.rbxlx" },
+				{ pid = 21, ppid = 1, command = studio .. " -task StartServer -placeId 1" },
+				{ pid = 25, ppid = 20, command = "C:\\x\\RobloxCrashHandler.exe --crashCounter Win-ROBLOXStudio" },
+				{ pid = 26, ppid = 20, command = studio .. " -helper" },
+			}
+			check:expect(Processes.owned(procs, { [10] = true }, 20, { "Verify-1" })):toEqual { 20, 21, 26 }
+		end)
+
+		suite:case("reads process rows from ps and from the Windows process listing", function(check)
+			check:expect(Processes.parse "  10     1 /usr/bin/a -x\n 11 10 b\n"):toEqual {
+				{ pid = 10, ppid = 1, command = "/usr/bin/a -x" },
+				{ pid = 11, ppid = 10, command = "b" },
+			}
+			check:expect(Processes.parse '4 0 \r\n20 4 "C:\\a b\\x.exe" -flag\r\nnot a row\r\n'):toEqual {
+				{ pid = 4, ppid = 0, command = "" },
+				{ pid = 20, ppid = 4, command = '"C:\\a b\\x.exe" -flag' },
+			}
+		end)
+
+		suite:case(
+			"observes a launched child by its parent and marker and refuses one that is never seen",
+			function(check)
+				local lute = tostring(process.execPath())
+				local marker = Files.temporary(("verify-spawn-%d-%d"):format(process.pid(), os.time()))
+				local pid = Processes.spawn(
+					{ lute, "run", "tests/programs/late-marker.luau", marker, "20" },
+					marker,
+					os.clock() + 20
+				)
+				local seen = false
+				for _, proc in Processes.defaults().list() do
+					seen = seen or (proc.pid == pid and proc.ppid == process.pid())
+				end
+				Processes.defaults().signal(pid, "KILL")
+				check:expect(seen):toBe(true)
+				local missing, refusal = pcall(Processes.spawn, { "verify-no-such-program" }, "x", os.clock() + 5)
+				check:expect(missing):toBe(false)
+				check:expect(tostring(refusal)):toContain "was not observed"
+				local quick, early = pcall(
+					Processes.spawn,
+					{ lute, "run", "tests/programs/exit-with.luau", "0" },
+					"verify-never-listed",
+					os.clock() + 20
+				)
+				check:expect(quick):toBe(false)
+				check:expect(tostring(early)):toContain "it exited first"
+			end
+		)
 	end)
 end

@@ -2,10 +2,14 @@
 
 local fs = require "@std/fs"
 local process = require "@std/process"
+local system = require "@std/system"
 local task = require "@std/task"
 local json = require "@std/json"
+local Binding = require "../runtime/binding"
 local Bounded = require "./bounded"
 local Files = require "./files"
+local Powershell = require "./powershell"
+local Runtime = require "./runtime"
 local Operations = require "../core/operations"
 local Wire = require "./wire"
 
@@ -35,9 +39,14 @@ local function record(value: unknown): { [string]: unknown }
 	return value :: { [string]: unknown }
 end
 
-local function connect(executable: string, directory: string, deadline: number): Connection
-	Files.ensureDirectory(directory)
-	local fifo, output, errors = directory .. "/input", directory .. "/output", directory .. "/errors"
+type Pipe = {
+	alive: () -> boolean,
+	send: (line: string) -> (boolean, string?),
+	close: () -> (),
+}
+
+local function posixPipe(executable: string, directory: string, output: string, errors: string): Pipe
+	local fifo = directory .. "/input"
 	local started = process.run {
 		"sh",
 		"-c",
@@ -51,30 +60,144 @@ local function connect(executable: string, directory: string, deadline: number):
 	assert(started.ok, started.stderr)
 	local pid = tonumber(string.match(started.stdout, "%d+"))
 	assert(pid ~= nil, "Studio MCP did not start")
-	local closed, sequence, consumed = false, 0, 0
 	local requestFile = directory .. "/request"
+	return {
+		alive = function(): boolean
+			return process.run({ "kill", "-0", tostring(pid) }).ok
+		end,
+		send = function(line: string): (boolean, string?)
+			fs.writeStringToFile(requestFile, line)
+			local sent =
+				Bounded.run({ "sh", "-c", 'cat "$1" 1<>"$2"', "verify-mcp-send", requestFile, fifo }, WRITE_SECONDS)
+			if sent.unsupported then
+				return false, "no process group could be created for the pipe write"
+			end
+			if sent.timedOut then
+				return false, "the pipe write did not finish in " .. WRITE_SECONDS .. "s"
+			end
+			return sent.ok, if sent.ok then nil else sent.stderr
+		end,
+		close = function()
+			process.run { "kill", "-KILL", tostring(pid) }
+		end,
+	}
+end
+
+local BRIDGE = table.concat({
+	"$ErrorActionPreference = 'Stop'",
+	"$directory = $env:VERIFY_MCP_DIRECTORY",
+	"$info = New-Object System.Diagnostics.ProcessStartInfo",
+	"$info.FileName = $env:VERIFY_MCP_EXECUTABLE",
+	"$info.UseShellExecute = $false",
+	"$info.RedirectStandardInput = $true",
+	"$info.RedirectStandardOutput = $true",
+	"$info.RedirectStandardError = $true",
+	"$info.CreateNoWindow = $true",
+	"$child = [System.Diagnostics.Process]::Start($info)",
+	"$share = [System.IO.FileShare]::ReadWrite",
+	"$mode = [System.IO.FileMode]::Create",
+	"$access = [System.IO.FileAccess]::Write",
+	"$output = New-Object System.IO.FileStream((Join-Path $directory 'output'), $mode, $access, $share, 1)",
+	"$errors = New-Object System.IO.FileStream((Join-Path $directory 'errors'), $mode, $access, $share, 1)",
+	"$copies = [System.Threading.Tasks.Task[]]@(",
+	"  $child.StandardOutput.BaseStream.CopyToAsync($output),",
+	"  $child.StandardError.BaseStream.CopyToAsync($errors))",
+	"[System.IO.File]::WriteAllText((Join-Path $directory 'pid'), [string]$child.Id)",
+	"$stdin = $child.StandardInput.BaseStream",
+	"$next = 1",
+	"try {",
+	"  while (-not $child.HasExited) {",
+	"    $request = Join-Path $directory ('request-{0}' -f $next)",
+	"    if ([System.IO.File]::Exists($request)) {",
+	"      $bytes = [System.IO.File]::ReadAllBytes($request)",
+	"      $stdin.Write($bytes, 0, $bytes.Length)",
+	"      $stdin.Flush()",
+	"      [System.IO.File]::Delete($request)",
+	"      $next++",
+	"    } elseif ([System.IO.File]::Exists((Join-Path $directory 'close'))) {",
+	"      break",
+	"    } else {",
+	"      Start-Sleep -Milliseconds 5",
+	"    }",
+	"  }",
+	"} finally {",
+	"  if (-not $child.HasExited) { try { [void](& taskkill.exe /T /F /PID $child.Id) } catch { } }",
+	"  if (-not $child.HasExited) { $child.Kill() }",
+	"  [void]$child.WaitForExit(2000)",
+	"  [void][System.Threading.Tasks.Task]::WaitAll($copies, 2000)",
+	"  $output.Dispose()",
+	"  $errors.Dispose()",
+	"  [System.IO.File]::WriteAllText((Join-Path $directory 'exited'), [string]$child.ExitCode)",
+	"}",
+}, "\n")
+
+local function windowsPipe(executable: string, directory: string, deadline: number): Pipe
+	local pidPath, exitedPath = directory .. "/pid", directory .. "/exited"
+	local bridge: { done: boolean, detail: string } = { done = false, detail = "" }
+	task.spawn(function()
+		local ran, result = pcall(
+			Runtime.process.run,
+			Powershell.command(BRIDGE),
+			{ env = { VERIFY_MCP_DIRECTORY = directory, VERIFY_MCP_EXECUTABLE = executable } }
+		)
+		bridge.detail = if ran then (result :: Binding.ProcessResult).stderr else tostring(result)
+		bridge.done = true
+	end)
+	while not fs.exists(pidPath) and not bridge.done and os.clock() < deadline do
+		task.wait(0.01)
+	end
+	local pid = if fs.exists(pidPath) then tonumber(fs.readFileToString(pidPath)) else nil
+	if pid == nil then
+		fs.writeStringToFile(directory .. "/close", "")
+		error("Studio MCP did not start: " .. bridge.detail, 0)
+	end
+	local sent = 0
 	local function alive(): boolean
-		return not closed and process.run({ "kill", "-0", tostring(pid) }).ok
+		return not bridge.done and not fs.exists(exitedPath)
 	end
-	local function send(line: string): (boolean, string?)
-		fs.writeStringToFile(requestFile, line)
-		local sent =
-			Bounded.run({ "sh", "-c", 'cat "$1" 1<>"$2"', "verify-mcp-send", requestFile, fifo }, WRITE_SECONDS)
-		if sent.unsupported then
-			return false, "no process group could be created for the pipe write"
-		end
-		if sent.timedOut then
-			return false, "the pipe write did not finish in " .. WRITE_SECONDS .. "s"
-		end
-		return sent.ok, if sent.ok then nil else sent.stderr
+	return {
+		alive = alive,
+		send = function(line: string): (boolean, string?)
+			if not alive() then
+				return false, EXITED
+			end
+			sent += 1
+			local staged = ("%s/staged-%d"):format(directory, sent)
+			fs.writeStringToFile(staged, line)
+			fs.move(staged, ("%s/request-%d"):format(directory, sent))
+			return true, nil
+		end,
+		close = function()
+			fs.writeStringToFile(directory .. "/close", "")
+			local limit = os.clock() + WRITE_SECONDS
+			while not bridge.done and os.clock() < limit do
+				task.wait(0.02)
+			end
+			if not bridge.done then
+				process.run { "taskkill", "/T", "/F", "/PID", tostring(pid) }
+			end
+		end,
+	}
+end
+
+local function connect(executable: string, directory: string, deadline: number): Connection
+	Files.ensureDirectory(directory)
+	local output, errors = directory .. "/output", directory .. "/errors"
+	local pipe = if system.win32
+		then windowsPipe(executable, directory, deadline)
+		else posixPipe(executable, directory, output, errors)
+	local closed, sequence, consumed = false, 0, 0
+	local function alive(): boolean
+		return not closed and pipe.alive()
 	end
+	local send = pipe.send
 	local answers: { [number]: { [string]: unknown } } = {}
 	local function close()
 		if closed then
 			return
 		end
 		closed = true
-		process.run { "kill", "-KILL", tostring(pid) }
+		pipe.close()
 	end
 	local function exchange(method: string, paramsJson: string, limit: number): Exchange
 		if closed or os.clock() >= limit then

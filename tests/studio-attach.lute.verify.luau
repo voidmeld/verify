@@ -3,6 +3,7 @@
 local fs = require "@std/fs"
 local json = require "@std/json"
 local process = require "@std/process"
+local system = require "@std/system"
 local task = require "@std/task"
 local crypto = require "@lute/crypto"
 local Verify = require "../src/core"
@@ -780,6 +781,15 @@ return function(suite: Verify.Harness)
 			check:defer(function()
 				fs.removeDirectory(root, { recursive = true })
 			end)
+			if system.win32 then
+				local program = Files.absolute "tests/programs/fake-mcp.luau"
+				local launcher = root .. "/child.cmd"
+				fs.writeStringToFile(
+					launcher,
+					('@"%s" run "%s" "%s"\r\n'):format(tostring(process.execPath()), program, root)
+				)
+				return launcher, root
+			end
 			local script = root .. "/child.sh"
 			fs.writeStringToFile(script, SCRIPT .. "\n")
 			process.run { "chmod", "755", script }

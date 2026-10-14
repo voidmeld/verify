@@ -1,12 +1,14 @@
 --!strict
 
 local process = require "@std/process"
+local system = require "@std/system"
 local Core = require "../src/core"
 local OpenCloud = require "../src/lute/open-cloud"
 local Platform = require "../src/lute/platform"
 
-local options: Platform.Options =
-	{ host = "simulator", entry = "", frameworkDirectory = process.args[1]:match "^(.*)/tools/run%.luau$" or "." }
+local framework =
+	process.args[1]:match(if system.win32 then "^(.*)[/\\]tools[/\\]run%.luau$" else "^(.*)/tools/run%.luau$")
+local options: Platform.Options = { host = "simulator", entry = "", frameworkDirectory = framework or "." }
 local ids: { string } = {}
 local roots: { string } = {}
 local media: { string } = {}

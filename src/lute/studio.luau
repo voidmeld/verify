@@ -2,6 +2,7 @@
 
 local fs = require "@std/fs"
 local process = require "@std/process"
+local system = require "@std/system"
 local task = require "@std/task"
 local json = require "@std/json"
 local Core = require "../core"
@@ -14,6 +15,7 @@ local Mcp = require "./studio-mcp"
 local Progress = require "./studio-progress"
 local Processes = require "./studio-processes"
 local Reply = require "./studio-reply"
+local Install = require "./studio-install"
 
 local CALL_SECONDS = 30
 
@@ -52,6 +54,22 @@ local function studios(connection: Mcp.Connection): { [string]: string }
 	return result
 end
 
+local function launchPosix(executable: string, place: string, log: string): number
+	local launched = process.run {
+		"sh",
+		"-c",
+		'"$1" -task EditFile -localPlaceFile "$2" >"$3" 2>&1 & echo $!',
+		"verify-studio",
+		executable,
+		place,
+		log,
+	}
+	assert(launched.ok, launched.stderr)
+	local pid = tonumber(string.match(launched.stdout, "%d+"))
+	assert(pid ~= nil, "Studio launch did not return a process id")
+	return pid
+end
+
 local function worker(path: string)
 	local fields = Mcp.record(Wire.parse(fs.readFileToString(path)))
 	local function textField(name: string): string
@@ -69,18 +87,15 @@ local function worker(path: string)
 	local studioId: string? = nil
 	local ok, reason = pcall(function()
 		local previous = studios(connection)
-		local launched = process.run {
-			"sh",
-			"-c",
-			'"$1" -task EditFile -localPlaceFile "$2" >"$3" 2>&1 & echo $!',
-			"verify-studio",
-			textField "studioExecutable",
-			textField "place",
-			directory .. "/studio.log",
-		}
-		assert(launched.ok, launched.stderr)
-		pid = tonumber(string.match(launched.stdout, "%d+"))
-		assert(pid ~= nil, "Studio launch did not return a process id")
+		pid = if system.win32
+			then Processes.spawn({
+				textField "studioExecutable",
+				"-task",
+				"EditFile",
+				"-localPlaceFile",
+				(string.gsub(textField "place", "/", "\\")),
+			}, textField "placeName", deadline)
+			else launchPosix(textField "studioExecutable", textField "place", directory .. "/studio.log")
 		local selected: string? = nil
 		while selected == nil do
 			local candidates: { string } = {}
@@ -263,12 +278,18 @@ local function run(options: Options): Core.BatchOutcome
 	assert(not options.finalCapture or options.players == nil, "final capture requires a single active Studio client")
 	local seconds = options.deadlineSeconds or 90
 	assert(seconds > 0 and seconds < math.huge, "Studio deadline must be finite and positive")
+	local installed, missing = Install.locate()
+	local studioExecutable = options.studioExecutable or if installed ~= nil then installed.studio else nil
+	local mcpExecutable = options.mcpExecutable or if installed ~= nil then installed.mcp else nil
+	if studioExecutable == nil or mcpExecutable == nil then
+		return { status = "faulted", detail = "Roblox Studio was not found: " .. tostring(missing) }
+	end
 	local directory = Files.claimDirectory(options.directory or Files.temporary "verify-studio")
 	local input = directory .. "/request"
 	local placeName = "Verify-"
 		.. tostring(process.pid())
 		.. "-"
-		.. (string.match(directory, "[^/]+$") :: string)
+		.. (string.match(directory, if system.win32 then "[^/\\]+$" else "[^/]+$") :: string)
 		.. ".rbxlx"
 	local placePath = directory .. "/" .. placeName
 	local source = fs.readFileToString(place)
@@ -287,8 +308,8 @@ local function run(options: Options): Core.BatchOutcome
 			context = options.context or "Server",
 			deadlineSeconds = seconds,
 			progressFile = options.progressFile,
-			studioExecutable = options.studioExecutable or "/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio",
-			mcpExecutable = options.mcpExecutable or "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP",
+			studioExecutable = studioExecutable,
+			mcpExecutable = mcpExecutable,
 		}
 	)
 	local before = Processes.snapshot()

@@ -6,6 +6,8 @@ local Channel = require "../src/roblox/report-channel"
 local json = require "@std/json"
 local fs = require "@std/fs"
 local Files = require "../src/lute/files"
+local Platform = require "../src/lute/platform"
+local system = require "@std/system"
 
 local function reportBytes(runId: string): string
 	local harness = Verify.createHarness {
@@ -152,6 +154,32 @@ return function(suite: Verify.Harness)
 			local backend, state = fixture(reportBytes "new")
 			state.cleanupFails = true
 			check:expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
+		end)
+
+		suite:case("refuses the reference launcher on Windows and reports the Player host unsupported", function(check)
+			local able, reason = Player.supported()
+			check:expect(able):toBe(not system.win32)
+			if not system.win32 then
+				check:expect(reason):toBeNil()
+				return
+			end
+			check:expect(reason):toContain "macOS only"
+			local direct = Player.run { placeId = 123, runId = "windows" }
+			check:expect(direct.status):toBe "faulted"
+			check:expect(direct.detail):toContain "macOS only"
+			local root = Files.claimDirectory(Files.temporary "verify-player-windows")
+			check:defer(function()
+				fs.removeDirectory(root, { recursive = true })
+			end)
+			local result = Platform.run {
+				host = "player",
+				entry = "examples/platform-entry.luau",
+				placeId = 123,
+				output = root,
+			}
+			check:expect(result.report.unsupported):toBe(1)
+			check:expect(result.report.passed):toBe(0)
+			check:expect(result.report.results[1].missingCapabilities):toEqual { "roblox-player-launcher" }
 		end)
 	end)
 end
