@@ -78,9 +78,9 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 | [`src/benchmark.luau`](src/benchmark.luau) | Warmup, sampling, baseline and stability checks, reported as an ordinary case. Host side only. |
 | [`src/evidence`](src/evidence) | Sealing and validating provenance on a report. Host side only. |
 | [`src/bdd.luau`](src/bdd.luau) | BDD verbs, case metadata and report printing over the same harness. |
-| [`src/lute`](src/lute) | The run command, workers, hosts and gates, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk loading, bounded processes and Studio or Player launch. |
+| [`src/lute`](src/lute) | The run command, workers, hosts and gates, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk and module loading, model file reading, bounded processes and Studio or Player launch. |
 | [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes, the interface audit and the simulator. |
-| [`src/codec`](src/codec) | Base64 and image signatures for captures and the judge. Portable. |
+| [`src/codec`](src/codec) | Base64, image signatures and XML for hosts and the judge. Portable. |
 | [`src/consumer`](src/consumer) | Portable specification and production graph diagnostics. |
 | [`src/agent-eval`](src/agent-eval) | Agent evaluation runs, adapters, the judge, statistics and the command `tools/agent-eval.luau`. Host side only. |
 

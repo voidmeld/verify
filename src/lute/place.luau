@@ -2,7 +2,8 @@
 
 local fs = require "@std/fs"
 
-local Merge = require "./place-merge"
+local Xml = require "../codec/xml"
+
 export type Options = {
 	output: string,
 	roots: { string },
@@ -140,6 +141,67 @@ local function moduleExpression(path: string, rootName: string?): string
 	end
 	return expression
 end
+
+type Addition = { path: { string }, item: string, unique: string? }
+
+local function nameOf(item: Xml.Element): string?
+	local properties = Xml.first(item, "Properties")
+	if properties ~= nil then
+		for _, property in properties.children do
+			if property.attributes.name == "Name" then
+				return property.text
+			end
+		end
+	end
+	return nil
+end
+
+local function wrap(classes: { string }, from: number, item: string): string
+	local text = item
+	for index = #classes, from, -1 do
+		text = '<Item class="' .. classes[index] .. '">' .. text .. "</Item>"
+	end
+	return text
+end
+
+local function merge(base: string, additions: { Addition }): string
+	assert(
+		base:sub(1, 8) ~= "<roblox!",
+		"base place is a binary place; only an XML place (.rbxlx) can be merged, save the base as XML"
+	)
+	local xml = base
+	for _, addition in additions do
+		local parent = Xml.parse(xml)
+		assert(parent.tag == "roblox", "base place is not an XML place")
+		local depth = 1
+		while depth <= #addition.path do
+			local found: Xml.Element? = nil
+			for _, child in Xml.children(parent, "Item") do
+				if child.attributes.class == addition.path[depth] then
+					found = child
+					break
+				end
+			end
+			if found == nil then
+				break
+			end
+			parent = found
+			depth += 1
+		end
+		if depth > #addition.path and addition.unique ~= nil then
+			for _, child in Xml.children(parent, "Item") do
+				assert(
+					nameOf(child) ~= addition.unique,
+					("base place already contains an instance named %s here"):format(addition.unique)
+				)
+			end
+		end
+		local at = assert(parent.closeStart, "base place has a self-closing container")
+		xml = xml:sub(1, at - 1) .. wrap(addition.path, depth, addition.item) .. xml:sub(at)
+	end
+	return xml
+end
+
 local function build(options: Options)
 	local path, clientSource = options.output, options.clientSource
 	local rootName = options.rootName or "VerifyModules"
@@ -249,7 +311,7 @@ local function build(options: Options)
 			.. "</ProtectedString></Properties></Item>"
 		else nil
 	if options.basePlace ~= nil then
-		local additions: { { path: { string }, item: string, unique: string? } } = {
+		local additions: { Addition } = {
 			{ path = { "ReplicatedStorage" }, item = node "", unique = rootName },
 		}
 		if clientItem then
@@ -262,7 +324,7 @@ local function build(options: Options)
 		if serverItem then
 			table.insert(additions, { path = { "ServerScriptService" }, item = serverItem, unique = "VerifyServer" })
 		end
-		fs.writeStringToFile(path, Merge.merge(fs.readFileToString(options.basePlace), additions))
+		fs.writeStringToFile(path, merge(fs.readFileToString(options.basePlace), additions))
 		return
 	end
 	fs.writeStringToFile(

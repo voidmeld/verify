@@ -33,7 +33,8 @@ Follow these rules:
 | Write a case | [API](../../../docs/api.md) |
 | Build a plan, host, worker, retry, fixture or selection policy | [Execution](../../../docs/execution.md) |
 | Run the same case locally and in Roblox | [One case model](../../../docs/experience.md#one-case-model). Do not create a second case authoring model. |
-| Test Roblox UI or engine code under Lute | [Reflection snapshots](../../../docs/api.md#reflection-snapshots) and [datatypes](../../../docs/api.md#datatypes). Export and commit a snapshot from Studio. Give code under test the datatype `typeof`. |
+| Test Roblox UI or engine code under Lute | [Reflection snapshots](../../../docs/api.md#reflection-snapshots) and [datatypes](../../../docs/api.md#datatypes). Export and commit a snapshot from Studio. Load code under test with `Lute.loader`, which gives it the datatype `typeof`. |
+| Assert on a built model or place | [Model files](../../../docs/api.md#model-files). Build the XML format. |
 | Implement a host | [Host boundary](../../../docs/execution.md#host-boundary) |
 | Seal or judge host observations | [Host observations](../../../docs/api.md#host-observations) and [evidence provenance](../../../docs/api.md#evidence-provenance) |
 | Read a report or its claim | [API](../../../docs/api.md) and [laws](../../../docs/laws.md) |

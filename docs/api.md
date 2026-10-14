@@ -477,11 +477,26 @@ Coverage lives in the ordinary case and in evidence.
 
 The consumer owns tool execution, request digests, storage paths, authorization and the meaning of each checkpoint.
 
+### Model files
+
+`Lute.model` reads a Roblox XML model (`.rbxmx`) or place (`.rbxlx`) so that a case can assert on a built file.
+
+- `read(text)` returns the root instances. Each instance is `{ className, name, path, properties, children }`.
+  `name` is the `Name` property, or the class name when the file stores no name. `path` joins the names from the root with `/`.
+  `properties[name]` is `{ type, value }`: the XML tag of the value, such as `string`, `ProtectedString` or `bool`, and its decoded text.
+- `descendants(roots)` lists every instance in document order.
+- `find(roots, path)` returns the first instance with that path, or `nil`.
+
+`read` raises for malformed XML and for a document whose root is not `roblox`.
+It reads a binary file (`.rbxm`, `.rbxl`) as malformed. Build the XML format to assert on it.
+`Lute.place.build` merges into a base place with the same XML codec.
+
 ### Codecs
 
 `src/codec` holds portable leaves that the hosts and the judge share. They need no host services.
 
 - `codec/base64.luau`: `encode(bytes)` returns standard base64 with padding. `decode(text)` returns the bytes, or `nil` when the text is not padded base64. `AgentEval.base64` is the same module.
+- `codec/xml.luau`: `parse(text)` returns the root element `{ tag, attributes, children, text, openEnd, closeStart }`. `text` is the decoded text before the first child element. `openEnd` is the offset of the `>` that ends the start tag. `closeStart` is the offset of the `<` that starts the end tag, or `nil` for a self-closing element. `children(element, tag)` and `first(element, tag)` select child elements.
 - `codec/image.luau`: `mediaType(bytes)` returns `image/png`, `image/jpeg`, `image/gif`, `image/webp` or `nil` from the file signature. `pngSize(bytes)` returns the width and height from the PNG `IHDR` chunk, or `nil` when the bytes are not a PNG.
 
 ---
@@ -850,6 +865,33 @@ A global read looks in `environment` first and then in the Lute globals. `inject
 A global write stays in the chunk. `environment` does not change.
 `Lute.chunk.check(source, name?)` returns `true`, or `false` and the syntax error, and runs nothing.
 Put the library members and `typeof = types.typeof` in `environment`, so the code under test sees datatype globals with engine names.
+
+#### Load a module tree under the library
+
+`Lute.loader.new(options?)` returns `{ require(path) }`. It loads Roblox-targeted modules under Lute.
+`require(path)` takes a path relative to the working directory, with or without `.luau`. A directory path loads its `init.luau`.
+
+Each module runs in its own environment:
+
+- `typeof` is the datatype `typeof`, so a datatype value reports its engine name.
+- `warn(...)` prints the arguments with the prefix `[warn]`.
+- `getfenv(0)` returns the environment of the module. `getfenv(f)` returns the environment of a function that a module returned.
+- `require` resolves `./` and `../` paths, `@self/` children and the aliases in `options.aliases`. `@std/` and `@lute/` load from the runtime.
+
+The loader loads each file once and keeps the resolved paths. A require cycle, a missing module and an unknown alias raise with the module named.
+A file under a prefix in `options.hostPaths` loads with `options.requireHost(module)` instead, as an ordinary host module.
+`module` is the path without `.luau` or `/init.luau`.
+
+```luau
+local loader = Lute.loader.new {
+	aliases = { repo = "" },
+	hostPaths = { "tools/vendor/" },
+	requireHost = function(module: string): unknown
+		return (require :: (string) -> unknown)("../../" .. module)
+	end,
+}
+local Package = loader.require "src"
+```
 
 #### Studio probes
 
