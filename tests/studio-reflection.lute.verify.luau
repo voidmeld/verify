@@ -188,7 +188,11 @@ local function studio(log: { string }?): Fields
 			end
 			for _, class in visible(filter) do
 				if class.Name == name then
-					return inherited(name)
+					local members = inherited(name)
+					if #visible(filter) > #CLASSES then
+						table.insert(members, property(name, "PluginOnly", "bool", permits("Read", "Write")))
+					end
+					return members
 				end
 			end
 			return {}
@@ -261,11 +265,14 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("exports plugin-security classes that the default reflection filter hides", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "PluginGui" } })
+			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "PluginGui", "TextLabel" } })
 			local plugin = snapshot.classes.PluginGui
 			check:expect(plugin.superclass):toBe "Instance"
 			check:expect(plugin.tags):toEqual { "NotCreatable" }
 			check:expect(plugin.properties.Title.datatype):toBe "String"
+			check:expect(plugin.properties.PluginOnly.datatype):toBe "Bool"
+			check:expect(snapshot.classes.TextLabel.properties.PluginOnly):toBe(nil)
+			check:expect(snapshot.classes.Instance.properties.PluginOnly):toBe(nil)
 		end)
 
 		suite:case("names datatypes, scriptability and tags the way the Lune database does", function(check)

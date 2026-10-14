@@ -121,9 +121,10 @@ end
 
 local function class(globals: Globals, encode: Encode, name: string, services: boolean): Fields
 	local service = reflection(globals)
-	local reflected = call(service, "GetClass", name, filter(globals)) :: ReflectedMember
+	local scope = if call(service, "GetClass", name) == nil then filter(globals) else nil
+	local reflected = call(service, "GetClass", name, scope) :: ReflectedMember
 	assert(reflected ~= nil, "Studio reflection has no class " .. name)
-	local members = call(service, "GetPropertiesOfClass", name, filter(globals)) :: { ReflectedMember }
+	local members = call(service, "GetPropertiesOfClass", name, scope) :: { ReflectedMember }
 	local permits: { [string]: unknown } = reflected.Permits or {}
 	local tags: { string } = {}
 	if permits.New == nil then

@@ -875,7 +875,8 @@ lute run tools/export-studio-reflection.luau <out.json> (--studio-id <id> | --st
 The command uses an open Studio through the official Studio MCP. See [attached Studio](execution.md#attached-studio).
 Its `authorize` hook permits only the Studio listing and `execute_luau` in the `Edit` data model.
 The capture reads `ReflectionService`, `Enum`, `BrickColor` and `Font`, and it creates instances that it never parents.
-It reads `ReflectionService` with the current security capabilities and the `Plugin` capability, so the export includes plugin classes such as `PluginGui` and `DockWidgetPluginGui`.
+It lists classes with the current security capabilities and the `Plugin` capability, so the export includes plugin classes such as `PluginGui` and `DockWidgetPluginGui`.
+It reads the members of a plugin class with the same capabilities, and the members of every other class with the current capabilities only.
 It does not change, save or publish the place. The default transport of `Lute.studio.attach` must work on the host. See [platform support](running.md#platform-support).
 
 - Without `--classes`, the command exports every class. With `--classes`, it exports the named classes and their superclasses.
@@ -889,7 +890,7 @@ It does not change, save or publish the place. The default transport of `Lute.st
 - The defaults are the readable property values of `Instance.new(className)`, inherited properties included, for each creatable class.
   A service has no defaults. `--services` records the values of the open place instead. Those values describe that place, not the engine.
 - A superclass that Studio does not list as a class, such as `Object` above `Instance`, is omitted.
-- The full export of Studio 0.742 has 681 classes and 648 enums in about 610 KB.
+- The full export of Studio 0.742 has 681 classes and 648 enums in about 600 KB.
 
 From code, `Lute.fixture.exportStudio(execute, options?)` returns the snapshot.
 `execute(code)` runs the code in the `Edit` data model and returns its text, for example through `session.execute("Edit", code)`.
