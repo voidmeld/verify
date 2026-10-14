@@ -298,6 +298,7 @@ Turn latency percentiles use the latencies of all runs of the sampled tasks.
 | Metric | Statistic |
 | --- | --- |
 | `passRate`, `auditScore` | Difference of the treatment and baseline means. |
+| `auditViolations` | Ratio of the treatment and baseline means. The value of a run is the mean number of audit violations in each audit of the run. A run with no audit has no value. |
 | `judgeWinRate` | The mean treatment score of the judgments. |
 | `inputTokens`, `cacheCreationTokens`, `cacheReadTokens`, `outputTokens`, `totalTokens`, `costUsd`, `turns`, `wallSeconds`, `timeToFirstPassSeconds` | Ratio of the treatment and baseline means. |
 | `turnLatencyP50`, `turnLatencyP95` | Ratio of the treatment and baseline percentiles. |
@@ -323,7 +324,9 @@ Declare the thresholds before the runs:
 }
 ```
 
-A rule has `lower` or `upper`. A `lower` rule passes when the lower bound is above the value. An `upper` rule passes when the upper bound is below it.
+A rule has one of `lower`, `upper`, `atLeast` or `atMost`. A `lower` rule passes when the lower bound is above the value. An `upper` rule passes when the upper bound is below it.
+An `atLeast` rule passes when the estimate is at least the value. An `atMost` rule passes when the estimate is at most the value.
+To require an estimate and a bound for one metric, declare two rules.
 A rule with `agent` applies to that agent. Otherwise it applies to each agent.
 A rule fails when fewer than `minimumTasks` paired tasks carry its metric or the interval is undefined.
 The verdict is `PASS` only when every rule passes.

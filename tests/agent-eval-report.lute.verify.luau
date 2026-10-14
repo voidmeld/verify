@@ -13,6 +13,7 @@ type Shape = {
 	wall: number,
 	latencies: { number },
 	audit: number?,
+	violations: number?,
 	seed: number?,
 	agent: string?,
 }
@@ -74,7 +75,14 @@ local function result(task: string, arm: string, shape: Shape): AgentEval.RunRes
 		checks = {},
 		scores = {},
 		audits = if shape.audit ~= nil
-			then { { device = "phone", score = shape.audit :: number, path = "/a.json", rules = {} } }
+			then {
+				{
+					device = "phone",
+					score = shape.audit :: number,
+					path = "/a.json",
+					rules = if shape.violations ~= nil then { ["text-truncated"] = shape.violations :: number } else {},
+				},
+			}
 			else {},
 		captures = {},
 		timeToPassSeconds = if shape.passed then shape.wall else nil,
@@ -134,6 +142,7 @@ local function corpus(): ({ AgentEval.RunResult }, { AgentEval.Judgment })
 					wall = 50 + index,
 					latencies = { 2, 3, 2 + index / 10 },
 					audit = 90 + index % 3,
+					violations = index % 2,
 					seed = seed,
 				})
 			)
@@ -145,6 +154,7 @@ local function corpus(): ({ AgentEval.RunResult }, { AgentEval.Judgment })
 					wall = 90 + index,
 					latencies = { 3, 4, 3 + index / 10 },
 					audit = 70 + index % 5,
+					violations = 4 + index % 3,
 					seed = seed,
 				})
 			)
@@ -287,6 +297,37 @@ return function(suite: Verify.Harness)
 			context:expect(verdict.results[1].failures[1].message):toContain "is not above 0.99"
 		end)
 
+		suite:case("evaluates bounds on the estimate and the ratio of audit violations", function(context)
+			local results, judgments = corpus()
+			local report = AgentEval.report.build(
+				"suite",
+				results,
+				judgments,
+				thresholds {
+					{ id = "gain", metric = "passRate", atLeast = 0.25 },
+					{ id = "gain-interval", metric = "passRate", lower = 0 },
+					{ id = "fewer-violations", metric = "auditViolations", atMost = 0.4 },
+					{ id = "no-violations", metric = "auditViolations", atMost = 0.01 },
+					{ id = "large-gain", metric = "passRate", atLeast = 0.9 },
+				},
+				nil
+			)
+			local gain = rule(report, "gain")
+			context:expect(gain.passed):toBe(true)
+			context:expect(gain.value):toBeCloseTo(0.625)
+			context:expect(gain.reason):toBe "the estimate 0.625 is at least 0.25"
+			context:expect(rule(report, "gain-interval").passed):toBe(true)
+			context:expect(comparison(report, "auditViolations").estimate):toBeCloseTo(0.5 / 5.125)
+			context:expect(rule(report, "fewer-violations").passed):toBe(true)
+			context:expect(rule(report, "no-violations").reason):toContain "is above 0.01"
+			context:expect(rule(report, "large-gain").reason):toBe "the estimate 0.625 is below 0.9"
+			context:expect(report.verdict):toBe "FAIL"
+			context:expect(report.agents[1].arms[1].auditViolations):toBe(0.5)
+			local markdown = AgentEval.report.markdown(report)
+			context:expect(markdown):toContain "| `gain` | passRate | atLeast | 0.250 | 0.625 | PASS |"
+			context:expect(markdown):toContain "Audit violations"
+		end)
+
 		suite:case("excludes unpaired tasks and counts censored time to first pass", function(context)
 			local results: { AgentEval.RunResult } = {
 				result("both", "treatment", { passed = false, tokens = 1000, wall = 10, latencies = {}, seed = 1 }),
@@ -326,7 +367,7 @@ return function(suite: Verify.Harness)
 			context:expect(refusal(unknown)):toContain 'unknown metric "happiness"'
 			local both = table.clone(base)
 			both.rules = { { id = "x", metric = "passRate", lower = 0, upper = 1 } }
-			context:expect(refusal(both)):toContain "exactly one of lower or upper"
+			context:expect(refusal(both)):toContain "exactly one of lower, upper, atLeast or atMost"
 			local same = table.clone(base)
 			same.baseline = "a"
 			same.rules = { { id = "x", metric = "passRate", lower = 0 } }

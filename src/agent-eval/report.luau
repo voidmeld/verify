@@ -9,11 +9,15 @@ local Stats = require "./stats"
 
 export type Statistic = "difference" | "ratio" | "level"
 
+export type Bound = "lower" | "upper" | "atLeast" | "atMost"
+
 export type Rule = {
 	id: string,
 	metric: string,
 	lower: number?,
 	upper: number?,
+	atLeast: number?,
+	atMost: number?,
 	agent: string?,
 }
 
@@ -34,6 +38,7 @@ export type ArmSummary = {
 	statuses: { [string]: number },
 	passRate: number?,
 	auditScore: number?,
+	auditViolations: number?,
 	judgeWinRate: number?,
 	judgments: number,
 	inputTokens: number?,
@@ -64,7 +69,7 @@ export type RuleOutcome = {
 	agent: string,
 	metric: string,
 	statistic: Statistic,
-	bound: "lower" | "upper",
+	bound: Bound,
 	threshold: number,
 	value: number?,
 	estimate: number?,
@@ -113,6 +118,7 @@ type TaskData = {
 local METRICS: { MetricSpec } = {
 	{ name = "passRate", statistic = "difference" },
 	{ name = "auditScore", statistic = "difference" },
+	{ name = "auditViolations", statistic = "ratio" },
 	{ name = "judgeWinRate", statistic = "level" },
 	{ name = "inputTokens", statistic = "ratio" },
 	{ name = "cacheCreationTokens", statistic = "ratio" },
@@ -156,7 +162,7 @@ local function decodeThresholds(value: unknown): Thresholds
 	for index, item in Schema.list(raw.rules, "thresholds.rules") do
 		local where = ("thresholds.rules[%d]"):format(index)
 		local entry = Schema.record(item, where)
-		Schema.only(entry, where, { "id", "metric", "lower", "upper", "agent", "why" })
+		Schema.only(entry, where, { "id", "metric", "lower", "upper", "atLeast", "atMost", "agent", "why" })
 		local metric = Schema.text(entry.metric, where .. ".metric")
 		if metricSpec(metric) == nil then
 			Schema.fail(where .. ".metric", ("names an unknown metric %q"):format(metric))
@@ -166,10 +172,18 @@ local function decodeThresholds(value: unknown): Thresholds
 			metric = metric,
 			lower = Schema.optionalNumber(entry.lower, where .. ".lower"),
 			upper = Schema.optionalNumber(entry.upper, where .. ".upper"),
+			atLeast = Schema.optionalNumber(entry.atLeast, where .. ".atLeast"),
+			atMost = Schema.optionalNumber(entry.atMost, where .. ".atMost"),
 			agent = if Schema.absent(entry.agent) then nil else Schema.identifier(entry.agent, where .. ".agent"),
 		}
-		if (rule.lower == nil) == (rule.upper == nil) then
-			Schema.fail(where, "must declare exactly one of lower or upper")
+		local declared = 0
+		for _, field in { "lower", "upper", "atLeast", "atMost" } do
+			if not Schema.absent(entry[field]) then
+				declared += 1
+			end
+		end
+		if declared ~= 1 then
+			Schema.fail(where, "must declare exactly one of lower, upper, atLeast or atMost")
 		end
 		table.insert(ids, rule.id)
 		table.insert(rules, rule)
@@ -209,6 +223,17 @@ local function runValue(result: Result.RunResult, name: string): number?
 		local sum = 0
 		for _, audit in result.audits do
 			sum += audit.score
+		end
+		return sum / #result.audits
+	elseif name == "auditViolations" then
+		if #result.audits == 0 then
+			return nil
+		end
+		local sum = 0
+		for _, audit in result.audits do
+			for _, count in audit.rules do
+				sum += count
+			end
 		end
 		return sum / #result.audits
 	elseif name == "inputTokens" then
@@ -409,6 +434,7 @@ local function build(
 					statuses = statuses,
 					passRate = meanOf(runs, "passRate"),
 					auditScore = meanOf(runs, "auditScore"),
+					auditViolations = meanOf(runs, "auditViolations"),
 					judgeWinRate = mean(wins),
 					judgments = #wins,
 					inputTokens = meanOf(runs, "inputTokens"),
@@ -518,9 +544,16 @@ local function build(
 				continue
 			end
 			local comparison = byMetric[rule.metric]
-			local bound: "lower" | "upper" = if rule.lower ~= nil then "lower" else "upper"
-			local threshold = (rule.lower or rule.upper) :: number
-			local value = if bound == "lower" then comparison.lower else comparison.upper
+			local bound: Bound = if rule.lower ~= nil
+				then "lower"
+				elseif rule.upper ~= nil then "upper"
+				elseif rule.atLeast ~= nil then "atLeast"
+				else "atMost"
+			local threshold = (rule.lower or rule.upper or rule.atLeast or rule.atMost) :: number
+			local value = if bound == "lower"
+				then comparison.lower
+				elseif bound == "upper" then comparison.upper
+				else comparison.estimate
 			local outcome: RuleOutcome = {
 				id = rule.id,
 				agent = agent,
@@ -540,7 +573,23 @@ local function build(
 					thresholds.minimumTasks
 				)
 			elseif value == nil then
-				outcome.reason = "the interval is undefined"
+				outcome.reason = if bound == "atLeast" or bound == "atMost"
+					then "the estimate is undefined"
+					else "the interval is undefined"
+			elseif bound == "atLeast" then
+				outcome.passed = (value :: number) >= threshold
+				outcome.reason = ("the estimate %.4g %s %.4g"):format(
+					value :: number,
+					if outcome.passed then "is at least" else "is below",
+					threshold
+				)
+			elseif bound == "atMost" then
+				outcome.passed = (value :: number) <= threshold
+				outcome.reason = ("the estimate %.4g %s %.4g"):format(
+					value :: number,
+					if outcome.passed then "is at most" else "is above",
+					threshold
+				)
 			elseif bound == "lower" then
 				outcome.passed = (value :: number) > threshold
 				outcome.reason = ("the %d%% lower bound %.4g %s %.4g"):format(
@@ -644,20 +693,21 @@ local function markdown(report: EvalReport): string
 		table.insert(lines, "")
 		table.insert(
 			lines,
-			"| Arm | Runs | Pass rate | Audit score | Judge win rate | Total tokens | Output tokens | Cost (USD) | Turns | Turn latency p50 (s) | Turn latency p95 (s) | Wall time (s) | Time to first pass (s) |"
+			"| Arm | Runs | Pass rate | Audit score | Audit violations | Judge win rate | Total tokens | Output tokens | Cost (USD) | Turns | Turn latency p50 (s) | Turn latency p95 (s) | Wall time (s) | Time to first pass (s) |"
 		)
 		table.insert(
 			lines,
-			"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+			"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
 		)
 		for _, arm in section.arms do
 			table.insert(
 				lines,
-				("| `%s` | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"):format(
+				("| `%s` | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"):format(
 					arm.arm,
 					arm.runs,
 					show(arm.passRate),
 					show(arm.auditScore, 1),
+					show(arm.auditViolations, 1),
 					show(arm.judgeWinRate),
 					show(arm.totalTokens, 0),
 					show(arm.outputTokens, 0),

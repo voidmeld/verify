@@ -1,7 +1,6 @@
 --!strict
 
 local fs = require "@std/fs"
-local json = require "@std/json"
 
 local Core = require "../src/core"
 local Files = require "../src/lute/files"
@@ -57,7 +56,7 @@ local function world(): World
 				if not self.listing then
 					return { status = "unsent", detail = "the server did not start" }
 				end
-				local text = json.serialize { studios = self.studios :: { json.Value } }
+				local text = Lute.encode { studios = self.studios }
 				return { status = "answered", result = { content = { { type = "text", text = text } } } }
 			end
 			local arguments = Wire.parse(argumentsJson) :: { [string]: unknown }
