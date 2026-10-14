@@ -1,6 +1,7 @@
 --!strict
 
 local process = require "@std/process"
+local system = require "@std/system"
 
 local Core = require "../src/core"
 local Files = require "../src/lute/files"
@@ -120,11 +121,10 @@ return function(suite: Core.Harness)
 			function(check)
 				local lute = tostring(process.execPath())
 				local marker = Files.temporary(("verify-spawn-%d-%d"):format(process.pid(), os.time()))
-				local pid = Processes.spawn(
-					{ lute, "run", "tests/programs/late-marker.luau", marker, "20" },
-					marker,
-					os.clock() + 20
-				)
+				local argv = if system.win32
+					then { lute, "run", "tests/programs/late-marker.luau", marker, "20" }
+					else { "/bin/sleep", "20" }
+				local pid = Processes.spawn(argv, if system.win32 then marker else "/bin/sleep 20", os.clock() + 20)
 				local seen = false
 				for _, proc in Processes.defaults().list() do
 					seen = seen or (proc.pid == pid and proc.ppid == process.pid())
