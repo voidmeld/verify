@@ -115,6 +115,7 @@ local function create(runtime: Runtime): Gate
 					arguments = job.args,
 				}, runtime)
 				local started = runtime.time.clock()
+				local reports: { Verify.Report } = {}
 				local runBatch = host.runBatch
 				host.runBatch = function(batch)
 					local remaining = job.deadlineSeconds - (runtime.time.clock() - started)
@@ -123,7 +124,11 @@ local function create(runtime: Runtime): Gate
 					end
 					local bounded = table.clone(batch)
 					bounded.deadlineSeconds = math.min(remaining, batch.deadlineSeconds or remaining)
-					return runBatch(bounded)
+					local outcome = runBatch(bounded)
+					if job.isolate and outcome.status == "returned" and outcome.report ~= nil then
+						table.insert(reports, Verify.decode(outcome.report))
+					end
+					return outcome
 				end
 				runtime.time.spawn(function()
 					local plan: Verify.PlanDraft = {
@@ -139,7 +144,13 @@ local function create(runtime: Runtime): Gate
 							caseIdStyle = "bare",
 						},
 					}
-					local ran, execution: unknown = pcall(Verify.execute, plan, host)
+					local ran, execution: unknown = pcall(function()
+						local execution = Verify.execute(plan, host)
+						if job.isolate then
+							Verify.merge(reports, host.name, host.environment)
+						end
+						return execution
+					end)
 					result = {
 						started = ran,
 						exitcode = if ran then 0 else -1,
