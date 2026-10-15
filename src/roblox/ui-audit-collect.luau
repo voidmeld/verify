@@ -51,6 +51,11 @@ local function isA(object: unknown, class: string): boolean
 	return ok and answer == true
 end
 
+local function styled(object: unknown, key: string): unknown
+	local ok, value = call(object, "GetStyled", key)
+	return if ok then value else read(object, key)
+end
+
 local function numberOf(value: unknown, fallback: number): number
 	if type(value) == "number" and value == value and math.abs(value) ~= math.huge then
 		return value
@@ -258,8 +263,8 @@ local function collect(options: Options?): Audit.Dump
 					selectionGroup = read(child, "SelectionGroup") == true,
 					stops = {},
 					background = {
-						color = colorOf(read(child, "BackgroundColor3")),
-						transparency = math.clamp(numberOf(read(child, "BackgroundTransparency"), 1), 0, 1),
+						color = colorOf(styled(child, "BackgroundColor3")),
+						transparency = math.clamp(numberOf(styled(child, "BackgroundTransparency"), 1), 0, 1),
 					},
 				}
 				for _, direction in DIRECTIONS do
@@ -271,29 +276,29 @@ local function collect(options: Options?): Audit.Dump
 					local image = textOf(read(child, "Image"))
 					if image ~= nil and image ~= "" then
 						element.image = {
-							transparency = math.clamp(numberOf(read(child, "ImageTransparency"), 0), 0, 1),
+							transparency = math.clamp(numberOf(styled(child, "ImageTransparency"), 0), 0, 1),
 						}
 					end
 				end
 				if isA(child, "TextLabel") or isA(child, "TextButton") or isA(child, "TextBox") then
 					local boundsX, boundsY = vector(read(child, "TextBounds"))
-					local face = read(child, "FontFace")
+					local face = styled(child, "FontFace")
 					local weight = numberOf(read(read(face, "Weight"), "Value"), 400)
 					local fits = read(child, "TextFits")
 					element.text = {
 						content = textOf(read(child, "ContentText")) or textOf(read(child, "Text")) or "",
-						size = numberOf(read(child, "TextSize"), 14),
+						size = numberOf(styled(child, "TextSize"), 14),
 						bounds = { width = boundsX, height = boundsY },
 						xAlignment = enumName(read(child, "TextXAlignment")),
 						yAlignment = enumName(read(child, "TextYAlignment")),
 						fits = if type(fits) == "boolean" then fits else nil,
-						scaled = read(child, "TextScaled") == true,
-						wrapped = read(child, "TextWrapped") == true,
-						truncate = enumName(read(child, "TextTruncate")),
+						scaled = styled(child, "TextScaled") == true,
+						wrapped = styled(child, "TextWrapped") == true,
+						truncate = enumName(styled(child, "TextTruncate")),
 						font = textOf(read(face, "Family")),
 						bold = weight >= 600,
-						color = colorOf(read(child, "TextColor3")),
-						transparency = math.clamp(numberOf(read(child, "TextTransparency"), 0), 0, 1),
+						color = colorOf(styled(child, "TextColor3")),
+						transparency = math.clamp(numberOf(styled(child, "TextTransparency"), 0), 0, 1),
 					}
 				end
 				if element.interactive then
@@ -307,7 +312,7 @@ local function collect(options: Options?): Audit.Dump
 					end
 					local hover = textOf(read(child, "HoverImage"))
 					local pressed = textOf(read(child, "PressedImage"))
-					local auto = read(child, "AutoButtonColor")
+					local auto = styled(child, "AutoButtonColor")
 					element.focus = {
 						selectionImage = state :: "default" | "visible" | "hidden",
 						autoButtonColor = if type(auto) == "boolean" then auto else nil,
@@ -337,10 +342,10 @@ local function collect(options: Options?): Audit.Dump
 			elseif parent ~= nil and isA(child, "UIPadding") then
 				local owner = elements[parent]
 				owner.padding = {
-					left = offsetOf(read(child, "PaddingLeft"), owner.rect.width),
-					top = offsetOf(read(child, "PaddingTop"), owner.rect.height),
-					right = offsetOf(read(child, "PaddingRight"), owner.rect.width),
-					bottom = offsetOf(read(child, "PaddingBottom"), owner.rect.height),
+					left = offsetOf(styled(child, "PaddingLeft"), owner.rect.width),
+					top = offsetOf(styled(child, "PaddingTop"), owner.rect.height),
+					right = offsetOf(styled(child, "PaddingRight"), owner.rect.width),
+					bottom = offsetOf(styled(child, "PaddingBottom"), owner.rect.height),
 				}
 			elseif parent ~= nil and isA(child, "UIListLayout") then
 				local owner = elements[parent]
@@ -348,7 +353,7 @@ local function collect(options: Options?): Audit.Dump
 				local extent = if direction == "Horizontal" then owner.rect.width else owner.rect.height
 				owner.layout = {
 					kind = "list",
-					padding = offsetOf(read(child, "Padding"), extent),
+					padding = offsetOf(styled(child, "Padding"), extent),
 					direction = direction,
 				}
 			elseif parent ~= nil and isA(child, "UIGridLayout") then
@@ -376,6 +381,7 @@ local function collect(options: Options?): Audit.Dump
 			enabled = enabled,
 			displayOrder = numberOf(read(root, "DisplayOrder"), 0),
 			world = world,
+			zIndexBehavior = enumName(read(root, "ZIndexBehavior")),
 			screenInsets = enumName(read(root, "ScreenInsets")),
 			ignoreGuiInset = if type(read(root, "IgnoreGuiInset")) == "boolean"
 				then read(root, "IgnoreGuiInset") :: boolean

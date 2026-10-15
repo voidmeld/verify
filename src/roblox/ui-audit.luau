@@ -236,6 +236,84 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 		return false
 	end
+	local function above(left: Element, right: Element): boolean
+		if left.root ~= right.root then
+			return (roots[left.root].displayOrder or 0) > (roots[right.root].displayOrder or 0)
+		end
+		if roots[left.root].zIndexBehavior == "Global" then
+			return if left.zIndex ~= right.zIndex then left.zIndex > right.zIndex else left.order > right.order
+		end
+		local leftBranch, rightBranch = { left }, { right }
+		local function parents(branch: { Element })
+			local parent = branch[1].parent
+			while parent do
+				table.insert(branch, 1, dump.elements[parent])
+				parent = dump.elements[parent].parent
+			end
+		end
+		parents(leftBranch)
+		parents(rightBranch)
+		for index = 1, math.min(#leftBranch, #rightBranch) do
+			local a, b = leftBranch[index], rightBranch[index]
+			if a.index ~= b.index then
+				return if a.zIndex ~= b.zIndex then a.zIndex > b.zIndex else a.order > b.order
+			end
+		end
+		return false
+	end
+	local backdrops: { [number]: boolean } = {}
+	for _, element in dump.elements do
+		local shown = visibleRects[element.index]
+		if
+			shown == nil
+			or not element.interactive
+			or not element.active
+			or not element.interactable
+			or element.selectable
+			or not onScreen(element)
+			or not inside(screenRect, shown, EDGE)
+			or not inside(shown, screenRect, EDGE)
+			or (element.text ~= nil and element.text.content ~= "")
+			or (element.image ~= nil and element.image.transparency < 1)
+		then
+			continue
+		end
+		local content = false
+		for _, child in dump.elements do
+			if
+				ancestorOf(element.index, child)
+				and child.visible
+				and (
+					(child.text ~= nil and child.text.content ~= "")
+					or (child.image ~= nil and child.image.transparency < 1)
+				)
+			then
+				content = true
+				break
+			end
+		end
+		if not content then
+			backdrops[element.index] = true
+		end
+	end
+	for _, element in dump.elements do
+		if visibleRects[element.index] == nil then
+			continue
+		end
+		for index in backdrops do
+			if above(dump.elements[index], element) then
+				visibleRects[element.index] = nil
+				metrics.visible -= 1
+				if element.interactive then
+					metrics.interactive -= 1
+				end
+				if element.text ~= nil and element.text.content ~= "" then
+					metrics.texts -= 1
+				end
+				break
+			end
+		end
+	end
 
 	local function background(element: Element): (Color?, Color?)
 		local layers: { { color: Color, alpha: number } } = {}
@@ -334,7 +412,11 @@ local function analyze(dump: Dump, options: Options?): Report
 		if screenSpace and (element.interactive or (textValue ~= nil and textValue.content ~= "")) then
 			if not inside(shown, screenRect, EDGE) then
 				add("offscreen", element, "the element extends past the screen edge", nil)
-			elseif dump.screen.safeArea ~= nil and not inside(shown, dump.screen.safeArea :: Rect, EDGE) then
+			elseif
+				not backdrops[element.index]
+				and dump.screen.safeArea ~= nil
+				and not inside(shown, dump.screen.safeArea :: Rect, EDGE)
+			then
 				add("outside-safe-area", element, "the element extends past the safe area", nil)
 			end
 		end

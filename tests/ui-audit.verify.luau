@@ -187,6 +187,54 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("ui audit analyzer", function()
+		suite:case("keeps modal content rules and excludes a full viewport dismiss target", function(context)
+			local scrim = button(3, 0, 0, {
+				rect = rect(0, 0, 800, 400),
+				selectable = false,
+				zIndex = 10,
+				text = { content = "", size = 18, bounds = { width = 0, height = 0 }, color = WHITE },
+			})
+			local report = Audit.analyze(dump({
+				button(1, 100, 100),
+				button(2, 130, 100),
+				scrim,
+				button(4, 10, 30, { zIndex = 11 }),
+				button(5, 40, 30, { zIndex = 11 }),
+			}, { safeArea = rect(20, 20, 760, 360) }))
+			context:expect(count(report, "interactive-overlap")):toBe(1)
+			context:expect(paths(report, "outside-safe-area")):toEqual { "Gui.Button4" }
+			context:expect(report.metrics.interactive):toBe(3)
+			scrim.selectable = true
+			scrim.index = 1
+			local content = Audit.analyze(dump({ scrim }, { safeArea = rect(20, 20, 760, 360) }))
+			context:expect(count(content, "outside-safe-area")):toBe(1)
+		end)
+		suite:case("reads styled paint and typography with a native property fallback", function(context)
+			local text = instance(
+				"TextLabel",
+				"Styled",
+				gui(30, 30, 100, 30, {
+					Text = "Coins",
+					TextSize = 8,
+					TextColor3 = color(0, 0, 0),
+					TextBounds = vector(40, 18),
+					TextFits = true,
+				})
+			)
+			text.GetStyled = function(_self: unknown, key: string): unknown
+				if key == "TextSize" then
+					return 18
+				end
+				if key == "TextColor3" then
+					return color(1, 1, 1)
+				end
+				error "unstyled"
+			end
+			local root = instance("ScreenGui", "Gui", gui(0, 0, 800, 400), { text })
+			local collected = Collect.collect { roots = { root }, game = {} }
+			context:expect(assert(collected.elements[1].text).size):toBe(18)
+			context:expect(assert(collected.elements[1].text).color.r):toBe(1)
+		end)
 		suite:case("scores a clean interface at 100", function(context)
 			local report = Audit.analyze(dump { button(1, 100, 100), button(2, 200, 100), label(3) })
 			context:expect(report.score):toBe(100)
