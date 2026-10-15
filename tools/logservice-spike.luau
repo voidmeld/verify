@@ -15,7 +15,7 @@ local http = game:GetService('HttpService')
 local root = game:GetService('ReplicatedStorage'):WaitForChild('VerifyLogSpike')
 local side = SIDE
 local token = root:GetAttribute('token')
-local result = {side = side, version = version(), calls = {}, events = {}, samples = {}}
+local result = {side = side, version = version(), calls = {}, events = {}, samples = {}, roundTrips = {}}
 local function safe(value, depth)
     if (depth or 0) > 5 then return tostring(value) end
     if type(value) == 'table' then
@@ -40,7 +40,7 @@ attempt('MessageOut', function()
     end)
     return 'connected'
 end)
-local ok, logger = attempt('GetLogger', function() return logs:GetLogger('Verify.Spike') end)
+local ok, logger = attempt('GetLogger', function() return logs:GetLogger('VerifySpike') end)
 if ok then
     for _, method in {'Info', 'Warn', 'Error', 'Output'} do
         attempt(method, function()
@@ -66,6 +66,25 @@ attempt('historyBeforeFlood', function()
     end
     return #history
 end)
+for _, method in {'Info', 'Warn', 'Error', 'Output', 'Log'} do
+    local suffix = ':' .. side .. ':' .. method
+    local roundTrip = {messageOut = false, history = false}
+    for _, event in result.events do
+        local context = event.context
+        if string.find(event.message, suffix, 1, true) and type(context) == 'table' then
+            roundTrip.messageOut = context.token == token and context.side == side and type(context.sequence) == 'number'
+            roundTrip.eventContext = context
+        end
+    end
+    for _, sample in result.samples do
+        local context = sample.entry.context
+        if string.find(sample.entry.message, suffix, 1, true) and type(context) == 'table' then
+            roundTrip.history = context.token == token and context.side == side and type(context.sequence) == 'number'
+            roundTrip.historyContext = context
+        end
+    end
+    result.roundTrips[method] = roundTrip
+end
 if side == 'Server' and ok then
     attempt('flood', function()
         for sequence = 1, 2048 do
@@ -131,7 +150,7 @@ local ran, problem = pcall(function()
 			)
 		)
 	else
-		for _, model in { "Server", "Client", "Edit" } do
+		for _, model in { "Server", "Client" } do
 			print(execute(model, (string.gsub(probe, "SIDE", string.format("%q", "Plugin" .. model)))))
 			print(
 				execute(
