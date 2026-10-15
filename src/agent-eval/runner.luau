@@ -330,10 +330,15 @@ local function create(options: Options): () -> Summary
 				local cases: { Result.CaseOutcome } = {}
 				for _, case in outcome.execution.report.results do
 					if string.sub(case.id, 1, #record.id + 1) == record.id .. ":" then
-						table.insert(
-							cases,
-							{ id = string.sub(case.id, #record.id + 2), status = tostring(case.status) }
-						)
+						local reasons: { string } = {}
+						for _, failure in case.failures do
+							table.insert(reasons, failure.message)
+						end
+						table.insert(cases, {
+							id = string.sub(case.id, #record.id + 2),
+							status = tostring(case.status),
+							detail = if #reasons > 0 then table.concat(reasons, "\n") else nil,
+						})
 					end
 				end
 				local check: Result.CheckResult = {
@@ -759,9 +764,20 @@ local function create(options: Options): () -> Summary
 							assert(saved.status == "completed", "checks-only requires a completed saved run")
 							local workspace = Paths.join(directory, "workspace")
 							assert(files.isDirectory(workspace), "checks-only requires the saved workspace")
+							local archive = Paths.join(directory, "rechecks/" .. tostring(services.clock()))
+							assert(not files.exists(archive), "checks-only archive already exists")
+							files.makeDirectory(archive)
+							files.copy(Paths.join(directory, "result.json"), Paths.join(archive, "result.json"))
+							for _, name in { "checks", "captures" } do
+								local old = Paths.join(directory, name)
+								if files.exists(old) then
+									moveTree(files, old, Paths.join(archive, name))
+								end
+							end
 							saved.checks, saved.scores, saved.audits, saved.captures = {}, {}, {}, {}
 							runChecks(spec, workspace, directory, saved)
 							saved.passed = saved.checksPassed and #saved.exceeded == 0
+							saved.timeToPassSeconds = if saved.passed then saved.metrics.wallSeconds else nil
 							write(Paths.join(directory, "result.json"), saved)
 							results[spec.id] = saved
 							reusedIds[spec.id] = true

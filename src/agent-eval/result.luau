@@ -4,7 +4,7 @@ local Schema = require "./schema"
 
 export type RunStatus = "completed" | "failed" | "timed_out" | "unsupported" | "blocked" | "provision_failed"
 
-export type CaseOutcome = { id: string, status: string }
+export type CaseOutcome = { id: string, status: string, detail: string? }
 
 export type CheckResult = {
 	id: string,
@@ -209,6 +209,7 @@ local function decode(value: unknown): RunResult
 			table.insert(cases, {
 				id = Schema.text(caseRaw.id, caseWhere .. ".id"),
 				status = Schema.text(caseRaw.status, caseWhere .. ".status"),
+				detail = Schema.optionalText(caseRaw.detail, caseWhere .. ".detail"),
 			})
 		end
 		table.insert(checks, {

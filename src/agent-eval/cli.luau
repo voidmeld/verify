@@ -34,7 +34,7 @@ local USAGE = table.concat({
 	"",
 	"commands:",
 	"  plan   --suite eval.json [--task id]... [--arm id]... [--agent id]... [--seed n]...",
-	"  run    --suite eval.json [--evidence dir] [--workspaces dir] [--parallel n] [--fresh] [selection]",
+	"  run    --suite eval.json [--evidence dir] [--workspaces dir] [--parallel n] [--fresh|--checks-only] [selection]",
 	"  judge  --suite eval.json [--evidence dir] [--transport api|cli] [--model id] [--effort level]",
 	"         [--seed n] [--attempts n] [--fresh]",
 	"  report --suite eval.json --thresholds thresholds.json [--evidence dir] [--labels labels.json]",
