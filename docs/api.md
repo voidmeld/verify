@@ -383,6 +383,10 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 ---
 
+## Mounted place sources
+
+`Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
+
 ## Host observations
 
 Use typed operations, `context:perform`, `await`, `checkpoint`, `judge` and `measure` in the ordinary case.

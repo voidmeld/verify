@@ -1,5 +1,7 @@
 --!strict
 
+local PlaceBoot = require "@self/place-boot"
+
 local CaseEntry = require "@self/case-entry"
 local EnvironmentEngineAdapter = require "@self/environment-engine"
 local Reflection = require "@self/reflection"
@@ -124,7 +126,19 @@ export type UiAuditReport = UiAudit.Report
 export type UiAuditViolation = UiAudit.Violation
 export type UiAuditCollectOptions = UiAuditCollect.Options
 
+export type PlaceBootStage = PlaceBoot.Stage
+export type PlaceBootView = PlaceBoot.View
+export type PlaceBootHost<B = unknown, C = () -> unknown> = PlaceBoot.Host<B, C>
+export type PlaceBootFiles = PlaceBoot.Files
+export type PlaceBootCache<B = unknown, C = () -> unknown> = PlaceBoot.Cache<B, C>
+export type PlaceBootMounted = PlaceBoot.Mounted
+export type PlaceBootTreeDeps<B = unknown> = PlaceBoot.TreeDeps<B>
+
 return {
+	bootPlace = PlaceBoot.run,
+	buildPlaceTree = PlaceBoot.buildTree,
+	createPlaceCache = PlaceBoot.createCache,
+	createPlaceRuntime = PlaceBoot.createRuntime,
 	environmentEngine = EnvironmentEngineAdapter.create,
 	reflection = Reflection,
 	uiFakes = UiFakes,
