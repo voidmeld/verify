@@ -25,6 +25,9 @@ local function respond(line: string)
 	local request = Eval.lute.decode(line) :: { id: unknown?, method: string, params: unknown? }
 	if request.id ~= nil then
 		local ok, result = pcall(scope.dispatch, request.method, request.params)
+		if ok and request.method == "ping" then
+			result = json.object {}
+		end
 		local response = if ok
 			then { jsonrpc = "2.0", id = request.id, result = result }
 			else { jsonrpc = "2.0", id = request.id, error = { code = -32602, message = tostring(result) } }

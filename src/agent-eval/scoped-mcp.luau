@@ -29,7 +29,7 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 		if method == "initialize" then
 			return {
 				protocolVersion = "2025-06-18",
-				capabilities = { tools = {} },
+				capabilities = { tools = { listChanged = false } },
 				serverInfo = { name = "verify-scoped-studio", version = "1" },
 			}
 		elseif method == "ping" then

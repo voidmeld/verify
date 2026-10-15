@@ -17,6 +17,7 @@ return function()
 			name = "VerifyScope",
 			tree = {
 				["$className"] = "DataModel",
+				Lighting = { ["$properties"] = { Technology = "Future" } },
 				Workspace = {
 					["$className"] = "Workspace",
 					Floor = {

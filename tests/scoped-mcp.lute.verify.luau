@@ -6,6 +6,46 @@ local Files = require "../src/lute/files"
 local json = require "@std/json"
 
 return function(harness: Verify.Harness)
+	harness:case("scoped MCP handshake serializes capability and ping objects", function(t)
+		local directory = Files.claimDirectory(Files.temporary "verify-scope-handshake")
+		t:defer(function()
+			Files.removeIfPresent(directory)
+		end)
+		local services = Eval.lute.services()
+		local scope = directory .. "/scope.json"
+		local input = directory .. "/input.jsonl"
+		services.files.write(
+			scope,
+			Eval.lute.encode {
+				studio = { id = "own", name = "run" },
+				executable = "unused",
+				directory = directory .. "/mcp",
+				seconds = 10,
+			}
+		)
+		services.files.write(
+			input,
+			'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"ping"}\n'
+		)
+		local result = services.execute {
+			argv = { "lute", "run", "tools/scoped-studio-mcp.luau", scope },
+			input = input,
+			deadlineSeconds = 10,
+		}
+		t:expect(result.exitcode):toBe(0)
+		local count = 0
+		for line in string.gmatch(result.stdout, "[^\r\n]+") do
+			local response = json.deserialize(line) :: { id: number, result: json.Value }
+			t:expect(json.asObject(response.result) ~= nil):toBe(true)
+			if response.id == 1 then
+				local initialized = response.result :: { capabilities: { tools: json.Value } }
+				t:expect(json.asObject(initialized.capabilities.tools) ~= nil):toBe(true)
+			end
+			count += 1
+		end
+		t:expect(count):toBe(2)
+	end)
+
 	harness:case("scoped MCP stdio frames several requests from one read", function(t)
 		local directory = Files.claimDirectory(Files.temporary "verify-scope-stdio")
 		local services = Eval.lute.services()
