@@ -848,7 +848,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			state.doubles[key] = value
 			return
 		elseif access == "read" or access == "none" then
-			error(("%s is read-only on %s"):format(key, describe(state)), 3)
+			error("read-only property: " .. key, 3)
 		end
 		if key == "Parent" then
 			setParent(object, state, value :: Instance?)

@@ -690,6 +690,8 @@ A test sometimes needs a member that the schema omits, such as `GetFocusedTextBo
   Without the option, a function assignment to an undeclared member raises "is not a valid member".
 
 Both forms are test doubles, not engine behavior. The engine has no such assignment.
+
+Callback members (`OnInvoke`, `OnServerInvoke`, `OnClientInvoke`) accept a function or `nil` and always raise on reads. Keep the function separately when a test needs to invoke it. Reflected `Write` and `None` members also reject reads, including computed getters and method doubles. A class specification can declare inherited member restrictions with `access = { Member = "read" | "write" | "none" | "callback" }`.
 The option is off by default because it would turn a mistyped assignment into a silent member.
 `fakeOn` is explicit and always available.
 A double wins over a declared method of the same name.
