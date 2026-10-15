@@ -1,0 +1,102 @@
+--!strict
+
+local Schema = require "./schema"
+
+export type Tool = { name: string, description: string, inputSchema: { [string]: unknown } }
+export type Backend = { call: (name: string, arguments: { [string]: unknown }) -> unknown }
+export type Scope = { dispatch: (method: string, params: unknown) -> unknown, close: () -> () }
+
+local ALLOWED =
+	{ start_stop_play = true, screen_capture = true, execute_luau = true, get_console_output = true, input = true }
+
+local function create(studio: { id: string, name: string }, backend: Backend, encode: (unknown) -> string): Scope
+	assert(studio.id ~= "", "a scope requires one Studio id")
+	local target = table.clone(studio)
+	local closed = false
+	local function text(value: unknown): unknown
+		return { content = { { type = "text", text = encode(value) } } }
+	end
+	local function dispatch(method: string, params: unknown): unknown
+		assert(not closed, "the run scope is closed")
+		if method == "initialize" then
+			return {
+				protocolVersion = "2025-06-18",
+				capabilities = { tools = {} },
+				serverInfo = { name = "verify-scoped-studio", version = "1" },
+			}
+		elseif method == "ping" then
+			return {}
+		elseif method == "tools/list" then
+			local tools: { Tool } = {}
+			local properties: { [string]: { [string]: unknown } } = {
+				studio_id = { type = "string", enum = { target.id } },
+				code = { type = "string" },
+				datamodel_type = { type = "string", enum = { "Edit", "Client", "Server" } },
+				is_start = { type = "boolean" },
+			}
+			for _, name in
+				{
+					"list_roblox_studios",
+					"start_stop_play",
+					"screen_capture",
+					"execute_luau",
+					"get_console_output",
+					"input",
+				}
+			do
+				table.insert(tools, {
+					name = name,
+					description = "Operate only the Studio owned by this run. Input uses execute_luau and native VirtualInput on Client.",
+					inputSchema = { type = "object", properties = properties },
+				})
+			end
+			return { tools = tools }
+		end
+		assert(method == "tools/call", "unsupported MCP method")
+		local request = Schema.record(params, "tool call")
+		Schema.only(request, "tool call", { "name", "arguments", "_meta" })
+		local name = Schema.text(request.name, "tool call.name")
+		local args: Schema.Record = if request.arguments == nil
+			then {}
+			else Schema.record(request.arguments, "tool call.arguments")
+		assert(args.studio_id == nil or args.studio_id == target.id, "the tool call targets another Studio")
+		if name == "list_roblox_studios" then
+			Schema.only(args, "list arguments", { "studio_id" })
+			return text { studios = { { id = target.id, name = target.name } } }
+		end
+		assert(ALLOWED[name] == true, "tool is outside the run scope")
+		local forwarded: { [string]: unknown } = table.clone(args)
+		forwarded.studio_id = target.id
+		if name == "input" then
+			Schema.only(args, "input arguments", { "studio_id", "code" })
+			Schema.text(args.code, "input arguments.code")
+			forwarded.datamodel_type = "Client"
+			return backend.call("execute_luau", forwarded)
+		elseif name == "execute_luau" then
+			Schema.only(args, "execute arguments", { "studio_id", "code", "datamodel_type" })
+			Schema.text(args.code, "execute arguments.code")
+			assert(
+				args.datamodel_type == "Edit" or args.datamodel_type == "Client" or args.datamodel_type == "Server",
+				"invalid datamodel"
+			)
+		elseif name == "start_stop_play" then
+			Schema.only(args, "play arguments", { "studio_id", "is_start" })
+			assert(type(args.is_start) == "boolean", "play requires is_start")
+		elseif name == "screen_capture" then
+			Schema.only(args, "capture arguments", { "studio_id", "capture_id" })
+			forwarded.capture_id = Schema.optionalText(args.capture_id, "capture arguments.capture_id")
+				or "verify-agent"
+		else
+			Schema.only(args, "tool arguments", { "studio_id" })
+		end
+		return backend.call(name, forwarded)
+	end
+	return {
+		dispatch = dispatch,
+		close = function()
+			closed = true
+		end,
+	}
+end
+
+return { create = create }

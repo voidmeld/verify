@@ -15,6 +15,7 @@ local Runner = require "@self/runner"
 local Services = require "@self/services"
 local Stats = require "@self/stats"
 local Transcript = require "@self/transcript"
+local ScopedMcp = require "@self/scoped-mcp"
 
 export type Suite = Model.Suite
 export type Task = Model.Task
@@ -65,6 +66,7 @@ export type Interval = Stats.Interval
 export type CliContext = Cli.Context
 
 return {
+	scopedMcp = ScopedMcp,
 	SCHEMA_VERSION = Model.SCHEMA_VERSION,
 	decodeSuite = Model.decodeSuite,
 	plan = Model.plan,
