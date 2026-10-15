@@ -16,9 +16,15 @@ local root = game:GetService('ReplicatedStorage'):WaitForChild('VerifyLogSpike')
 local side = SIDE
 local token = root:GetAttribute('token')
 local result = {side = side, version = version(), calls = {}, events = {}, samples = {}}
-local function safe(value)
-    local ok, encoded = pcall(http.JSONEncode, http, value)
-    return if ok then http:JSONDecode(encoded) else tostring(value)
+local function safe(value, depth)
+    if (depth or 0) > 5 then return tostring(value) end
+    if type(value) == 'table' then
+        local copy = {}
+        for key, child in value do copy[key] = safe(child, (depth or 0) + 1) end
+        return copy
+    end
+    local ok = pcall(http.JSONEncode, http, value)
+    return if ok then value else tostring(value)
 end
 local function attempt(name, body)
     local ok, value = pcall(body)
@@ -28,7 +34,7 @@ end
 local connection
 attempt('MessageOut', function()
     connection = logs.MessageOut:Connect(function(message, kind, context)
-        if string.find(message, token, 1, true) then
+        if string.find(message, token, 1, true) and not string.find(message, ':retention:', 1, true) then
             table.insert(result.events, {message = message, kind = tostring(kind), context = safe(context)})
         end
     end)
@@ -54,7 +60,7 @@ attempt('historyBeforeFlood', function()
     local history = logs:GetLogHistory()
     result.before = #history
     for index, entry in history do
-        if string.find(tostring(entry.message), token, 1, true) then
+        if string.find(tostring(entry.message), token, 1, true) and not string.find(tostring(entry.message), ':retention:', 1, true) then
             table.insert(result.samples, {index = index, entry = safe(entry)})
         end
     end
@@ -74,10 +80,19 @@ attempt('historyAfterFlood', function()
     result.after = #history
     result.first = safe(history[1])
     result.last = safe(history[#history])
-    local retained = {}
+    local retained = {count = 0, ascending = true, descending = true}
     for index, entry in history do
         local sequence = string.match(tostring(entry.message), ':retention:(%d+)$')
-        if sequence then table.insert(retained, {index = index, sequence = tonumber(sequence)}) end
+                if sequence then
+            local n = tonumber(sequence)
+            if retained.last then
+                retained.ascending = retained.ascending and n > retained.last
+                retained.descending = retained.descending and n < retained.last
+            end
+            retained.first = retained.first or n
+            retained.last = n
+            retained.count += 1
+        end
     end
     result.retained = retained
     return #history
@@ -117,21 +132,19 @@ local ran, problem = pcall(function()
 			)
 		)
 	else
-		for _, model in { "Server", "Client" } do
+		for _, model in { "Server", "Client", "Edit" } do
 			print(execute(model, (string.gsub(probe, "SIDE", string.format("%q", "Plugin" .. model)))))
 			print(
 				execute(
 					model,
-					"return game:GetService('HttpService'):JSONEncode(game:GetService('ReplicatedStorage').VerifyLogSpike:GetAttributes())"
+					"local http = game:GetService('HttpService'); local root = game:GetService('ReplicatedStorage').VerifyLogSpike; return http:JSONEncode({script = http:JSONDecode(root:GetAttribute("
+						.. string.format("%q", model)
+						.. ") or '{}'), plugin = http:JSONDecode(root:GetAttribute("
+						.. string.format("%q", "Plugin" .. model)
+						.. ") or '{}')})"
 				)
 			)
 		end
-		print(
-			execute(
-				"Edit",
-				"local root = game:GetService('ReplicatedStorage').VerifyLogSpike; return game:GetService('HttpService'):JSONEncode(root:GetAttributes())"
-			)
-		)
 	end
 end)
 
