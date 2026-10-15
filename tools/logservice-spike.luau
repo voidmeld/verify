@@ -105,7 +105,6 @@ return 'recorded ' .. side
 local session, refusal = Lute.studio.attach {
 	studioId = id,
 	mode = if action == "read" then "play" else "edit",
-	directory = ".lute/tmp/logservice-spike",
 	authorize = function(request)
 		return { ok = request.tool == "list_roblox_studios" or request.tool == "execute_luau" }
 	end,
