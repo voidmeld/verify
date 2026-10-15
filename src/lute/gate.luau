@@ -237,13 +237,15 @@ local function create(runtime: Runtime): Gate
 					for index = 1, #job.locators do
 						table.insert(ordered, reports[index])
 					end
+					local merged, report: unknown = pcall(Verify.merge, ordered, name, { runtime = "lute" })
 					result = {
 						started = true,
-						exitcode = 0,
+						exitcode = if merged then 0 else 1,
 						timedOut = false,
 						stdout = "",
 						stderr = "",
-						report = Verify.merge(ordered, name, { runtime = "lute" }),
+						report = if merged then report :: Verify.Report else nil,
+						detail = if merged then nil else tostring(report),
 					}
 				end)
 				return { poll = poll }

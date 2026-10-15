@@ -367,6 +367,40 @@ return function(suite: Verify.Harness)
 			check:expect(outcome.acceptance.failed):toEqual { "specs" }
 		end)
 
+		suite:case("returns an isolated report merge refusal as a terminal failure", function(check)
+			local first = fixture("duplicate-first", 'return function(h) h:case("collision", function() end) end')
+			local second = fixture("duplicate-second", 'return function(h) h:case("collision", function() end) end')
+			local worker = fixture(
+				"duplicate-worker",
+				table.concat({
+					'local Lute = require("../../../../src/lute")',
+					"Lute.worker({ load = function(locator)",
+					'  return require("../../../../" .. string.sub(locator, 1, -6))',
+					'end }, { caseIdStyle = "bare" })',
+				}, "\n")
+			)
+			local controller = fixture(
+				"duplicate-controller",
+				table.concat({
+					'local Lute = require("../../../../src/lute")',
+					'local Gate = require("../../../../src/gate")',
+					string.format(
+						'local outcome = Lute.gate.run(Gate.define({ id = "duplicate-terminal", producers = {{ id = "specs", kind = "tests", worker = %q, locators = {%q, %q}, isolate = true, workers = 2, deadlineSeconds = 6 }} }), {directory = %q})',
+						worker,
+						first,
+						second,
+						ROOT .. "/duplicate-terminal"
+					),
+					'assert(outcome.producers[1].status == "failed", "merge was not a failed producer")',
+					'assert(string.find(outcome.producers[1].detail or "", "duplicate result id", 1, true))',
+					'assert(outcome.acceptance.verdict == "failed")',
+				}, "\n")
+			)
+			local result = require("../src/lute/bounded").run({ tostring(process.execPath()), "run", controller }, 8)
+			check:expect(result.timedOut):toEqual(false)
+			check:expect(result.exitcode):toEqual(0)
+		end)
+
 		suite:case("times a hung source out alone against its own deadline", function(check)
 			local good = fixture(
 				"budget-good",
