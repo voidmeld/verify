@@ -1,5 +1,6 @@
 --!strict
 
+local Wait = require "@self/wait"
 local Operations = require "@self/operations"
 local Performance = require "@self/performance"
 
@@ -101,6 +102,8 @@ export type ProgressEvent = Progress.Event
 export type RunProgress = Progress.Progress
 
 return {
+	waitUntil = Wait.waitUntil,
+	awaitValue = Wait.awaitValue,
 	SCHEMA_VERSION = ReportModel.SCHEMA_VERSION,
 	createHarness = HarnessModule.createHarness,
 	runCase = HarnessModule.runCase,

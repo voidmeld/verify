@@ -971,3 +971,5 @@ Choose a ruleset: `Consumer.generic` or `Consumer.roblox`.
 
 `Core.runCases(cases, options, now, ids?)` executes ordinary named cases with exact selection.
 The [run guide](running.md) describes selection, entry modules and host execution.
+
+`Core.waitUntil(spec, ops)` polls to a bound and returns its terminal reason, last observation and elapsed time. `Core.awaitValue(predicate, seconds, poll, ops)` waits for a non-nil value (including false), returns nil on timeout or cancellation, and raises probe failures. Its optional final `truthy` argument ignores false as well as nil. The caller supplies the clock, sleep and optional cancellation.
