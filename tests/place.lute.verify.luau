@@ -30,6 +30,7 @@ return function(suite: Core.Harness)
 			}
 			local output = fs.readFileToString(root .. "/result.rbxlx")
 			check:expect(output:find("VerifyModules", 1, true) ~= nil):toBe(true)
+			check:expect(output:find('<token name="Technology">4</token>', 1, true) ~= nil):toBe(true)
 			check:expect(output:find("&lt;widget &amp; value&gt;", 1, true) ~= nil):toBe(true)
 			check:expect(output:find("VerifyClient", 1, true) ~= nil):toBe(true)
 			check:expect(output:find("VerifyServer", 1, true) ~= nil):toBe(true)

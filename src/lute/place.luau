@@ -324,6 +324,7 @@ local function build(options: Options)
 		'<roblox version="4"><Item class="ReplicatedStorage">'
 			.. node ""
 			.. "</Item>"
+			.. '<Item class="Lighting"><Properties><token name="Technology">4</token></Properties></Item>'
 			.. (if clientItem
 				then '<Item class="StarterPlayer"><Item class="StarterPlayerScripts">' .. clientItem .. "</Item></Item>"
 				else "")
