@@ -479,6 +479,59 @@ local function describe(label: string, response: Response): string
 	return ("%s: %s (%s)"):format(label, response.detail or "failed", response.delivery)
 end
 
+export type SessionRun = {
+	code: string,
+	context: string?,
+	progressFile: string?,
+	finalCapture: boolean?,
+}
+
+local function runSession(opened: Session, options: SessionRun, directory: string, runId: string): Core.BatchOutcome
+	local token = string.format("%q", runId)
+	local progressPath = options.progressFile
+	local listening: Progress.Listener? = nil
+	local injected = ""
+	if progressPath ~= nil and progressPath ~= "" then
+		listening = Progress.listener(progressPath, runId, function(): string
+			local read = opened.console()
+			if not read.ok or read.text == nil then
+				error(describe("console read", read), 0)
+			end
+			return read.text
+		end)
+		injected = "local progressToken = " .. string.format("%q", (listening :: Progress.Listener).token) .. "; "
+	end
+	local result = opened.report(
+		options.context or "Server",
+		"local runId = " .. token .. "; " .. injected .. options.code,
+		runId,
+		if listening ~= nil then (listening :: Progress.Listener).poll else nil
+	)
+	if listening ~= nil then
+		(listening :: Progress.Listener).finish()
+	end
+	if result.report == nil then
+		return {
+			status = if result.response.expired then "timed_out" else "faulted",
+			detail = if result.response.ok then result.problem or "no report" else describe("execute", result.response),
+		}
+	end
+	local found = result.report
+	if options.finalCapture then
+		local image = opened.capture { directory = directory, stem = "final" }
+		local last = found.results[#found.results]
+		if not image.ok or image.artifact == nil or last == nil then
+			return { status = "faulted", detail = describe("capture", image) }
+		end
+		table.insert(last.artifacts, {
+			name = "final Studio view",
+			reference = image.artifact.reference,
+			mediaType = image.artifact.mediaType,
+		})
+	end
+	return { status = "returned", report = found }
+end
+
 local function run(options: RunOptions): Core.BatchOutcome
 	if options.code == "" then
 		return { status = "faulted", detail = "attached run requires code" }
@@ -512,53 +565,7 @@ local function run(options: RunOptions): Core.BatchOutcome
 				return
 			end
 		end
-		local token = string.format("%q", directory)
-		local progressPath = options.progressFile
-		local listening: Progress.Listener? = nil
-		local injected = ""
-		if progressPath ~= nil and progressPath ~= "" then
-			listening = Progress.listener(progressPath, directory, function(): string
-				local read = opened.console()
-				if not read.ok or read.text == nil then
-					error(describe("console read", read), 0)
-				end
-				return read.text
-			end)
-			injected = "local progressToken = " .. string.format("%q", (listening :: Progress.Listener).token) .. "; "
-		end
-		local result = opened.report(
-			options.context or "Server",
-			"local runId = " .. token .. "; " .. injected .. options.code,
-			directory,
-			if listening ~= nil then (listening :: Progress.Listener).poll else nil
-		)
-		if listening ~= nil then
-			(listening :: Progress.Listener).finish()
-		end
-		if result.report == nil then
-			outcome = {
-				status = if result.response.expired then "timed_out" else "faulted",
-				detail = if result.response.ok
-					then result.problem or "no report"
-					else describe("execute", result.response),
-			}
-			return
-		end
-		local found = result.report
-		if options.finalCapture then
-			local image = opened.capture { directory = directory, stem = "final" }
-			local last = found.results[#found.results]
-			if not image.ok or image.artifact == nil or last == nil then
-				outcome = { status = "faulted", detail = describe("capture", image) }
-				return
-			end
-			table.insert(last.artifacts, {
-				name = "final Studio view",
-				reference = image.artifact.reference,
-				mediaType = image.artifact.mediaType,
-			})
-		end
-		outcome = { status = "returned", report = found }
+		outcome = runSession(opened, options, directory, directory)
 	end)
 	if not body then
 		outcome = { status = "faulted", detail = "attached run raised: " .. tostring(thrown) }
@@ -577,6 +584,7 @@ end
 
 return {
 	attach = attach,
+	runSession = runSession,
 	run = run,
 	digest = digest,
 	transport = mcpTransport,

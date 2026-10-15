@@ -11,7 +11,6 @@ local Detached = require "./studio-detached"
 local Files = require "./files"
 local Wire = require "./wire"
 local Mcp = require "./studio-mcp"
-local Progress = require "./studio-progress"
 local Processes = require "./studio-processes"
 local Reply = require "./studio-reply"
 local Install = require "./studio-install"
@@ -71,13 +70,6 @@ local function worker(path: string)
 				.. "); return game:GetService('ReplicatedStorage'):GetAttribute('VerifyRun')",
 		}))
 		assert(string.find(edit, runId, 1, true) ~= nil, "Studio did not acknowledge run identity")
-		local progressPath = fields.progressFile
-		local polling = type(progressPath) == "string" and progressPath ~= ""
-		local listening: Progress.Listener? = if polling
-			then Progress.listener(progressPath :: string, runId, function(): string
-				return Reply.texts(call("get_console_output", { studio_id = id }))
-			end)
-			else nil
 		local progressToken = Detached.tokenFor(runId)
 		local players = fields.players
 		local datamodel = textField "context"
@@ -116,25 +108,14 @@ local function worker(path: string)
 				.. "; "
 				.. textField "code"
 		end
-		local outcome = session.report(datamodel, code, runId, if listening ~= nil then listening.poll else nil)
-		if listening ~= nil then
-			listening.finish()
-		end
-		assert(outcome.report ~= nil, outcome.problem or outcome.response.detail)
-		local report = outcome.report :: Core.Report
-		if fields.finalCapture == true then
-			local image = Reply.saveCapture(
-				call("screen_capture", { studio_id = id, capture_id = "verify-final" }),
-				directory,
-				"final"
-			)
-			local final = report.results[#report.results]
-			assert(final ~= nil, "cannot attach capture to empty report")
-			table.insert(
-				final.artifacts,
-				{ name = "final Studio view", reference = image.reference, mediaType = image.mediaType }
-			)
-		end
+		local outcome = Attach.runSession(session, {
+			code = code,
+			context = datamodel,
+			progressFile = if type(fields.progressFile) == "string" then fields.progressFile else nil,
+			finalCapture = fields.finalCapture == true,
+		}, directory, runId)
+		assert(outcome.status == "returned", outcome.detail)
+		local report = outcome.report
 		fs.writeStringToFile(directory .. "/report", Wire.encode(report))
 	end)
 	if fields.players ~= nil then
