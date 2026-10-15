@@ -59,6 +59,7 @@ return function()
 		call("list_roblox_studios", {})
 		call("execute_luau", { studio_id = "outside-this-run", datamodel_type = "Edit", code = "error('forwarded')" })
 		call("execute_luau", { datamodel_type = "Edit", code = "print('verify scoped console'); return 'scoped edit'" })
+		call("screen_capture", {})
 		call("start_stop_play", { is_start = true })
 		call("input", {
 			code = [[
@@ -70,13 +71,15 @@ input:SendKey(false, Enum.KeyCode.Space, false)
 return 'scoped input'
 ]],
 		})
-		call("screen_capture", {})
 		call("get_console_output", {})
 		call("start_stop_play", { is_start = false })
 		local input = directory .. "/requests.jsonl"
 		fs.writeStringToFile(input, table.concat(requests, "\n") .. "\n")
 		local result = services.execute { argv = argv, input = input, deadlineSeconds = 180 }
-		assert(result.started and result.exitcode == 0 and not result.timedOut, result.stderr)
+		assert(
+			result.started and result.exitcode == 0 and not result.timedOut,
+			"scoped proxy failed or timed out: " .. result.stderr
+		)
 		local responses: { { id: number, result: unknown?, error: unknown? } } = {}
 		for line in string.gmatch(result.stdout, "[^\r\n]+") do
 			local reply = Eval.lute.decode(line) :: { id: number, result: unknown?, error: unknown? }
@@ -89,7 +92,7 @@ return 'scoped input'
 		local listing = responses[2].result :: { content: { { text: string } } }
 		local studios = Eval.lute.decode(listing.content[1].text) :: { studios: { { id: string } } }
 		assert(#studios.studios == 1 and studios.studios[1].id ~= "", "scope must expose exactly one Studio")
-		local capture = responses[7].result :: { content: { { type: string } } }
+		local capture = responses[5].result :: { content: { { type: string } } }
 		local image = false
 		for _, content in capture.content do
 			image = image or content.type == "image"
