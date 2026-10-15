@@ -120,6 +120,11 @@ local function placeholders(
 		scores = Paths.join(directory, ("checks/%s.scores.json"):format(instance.id)),
 		seed = tostring(spec.seed),
 	}
+	local devices: { string } = {}
+	for _, device in spec.task.devices do
+		table.insert(devices, device.id)
+	end
+	values.devices = table.concat(devices, ",")
 	if instance.device ~= nil then
 		local device = instance.device :: Model.Device
 		values.device = device.id

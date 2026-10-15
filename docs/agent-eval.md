@@ -118,6 +118,7 @@ Verify replaces these placeholders in `argv`, `env` and `dump`:
 | `{captures}` | `{evidence}/captures`. Write screenshots to `{captures}/<device>/<screen>.png`. |
 | `{scores}` | The scores file of the check. |
 | `{seed}` | The seed. |
+| `{devices}` | The ids of the task devices, separated by commas. |
 | `{device}`, `{width}`, `{height}`, `{scale}`, `{input}` | The device of a `perDevice` check. |
 
 The gate replaces `{report}` and `{run}`. The run placeholders do not name the arm.

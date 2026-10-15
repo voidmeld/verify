@@ -111,6 +111,7 @@ local function corpus(memory: Fakes.Memory, brief: string?)
 					argv = { "write", "{captures}/{device}/main.png", "PNG" },
 				},
 				{ id = "score", kind = "command", scores = true, argv = { "write", "{scores}", '{"lines": 3}' } },
+				{ id = "devices", kind = "command", argv = { "write", "{outputs}/devices.txt", "{devices}" } },
 				{ id = "optional", kind = "command", required = false, argv = { "fail" } },
 				{
 					id = "interface",
@@ -281,6 +282,9 @@ return function(suite: Verify.Harness)
 				:expect(memory.files.exists "/evidence/runs/one/treatment/agent/seed-1/workspace/README.md")
 				:toBe(true)
 			context:expect(memory.files.exists "/live/suite/runs/one/treatment/agent/seed-1"):toBe(false)
+			context
+				:expect(memory.files.read "/evidence/runs/one/treatment/agent/seed-1/checks/devices.txt")
+				:toBe "phone,console"
 			local transcript = memory.files.read "/evidence/runs/one/treatment/agent/seed-1/transcript.jsonl"
 			context:expect(string.sub(transcript, 1, 9)):toBe "0.500000\t"
 
