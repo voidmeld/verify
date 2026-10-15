@@ -123,7 +123,7 @@ local function create(options: Options, runtime: Runtime?): Verify.Host
 		local finished = 0
 		for _, batch in pending do
 			services.time.spawn(function()
-				local ok, value: unknown = pcall(runBatch, batch)
+				local ok, value: unknown = pcall(host.runBatch, batch)
 				outcomes[batch.index] = if ok
 					then value :: BatchOutcome
 					else {

@@ -78,7 +78,6 @@ end
 
 local function create(runtime: Runtime): Gate
 	local defaults = capabilities(runtime)
-	local hostDefaults = Host.capabilities(runtime)
 	local files = Files.create(runtime.fs)
 
 	local function newRunId(): string
@@ -103,149 +102,52 @@ local function create(runtime: Runtime): Gate
 				return result
 			end
 			if job.kind == "tests" then
-				local name = "verify-gate-tests"
-				local function unitFor(locator: string): Verify.PlanUnit
-					return {
-						id = job.id .. ":" .. locator,
-						locator = locator,
-						group = nil,
-						tags = {},
-						requires = {},
-						deadlineSeconds = nil,
-						weight = 1,
-					}
+				local units: { Verify.PlanUnitDraft } = {}
+				for _, locator in job.locators do
+					table.insert(units, { id = job.id .. ":" .. locator, locator = locator })
 				end
-				local function hostFor(suffix: string, deadline: number): Verify.Host
-					return Host.create({
-						worker = job.worker :: string,
-						command = job.command or options.command,
-						directory = stem .. "-worker" .. suffix,
-						deadlineSeconds = deadline,
-						name = name,
-						arguments = job.args,
-					}, runtime)
-				end
+				local host = Host.create({
+					worker = job.worker :: string,
+					command = job.command or options.command,
+					directory = stem .. "-worker",
+					deadlineSeconds = job.deadlineSeconds,
+					name = "verify-gate-tests",
+					arguments = job.args,
+				}, runtime)
 				local started = runtime.time.clock()
+				local runBatch = host.runBatch
+				host.runBatch = function(batch)
+					local remaining = job.deadlineSeconds - (runtime.time.clock() - started)
+					if remaining <= 0 then
+						return { status = "timed_out", detail = "not started: the producer deadline elapsed" }
+					end
+					local bounded = table.clone(batch)
+					bounded.deadlineSeconds = math.min(remaining, batch.deadlineSeconds or remaining)
+					return runBatch(bounded)
+				end
 				runtime.time.spawn(function()
-					if not job.isolate then
-						local units: { Verify.PlanUnit } = {}
-						for _, locator in job.locators do
-							table.insert(units, unitFor(locator))
-						end
-						local batch: Verify.PlanBatch =
-							{ id = safeName(job.id), index = 1, units = units, deadlineSeconds = job.deadlineSeconds }
-						local ran, outcome: unknown = pcall(hostFor("", job.deadlineSeconds).runBatch, batch)
-						if not ran then
-							result = {
-								started = false,
-								exitcode = -1,
-								timedOut = false,
-								stdout = "",
-								stderr = "",
-								detail = tostring(outcome),
-							}
-							return
-						end
-						local batchOutcome = outcome :: Verify.BatchOutcome
-						result = {
-							started = true,
-							exitcode = if batchOutcome.status == "returned" then 0 else 1,
-							timedOut = batchOutcome.status == "timed_out",
-							stdout = "",
-							stderr = "",
-							report = batchOutcome.report,
-							detail = batchOutcome.detail,
-						}
-						return
-					end
-					local reports: { [number]: Verify.Report } = {}
-					local function runOne(index: number)
-						local locator = job.locators[index]
-						local unit = unitFor(locator)
-						local left = job.deadlineSeconds - (runtime.time.clock() - started)
-						local remaining = if job.sourceDeadlineSeconds ~= nil
-							then math.min(left, job.sourceDeadlineSeconds)
-							else left
-						local timedOut = false
-						local detail = "the worker did not run"
-						if left <= 0 then
-							timedOut = true
-							detail = "not started: the producer deadline elapsed"
-						else
-							local batch: Verify.PlanBatch = {
-								id = ("%s-%d"):format(safeName(job.id), index),
-								index = 1,
-								units = { unit },
-								deadlineSeconds = remaining,
-							}
-							local ran, outcome: unknown =
-								pcall(hostFor("-" .. tostring(index), remaining).runBatch, batch)
-							if ran then
-								local batchOutcome = outcome :: Verify.BatchOutcome
-								if batchOutcome.status == "returned" and batchOutcome.report ~= nil then
-									reports[index] = Verify.decode(batchOutcome.report)
-									return
-								end
-								timedOut = batchOutcome.status == "timed_out"
-								detail = batchOutcome.detail or batchOutcome.status
-							else
-								detail = tostring(outcome)
-							end
-						end
-						reports[index] = Verify.syntheticReport {
-							executor = name,
-							environment = { runtime = "lute" },
-							capabilities = hostDefaults,
-							id = ("unit:%s:worker"):format(unit.id),
-							source = locator,
-							name = unit.id,
-							status = if timedOut then "timed_out" else "failed",
-							phase = "executor",
-							message = detail,
-						}
-					end
-					local nextIndex = 1
-					local active = 0
-					for _ = 1, math.min(job.workers, #job.locators) do
-						active += 1
-						runtime.time.spawn(function()
-							while nextIndex <= #job.locators do
-								local index = nextIndex
-								nextIndex += 1
-								local ran, thrown: unknown = pcall(runOne, index)
-								if not ran then
-									reports[index] = Verify.syntheticReport {
-										executor = name,
-										environment = { runtime = "lute" },
-										capabilities = hostDefaults,
-										id = ("unit:%s:worker"):format(unitFor(job.locators[index]).id),
-										source = job.locators[index],
-										name = job.locators[index],
-										status = "failed",
-										phase = "executor",
-										message = tostring(thrown),
-									}
-								end
-							end
-							active -= 1
-						end)
-					end
-					while active > 0 do
-						runtime.time.wait(0.005)
-					end
-					local ordered: { Verify.Report } = {}
-					for index = 1, #job.locators do
-						table.insert(ordered, reports[index])
-					end
-					local merged, report: unknown = pcall(Verify.merge, ordered, name, { runtime = "lute" })
+					local plan: Verify.PlanDraft = {
+						id = job.id,
+						units = units,
+						policy = {
+							batchCount = if job.isolate then #units else 1,
+							maxParallelBatches = if job.isolate then job.workers else 1,
+							deadlineSeconds = if job.isolate
+								then job.sourceDeadlineSeconds or job.deadlineSeconds
+								else job.deadlineSeconds,
+							runDeadlineSeconds = job.deadlineSeconds,
+							caseIdStyle = "bare",
+						},
+					}
+					local ran, execution: unknown = pcall(Verify.execute, plan, host)
 					result = {
-						started = true,
-						exitcode = if merged then 0 else 1,
+						started = ran,
+						exitcode = if ran then 0 else -1,
 						timedOut = false,
 						stdout = "",
 						stderr = "",
-						report = if merged then report :: Verify.Report else nil,
-						detail = if merged then nil else tostring(report),
+						report = if ran then (execution :: Verify.ExecutionReport).report else nil,
+						detail = if ran then nil else tostring(execution),
 					}
 				end)
 				return { poll = poll }

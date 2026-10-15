@@ -182,6 +182,12 @@ return function(suite: Verify.Harness)
 			local state = memory({}, workerScript(0))
 			check:expect((pcall(Host.create, { worker = "" }, state.runtime))):toBe(false)
 			local host = Host.create({ worker = "w.luau" }, state.runtime)
+			local runBatch = host.runBatch
+			local dispatched = 0
+			host.runBatch = function(batch)
+				dispatched += 1
+				return runBatch(batch)
+			end
 			local delivered: { [number]: string } = {}
 			local first = batchOf("one", "a")
 			local second = batchOf("two", "b")
@@ -193,6 +199,7 @@ return function(suite: Verify.Harness)
 				end
 			)
 			check:expect(delivered):toEqual { "returned", "returned" }
+			check:expect(dispatched):toBe(2)
 		end)
 	end)
 end

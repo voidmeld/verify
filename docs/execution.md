@@ -122,6 +122,7 @@ Another host calls `Gate.run(gate, executor, { runId, ... })` with an injected `
 Fields of the `tests` producer:
 
 - `sourceDeadlineSeconds` bounds each isolated source. The producer deadline also bounds it. One hung source times out alone.
+- Test producers use the ordinary execution plan and Lute host. Isolated sources dispatch in batches of at most `workers`; returned reports retain their case IDs.
 - Every locator must report a case unless `silent` names it.
   A silent module can report no case because another module requires it.
   A consumer declares `silent`. Verify never infers it.
