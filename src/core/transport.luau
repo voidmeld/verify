@@ -182,6 +182,24 @@ local function segment(payload: string, maxBytes: number): { Segment }
 	return segments
 end
 
+local function readSegment(raw: unknown): Segment?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local fields = raw :: { [string]: unknown }
+	if
+		type(fields.index) ~= "number"
+		or type(fields.count) ~= "number"
+		or type(fields.digest) ~= "string"
+		or type(fields.totalDigest) ~= "string"
+		or type(fields.totalBytes) ~= "number"
+		or type(fields.payload) ~= "string"
+	then
+		return nil
+	end
+	return raw :: Segment
+end
+
 local function reassembleSegments(segments: { unknown }): (string?, string?)
 	if #segments == 0 then
 		return nil, "no segment was supplied"
@@ -200,21 +218,10 @@ local function reassembleSegments(segments: { unknown }): (string?, string?)
 
 	local seen: { [number]: Segment } = {}
 	for _, raw in segments do
-		if type(raw) ~= "table" then
+		local piece = readSegment(raw)
+		if piece == nil then
 			return nil, "a segment is malformed"
 		end
-		local fields = raw :: { [string]: unknown }
-		if
-			type(fields.index) ~= "number"
-			or type(fields.count) ~= "number"
-			or type(fields.digest) ~= "string"
-			or type(fields.totalDigest) ~= "string"
-			or type(fields.totalBytes) ~= "number"
-			or type(fields.payload) ~= "string"
-		then
-			return nil, "a segment is malformed"
-		end
-		local piece = raw :: Segment
 		if piece.count ~= count then
 			return nil, ("segments disagree about the total count: %d and %d"):format(count, piece.count)
 		end
@@ -265,4 +272,5 @@ return {
 	receipt = receipt,
 	segment = segment,
 	reassembleSegments = reassembleSegments,
+	readSegment = readSegment,
 }
