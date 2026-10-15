@@ -353,7 +353,11 @@ local function studio(
 	seconds: number
 ): { config: string, close: () -> () }
 	assert(#build > 0, "scoped Studio requires a build command")
-	local built = execute(nil) { argv = build, cwd = workspace, deadlineSeconds = math.min(seconds, 300) }
+	local built = execute(if system.win32 then nil else "sh") {
+		argv = build,
+		cwd = workspace,
+		deadlineSeconds = math.min(seconds, 300),
+	}
 	assert(built.started and built.exitcode == 0 and not built.timedOut, "Studio build failed: " .. built.stderr)
 	local installed, missing = Install.locate()
 	assert(installed ~= nil, missing)
@@ -363,8 +367,7 @@ local function studio(
 	local opened = launched
 	local scopeFile = directory .. "/studio-scope.json"
 	local config = directory .. "/mcp.json"
-	local source = absolute((string.gsub(debug.info(1, "s"), "^@", "")))
-	local script = Paths.join(Paths.join(source, ".."), "../../tools/scoped-studio-mcp.luau")
+	local script = absolute(Paths.join(moduleDirectory(), "../../tools/scoped-studio-mcp.luau"))
 	local ok, reason = pcall(function()
 		files.write(
 			scopeFile,
@@ -387,8 +390,8 @@ local function studio(
 	return {
 		config = config,
 		close = function()
-			files.remove(scopeFile)
 			local closed = opened.close()
+			files.remove(scopeFile)
 			assert(#closed.survivors == 0 and closed.session.acknowledged, "scoped Studio cleanup failed")
 		end,
 	}

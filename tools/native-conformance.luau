@@ -71,3 +71,5 @@ assert(timeout.status == "timed_out", "wedged engine must time out: " .. tostrin
 print "native conformance: server parity, defect detection, client physics and enforced timeout passed"
 
 require "./native-logs"()
+
+require "./native-scoped-mcp"()

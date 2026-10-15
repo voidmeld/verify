@@ -216,50 +216,61 @@ local function check(result: AgentEval.RunResult, id: string): AgentEval.CheckRe
 end
 
 return function(suite: Verify.Harness)
-	suite:case("scoped Studio provisioning is per run and closes when an adapter raises", function(context)
-		local memory = Fakes.memory()
-		corpus(memory)
-		local configured = suiteOf(memory)
-		for _, arm in configured.arms do
-			arm.setup.mcp = nil
-			arm.setup.studio = { place = "{evidence}/agent.rbxlx", build = { "build", "{workspace}" } }
-		end
-		local services = Fakes.services(memory.files, {})
-		local opened, closed = 0, 0
-		services.studio = function(workspace, directory, place, build, _seconds)
-			opened += 1
-			context:expect(place):toBe(directory .. "/agent.rbxlx")
-			context:expect(build[2]):toBe(workspace)
-			local config = directory .. "/mcp.json"
-			memory.files.write(config, "scoped")
-			return {
-				config = config,
-				close = function()
-					closed += 1
-				end,
-			}
-		end
-		local summary = AgentEval.run {
-			suite = configured,
-			loader = Fakes.loader(memory.files),
-			services = services,
-			adapters = {
-				replay = {
-					id = "replay",
-					run = function(request)
-						context:expect(request.mcpConfig):toBe(request.directory .. "/mcp.json")
-						error "adapter failed"
+	suite:case("scoped Studio closes before hidden checks and after adapter errors", function(context)
+		for _, raises in { false, true } do
+			local memory = Fakes.memory()
+			corpus(memory)
+			local configured = suiteOf(memory)
+			for _, arm in configured.arms do
+				arm.setup.mcp = nil
+				arm.setup.studio = { place = "{evidence}/agent.rbxlx", build = { "build", "{workspace}" } }
+			end
+			local services = Fakes.services(memory.files, {})
+			local opened, closed = 0, 0
+			services.studio = function(workspace, directory, place, build, _seconds)
+				opened += 1
+				context:expect(place):toBe(directory .. "/agent.rbxlx")
+				context:expect(build[2]):toBe(workspace)
+				local config = directory .. "/mcp.json"
+				memory.files.write(config, "scoped")
+				return {
+					config = config,
+					close = function()
+						closed += 1
 					end,
+				}
+			end
+			local checks = services.checks
+			services.checks = function(gate, directory, runId)
+				context:expect(closed):toBe(opened)
+				return checks(gate, directory, runId)
+			end
+			local adapter = replay { requests = {} }
+			local summary = AgentEval.run {
+				suite = configured,
+				loader = Fakes.loader(memory.files),
+				services = services,
+				adapters = {
+					replay = {
+						id = "replay",
+						run = function(request, given)
+							context:expect(request.mcpConfig):toBe(request.directory .. "/mcp.json")
+							if raises then
+								error "adapter failed"
+							end
+							return adapter.run(request, given)
+						end,
+					},
 				},
-			},
-			evidence = "/evidence",
-			encode = Lute.encode,
-			decode = Lute.parse,
-			selection = { tasks = { "one" } },
-		}
-		context:expect(#summary.results):toBe(2)
-		context:expect(opened):toBe(2)
-		context:expect(closed):toBe(2)
+				evidence = "/evidence",
+				encode = Lute.encode,
+				decode = Lute.parse,
+				selection = { tasks = { "one" } },
+			}
+			context:expect(#summary.results):toBe(2)
+			context:expect(opened):toBe(2)
+			context:expect(closed):toBe(2)
+		end
 	end)
 	suite:suite("agent evaluation runner", function()
 		suite:case("provisions each run, runs hidden checks and records metrics", function(context)

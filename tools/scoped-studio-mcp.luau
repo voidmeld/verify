@@ -1,7 +1,7 @@
 --!strict
 
 local fs = require "@std/fs"
-local io = require "@std/io"
+local io = require "@lute/io"
 local process = require "@std/process"
 local json = require "@std/json"
 local Eval = require "../src/agent-eval"
@@ -21,11 +21,7 @@ local scope = Eval.scopedMcp.create(raw.studio, {
 		return transport.call(name, arguments)
 	end,
 }, encode)
-while os.clock() < deadline do
-	local read, line = pcall(io.input)
-	if not read or line == "" then
-		break
-	end
+local function respond(line: string)
 	local request = Eval.lute.decode(line) :: { id: unknown?, method: string, params: unknown? }
 	if request.id ~= nil then
 		local ok, result = pcall(scope.dispatch, request.method, request.params)
@@ -35,5 +31,28 @@ while os.clock() < deadline do
 		io.write(encode(response) .. "\n")
 	end
 end
+local served, problem = pcall(function()
+	local pending = ""
+	while os.clock() < deadline do
+		local read, chunk = pcall(io.read)
+		if not read or chunk == "" then
+			break
+		end
+		pending ..= chunk
+		while true do
+			local ending = string.find(pending, "\n", 1, true)
+			if ending == nil then
+				break
+			end
+			local line = string.sub(pending, 1, ending - 1)
+			pending = string.sub(pending, ending + 1)
+			if line ~= "" then
+				respond(line)
+			end
+		end
+	end
+end)
 scope.close()
 transport.close()
+
+assert(served, problem)

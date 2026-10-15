@@ -51,10 +51,3 @@ Headless tests cover isolation, refusal without forwarding, image preservation,
 closed scopes, adapter failure cleanup and token accounting. They do not prove
 Studio launch, input delivery, captures or process cleanup on a native host.
 Run the native gate on the reference Studio host before making those claims.
-
-Validation on 2026-10-15: the final headless gate reports 806 of 810 cases
-passing. Types, format, lint and the other headless producers pass. Four process
-watchdog and process-observation cases fail. The same four failures reproduce
-on main `ff2a119` in the three affected spec files, with 33 of 37 cases passing.
-The six scoped-MCP cases and the runner cleanup case pass. No native gate or
-Studio launch was run. Native isolation, input and cleanup remain unverified.

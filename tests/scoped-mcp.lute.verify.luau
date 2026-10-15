@@ -2,8 +2,55 @@
 
 local Eval = require "../src/agent-eval"
 local Verify = require "../src/core"
+local Files = require "../src/lute/files"
+local json = require "@std/json"
 
 return function(harness: Verify.Harness)
+	harness:case("scoped MCP stdio frames several requests from one read", function(t)
+		local directory = Files.claimDirectory(Files.temporary "verify-scope-stdio")
+		local services = Eval.lute.services()
+		local scope = directory .. "/scope.json"
+		local input = directory .. "/input.jsonl"
+		services.files.write(
+			scope,
+			Eval.lute.encode {
+				studio = { id = "own", name = "run" },
+				executable = "unused",
+				directory = directory .. "/mcp",
+				seconds = 10,
+			}
+		)
+		local requests: { string } = {}
+		for id = 1, 2 do
+			table.insert(
+				requests,
+				json.serialize {
+					jsonrpc = "2.0",
+					id = id,
+					method = "tools/call",
+					params = { name = "list_roblox_studios", arguments = {} },
+				}
+			)
+		end
+		services.files.write(input, table.concat(requests, "\n") .. "\n")
+		local result = services.execute {
+			argv = { "lute", "run", "tools/scoped-studio-mcp.luau", scope },
+			input = input,
+			deadlineSeconds = 10,
+		}
+		t:expect(result.exitcode):toBe(0)
+		local count = 0
+		for line in string.gmatch(result.stdout, "[^\r\n]+") do
+			local response = Eval.lute.decode(line) :: { id: number, result: { content: { { text: string } } } }
+			count += 1
+			t:expect(response.id):toBe(count)
+			local listing = Eval.lute.decode(response.result.content[1].text) :: { studios: { { id: string } } }
+			t:expect(listing.studios[1].id):toBe "own"
+		end
+		t:expect(count):toBe(2)
+		services.files.remove(directory)
+	end)
+
 	harness:case("MCP and shell tools use the same recorded token accounting", function(t)
 		local totals: { number } = {}
 		for _, kind in { "command_execution", "mcp_tool_call" } do
@@ -38,12 +85,14 @@ return function(harness: Verify.Harness)
 	end)
 	harness:case("scoped MCP lists one Studio without consulting the global server", function(t)
 		local calls = 0
-		local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {
+		local studio = { id = "own", name = "run" }
+		local scope = Eval.scopedMcp.create(studio, {
 			call = function(): unknown
 				calls += 1
 				return {}
 			end,
 		}, Eval.lute.encode)
+		studio.id = "changed"
 		local listing =
 			scope.dispatch("tools/call", { name = "list_roblox_studios", arguments = {} }) :: { content: { { text: string } } }
 		local raw = Eval.lute.decode(listing.content[1].text) :: { studios: { { id: string } } }
