@@ -23,6 +23,7 @@ export type Device = {
 }
 
 export type ArmSetup = {
+	studio: { place: string, build: { string } }?,
 	overlay: { string },
 	instructions: { string },
 	mcp: string?,
@@ -167,7 +168,20 @@ end
 
 local function armSetup(value: unknown, label: string, directory: string, files: Services.Files): ArmSetup
 	local raw: Schema.Record = if Schema.absent(value) then {} else Schema.record(value, label)
-	Schema.only(raw, label, { "id", "overlay", "instructions", "mcp", "allowedTools", "disallowedTools", "env" })
+	Schema.only(
+		raw,
+		label,
+		{ "id", "overlay", "instructions", "mcp", "studio", "allowedTools", "disallowedTools", "env" }
+	)
+	local studio: { place: string, build: { string } }? = nil
+	if not Schema.absent(raw.studio) then
+		local config = Schema.record(raw.studio, label .. ".studio")
+		Schema.only(config, label .. ".studio", { "place", "build" })
+		studio = {
+			place = Schema.text(config.place, label .. ".studio.place"),
+			build = Schema.texts(config.build, label .. ".studio.build"),
+		}
+	end
 	local overlay: { string } = {}
 	for index, path in Schema.texts(raw.overlay, label .. ".overlay") do
 		local resolved = Paths.join(directory, path)
@@ -195,6 +209,7 @@ local function armSetup(value: unknown, label: string, directory: string, files:
 	end
 	return {
 		overlay = overlay,
+		studio = studio,
 		instructions = instructions,
 		mcp = mcp,
 		allowedTools = Schema.optionalTexts(raw.allowedTools, label .. ".allowedTools"),
@@ -223,6 +238,7 @@ local function merge(base: ArmSetup, extra: ArmSetup?): ArmSetup
 		overlay = overlay,
 		instructions = instructions,
 		mcp = extra.mcp or base.mcp,
+		studio = extra.studio or base.studio,
 		allowedTools = extra.allowedTools or base.allowedTools,
 		disallowedTools = extra.disallowedTools or base.disallowedTools,
 		env = env,
@@ -599,6 +615,7 @@ local function armDigest(setup: ArmSetup, loader: Loader): string
 	table.insert(
 		pieces,
 		Schema.canonical {
+			studio = setup.studio,
 			allowedTools = setup.allowedTools,
 			disallowedTools = setup.disallowedTools,
 			env = setup.env,

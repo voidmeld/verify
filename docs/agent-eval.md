@@ -84,6 +84,7 @@ An arm setup has these fields. Paths are relative to the file that declares them
 | `overlay` | Files and directories that Verify copies over the starter, in order. |
 | `instructions` | A Markdown file. The Claude Code adapter appends it to the system prompt. The Codex adapter sends it as developer instructions. |
 | `mcp` | An MCP configuration file. Verify replaces `{workspace}` and `{evidence}` in it. |
+| `studio` | A build command and place for [Studio MCP scoped to one run](scoped-studio-mcp.md). Cannot be combined with `mcp`. |
 | `allowedTools`, `disallowedTools` | Tool names that the adapter passes to the agent. |
 | `env` | Environment variables for the agent process. |
 

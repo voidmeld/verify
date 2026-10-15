@@ -544,6 +544,7 @@ local function create(options: Options): () -> Summary
 		files.makeDirectory(directory)
 		local workspace = Paths.join(services.workspaces, ("%s/%s"):format(suite.id, spec.path))
 		local finished = false
+		local closeStudio: (() -> ())? = nil
 		local ok, problem = pcall(function(): string?
 			local source = spec.task.starter
 			if spec.task.from ~= nil then
@@ -581,6 +582,25 @@ local function create(options: Options): () -> Summary
 				local values = { workspace = workspace, evidence = directory }
 				files.write(mcpConfig :: string, substitute(files.read(spec.arm.setup.mcp :: string), values))
 			end
+			local studio = spec.arm.setup.studio
+			if studio ~= nil then
+				assert(mcpConfig == nil, "a scoped Studio run cannot load another MCP configuration")
+				assert(services.studio ~= nil, "this host cannot provision a scoped Studio")
+				local values = { workspace = workspace, evidence = directory }
+				local build: { string } = {}
+				for _, word in studio.build do
+					table.insert(build, substitute(word, values))
+				end
+				local provisioned = services.studio(
+					workspace,
+					directory,
+					substitute(studio.place, values),
+					build,
+					spec.task.budgets.wallSeconds
+				)
+				closeStudio = provisioned.close
+				mcpConfig = provisioned.config
+			end
 			local adapter = options.adapters[spec.agent.adapter]
 			if adapter == nil then
 				result.status = "unsupported"
@@ -612,6 +632,10 @@ local function create(options: Options): () -> Summary
 			}
 			log(("run %s: agent %s started"):format(spec.id, adapter.id))
 			local outcome = adapter.run(request, services)
+			if closeStudio ~= nil then
+				closeStudio()
+				closeStudio = nil
+			end
 			files.write(Paths.join(directory, "transcript.jsonl"), stampedText(outcome.lines))
 			files.write(Paths.join(directory, "agent.stderr.txt"), outcome.stderr)
 			finishMetrics(result, outcome)
@@ -628,6 +652,16 @@ local function create(options: Options): () -> Summary
 			finished = true
 			return nil
 		end)
+		if closeStudio ~= nil then
+			local cleaned, cleanupProblem = pcall(function(): string?
+				(closeStudio :: () -> ())()
+				return nil
+			end)
+			if not cleaned then
+				ok = false
+				problem = tostring(cleanupProblem)
+			end
+		end
 		if not ok then
 			result.detail = tostring(problem)
 			if not finished then

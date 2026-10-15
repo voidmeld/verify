@@ -51,6 +51,13 @@ export type HttpRequest = {
 export type HttpResponse = { status: number, body: string }
 
 export type Services = {
+	studio: ((
+		workspace: string,
+		directory: string,
+		place: string,
+		build: { string },
+		seconds: number
+	) -> { config: string, close: () -> () })?,
 	files: Files,
 	execute: (command: Command) -> Execution,
 	checks: (gate: Gate.Definition, directory: string, runId: string) -> Gate.Outcome,
