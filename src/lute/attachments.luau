@@ -1,6 +1,5 @@
 --!strict
 
-local fs = require "@std/fs"
 local Core = require "../core"
 local Attachment = require "../core/attachment"
 local EvidenceStore = require "./evidence-store"
@@ -30,8 +29,8 @@ local function directorySink(directory: string): Sink
 		local ok, failure: unknown = pcall(function()
 			local parent = string.match(path, "^(.*)/[^/]+$") :: string
 			Files.ensureDirectory(parent)
-			fs.writeStringToFile(path, text)
-			assert(fs.metadata(path).size == meta.size, "attachment copy is incomplete")
+			assert(#text == meta.size, "attachment size does not match its content")
+			Files.writeArtifact(path, text)
 		end)
 		if not ok then
 			return nil, tostring(failure)

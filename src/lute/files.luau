@@ -2,6 +2,7 @@
 
 local process = require "@std/process"
 local system = require "@std/system"
+local fs = require "@std/fs"
 
 local Runtime = require "./runtime"
 
@@ -102,6 +103,21 @@ local function temporary(name: string): string
 	return "/tmp/" .. name
 end
 
+local function readArtifact(reference: string): string
+	assert(reference ~= "" and not hasScheme(reference), "reference is not a local file")
+	local path = absolute(reference)
+	local metadata = fs.metadata(path)
+	assert(metadata.type == "file" and metadata.size > 0, "local reference must be a nonempty regular file")
+	local bytes = fs.readFileToString(path)
+	assert(#bytes > 0, "artifact became empty while reading")
+	return bytes
+end
+
+local function writeArtifact(path: string, bytes: string)
+	fs.writeStringToFile(path, bytes)
+	assert(fs.metadata(path).size == #bytes, "artifact copy is incomplete")
+end
+
 return {
 	create = create,
 	ensureDirectory = bound.ensureDirectory,
@@ -110,4 +126,6 @@ return {
 	absolute = absolute,
 	hasScheme = hasScheme,
 	temporary = temporary,
+	readArtifact = readArtifact,
+	writeArtifact = writeArtifact,
 }

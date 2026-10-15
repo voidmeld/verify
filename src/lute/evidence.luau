@@ -27,7 +27,7 @@ local function write(report: Core.Report, directory: string, required: { Require
 		assert(requirement.actor == nil or requirement.actor ~= "", "evidence actor must not be empty")
 		assert(requirement.checkpoint == nil or requirement.checkpoint ~= "", "evidence checkpoint must not be empty")
 	end
-	local copy = Wire.decode(Wire.encode(report))
+	local copy = Core.decode(report)
 	local destination = absolute(directory)
 	Files.ensureDirectory(destination)
 	local artifactsDirectory: string? = nil
@@ -43,20 +43,15 @@ local function write(report: Core.Report, directory: string, required: { Require
 			.. artifact.name
 		local reference = artifact.reference
 		local ok, reason = pcall(function()
-			assert(reference ~= "" and not Files.hasScheme(reference), "reference is not a local file")
 			local source = absolute(reference)
-			local metadata = fs.metadata(source)
-			assert(metadata.type == "file" and metadata.size > 0, "local reference must be a nonempty regular file")
-			local bytes = fs.readFileToString(source)
-			assert(#bytes > 0, "artifact became empty while reading")
+			local bytes = Files.readArtifact(reference)
 			if artifactsDirectory == nil then
 				artifactsDirectory = Files.claimDirectory(destination .. "/artifacts")
 			end
 			local suffix = string.match(source, "(%.[%w]+)$") or ""
 			local filename = string.format("%04d-%s%s", count, safe(artifact.name), suffix)
 			local output = (artifactsDirectory :: string) .. "/" .. filename
-			fs.writeStringToFile(output, bytes)
-			assert(fs.metadata(output).size == #bytes, "artifact copy is incomplete")
+			Files.writeArtifact(output, bytes)
 			artifact.reference = output
 		end)
 		if ok then

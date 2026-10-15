@@ -40,12 +40,7 @@ local function readFile(reference: string): (string?, string?)
 	if reference == "" or Files.hasScheme(reference) then
 		return nil, "reference is not a local file"
 	end
-	local ok, bytes: unknown = pcall(function(): string
-		local path = absolute(reference)
-		local metadata = fs.metadata(path)
-		assert(metadata.type == "file" and metadata.size > 0, "local reference must be a nonempty regular file")
-		return fs.readFileToString(path)
-	end)
+	local ok, bytes: unknown = pcall(Files.readArtifact, reference)
 	if not ok then
 		return nil, tostring(bytes)
 	end
@@ -84,8 +79,7 @@ local function localDirectory(directory: string): Core.EvidenceSink
 				assert(fs.readFileToString(reference) == bytes, "a different artifact already holds this identity")
 				return
 			end
-			fs.writeStringToFile(reference, bytes)
-			assert(fs.metadata(reference).size == #bytes, "stored artifact is incomplete")
+			Files.writeArtifact(reference, bytes)
 		end)
 		if not ok then
 			return nil, tostring(failure)
