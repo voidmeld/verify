@@ -238,24 +238,9 @@ local function runValue(result: Result.RunResult, name: string): number?
 			end
 		end
 		return sum / #result.audits
-	elseif name == "inputTokens" then
-		return metrics.inputTokens
-	elseif name == "cacheCreationTokens" then
-		return metrics.cacheCreationTokens
-	elseif name == "cacheReadTokens" then
-		return metrics.cacheReadTokens
-	elseif name == "outputTokens" then
-		return metrics.outputTokens
-	elseif name == "totalTokens" then
-		return metrics.totalTokens
-	elseif name == "costUsd" then
-		return metrics.costUsd
-	elseif name == "turns" then
-		return metrics.turns
-	elseif name == "wallSeconds" then
-		return metrics.wallSeconds
 	end
-	return nil
+	local value = ((metrics :: unknown) :: { [string]: unknown })[name]
+	return if type(value) == "number" then value else nil
 end
 
 local function meanOf(runs: { Result.RunResult }, name: string): number?
@@ -320,9 +305,7 @@ local function judgeScore(judgment: Judge.Judgment, arm: string, other: string?)
 	return nil
 end
 
-local function mean(values: { number }): number?
-	return Stats.mean(values)
-end
+local mean = Stats.mean
 
 local function build(
 	suite: string,
@@ -578,34 +561,25 @@ local function build(
 				outcome.reason = if bound == "atLeast" or bound == "atMost"
 					then "the estimate is undefined"
 					else "the interval is undefined"
-			elseif bound == "atLeast" then
-				outcome.passed = (value :: number) >= threshold
-				outcome.reason = ("the estimate %.4g %s %.4g"):format(
-					value :: number,
-					if outcome.passed then "is at least" else "is below",
-					threshold
-				)
-			elseif bound == "atMost" then
-				outcome.passed = (value :: number) <= threshold
-				outcome.reason = ("the estimate %.4g %s %.4g"):format(
-					value :: number,
-					if outcome.passed then "is at most" else "is above",
-					threshold
-				)
-			elseif bound == "lower" then
-				outcome.passed = (value :: number) > threshold
-				outcome.reason = ("the %d%% lower bound %.4g %s %.4g"):format(
-					math.floor(thresholds.confidence * 100 + 0.5),
-					value :: number,
-					if outcome.passed then "is above" else "is not above",
-					threshold
-				)
 			else
-				outcome.passed = (value :: number) < threshold
-				outcome.reason = ("the %d%% upper bound %.4g %s %.4g"):format(
-					math.floor(thresholds.confidence * 100 + 0.5),
-					value :: number,
-					if outcome.passed then "is below" else "is not below",
+				local minimum = bound == "lower" or bound == "atLeast"
+				local inclusive = bound == "atLeast" or bound == "atMost"
+				outcome.passed = if minimum
+					then value > threshold or (inclusive and value == threshold)
+					else value < threshold or (inclusive and value == threshold)
+				local accepted = if inclusive
+					then (if minimum then "is at least" else "is at most")
+					else (if minimum then "is above" else "is below")
+				local rejected = if inclusive
+					then (if minimum then "is below" else "is above")
+					else (if minimum then "is not above" else "is not below")
+				local subject = if inclusive
+					then "the estimate"
+					else ("the %d%% %s bound"):format(math.floor(thresholds.confidence * 100 + 0.5), bound)
+				outcome.reason = ("%s %.4g %s %.4g"):format(
+					subject,
+					value,
+					if outcome.passed then accepted else rejected,
 					threshold
 				)
 			end
