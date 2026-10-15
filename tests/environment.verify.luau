@@ -52,6 +52,57 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("roblox test environment", function()
+		suite:case("computed lookup honors an empty table with a dynamic getter", function(check)
+			local computed = setmetatable({} :: { [string]: Environment.Computed }, {
+				__index = function(_: unknown, key: string): Environment.Computed?
+					if key == "Folder.Count" then
+						return function(): unknown
+							return 7
+						end
+					end
+					return nil
+				end,
+			})
+			local env = Environment.create { computed = (computed :: unknown) :: { [string]: Environment.Computed } }
+			check:expect(env.createInstance("Folder").Count):toEqual(7)
+		end)
+
+		suite:case("computed lookup sees replacement, removal and changed inheritance", function(check)
+			local computed: { [string]: Environment.Computed } = {}
+			local env = Environment.create { computed = computed }
+			env.defineClass("Probe", { super = "Folder", properties = { Count = 0 } })
+			local probe = env.createInstance "Probe"
+			check:expect(probe.Count):toEqual(0)
+			computed["Folder.Count"] = function(): unknown
+				return 1
+			end
+			check:expect(probe.Count):toEqual(1)
+			check
+				:expect(thrown(function()
+					probe.Count = 2
+				end))
+				:toContain "read-only"
+			local entry = {
+				get = function(): unknown
+					return nil
+				end,
+				writable = true,
+			}
+			computed["Folder.Count"] = entry
+			probe.Count = 2
+			check:expect(probe.Count):toEqual(2)
+			entry.writable = false
+			check:expect(probe.Count):toEqual(nil)
+			computed["Folder.Count"] = nil
+			probe.Count = 3
+			check:expect(probe.Count):toEqual(3)
+			computed["Model.Count"] = function(): unknown
+				return 4
+			end
+			env.defineClass("Probe", { super = "Model", properties = { Count = 0 } }, { replace = true })
+			check:expect(probe.Count):toEqual(4)
+		end)
+
 		suite:case("retains unobserved fires when signals are first read and connected", function(check)
 			local env = environment()
 			local widget = env.createInstance "Widget"

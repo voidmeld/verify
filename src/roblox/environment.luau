@@ -29,6 +29,7 @@ export type Environment = Types.Environment
 type Resolved = Types.Resolved
 type State = Types.State
 local ATTRIBUTE_NAME_LIMIT = 100
+local metatableOf = (getmetatable :: unknown) :: (unknown) -> unknown
 
 local UNIVERSAL_EVENTS: { string } = {
 	"Changed",
@@ -294,35 +295,32 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return ("%s %q"):format(state.className, tostring(state.values.Name))
 	end
 
-	local function computedEntry(
-		className: string,
-		key: string
-	): { get: (object: Instance) -> unknown, writable: boolean }?
+	local function computedEntry(className: string, key: string): (((object: Instance) -> unknown)?, boolean)
 		local getters = settings.computed
-		if getters == nil then
-			return nil
+		if getters == nil or (next(getters) == nil and metatableOf(getters) == nil) then
+			return nil, false
 		end
 		local walk: string? = className
 		while walk ~= nil do
 			local entry = getters[walk .. "." .. key]
 			if entry ~= nil then
 				if type(entry) == "function" then
-					return { get = entry, writable = false }
+					return entry, false
 				end
-				return { get = entry.get, writable = entry.writable == true }
+				return entry.get, entry.writable == true
 			end
 			local spec = specs[walk]
 			walk = if spec ~= nil then spec.super else nil
 		end
-		return nil
+		return nil, false
 	end
 	local function computedFor(className: string, key: string): ((object: Instance) -> unknown)?
-		local entry = computedEntry(className, key)
-		return if entry ~= nil then entry.get else nil
+		local getter = computedEntry(className, key)
+		return getter
 	end
 	local function writableComputed(className: string, key: string): boolean
-		local entry = computedEntry(className, key)
-		return entry ~= nil and entry.writable
+		local _, writable = computedEntry(className, key)
+		return writable
 	end
 
 	local function defaultOf(className: string, class: Resolved, key: string): unknown
@@ -831,8 +829,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			setParent(object, state, value :: Instance?)
 			return
 		end
-		local writable = writableComputed(state.className, key)
-		if not writable and computedFor(state.className, key) ~= nil then
+		local getter, writable = computedEntry(state.className, key)
+		if not writable and getter ~= nil then
 			error(("%s is read-only on %s"):format(key, describe(state)), 3)
 		end
 		local declared = state.class.properties[key] ~= nil
@@ -1035,8 +1033,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		operation(function(object: Instance, key: string, value: unknown)
 			local state = stateOf(object)
 			local declared = state.class.properties[key] ~= nil
-			local writable = writableComputed(state.className, key)
-			if not writable and computedFor(state.className, key) ~= nil then
+			local getter, writable = computedEntry(state.className, key)
+			if not writable and getter ~= nil then
 				error(("%s is computed on %s"):format(key, describe(state)), 3)
 			end
 			if not declared and not writable and settings.undeclaredWrites ~= true then
