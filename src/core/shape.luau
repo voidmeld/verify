@@ -1,5 +1,14 @@
 --!strict
 
+local function sortedKeys<T>(map: { [string]: T }): { string }
+	local keys: { string } = {}
+	for key in map do
+		table.insert(keys, key)
+	end
+	table.sort(keys)
+	return keys
+end
+
 local function finite(value: unknown): boolean
 	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
@@ -77,6 +86,7 @@ local function nonnegativeNumber(value: unknown, label: string): number
 end
 
 return {
+	sortedKeys = sortedKeys,
 	copyStrings = copyStrings,
 	requiredString = requiredString,
 	nonnegativeNumber = nonnegativeNumber,

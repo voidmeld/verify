@@ -481,11 +481,7 @@ local function decode(value: unknown): Report
 end
 
 local function originKey(origin: Origin): string
-	local keys: { string } = {}
-	for key in origin.environment do
-		table.insert(keys, key)
-	end
-	table.sort(keys)
+	local keys = Shape.sortedKeys(origin.environment)
 	local pieces: { string } = { origin.executor }
 	for _, key in keys do
 		table.insert(pieces, ("%s=%s"):format(key, origin.environment[key]))
@@ -686,14 +682,7 @@ local function compose(payloads: { Types.ShardPayload }, executor: string, envir
 	return finish(into, executor, environment)
 end
 
-local function sortedKeys(map: { [string]: string }): { string }
-	local keys: { string } = {}
-	for key in map do
-		table.insert(keys, key)
-	end
-	table.sort(keys)
-	return keys
-end
+local sortedKeys = Shape.sortedKeys
 
 local function canonicalValue(value: unknown): string
 	local kind = type(value)

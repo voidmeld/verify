@@ -1,5 +1,7 @@
 --!strict
 
+local Shape = require "../core/shape"
+
 export type Record = { [string]: unknown }
 
 local function absent(value: unknown): boolean
@@ -159,14 +161,7 @@ local function unique(values: { string }, label: string)
 	end
 end
 
-local function sortedKeys<T>(value: { [string]: T }): { string }
-	local keys: { string } = {}
-	for key in value do
-		table.insert(keys, key)
-	end
-	table.sort(keys)
-	return keys
-end
+local sortedKeys = Shape.sortedKeys
 
 local function canonical(value: unknown): string
 	local kind = type(value)

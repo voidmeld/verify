@@ -1,6 +1,7 @@
 --!strict
 
 local Performance = require "./performance"
+local Shape = require "./shape"
 local Types = require "./types"
 
 local function append(lines: { string }): (string, ...unknown) -> ()
@@ -31,12 +32,7 @@ end
 local function format(report: Types.Report): string
 	local lines = { ("Verify receipt v%d — %s"):format(report.schemaVersion, report.executor) }
 	local add = append(lines)
-	local environmentKeys: { string } = {}
-	for key in report.environment do
-		table.insert(environmentKeys, key)
-	end
-	table.sort(environmentKeys)
-	for _, key in environmentKeys do
+	for _, key in Shape.sortedKeys(report.environment) do
 		add("  %s: %s", key, report.environment[key])
 	end
 	for _, result in report.results do

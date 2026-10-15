@@ -1,5 +1,7 @@
 --!strict
 
+local Shape = require "../src/core/shape"
+
 local Reflection = require "../src/roblox/reflection"
 
 local function property(name: string, datatype: string, tags: { string }?): Reflection.Property
@@ -22,12 +24,7 @@ end
 local function database(classes: { [string]: Reflection.Class }): Reflection.Database
 	return {
 		GetClassNames = function(): { string }
-			local names: { string } = {}
-			for name in classes do
-				table.insert(names, name)
-			end
-			table.sort(names)
-			return names
+			return Shape.sortedKeys(classes)
 		end,
 		GetClass = function(_: Reflection.Database, name: string): Reflection.Class?
 			return classes[name]
