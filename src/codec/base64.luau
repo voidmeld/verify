@@ -33,46 +33,25 @@ for index = 1, #ALPHABET do
 end
 
 local function decode(text: string): string?
-	if #text % 4 ~= 0 then
+	if #text % 4 ~= 0 or string.match(text, "^[A-Za-z0-9+/]*=?=?$") == nil then
 		return nil
 	end
-	if #text == 0 then
-		return ""
-	end
-	local padding = 0
-	if string.byte(text, #text) == PAD then
-		padding += 1
-		if string.byte(text, #text - 1) == PAD then
-			padding += 1
-		end
-	end
-	local output = buffer.create(#text // 4 * 3 - padding)
+	local padding = if string.sub(text, -2) == "==" then 2 elseif string.sub(text, -1) == "=" then 1 else 0
+	local size = #text // 4 * 3 - padding
+	local output = buffer.create(size)
 	local cursor = 0
 	for index = 1, #text, 4 do
 		local quad = 0
-		local count = 0
 		for offset = 0, 3 do
-			local byte = string.byte(text, index + offset)
-			local value = values[byte]
-			if value == nil then
-				if byte ~= PAD or index + offset <= #text - padding then
-					return nil
-				end
-				value = 0
-			else
-				count += 1
-			end
-			quad = bit32.bor(bit32.lshift(quad, 6), value)
+			quad = bit32.bor(bit32.lshift(quad, 6), values[string.byte(text, index + offset)] or 0)
 		end
-		local produced = if count == 4 then 3 elseif count == 3 then 2 else 1
-		for shift = 0, produced - 1 do
+		for shift = 0, math.min(3, size - cursor) - 1 do
 			buffer.writeu8(output, cursor, bit32.extract(quad, 16 - 8 * shift, 8))
 			cursor += 1
 		end
 	end
 	return buffer.tostring(output)
 end
-
 return {
 	encode = encode,
 	decode = decode,
