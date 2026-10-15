@@ -10,40 +10,23 @@ end
 
 local function encode(bytes: string): string
 	local length = #bytes
-	if length == 0 then
-		return ""
-	end
 	local source = buffer.fromstring(bytes)
 	local output = buffer.create(4 * math.ceil(length / 3))
-	local cursor = 0
-	local whole = length - length % 3
-	local index = 0
-	while index < whole do
+	for index = 0, length - 1, 3 do
+		local remaining = length - index
 		local triple = bit32.bor(
 			bit32.lshift(buffer.readu8(source, index), 16),
-			bit32.lshift(buffer.readu8(source, index + 1), 8),
-			buffer.readu8(source, index + 2)
+			if remaining > 1 then bit32.lshift(buffer.readu8(source, index + 1), 8) else 0,
+			if remaining > 2 then buffer.readu8(source, index + 2) else 0
 		)
+		local cursor = index // 3 * 4
 		buffer.writeu8(output, cursor, symbols[bit32.extract(triple, 18, 6)])
 		buffer.writeu8(output, cursor + 1, symbols[bit32.extract(triple, 12, 6)])
-		buffer.writeu8(output, cursor + 2, symbols[bit32.extract(triple, 6, 6)])
-		buffer.writeu8(output, cursor + 3, symbols[bit32.extract(triple, 0, 6)])
-		cursor += 4
-		index += 3
-	end
-	local rest = length - whole
-	if rest > 0 then
-		local first = buffer.readu8(source, whole)
-		local second = if rest == 2 then buffer.readu8(source, whole + 1) else 0
-		local triple = bit32.bor(bit32.lshift(first, 16), bit32.lshift(second, 8))
-		buffer.writeu8(output, cursor, symbols[bit32.extract(triple, 18, 6)])
-		buffer.writeu8(output, cursor + 1, symbols[bit32.extract(triple, 12, 6)])
-		buffer.writeu8(output, cursor + 2, if rest == 2 then symbols[bit32.extract(triple, 6, 6)] else PAD)
-		buffer.writeu8(output, cursor + 3, PAD)
+		buffer.writeu8(output, cursor + 2, if remaining > 1 then symbols[bit32.extract(triple, 6, 6)] else PAD)
+		buffer.writeu8(output, cursor + 3, if remaining > 2 then symbols[bit32.extract(triple, 0, 6)] else PAD)
 	end
 	return buffer.tostring(output)
 end
-
 local values: { [number]: number } = {}
 for index = 1, #ALPHABET do
 	values[string.byte(ALPHABET, index)] = index - 1
