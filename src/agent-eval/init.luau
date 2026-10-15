@@ -3,6 +3,7 @@
 local Adapters = require "@self/adapters"
 local Base64 = require "./codec/base64"
 local Cli = require "@self/cli"
+local Codex = require "@self/codex"
 local Judge = require "@self/judge"
 local Judging = require "@self/judging"
 local Lute = require "@self/lute"
@@ -72,6 +73,8 @@ return {
 	adapters = {
 		claudeCode = Adapters.claudeCode,
 		claudeArguments = Adapters.claudeArguments,
+		codex = Adapters.codex,
+		codexArguments = Adapters.codexArguments,
 		command = Adapters.command,
 		replay = Adapters.replay,
 		fixture = Adapters.fixture,
@@ -79,6 +82,7 @@ return {
 	},
 	transcript = {
 		parseClaudeStream = Transcript.parseClaudeStream,
+		parseCodexStream = Codex.parse,
 		total = Transcript.total,
 	},
 	judge = {

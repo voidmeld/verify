@@ -1,5 +1,6 @@
 --!strict
 
+local Codex = require "./codex"
 local Model = require "./model"
 local Paths = require "./paths"
 local Schema = require "./schema"
@@ -212,6 +213,26 @@ local function claudeCode(decode: (text: string) -> unknown): Adapter
 	}
 end
 
+local function codex(decode: (text: string) -> unknown): Adapter
+	return {
+		id = "codex",
+		run = function(request: Request, services: Services.Services): Outcome
+			local mcp = if request.mcpConfig ~= nil then services.files.read(request.mcpConfig :: string) else nil
+			local outcome = executeCommand(
+				request,
+				services,
+				Codex.arguments(request, mcp, decode),
+				true,
+				true,
+				Codex.parse,
+				decode
+			)
+			outcome.transcript.model = outcome.transcript.model or request.model
+			return outcome
+		end,
+	}
+end
+
 local function expand(word: string, request: Request): string
 	local values: { [string]: string } = {
 		prompt_file = request.promptFile,
@@ -365,6 +386,8 @@ end
 return {
 	claudeCode = claudeCode,
 	claudeArguments = claudeArguments,
+	codex = codex,
+	codexArguments = Codex.arguments,
 	command = command,
 	replay = replay,
 	fixture = fixture,

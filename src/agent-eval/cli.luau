@@ -151,6 +151,7 @@ end
 local function adapters(context: Context): { [string]: Adapters.Adapter }
 	local list: { [string]: Adapters.Adapter } = {
 		["claude-code"] = Adapters.claudeCode(context.decode),
+		codex = Adapters.codex(context.decode),
 		fixture = Adapters.fixture(context.decode),
 	}
 	local extra: { [string]: Adapters.Adapter } = context.adapters or {}

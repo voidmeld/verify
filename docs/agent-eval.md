@@ -82,7 +82,7 @@ An arm setup has these fields. Paths are relative to the file that declares them
 | Field | Meaning |
 | --- | --- |
 | `overlay` | Files and directories that Verify copies over the starter, in order. |
-| `instructions` | A Markdown file. The Claude Code adapter appends it to the system prompt. |
+| `instructions` | A Markdown file. The Claude Code adapter appends it to the system prompt. The Codex adapter sends it as developer instructions. |
 | `mcp` | An MCP configuration file. Verify replaces `{workspace}` and `{evidence}` in it. |
 | `allowedTools`, `disallowedTools` | Tool names that the adapter passes to the agent. |
 | `env` | Environment variables for the agent process. |
@@ -165,8 +165,9 @@ claude -p --output-format stream-json --verbose [--model id] [--max-turns n] [--
 
 The agent options are `command`, `permissionMode`, `strictMcpConfig` (default true), `persistSession` (default false), `settingSources`, `effort` and `arguments`.
 `--strict-mcp-config` loads only the MCP servers of the arm.
-The Lute binding pipes the agent output through [`stamp.luau`](../src/agent-eval/stamp.luau), which writes the arrival time of each line.
-This needs `sh` and `cat` on `PATH`. Git for Windows supplies them.
+The Lute binding records the arrival time of each output line.
+On Windows it starts the agent through Windows PowerShell, which feeds the prompt file, reads the output lines and records the exit code. It needs no other shell.
+On other systems it pipes the agent output through [`stamp.luau`](../src/agent-eval/stamp.luau) with `sh` and `cat`. The `shell` option of `AgentEval.lute.services` selects this pipe on Windows too.
 A line keeps its arrival time even when the run reaches its deadline.
 
 `AgentEval.transcript.parseClaudeStream(lines, decode)` reads the stream:
@@ -183,6 +184,33 @@ A line keeps its arrival time even when the run reaches its deadline.
 
 Messages with a `parent_tool_use_id` count as subagent messages, not as turns.
 Without arrival times, the latencies are empty and the tool time is absent.
+
+`AgentEval.adapters.codex(decode)` (adapter name `codex`) runs the Codex command line in the workspace and sends the brief on standard input:
+
+```sh
+codex exec --json --skip-git-repo-check -C workspace [-m id] [--sandbox mode] [--ephemeral] \
+  [-c model_reasoning_effort="level"] [-c developer_instructions="text"] [-c mcp_servers.name.field=value]... \
+  [-c override]... [arguments]... -
+```
+
+The agent options are `command`, `effort`, `sandbox`, `persistSession` (default false), `config` (a list of `key=value` overrides) and `arguments`.
+The adapter writes each server of the `mcpServers` object of the arm MCP configuration as `mcp_servers.<name>` overrides: `command`, `args` and `env`, or `url`.
+Codex cannot restrict tools, so an arm with `allowedTools` or `disallowedTools` fails to provision.
+Codex takes no turn or cost limit. The adapter enforces only the wall-clock budget. The runner checks `maxOutputTokens` after the run.
+
+`AgentEval.transcript.parseCodexStream(lines, decode)` reads the JSON events:
+
+| Value | Source |
+| --- | --- |
+| Turns | The model steps: one for each tool item and one for each `turn.completed` event. Parallel tool calls of one model response count as more than one step. |
+| Tokens | The sum of the `usage` of the `turn.completed` events. Input is `input_tokens` minus `cached_input_tokens` and `cache_write_input_tokens`. Cache reads are `cached_input_tokens`, cache writes are `cache_write_input_tokens` and output is `output_tokens`. |
+| Tools | Each `command_execution`, `file_change`, `mcp_tool_call`, `web_search` and `todo_list` item counts once. A failed or declined item, or a command with a nonzero exit code, is a tool error. |
+| Turn latency, interval | For each model step, the time from the previous line, and the time from the previous step. |
+| Tool time | The union of the intervals from `item.started` to `item.completed` of the tool items. |
+| Status | `error` after `turn.failed`, `success` after `turn.completed`, `error` when only an `error` event arrived, otherwise `incomplete`. |
+| Result | The text of the last `agent_message` item, or the message of the failure. |
+
+Codex reports no cost, so the cost is absent.
 
 `AgentEval.adapters.command({ id, argv, parse?, stamp?, stdin?, decode })` runs another agent command line.
 `argv` can use `{prompt_file}`, `{workspace}`, `{model}`, `{max_turns}`, `{mcp_config}`, `{seed}` and `{evidence}`.
