@@ -198,29 +198,28 @@ function methods2.Cross(self: Vector2Value, other: unknown): number
 	return f32(self.X * vector.Y - self.Y * vector.X)
 end
 
-function methods2.Abs(self: Vector2Value): Vector2Value
-	return each2(self, math.abs)
+local function componentMethods<V>(
+	methods: Methods,
+	each: (V, (number) -> number) -> V,
+	fold: (V, { unknown }, (number, number) -> number) -> V
+)
+	local unary: { [string]: (number) -> number } =
+		{ Abs = math.abs, Ceil = math.ceil, Floor = math.floor, Sign = sign }
+	for name, map in unary do
+		methods[name] = function(value: V): V
+			return each(value, map)
+		end
+	end
+	local extrema: { [string]: (number, number) -> number } = { Max = math.max, Min = math.min }
+	for name, pick in extrema do
+		methods[name] = function(value: V, ...: unknown): V
+			return fold(value, { ... }, pick)
+		end
+	end
 end
 
-function methods2.Ceil(self: Vector2Value): Vector2Value
-	return each2(self, math.ceil)
-end
-
-function methods2.Floor(self: Vector2Value): Vector2Value
-	return each2(self, math.floor)
-end
-
-function methods2.Sign(self: Vector2Value): Vector2Value
-	return each2(self, sign)
-end
-
-function methods2.Max(self: Vector2Value, ...: unknown): Vector2Value
-	return fold2(self, { ... }, math.max)
-end
-
-function methods2.Min(self: Vector2Value, ...: unknown): Vector2Value
-	return fold2(self, { ... }, math.min)
-end
+componentMethods(methods2, each2, fold2)
+componentMethods(methods3, each3, fold3)
 
 function methods2.Angle(self: Vector2Value, other: unknown, isSigned: boolean?): number
 	local vector = expect2(other, 1)
@@ -248,30 +247,6 @@ end
 function methods3.Cross(self: Vector3Value, other: unknown): Vector3Value
 	local v = expect3(other, 1)
 	return make3(self.Y * v.Z - self.Z * v.Y, self.Z * v.X - self.X * v.Z, self.X * v.Y - self.Y * v.X)
-end
-
-function methods3.Abs(self: Vector3Value): Vector3Value
-	return each3(self, math.abs)
-end
-
-function methods3.Ceil(self: Vector3Value): Vector3Value
-	return each3(self, math.ceil)
-end
-
-function methods3.Floor(self: Vector3Value): Vector3Value
-	return each3(self, math.floor)
-end
-
-function methods3.Sign(self: Vector3Value): Vector3Value
-	return each3(self, sign)
-end
-
-function methods3.Max(self: Vector3Value, ...: unknown): Vector3Value
-	return fold3(self, { ... }, math.max)
-end
-
-function methods3.Min(self: Vector3Value, ...: unknown): Vector3Value
-	return fold3(self, { ... }, math.min)
 end
 
 function methods3.Angle(self: Vector3Value, other: unknown, axis: unknown?): number
