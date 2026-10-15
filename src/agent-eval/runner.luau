@@ -21,6 +21,7 @@ export type Options = {
 	selection: Model.Selection?,
 	parallelism: number?,
 	resume: boolean?,
+	checksOnly: boolean?,
 	log: ((line: string) -> ())?,
 }
 
@@ -290,7 +291,7 @@ local function create(options: Options): () -> Summary
 				for key, value in instance.check.env do
 					env[key] = substitute(value, values)
 				end
-				local expectation: Gate.ReportExpectation? = nil
+				local expectation: Gate.ReportExpectation? = if instance.check.kind == "verify" then {} else nil
 				if instance.check.report ~= nil then
 					local declared = instance.check.report :: Model.ReportExpectation
 					expectation = { cases = declared.cases, minimum = declared.minimum, exact = declared.exact }
@@ -750,6 +751,25 @@ local function create(options: Options): () -> Summary
 					if ready(spec) then
 						table.remove(pending, index)
 						local previous = reusable(spec)
+						if options.checksOnly then
+							local directory = Paths.join(evidence, spec.path)
+							local saved =
+								Result.decode(options.decode(files.read(Paths.join(directory, "result.json"))))
+							assert(saved.id == spec.id, "saved run identity differs from the selected run")
+							assert(saved.status == "completed", "checks-only requires a completed saved run")
+							local workspace = Paths.join(directory, "workspace")
+							assert(files.isDirectory(workspace), "checks-only requires the saved workspace")
+							saved.checks, saved.scores, saved.audits, saved.captures = {}, {}, {}, {}
+							runChecks(spec, workspace, directory, saved)
+							saved.passed = saved.checksPassed and #saved.exceeded == 0
+							write(Paths.join(directory, "result.json"), saved)
+							results[spec.id] = saved
+							reusedIds[spec.id] = true
+							reused += 1
+							log("run " .. spec.id .. ": rechecked saved workspace; agent evidence preserved")
+							launched = true
+							break
+						end
 						if previous ~= nil then
 							results[spec.id] = previous
 							reusedIds[spec.id] = true

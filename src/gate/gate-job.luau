@@ -399,7 +399,7 @@ local function conclude(producer: Producer, ctx: Context, outcome: GateTypes.Job
 		}
 	end
 	local expects = producer.kind == "tests" or producer.report ~= nil
-	if failure == nil and skipReason == nil and missing == nil and expects then
+	if skipReason == nil and missing == nil and expects and outcome.started and not outcome.timedOut then
 		if outcome.report == nil then
 			failure = ("exit %d without the expected report: %s"):format(
 				outcome.exitcode,

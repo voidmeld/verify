@@ -573,6 +573,8 @@ return function(suite: Verify.Harness)
 			)
 			check:expect(recordOf(failingExit, "probe").status):toEqual "failed"
 			check:expect(failingExit.acceptance.verdict):toEqual "failed"
+			check:expect(recordOf(failingExit, "probe").reportAccounted):toEqual(true)
+			check:expect(failingExit.execution.report.total):toEqual(2)
 		end)
 	end)
 

@@ -169,9 +169,14 @@ end
 local function execute(
 	memory: Fakes.Memory,
 	calls: Calls,
-	options: { selection: AgentEval.Selection?, adapters: { [string]: AgentEval.Adapter }? }?
+	options: {
+		selection: AgentEval.Selection?,
+		adapters: { [string]: AgentEval.Adapter }?,
+		checksOnly: boolean?,
+	}?
 ): AgentEval.RunSummary
-	local given: { selection: AgentEval.Selection?, adapters: { [string]: AgentEval.Adapter }? } = options or {}
+	local given: { selection: AgentEval.Selection?, adapters: { [string]: AgentEval.Adapter }?, checksOnly: boolean? } = options
+		or {}
 	local services = Fakes.services(memory.files, {
 		write = function(job, files)
 			local path = job.argv[2]
@@ -194,6 +199,7 @@ local function execute(
 		encode = Lute.encode,
 		decode = Lute.parse,
 		selection = given.selection,
+		checksOnly = given.checksOnly,
 	}
 end
 
@@ -216,6 +222,23 @@ local function check(result: AgentEval.RunResult, id: string): AgentEval.CheckRe
 end
 
 return function(suite: Verify.Harness)
+	suite:case("rechecks saved workspaces without calling an adapter or changing agent metrics", function(context)
+		local memory = Fakes.memory()
+		corpus(memory)
+		local calls: Calls = { requests = {} }
+		local before = execute(memory, calls, { selection = { tasks = { "one" } } })
+		local count = #calls.requests
+		local after = execute(memory, calls, { selection = { tasks = { "one" } }, checksOnly = true })
+		context:expect(#calls.requests):toBe(count)
+		context:expect(after.ran):toBe(0)
+		for index, result in after.results do
+			context:expect(result.metrics):toEqual(before.results[index].metrics)
+			context:expect(result.session):toEqual(before.results[index].session)
+			context:expect(result.startedAt):toBe(before.results[index].startedAt)
+			context:expect(result.finishedAt):toBe(before.results[index].finishedAt)
+			context:expect(#check(result, "cases").cases):toBe(2)
+		end
+	end)
 	suite:case("scoped Studio closes before hidden checks and after adapter errors", function(context)
 		for _, raises in { false, true } do
 			local memory = Fakes.memory()

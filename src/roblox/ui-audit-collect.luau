@@ -284,6 +284,8 @@ local function collect(options: Options?): Audit.Dump
 						content = textOf(read(child, "ContentText")) or textOf(read(child, "Text")) or "",
 						size = numberOf(read(child, "TextSize"), 14),
 						bounds = { width = boundsX, height = boundsY },
+						xAlignment = enumName(read(child, "TextXAlignment")),
+						yAlignment = enumName(read(child, "TextYAlignment")),
 						fits = if type(fits) == "boolean" then fits else nil,
 						scaled = read(child, "TextScaled") == true,
 						wrapped = read(child, "TextWrapped") == true,

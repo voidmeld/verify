@@ -30,6 +30,8 @@ export type Text = {
 	content: string,
 	size: number,
 	bounds: { width: number, height: number },
+	xAlignment: string?,
+	yAlignment: string?,
 	fits: boolean?,
 	scaled: boolean,
 	wrapped: boolean,
@@ -277,6 +279,8 @@ local function decode(value: unknown): Dump
 			local bounds = object(t.bounds, where .. ".text.bounds")
 			textValue = {
 				content = text(t.content, where .. ".text.content"),
+				xAlignment = optionalText(t.xAlignment, where .. ".text.xAlignment"),
+				yAlignment = optionalText(t.yAlignment, where .. ".text.yAlignment"),
 				size = number(t.size, where .. ".text.size"),
 				bounds = {
 					width = number(bounds.width, where .. ".text.bounds.width"),
