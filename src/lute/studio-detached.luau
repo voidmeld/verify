@@ -1,6 +1,6 @@
 --!strict
 
-local crypto = require "@lute/crypto"
+local digest = require "./hash"
 local task = require "@std/task"
 local Core = require "../core"
 local Wire = require "./wire"
@@ -34,15 +34,6 @@ export type Outcome = {
 
 local SEGMENT_BYTES = 24000
 local POLL_SECONDS = 0.5
-
-local function digest(bytes: string): string
-	local value = crypto.digest(crypto.hash.sha256, bytes)
-	local out: { string } = {}
-	for index = 0, buffer.len(value) - 1 do
-		table.insert(out, string.format("%02x", buffer.readu8(value, index)))
-	end
-	return table.concat(out)
-end
 
 local function prefixFor(runId: string): string
 	return "VerifyRun" .. string.sub(digest(runId), 1, 24) .. "_"

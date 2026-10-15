@@ -1,6 +1,6 @@
 --!strict
 
-local crypto = require "@lute/crypto"
+local sha256 = require "../lute/hash"
 local fs = require "@std/fs"
 local json = require "@std/json"
 local net = require "@std/net"
@@ -160,15 +160,6 @@ local function moduleDirectory(): string
 end
 
 local STAMP = Paths.join(moduleDirectory(), "stamp.luau")
-
-local function sha256(bytes: string): string
-	local value = crypto.digest(crypto.hash.sha256, bytes)
-	local out: { string } = {}
-	for index = 0, buffer.len(value) - 1 do
-		table.insert(out, string.format("%02x", buffer.readu8(value, index)))
-	end
-	return table.concat(out)
-end
 
 local function isDirectory(path: string): boolean
 	return fs.exists(path) and fs.type(path) == "dir"
