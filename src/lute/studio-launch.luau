@@ -139,7 +139,11 @@ local function launch(options: Options): (Launched?, string?)
 				return abandon "several new Studios opened the launched place; refusing to choose one"
 			end
 			selected = matches[1]
-			last = ("%d Studio(s) were listed"):format(#studios)
+			local names: { string } = {}
+			for _, studio in studios do
+				table.insert(names, ("%s (%s)"):format(studio.name, if known[studio.id] then "open before" else "new"))
+			end
+			last = ("the list held %d Studio(s): %s"):format(#studios, table.concat(names, ", "))
 		end
 		if selected == nil then
 			task.wait(0.5)
