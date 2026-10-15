@@ -126,12 +126,7 @@ local function open(
 		end
 	end
 	if selected == nil then
-		return abandon(
-			("the launched Studio did not appear in the Studio MCP list within %d seconds; %s"):format(
-				math.max(0, deadline - os.clock()),
-				last
-			)
-		)
+		return abandon("the launched Studio did not appear before its launch deadline; " .. last)
 	end
 	local session, refusal = Attach.attach {
 		authorize = options.authorize or allow,
