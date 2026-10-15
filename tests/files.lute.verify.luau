@@ -6,6 +6,7 @@ local system = require "@std/system"
 local task = require "@std/task"
 
 local Files = require "../src/lute/files"
+local Paths = require "../src/codec/path"
 local Lute = require "../src/lute"
 local Verify = require "../src/core"
 
@@ -190,6 +191,13 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("resolves, names and places paths in the form of the host platform", function(check)
+			check:expect(Paths.collapse "C:/work/../run/./case"):toEqual "C:/run/case"
+			check:expect(Paths.collapse "/../../case"):toEqual "/case"
+			check
+				:expect(function()
+					Paths.collapse("../case", "outside root")
+				end)
+				:toThrow "outside root"
 			local cwd = tostring(process.cwd())
 			if system.win32 then
 				local slashed = string.gsub(cwd, "\\", "/")

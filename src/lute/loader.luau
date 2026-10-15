@@ -2,6 +2,7 @@
 
 local fs = require "@std/fs"
 
+local Paths = require "../codec/path"
 local Chunk = require "./chunk"
 local Datatypes = require "../roblox/datatypes"
 
@@ -33,16 +34,7 @@ local function join(directory: string, tail: string): string
 end
 
 local function normalize(path: string): string
-	local parts: { string } = {}
-	for part in string.gmatch(path, "[^/]+") do
-		if part == ".." then
-			assert(#parts > 0, "a module path leaves the working directory: " .. path)
-			table.remove(parts)
-		elseif part ~= "." then
-			table.insert(parts, part)
-		end
-	end
-	return table.concat(parts, "/")
+	return (string.gsub(Paths.collapse(path, "a module path leaves the working directory: " .. path), "^/", ""))
 end
 
 local function locate(module: string): string

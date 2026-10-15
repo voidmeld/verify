@@ -2,7 +2,7 @@
 
 local Codex = require "./codex"
 local Model = require "./model"
-local Paths = require "./paths"
+local Paths = require "../codec/path"
 local Schema = require "./schema"
 local Services = require "./services"
 local Transcript = require "./transcript"

@@ -2,7 +2,7 @@
 
 local Base64 = require "../codec/base64"
 local Media = require "../codec/image"
-local Paths = require "./paths"
+local Paths = require "../codec/path"
 local Random = require "./random"
 local Schema = require "./schema"
 local Services = require "./services"

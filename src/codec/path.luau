@@ -51,6 +51,20 @@ local function contained(path: string): boolean
 	return true
 end
 
+local function collapse(path: string, escape: string?): string
+	local prefix = string.match(path, "^%a:/") or (if string.sub(path, 1, 1) == "/" then "/" else "")
+	local parts: { string } = {}
+	for part in string.gmatch(string.sub(path, #prefix + 1), "[^/]+") do
+		if part == ".." then
+			assert(#parts > 0 or escape == nil, escape)
+			table.remove(parts)
+		elseif part ~= "." then
+			table.insert(parts, part)
+		end
+	end
+	return prefix .. table.concat(parts, "/")
+end
+
 return {
 	normalize = normalize,
 	absolute = absolute,
@@ -58,4 +72,5 @@ return {
 	parent = parent,
 	leaf = leaf,
 	contained = contained,
+	collapse = collapse,
 }

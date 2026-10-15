@@ -2,6 +2,7 @@
 
 local fs = require "@std/fs"
 
+local Paths = require "../codec/path"
 local Xml = require "../codec/xml"
 
 export type Options = {
@@ -14,16 +15,7 @@ export type Options = {
 	basePlace: string?,
 }
 local function normalize(path: string): string
-	local parts: { string } = {}
-	for part in path:gmatch "[^/]+" do
-		if part == ".." then
-			assert(#parts > 0, "module path escapes its root")
-			table.remove(parts)
-		elseif part ~= "." then
-			table.insert(parts, part)
-		end
-	end
-	return (if path:sub(1, 1) == "/" then "/" else "") .. table.concat(parts, "/")
+	return Paths.collapse(path, "module path escapes its root")
 end
 local function filesUnder(path: string, files: { [string]: string })
 	for _, entry in fs.listDirectory(path) do
