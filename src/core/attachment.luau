@@ -12,6 +12,8 @@ export type Resolved = {
 	maxTotalBytes: number,
 }
 
+export type Usage = { count: number, total: number, names: { [string]: boolean } }
+
 local DEFAULT_MAX_BYTES = 1048576
 local DEFAULT_MAX_COUNT = 16
 local DEFAULT_MAX_TOTAL_BYTES = 4194304
@@ -60,7 +62,7 @@ local function unsafeName(name: string): string?
 	return nil
 end
 
-local function check(name: string, mediaType: string, text: string, limits: Resolved): string?
+local function check(name: string, mediaType: string, text: string, limits: Resolved, usage: Usage?): string?
 	local unsafe = unsafeName(name)
 	if unsafe ~= nil then
 		return ("attachment name %q %s"):format(name, unsafe)
@@ -76,6 +78,17 @@ local function check(name: string, mediaType: string, text: string, limits: Reso
 	end
 	if utf8.len(text) == nil then
 		return ("attachment %q is not valid UTF-8; only text is supported"):format(name)
+	end
+	if usage ~= nil then
+		if usage.count >= limits.maxCount then
+			return ("attachment %q exceeds the per-case count limit of %d"):format(name, limits.maxCount)
+		end
+		if usage.total + #text > limits.maxTotalBytes then
+			return ("attachment %q exceeds the per-report limit of %d bytes"):format(name, limits.maxTotalBytes)
+		end
+		if usage.names[name] then
+			return ("attachment %q is already attached to this case"):format(name)
+		end
 	end
 	return nil
 end

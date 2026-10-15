@@ -732,27 +732,15 @@ local function createHarness(options: {
 		end
 
 		function context:attach(name: string, mediaType: string, text: string)
-			local refusal = Attachment.check(name, mediaType, text, attachmentLimits)
+			local refusal = Attachment.check(
+				name,
+				mediaType,
+				text,
+				attachmentLimits,
+				{ count = attachmentCount, total = runAttachmentBytes, names = attachmentNames }
+			)
 			if refusal ~= nil then
 				error(refusal, 2)
-			end
-			if attachmentCount >= attachmentLimits.maxCount then
-				error(
-					("attachment %q exceeds the per-case count limit of %d"):format(name, attachmentLimits.maxCount),
-					2
-				)
-			end
-			if runAttachmentBytes + #text > attachmentLimits.maxTotalBytes then
-				error(
-					("attachment %q exceeds the per-report limit of %d bytes"):format(
-						name,
-						attachmentLimits.maxTotalBytes
-					),
-					2
-				)
-			end
-			if attachmentNames[name] then
-				error(("attachment %q is already attached to this case"):format(name), 2)
 			end
 			attachmentNames[name] = true
 			attachmentCount += 1

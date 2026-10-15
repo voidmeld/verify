@@ -69,22 +69,13 @@ local function materialize(report: Core.Report, options: Options): (Core.Report,
 				continue
 			end
 			local mediaType = artifact.mediaType or ""
-			local problem = Attachment.check(artifact.name, mediaType, text, limits)
-			if problem == nil and names[artifact.name] then
-				problem = ("attachment %q is already attached to this case"):format(artifact.name)
-			end
-			if problem == nil and count >= limits.maxCount then
-				problem = ("attachment %q exceeds the per-case count limit of %d"):format(
-					artifact.name,
-					limits.maxCount
-				)
-			end
-			if problem == nil and total + #text > limits.maxTotalBytes then
-				problem = ("attachment %q exceeds the per-report limit of %d bytes"):format(
-					artifact.name,
-					limits.maxTotalBytes
-				)
-			end
+			local problem = Attachment.check(
+				artifact.name,
+				mediaType,
+				text,
+				limits,
+				{ count = count, total = total, names = names }
+			)
 			if problem ~= nil then
 				refuse(problem)
 				continue
