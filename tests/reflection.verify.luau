@@ -1,12 +1,12 @@
 --!strict
 
+local Fixture = require "./reflection-fixture"
+
 local Core = require "../src/core"
 local Environment = require "../src/roblox/environment"
 local Reflection = require "../src/roblox/reflection"
 
-local function property(name: string, datatype: string, tags: { string }?): Reflection.Property
-	return { Name = name, Datatype = datatype, Scriptability = "ReadWrite", Tags = tags or {} }
-end
+local property = Fixture.property
 local function database(): Reflection.Database
 	local classes: { [string]: Reflection.Class } = {
 		Instance = {

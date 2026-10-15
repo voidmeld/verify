@@ -1,11 +1,11 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local Plan = require "../src/core/plan"
-local fs = require "@std/fs"
 local json = require "@std/json"
 local Verify = require "../src/core"
 local Channel = require "../src/roblox/report-channel"
-local Files = require "../src/lute/files"
 local Lute = require "../src/lute"
 local Platform = require "../src/lute/platform"
 local Wire = require "../src/lute/wire"
@@ -266,7 +266,6 @@ return function(suite: Verify.Harness)
 							universeId = "1",
 							placeId = "2",
 							versionId = "3",
-							taskPath = nil,
 						},
 						"case",
 						true
@@ -460,10 +459,8 @@ return function(suite: Verify.Harness)
 				local unit: Verify.PlanUnit = {
 					id = "u",
 					locator = "u",
-					group = nil,
 					tags = {},
 					requires = {},
-					deadlineSeconds = nil,
 					weight = 1,
 				}
 				local banned = table.clone(unit)
@@ -522,10 +519,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("platform runs the open-cloud host with the same selection and report path", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-open-cloud-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-open-cloud-tests")
 			local self = fake("instance-state", true)
 			local result = Platform.run {
 				host = "open-cloud",
@@ -648,7 +642,6 @@ return function(suite: Verify.Harness)
 				universeId = "1",
 				placeId = "9",
 				versionId = "3",
-				binding = nil,
 			}
 			check:expect(foreign.status):toEqual "refused"
 			check
@@ -658,7 +651,6 @@ return function(suite: Verify.Harness)
 					universeId = "1",
 					placeId = "2",
 					versionId = "3",
-					binding = nil,
 				}).ok)
 				:toEqual(false)
 		end)

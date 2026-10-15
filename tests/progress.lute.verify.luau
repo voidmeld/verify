@@ -1,5 +1,7 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local json = require "@std/json"
 local Core = require "../src/core"
@@ -216,10 +218,7 @@ return function(suite: Core.Harness)
 			{
 				timeoutSeconds = 40,
 				run = function(check: Core.Context)
-					local root = Files.claimDirectory(Files.temporary "verify-progress-tests")
-					check:defer(function()
-						fs.removeDirectory(root, { recursive = true })
-					end)
+					local root = temporary(check, "verify-progress-tests")
 					local heard: { Core.ProgressEvent } = {}
 					local result = Platform.run {
 						host = "simulator",

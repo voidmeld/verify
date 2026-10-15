@@ -1,5 +1,7 @@
 --!strict
 
+local Fixture = require "./reflection-fixture"
+
 local Bridge = require "../src/roblox/fixture-bridge"
 local Datatypes = require "../src/roblox/datatypes"
 local Environment = require "../src/roblox/environment"
@@ -17,22 +19,7 @@ local function succeeds(callback: () -> ...unknown): boolean
 	return (pcall(callback))
 end
 
-local function property(name: string, datatype: string): Reflection.Property
-	return { Name = name, Datatype = datatype, Scriptability = "ReadWrite", Tags = {} }
-end
-
-local function class(
-	name: string,
-	super: string?,
-	properties: { Reflection.Property }?,
-	tags: { string }?
-): Reflection.Class
-	local declared: { [string]: Reflection.Property } = {}
-	for _, item in (properties or {}) :: { Reflection.Property } do
-		declared[item.Name] = item
-	end
-	return { Name = name, Superclass = super, Properties = declared, DefaultProperties = {}, Tags = tags or {} }
-end
+local property, class = Fixture.property, Fixture.class
 
 local function database(): Reflection.Database
 	local classes: { [string]: Reflection.Class } = {
@@ -57,19 +44,7 @@ local function database(): Reflection.Database
 	classes.GuiObject.DefaultProperties.Visible = true
 	classes.GuiObject.DefaultProperties.Selectable = true
 	classes.TextLabel.DefaultProperties.Text = "Label"
-	local names: { string } = {}
-	for name in classes do
-		table.insert(names, name)
-	end
-	table.sort(names)
-	return {
-		GetClassNames = function(): { string }
-			return names
-		end,
-		GetClass = function(_: Reflection.Database, name: string): Reflection.Class?
-			return classes[name]
-		end,
-	}
+	return Fixture.database(classes)
 end
 
 type Extra = {

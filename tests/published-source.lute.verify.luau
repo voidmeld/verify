@@ -1,14 +1,12 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local Core = require "../src/core"
-local Files = require "../src/lute/files"
 local Published = require "../src/lute/published-source"
 local function fixture(context: Core.Context): string
-	local directory = Files.claimDirectory(Files.temporary "verify-published-source-tests")
-	context:defer(function()
-		fs.removeDirectory(directory, { recursive = true })
-	end)
+	local directory = temporary(context, "verify-published-source-tests")
 	return directory
 end
 return function(suite: Core.Harness)

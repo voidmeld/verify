@@ -369,7 +369,6 @@ return function(suite: Verify.Harness)
 					stderr = "",
 					lines = Fakes.stream { session = "s", turns = 1, output = 9 },
 					seconds = 4,
-					detail = nil,
 				}
 			end
 			local adapter = AgentEval.adapters.claudeCode(Lute.parse)
@@ -382,12 +381,7 @@ return function(suite: Verify.Harness)
 				suiteDirectory = "/s",
 				prompt = "brief",
 				promptFile = "/e/prompt.md",
-				instructions = nil,
-				mcpConfig = nil,
-				allowedTools = nil,
-				disallowedTools = nil,
 				env = { KEY = "value" },
-				model = nil,
 				seed = 1,
 				budgets = { wallSeconds = 30 },
 				options = {},
@@ -410,7 +404,6 @@ return function(suite: Verify.Harness)
 					stderr = "boom",
 					lines = {},
 					seconds = 1,
-					detail = nil,
 				}
 			end
 			local failed = adapter.run(request, services)
@@ -447,7 +440,6 @@ return function(suite: Verify.Harness)
 					stderr = "",
 					lines = { { at = 1, text = "final answer" } },
 					seconds = 1,
-					detail = nil,
 				}
 			end
 			local adapter = AgentEval.adapters.command {
@@ -464,10 +456,6 @@ return function(suite: Verify.Harness)
 				suiteDirectory = "/s",
 				prompt = "brief",
 				promptFile = "/e/prompt.md",
-				instructions = nil,
-				mcpConfig = nil,
-				allowedTools = nil,
-				disallowedTools = nil,
 				env = {},
 				model = "m",
 				seed = 1,

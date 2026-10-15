@@ -11,22 +11,7 @@ local Lute = require "../src/lute"
 local Verify = require "../src/core"
 
 return function(suite: Verify.Harness)
-	local ROOT: string
-	do
-		local slot = 1
-		while true do
-			local candidate = (".lute/tmp/verify-files-spec-%d"):format(slot)
-			local asked, answer = pcall(function()
-				local fs = require "@std/fs"
-				return fs.exists(candidate)
-			end)
-			if not (asked and answer == true) then
-				ROOT = candidate
-				break
-			end
-			slot += 1
-		end
-	end
+	local ROOT = Files.claimDirectory ".lute/tmp/verify-files-spec"
 
 	local CALLERS = 10
 	local ROUNDS = 5

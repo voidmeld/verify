@@ -167,9 +167,6 @@ local function exited(code: number): Gate.JobOutcome
 		timedOut = false,
 		stdout = "",
 		stderr = "",
-		report = nil,
-		detail = nil,
-		logReference = nil,
 	}
 end
 
@@ -272,7 +269,6 @@ local function services(files: AgentEval.Files, overrides: { [string]: Handler }
 			body()
 		end,
 		wait = function(_seconds: number) end,
-		request = nil,
 		environment = function(_name: string): string?
 			return nil
 		end,
@@ -298,20 +294,19 @@ export type StreamOptions = {
 }
 
 local function stream(options: StreamOptions): { AgentEval.Line }
-	local lines: { AgentEval.Line } = {
-		{
-			at = 0.5,
-			text = json {
-				type = "system",
-				subtype = "init",
-				session_id = options.session,
-				model = "claude-opus-5-5",
-				tools = { "Read", "Write" },
-				mcp_servers = { { name = "docs", status = "connected" } },
-				claude_code_version = "9.9.9",
-			},
-		},
-	}
+	local lines: { AgentEval.Line } = {}
+	local function emit(at: number, event: { [string]: unknown })
+		event.session_id = options.session
+		table.insert(lines, { at = at, text = json(event) })
+	end
+	emit(0.5, {
+		type = "system",
+		subtype = "init",
+		model = "claude-opus-5-5",
+		tools = { "Read", "Write" },
+		mcp_servers = { { name = "docs", status = "connected" } },
+		claude_code_version = "9.9.9",
+	})
 	local at = 0.5
 	for turn = 1, options.turns do
 		local id = ("%s-message-%d"):format(options.session, turn)
@@ -322,70 +317,46 @@ local function stream(options: StreamOptions): { AgentEval.Line }
 			cache_read_input_tokens = 1000,
 			output_tokens = options.output,
 		}
+		local function assistant(time: number, content: { unknown })
+			emit(
+				time,
+				{ type = "assistant", message = { id = id, role = "assistant", content = content, usage = usage } }
+			)
+		end
 		at += 2
-		table.insert(lines, {
-			at = at,
-			text = json {
-				type = "assistant",
-				message = {
-					id = id,
-					role = "assistant",
-					content = { { type = "text", text = "working" } },
-					usage = usage,
-				},
-				session_id = options.session,
-			},
-		})
-		table.insert(lines, {
-			at = at + 0.1,
-			text = json {
-				type = "assistant",
-				message = {
-					id = id,
-					role = "assistant",
-					content = { { type = "tool_use", id = tool, name = "Write", input = {} } },
-					usage = usage,
-				},
-				session_id = options.session,
-			},
-		})
+		assistant(at, { { type = "text", text = "working" } })
+		assistant(at + 0.1, { { type = "tool_use", id = tool, name = "Write", input = {} } })
 		at += 1
-		table.insert(lines, {
-			at = at,
-			text = json {
+		emit(
+			at,
+			{
 				type = "user",
 				message = { role = "user", content = { { type = "tool_result", tool_use_id = tool, content = "ok" } } },
-				session_id = options.session,
-			},
-		})
+			}
+		)
 	end
 	if options.result ~= false then
 		at += 0.5
-		table.insert(lines, {
-			at = at,
-			text = json {
-				type = "result",
-				subtype = options.subtype or "success",
-				is_error = options.subtype ~= nil and options.subtype ~= "success",
-				num_turns = options.turns,
-				duration_ms = at * 1000,
-				duration_api_ms = options.turns * 1500,
-				total_cost_usd = options.cost or 0.01 * options.turns,
-				result = "done",
-				session_id = options.session,
-				usage = {
-					input_tokens = 10 * options.turns,
-					cache_creation_input_tokens = 100 * options.turns,
-					cache_read_input_tokens = 1000 * options.turns,
-					output_tokens = options.output * options.turns,
-				},
-				permission_denials = {},
+		emit(at, {
+			type = "result",
+			subtype = options.subtype or "success",
+			is_error = options.subtype ~= nil and options.subtype ~= "success",
+			num_turns = options.turns,
+			duration_ms = at * 1000,
+			duration_api_ms = options.turns * 1500,
+			total_cost_usd = options.cost or 0.01 * options.turns,
+			result = "done",
+			usage = {
+				input_tokens = 10 * options.turns,
+				cache_creation_input_tokens = 100 * options.turns,
+				cache_read_input_tokens = 1000 * options.turns,
+				output_tokens = options.output * options.turns,
 			},
+			permission_denials = {},
 		})
 	end
 	return lines
 end
-
 return {
 	memory = memory,
 	loader = loader,

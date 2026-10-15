@@ -1,10 +1,11 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local ReportModel = require "../src/core/report"
 local fs = require "@std/fs"
 local Core = require "../src/core"
 local Evidence = require "../src/evidence"
-local Files = require "../src/lute/files"
 local Store = require "../src/lute/evidence-store"
 local Wire = require "../src/lute/wire"
 
@@ -63,10 +64,7 @@ end
 
 local function build(check: Core.Context, setup: Setup?): Fixture
 	local options: Setup = setup or {}
-	local root = Files.claimDirectory(Files.temporary "verify-provenance-tests")
-	check:defer(function()
-		fs.removeDirectory(root, { recursive = true })
-	end)
+	local root = temporary(check, "verify-provenance-tests")
 	fs.writeStringToFile(root .. "/one.png", "png-one\000bytes")
 	fs.writeStringToFile(root .. "/two.png", "png-two\000bytes")
 	local original = produce { ["client-1"] = root .. "/one.png", ["client-2"] = root .. "/two.png" }
@@ -183,10 +181,7 @@ return function(suite: Core.Harness)
 		end)
 
 		suite:case("the local directory sink stores by content and re-validates from disk", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-provenance-sink")
 			local fixture = build(check, { sink = Store.localDirectory(root .. "/store") })
 			check:expect(Evidence.validate(fixture.report, fixture.policy).ok):toEqual(true)
 			local reference = checkpoint(fixture.report, "client-1").artifacts[1].reference
@@ -409,10 +404,7 @@ return function(suite: Core.Harness)
 
 	suite:suite("evidence tamper and availability", function()
 		suite:case("rejects an artifact changed on disk by content, size or removal", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-provenance-sink")
 			local fixture = build(check, { sink = Store.localDirectory(root .. "/store") })
 			local reference = checkpoint(fixture.report, "client-1").artifacts[1].reference
 			local original = fs.readFileToString(reference)
@@ -465,10 +457,7 @@ return function(suite: Core.Harness)
 		end)
 
 		suite:case("sealing reports unreadable references, a bad clock and a bad hash without sealing", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-provenance-sink")
 			local report =
 				produce { ["client-1"] = root .. "/missing.png", ["client-2"] = "https://example.invalid/x.png" }
 			local sink = Core.memorySink(Store.sha256)
@@ -580,10 +569,7 @@ return function(suite: Core.Harness)
 
 	suite:suite("local directory sink", function()
 		suite:case("refuses mismatched identities, outside references and divergent content", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-provenance-sink")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-provenance-sink")
 			local sink = Store.localDirectory(root .. "/store")
 			local digest = Store.sha256 "bytes"
 			local meta: Core.EvidenceMeta = { name = "shot.png", mediaType = "image/png", sha256 = digest, size = 5 }
@@ -609,10 +595,7 @@ return function(suite: Core.Harness)
 		local SUBJECT: Core.EvidenceSubject = { runId = "run-9", build = BUILD }
 
 		local function sealed(check: Core.Context, subject: Core.EvidenceSubject): (Core.Report, string)
-			local root = Files.claimDirectory(Files.temporary "verify-provenance-outcome")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-provenance-outcome")
 			fs.writeStringToFile(root .. "/one.png", "png-one\000bytes")
 			fs.writeStringToFile(root .. "/two.png", "png-two\000bytes")
 			local original = produce { ["client-1"] = root .. "/one.png", ["client-2"] = root .. "/two.png" }

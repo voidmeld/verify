@@ -31,12 +31,9 @@ local function result(task: string, arm: string, shape: Shape): AgentEval.RunRes
 		arm = arm,
 		agent = agent,
 		adapter = "replay",
-		model = nil,
 		seed = seed,
 		order = seed,
-		parent = nil,
 		status = "completed",
-		detail = nil,
 		passed = shape.passed,
 		checksPassed = shape.passed,
 		exceeded = {},
@@ -52,9 +49,6 @@ local function result(task: string, arm: string, shape: Shape): AgentEval.RunRes
 			costUsd = shape.tokens / 100000,
 			wallSeconds = shape.wall,
 			agentSeconds = shape.wall,
-			apiSeconds = nil,
-			toolSeconds = nil,
-			startupSeconds = nil,
 			turnLatencies = shape.latencies,
 			turnIntervals = shape.latencies,
 			toolCalls = 0,
@@ -62,14 +56,10 @@ local function result(task: string, arm: string, shape: Shape): AgentEval.RunRes
 			permissionDenials = 0,
 		},
 		session = {
-			model = nil,
-			session = nil,
-			version = nil,
 			finish = "success",
 			usageSource = "result",
 			tools = {},
 			mcpServers = {},
-			result = nil,
 			malformed = 0,
 		},
 		checks = {},
@@ -108,7 +98,6 @@ local function judgment(task: string, scoreA: number, seed: number?): AgentEval.
 		criteria = {},
 		winner = if scoreA > 0.5 then "treatment" elseif scoreA < 0.5 then "baseline" else "tie",
 		consistent = true,
-		detail = nil,
 	}
 end
 
@@ -433,7 +422,6 @@ return function(suite: Verify.Harness)
 				end
 				return {
 					text = Fakes.json { criteria = criteria, overall = choice, confidence = 1, reasons = { "clear" } },
-					error = nil,
 					model = "judge",
 				}
 			end

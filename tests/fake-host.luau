@@ -86,6 +86,19 @@ local function create(options: Options): FakeHost
 	local attempts: { [string]: number } = {}
 	local dispatched: { string } = {}
 
+	local function failed(unit: Verify.PlanUnit, phase: "load" | "registration", message: string): Report
+		return Verify.syntheticReport {
+			executor = name,
+			environment = environment,
+			capabilities = capabilities,
+			id = ("unit:%s:%s"):format(unit.id, phase),
+			source = unit.locator,
+			name = unit.id,
+			status = "failed",
+			phase = phase,
+			message = message,
+		}
+	end
 	local function reportFor(batch: PlanBatch): Report
 		local reports: { Report } = {}
 		for _, unit in batch.units do
@@ -94,17 +107,7 @@ local function create(options: Options): FakeHost
 			if run == nil then
 				table.insert(
 					reports,
-					Verify.syntheticReport {
-						executor = name,
-						environment = environment,
-						capabilities = capabilities,
-						id = ("unit:%s:load"):format(unit.id),
-						source = unit.locator,
-						name = unit.id,
-						status = "failed",
-						phase = "load",
-						message = ("the fake host was given no work for unit %q"):format(unit.id),
-					}
+					failed(unit, "load", ("the fake host was given no work for unit %q"):format(unit.id))
 				)
 				continue
 			end
@@ -112,20 +115,7 @@ local function create(options: Options): FakeHost
 			local harness = Verify.createHarness { now = now, source = unit.locator }
 			local registered, thrown: unknown = pcall(run, harness)
 			if not registered then
-				table.insert(
-					reports,
-					Verify.syntheticReport {
-						executor = name,
-						environment = environment,
-						capabilities = capabilities,
-						id = ("unit:%s:registration"):format(unit.id),
-						source = unit.locator,
-						name = unit.id,
-						status = "failed",
-						phase = "registration",
-						message = tostring(thrown),
-					}
-				)
+				table.insert(reports, failed(unit, "registration", tostring(thrown)))
 				continue
 			end
 			table.insert(

@@ -83,10 +83,8 @@ local function batchOf(id: string, locator: string): Verify.PlanBatch
 			{
 				id = locator,
 				locator = locator,
-				group = nil,
 				tags = {},
 				requires = {},
-				deadlineSeconds = nil,
 				weight = 1,
 			},
 		},

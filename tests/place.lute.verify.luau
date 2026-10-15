@@ -1,15 +1,13 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local Core = require "../src/core"
 local Place = require "../src/lute/place"
-local Files = require "../src/lute/files"
 
 local function directory(context: Core.Context): string
-	local root = Files.claimDirectory(Files.temporary "verify-place-tests")
-	context:defer(function()
-		fs.removeDirectory(root, { recursive = true })
-	end)
+	local root = temporary(context, "verify-place-tests")
 	return root
 end
 return function(suite: Core.Harness)

@@ -106,7 +106,6 @@ return function(suite: Verify.Harness)
 				schemaVersion = 2,
 				classes = {
 					Probe = {
-						superclass = nil,
 						tags = {},
 						properties = {},
 						defaults = {

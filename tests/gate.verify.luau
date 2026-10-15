@@ -24,9 +24,6 @@ local function exited(code: number, stdout: string?, stderr: string?): Gate.JobO
 		timedOut = false,
 		stdout = stdout or "",
 		stderr = stderr or "",
-		report = nil,
-		detail = nil,
-		logReference = nil,
 	}
 end
 

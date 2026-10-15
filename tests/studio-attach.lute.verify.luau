@@ -1,5 +1,7 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local json = require "@std/json"
 local process = require "@std/process"
@@ -77,9 +79,7 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 		sandbox = sandbox,
 		gate = gate,
 		lose = {},
-		requestSeconds = nil,
 		calls_by_source = {},
-		console = nil,
 		engine = function(datamodel: string, code: string): string
 			if string.find(code, 'local P = "VerifyRun', 1, true) ~= nil then
 				local body = string.match(code, "publish%(pcall%(function%(%)\n(.-)\nend%)%)\nend%)\nreturn 'started'")
@@ -621,10 +621,7 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("captures an image to a file", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-attach-tests")
 			local self = fake(ONE)
 			local session = attached(self)
 			local response = session.capture { directory = root, stem = "view" }
@@ -650,10 +647,7 @@ return function(suite: Verify.Harness)
 		suite:case("platform.run in studio host attaches, starts play, reports and stops", {
 			timeoutSeconds = 20,
 			run = function(check: Verify.Context)
-				local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
-				check:defer(function()
-					fs.removeDirectory(root, { recursive = true })
-				end)
+				local root = temporary(check, "verify-attach-tests")
 				local self = fake(ONE)
 				local result = Platform.run {
 					host = "studio",
@@ -691,10 +685,7 @@ return function(suite: Verify.Harness)
 		suite:case("a hung attached run times out and still stops play", {
 			timeoutSeconds = 20,
 			run = function(check: Verify.Context)
-				local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
-				check:defer(function()
-					fs.removeDirectory(root, { recursive = true })
-				end)
+				local root = temporary(check, "verify-attach-tests")
 				local self = fake(ONE)
 				self.hang.execute_luau = true
 				local outcome = Lute.studio.run {
@@ -744,10 +735,7 @@ return function(suite: Verify.Harness)
 		)
 
 		suite:case("the Studio host attaches per batch with the same code builder", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-attach-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-attach-tests")
 			local self = fake(ONE)
 			local host = Lute.studio.host {
 				attach = { authorize = allow, studioId = "studio-a", transport = self.transport },
@@ -780,10 +768,7 @@ return function(suite: Verify.Harness)
 		local ARGS = '{"studio_id":"studio-a"}'
 
 		local function child(check: Verify.Context): (string, string)
-			local root = Files.claimDirectory(Files.temporary "verify-mcp-exit-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-mcp-exit-tests")
 			if system.win32 then
 				local program = Files.absolute "tests/programs/fake-mcp.luau"
 				local launcher = root .. "/child.cmd"
@@ -822,6 +807,7 @@ return function(suite: Verify.Harness)
 				options.mcpExecutable = script
 				options.directory = root .. "/attach"
 				options.callSeconds = 6
+				options.runSeconds = 20
 			end)
 			check:expect(session.call("echo", ARGS).ok):toBe(true)
 			local lost = session.call("die_now", ARGS)
@@ -842,6 +828,7 @@ return function(suite: Verify.Harness)
 				options.mcpExecutable = script
 				options.directory = root .. "/lost"
 				options.callSeconds = 6
+				options.runSeconds = 20
 			end)
 			check:expect(session.call("echo", ARGS).ok):toBe(true)
 			session.call("die_now", ARGS)
@@ -849,7 +836,7 @@ return function(suite: Verify.Harness)
 			local began = os.clock()
 			local response = session.call("echo", ARGS)
 			check:expect(response.ok):toBe(false)
-			check:expect(response.sessionLost):toBe(true)
+			check:expect(response.sessionLost == true):toBeTrueWith(response.detail or "no detail")
 			check:expect(response.expired):toBe(false)
 			check:expect(response.delivery):toBe "unsent"
 			check:expect(response.detail):toContain "session_lost"

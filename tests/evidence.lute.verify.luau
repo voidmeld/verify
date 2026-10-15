@@ -1,8 +1,9 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local Core = require "../src/core"
-local Files = require "../src/lute/files"
 local Evidence = require "../src/lute/evidence"
 local Wire = require "../src/lute/wire"
 
@@ -35,10 +36,7 @@ end
 return function(suite: Core.Harness)
 	suite:suite("durable report evidence", function()
 		suite:case("copies colliding names by actor without mutating the source report", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-evidence-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-evidence-tests")
 			local source = root .. "/source.png"
 			fs.writeStringToFile(source, "fixture-bytes\000binary")
 			local original = report(source)
@@ -61,10 +59,7 @@ return function(suite: Core.Harness)
 			check:expect(fs.readFileToString(root .. "/out/summary.txt")):toContain "client-2 / view"
 		end)
 		suite:case("temporary, remote, missing and empty references never satisfy requirements", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-evidence-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-evidence-tests")
 			local empty = root .. "/empty.png"
 			fs.writeStringToFile(empty, "")
 			for index, reference in
@@ -81,10 +76,7 @@ return function(suite: Core.Harness)
 			end
 		end)
 		suite:case("selectors cannot borrow media from another actor or nonexistent case", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-evidence-tests")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-evidence-tests")
 			local source = root .. "/source.png"
 			fs.writeStringToFile(source, "bytes")
 			local original = report(source)

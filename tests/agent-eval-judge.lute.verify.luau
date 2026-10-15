@@ -302,7 +302,6 @@ return function(suite: Verify.Harness)
 						stderr = "",
 						lines = {},
 						seconds = 1,
-						detail = nil,
 					}
 				end,
 				files = memory.files,
@@ -346,7 +345,6 @@ return function(suite: Verify.Harness)
 					criteria = {},
 					winner = judges[index],
 					consistent = true,
-					detail = nil,
 				})
 				table.insert(labels, { comparison = "c" .. index, winner = humans[index] })
 			end

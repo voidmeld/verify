@@ -1,5 +1,7 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local json = require "@std/json"
 local Core = require "../src/core"
@@ -15,10 +17,7 @@ local ENTRY = "examples/attachments-entry.luau"
 local BUILD: Core.EvidenceBuild = { commit = "c0ffee", tree = "7ee", clean = true, digest = "build-1" }
 
 local function simulate(check: Core.Context, id: string, patch: ((Lute.PlatformOptions) -> ())?): Platform.Result
-	local root = Files.claimDirectory(Files.temporary "verify-attachment-tests")
-	check:defer(function()
-		fs.removeDirectory(root, { recursive = true })
-	end)
+	local root = temporary(check, "verify-attachment-tests")
 	local options: Lute.PlatformOptions = {
 		host = "simulator",
 		entry = ENTRY,
@@ -163,10 +162,7 @@ return function(suite: Core.Harness)
 		end)
 
 		suite:case("seals and validates, and a modified stored file fails validation", function(check)
-			local root = Files.claimDirectory(Files.temporary "verify-attachment-seal")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-attachment-seal")
 			fs.writeStringToFile(root .. "/view.png", "png-bytes")
 			local harness = Core.createHarness { now = os.clock }
 			harness:case("flow", function(context)
@@ -242,10 +238,7 @@ return function(suite: Core.Harness)
 		suite:case("a 300 KB attachment crosses in segments and materializes", {
 			timeoutSeconds = 30,
 			run = function(check: Core.Context)
-				local root = Files.claimDirectory(Files.temporary "verify-attachment-studio")
-				check:defer(function()
-					fs.removeDirectory(root, { recursive = true })
-				end)
+				local root = temporary(check, "verify-attachment-studio")
 				local big = string.rep("0123456789abcdef", 19200)
 				local function produce(runId: string): string
 					local harness = Core.createHarness { now = os.clock }

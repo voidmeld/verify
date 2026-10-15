@@ -1,5 +1,7 @@
 --!strict
 
+local Fixture = require "./reflection-fixture"
+
 local Bridge = require "../src/roblox/fixture-bridge"
 local Environment = require "../src/roblox/environment"
 local Reflection = require "../src/roblox/reflection"
@@ -8,28 +10,7 @@ local Verify = require "../src/core"
 
 type ClassTable = { [string]: Reflection.Class }
 
-local function property(name: string, datatype: string): Reflection.Property
-	return { Name = name, Datatype = datatype, Scriptability = "ReadWrite", Tags = {} }
-end
-
-local function class(
-	name: string,
-	super: string?,
-	properties: { Reflection.Property }?,
-	tags: { string }?
-): Reflection.Class
-	local declared: { [string]: Reflection.Property } = {}
-	for _, item in (properties or {}) :: { Reflection.Property } do
-		declared[item.Name] = item
-	end
-	return {
-		Name = name,
-		Superclass = super,
-		Properties = declared,
-		DefaultProperties = {},
-		Tags = tags or {},
-	}
-end
+local property, class = Fixture.property, Fixture.class
 
 local function database(withMedia: boolean): Reflection.Database
 	local classes: ClassTable = {
@@ -55,19 +36,7 @@ local function database(withMedia: boolean): Reflection.Database
 		classes.UIPageLayout = class("UIPageLayout", "Instance")
 	end
 	classes.UserInputService = class("UserInputService", "Instance", nil, { "Service" })
-	return {
-		GetClassNames = function()
-			local names: { string } = {}
-			for name in classes do
-				table.insert(names, name)
-			end
-			table.sort(names)
-			return names
-		end,
-		GetClass = function(_, name)
-			return classes[name]
-		end,
-	}
+	return Fixture.database(classes)
 end
 
 local function create(withMedia: boolean, ui: UiFakes.Options?): Bridge.Bridge

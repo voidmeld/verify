@@ -77,7 +77,6 @@ return function(suite: Verify.Harness)
 			local plain = services.execute {
 				argv = { LUTE, "run", root .. "/agent.luau" },
 				cwd = root,
-				input = nil,
 				deadlineSeconds = 60,
 				stamp = false,
 				scratch = root .. "/scratch",
@@ -88,7 +87,6 @@ return function(suite: Verify.Harness)
 			local late = services.execute {
 				argv = { LUTE, "run", root .. "/sleeper.luau" },
 				cwd = root,
-				input = nil,
 				deadlineSeconds = 1,
 				stamp = true,
 				scratch = root .. "/scratch",
@@ -110,7 +108,6 @@ return function(suite: Verify.Harness)
 			local execution = services.execute {
 				argv = argv,
 				cwd = root,
-				input = nil,
 				deadlineSeconds = 60,
 				stamp = false,
 				scratch = root .. "/scratch",

@@ -1,5 +1,7 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local Verify = require "../src/core"
 local Player = require "../src/lute/player"
 local Channel = require "../src/roblox/report-channel"
@@ -167,10 +169,7 @@ return function(suite: Verify.Harness)
 			local direct = Player.run { placeId = 123, runId = "windows" }
 			check:expect(direct.status):toBe "faulted"
 			check:expect(direct.detail):toContain "macOS only"
-			local root = Files.claimDirectory(Files.temporary "verify-player-windows")
-			check:defer(function()
-				fs.removeDirectory(root, { recursive = true })
-			end)
+			local root = temporary(check, "verify-player-windows")
 			local result = Platform.run {
 				host = "player",
 				entry = "examples/platform-entry.luau",

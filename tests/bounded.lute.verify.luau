@@ -1,5 +1,7 @@
 --!strict
 
+local temporary = require "./temporary"
+
 local fs = require "@std/fs"
 local process = require "@std/process"
 local system = require "@std/system"
@@ -91,10 +93,7 @@ return function(suite: Verify.Harness)
 			end)
 		else
 			suite:case("kills the descendants of a timed out command under each shell and mechanism", function(check)
-				local root = Files.claimDirectory(Files.temporary "verify-bounded-tests")
-				check:defer(function()
-					fs.removeDirectory(root, { recursive = true })
-				end)
+				local root = temporary(check, "verify-bounded-tests")
 				local shells = { "sh" }
 				if fs.exists "/bin/dash" then
 					table.insert(shells, "/bin/dash")
@@ -164,10 +163,7 @@ return function(suite: Verify.Harness)
 			check:expect(broken.ok):toBe(false)
 			check:expect(broken.stderr):toContain "could not be started"
 			if not windows then
-				local root = Files.claimDirectory(Files.temporary "verify-bounded-tests")
-				check:defer(function()
-					fs.removeDirectory(root, { recursive = true })
-				end)
+				local root = temporary(check, "verify-bounded-tests")
 				local marker = root .. "/never"
 				local result = Bounded.runWith(
 					{ "/bin/sh", "-c", "echo ran > " .. marker },
