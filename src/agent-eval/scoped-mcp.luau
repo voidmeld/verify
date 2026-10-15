@@ -16,6 +16,14 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 	local function text(value: unknown): unknown
 		return { content = { { type = "text", text = encode(value) } } }
 	end
+	local function forward(name: string, arguments: { [string]: unknown }): unknown
+		local ok, result = pcall(backend.call, name, arguments)
+		assert(ok, "the scoped Studio call failed; inspect this run's console")
+		if type(result) == "table" and (result :: { [string]: unknown }).isError == true then
+			error("the scoped Studio tool returned an error; inspect this run's console", 0)
+		end
+		return result
+	end
 	local function dispatch(method: string, params: unknown): unknown
 		assert(not closed, "the run scope is closed")
 		if method == "initialize" then
@@ -71,7 +79,7 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 			Schema.only(args, "input arguments", { "studio_id", "code" })
 			Schema.text(args.code, "input arguments.code")
 			forwarded.datamodel_type = "Client"
-			return backend.call("execute_luau", forwarded)
+			return forward("execute_luau", forwarded)
 		elseif name == "execute_luau" then
 			Schema.only(args, "execute arguments", { "studio_id", "code", "datamodel_type" })
 			Schema.text(args.code, "execute arguments.code")
@@ -89,7 +97,7 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 		else
 			Schema.only(args, "tool arguments", { "studio_id" })
 		end
-		return backend.call(name, forwarded)
+		return forward(name, forwarded)
 	end
 	return {
 		dispatch = dispatch,

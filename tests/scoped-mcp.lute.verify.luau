@@ -123,4 +123,14 @@ return function(harness: Verify.Harness)
 		):toBe(false)
 		t:expect(calls):toBe(1)
 	end)
+	harness:case("backend failures cannot reveal the global Studio list", function(t)
+		local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {
+			call = function(): unknown
+				error "missing target; other Studio id secret-other"
+			end,
+		}, Eval.lute.encode)
+		local ok, reason = pcall(scope.dispatch, "tools/call", { name = "screen_capture", arguments = {} })
+		t:expect(ok):toBe(false)
+		t:expect((string.find(tostring(reason), "secret-other", 1, true))):toBe(nil)
+	end)
 end
