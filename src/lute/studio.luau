@@ -112,12 +112,13 @@ local function worker(path: string)
 			end)
 			else nil
 		local progressToken = Detached.tokenFor(runId)
-		local function engine(datamodel: string, code: string): Detached.Reply
+		local function engine(datamodel: string, code: string, replaySafe: boolean?): Detached.Reply
 			local limit = math.min(deadline, os.clock() + CALL_SECONDS)
 			local exchange = connection.callRaw(
 				"execute_luau",
 				json.serialize { studio_id = id, datamodel_type = datamodel, code = code },
-				limit
+				limit,
+				replaySafe
 			)
 			if exchange.status ~= "answered" then
 				return {

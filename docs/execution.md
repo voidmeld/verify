@@ -233,6 +233,8 @@ Verify polls the engine until the code finishes or `deadlineSeconds` ends.
 No single request runs long, so the request time limit of the Studio MCP server never ends a run.
 Only `deadlineSeconds` bounds the run.
 
+Each run owns its MCP connection. After MCP process loss, a call gets at most three attempts within its original deadline, with waits of 0.25 and 0.5 seconds. Each replacement has a fresh handshake and separate `reconnect-N` diagnostics below the original MCP directory. Definitely unsent calls can be replayed. A possibly sent ordinary mutation is never replayed automatically. Detached start, receipt polls, segment reads and receipt release are replayable: start checks the run-bound receipt before spawning, so reconnecting does not repeat the case. A missing receipt still faults with `session_lost`; recovery never selects a different Studio ID or restarts play. A healthy connection and the public run options are unchanged. See the [concurrency investigation and deferred commands](studio-parallel.md).
+
 The engine returns the encoded report in segments of at most 24000 bytes.
 Each segment carries its index, its count, its own digest, and the length and digest of the whole report.
 Verify fetches one segment for each call, rebuilds the report and checks each digest and the total length.
@@ -257,7 +259,7 @@ The engine keeps the result in the attributes of `ReplicatedStorage`, named `Ver
 Verify clears them after a fetch.
 
 The default run limit is 90 seconds.
-A launched Studio run owns every Studio process that it starts. The worker records the Studio processes before the launch. On every exit it ends the multiplayer test with `StudioTestService:EndTest`, then sends TERM and then KILL to the Studio processes that appeared for this run (on Windows, `taskkill` and then `taskkill /F`): the launched Studio, its descendants, and the `-task StartServer` and `-rbxTransportToken` processes. It never signals a Studio that ran before. A process that survives both signals is listed as a limitation of the report.
+A launched Studio run owns every Studio process that it starts. The worker records the Studio processes before the launch. On every exit it ends the multiplayer test with `StudioTestService:EndTest`, then sends TERM and then KILL to the Studio processes that appeared for this run (on Windows, `taskkill` and then `taskkill /F`): the launched Studio and the descendants of processes identified by its PID or unique place marker. Generic multiplayer flags alone establish no ownership. It never signals a Studio that ran before or an unrelated concurrent launch. A detached process whose ancestry and run marker are both gone cannot safely be claimed by cleanup. A process that survives both signals is listed as a limitation of the report.
 An external watchdog kills the owned process tree of the worker, including Studio and the MCP process, on a timeout.
 Normal success and failure also terminate those owned processes.
 Case budgets stay cooperative inside the engine. The outer run limit holds even when engine code never yields.
@@ -350,7 +352,7 @@ Verify cannot query the mode of the Studio, so it trusts the declared `mode`.
 `transport` replaces the MCP process with `{ call(tool, argumentsJson, deadline) -> exchange, close() }`.
 An exchange is `answered`, `unsent` or `unanswered`.
 `close` must abort an in-flight call. A later `call` must work again.
-Tests use a fake transport. The default starts the Studio MCP executable and reconnects after a deadline.
+Tests use a fake transport. The default starts the Studio MCP executable and replaces it after process loss under the bounded retry rules of [native Studio execution](#native-studio-execution). An ordinary call deadline does not replay a possibly sent mutation.
 
 `Lute.studio.run`, `Lute.studio.host` and `Lute.platform.run({ host = "studio", attach = ... })` accept `attach`.
 They run the same engine code and report path as a launched run:

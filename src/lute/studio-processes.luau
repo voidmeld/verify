@@ -20,7 +20,6 @@ export type Cleanup = { terminated: { number }, survivors: { number } }
 export type Options = { root: number?, markers: { string }?, termSeconds: number?, killSeconds: number? }
 
 local STUDIO = "RobloxStudio"
-local MULTIPLAYER_FLAGS = { "-task StartServer", "-rbxTransportToken" }
 
 local function studioProcs(procs: { Proc }): { Proc }
 	local found: { Proc } = {}
@@ -142,11 +141,25 @@ local function owned(procs: { Proc }, before: { [number]: boolean }, root: numbe
 	for _, proc in procs do
 		byPid[proc.pid] = proc
 	end
+	local roots: { [number]: boolean } = {}
+	if root ~= nil then
+		roots[root] = true
+	end
+	local extra: { string } = markers or {}
+	for _, proc in studioProcs(procs) do
+		if not before[proc.pid] then
+			for _, marker in extra do
+				if string.find(proc.command, marker, 1, true) ~= nil then
+					roots[proc.pid] = true
+				end
+			end
+		end
+	end
 	local function descends(proc: Proc): boolean
 		local walk: Proc? = proc
 		local guard = 0
 		while walk ~= nil and guard < 64 do
-			if walk.pid == root then
+			if roots[walk.pid] then
 				return true
 			end
 			walk = byPid[walk.ppid]
@@ -154,20 +167,12 @@ local function owned(procs: { Proc }, before: { [number]: boolean }, root: numbe
 		end
 		return false
 	end
-	local extra: { string } = markers or {}
 	local pids: { number } = {}
 	for _, proc in studioProcs(procs) do
 		if before[proc.pid] then
 			continue
 		end
-		local flagged = false
-		for _, flag in MULTIPLAYER_FLAGS do
-			flagged = flagged or string.find(proc.command, flag, 1, true) ~= nil
-		end
-		for _, marker in extra do
-			flagged = flagged or string.find(proc.command, marker, 1, true) ~= nil
-		end
-		if proc.pid == root or (root ~= nil and descends(proc)) or flagged then
+		if descends(proc) then
 			table.insert(pids, proc.pid)
 		end
 	end

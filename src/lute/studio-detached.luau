@@ -13,7 +13,7 @@ export type Reply = {
 	expired: boolean,
 }
 
-export type Execute = (datamodel: string, code: string) -> Reply
+export type Execute = (datamodel: string, code: string, replaySafe: boolean?) -> Reply
 
 export type Options = {
 	execute: Execute,
@@ -62,6 +62,10 @@ local function startSource(prefix: string, code: string, segmentBytes: number): 
 		.. tostring(segmentBytes)
 		.. [==[
 
+local state = RS:GetAttribute(P .. "state")
+if state ~= nil then
+	return 'started'
+end
 for name in RS:GetAttributes() do
 	if string.sub(name, 1, #P) == P then
 		RS:SetAttribute(name, nil)
@@ -195,7 +199,7 @@ local function fetch(options: Options, prefix: string, status: { [string]: unkno
 	end
 	local segments: { Core.Segment } = {}
 	for index = 1, count do
-		local reply = options.execute(options.datamodel, segmentSource(prefix, index))
+		local reply = options.execute(options.datamodel, segmentSource(prefix, index), true)
 		if not reply.ok then
 			return failure(reply, ("transport: segment %d of %d was not fetched"):format(index, count))
 		end
@@ -258,8 +262,11 @@ end
 
 local function run(options: Options): Outcome
 	local prefix = prefixFor(options.runId)
-	local started =
-		options.execute(options.datamodel, startSource(prefix, options.code, options.segmentBytes or SEGMENT_BYTES))
+	local started = options.execute(
+		options.datamodel,
+		startSource(prefix, options.code, options.segmentBytes or SEGMENT_BYTES),
+		true
+	)
 	if not started.ok then
 		return failure(started, "the detached run did not start")
 	end
@@ -281,7 +288,7 @@ local function run(options: Options): Outcome
 					.. (if problem ~= nil then "; last poll problem: " .. problem else ""),
 			}
 		end
-		local reply = options.execute(options.datamodel, statusSource(prefix))
+		local reply = options.execute(options.datamodel, statusSource(prefix), true)
 		if not reply.ok then
 			if reply.lost then
 				return failure(reply, "the run poll lost the Studio session")
@@ -304,7 +311,7 @@ local function run(options: Options): Outcome
 			elseif status.state == "done" then
 				local fetched = fetch(options, prefix, status)
 				if fetched.status == "done" then
-					pcall(options.execute, options.datamodel, releaseSource(prefix))
+					pcall(options.execute, options.datamodel, releaseSource(prefix), true)
 				end
 				return fetched
 			else

@@ -9,19 +9,15 @@ local Bounded = require "./bounded"
 local Files = require "./files"
 local Powershell = require "./powershell"
 local Runtime = require "./runtime"
+local Reconnect = require "./studio-reconnect"
 local Operations = require "../core/operations"
 local Wire = require "./wire"
 
-export type Exchange = {
-	status: "answered" | "unsent" | "unanswered",
-	result: unknown?,
-	detail: string?,
-	lost: boolean?,
-}
+export type Exchange = Reconnect.Exchange
 
 export type Connection = {
 	call: (name: string, arguments: { [string]: unknown }) -> unknown,
-	callRaw: (name: string, argumentsJson: string, deadline: number) -> Exchange,
+	callRaw: (name: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Exchange,
 	close: () -> (),
 	alive: () -> boolean,
 }
@@ -179,7 +175,7 @@ local function windowsPipe(executable: string, directory: string, deadline: numb
 	}
 end
 
-local function connect(executable: string, directory: string, deadline: number): Connection
+local function connectOnce(executable: string, directory: string, deadline: number): Reconnect.Connection
 	Files.ensureDirectory(directory)
 	local output, errors = directory .. "/output", directory .. "/errors"
 	local pipe = if system.win32
@@ -277,6 +273,27 @@ local function connect(executable: string, directory: string, deadline: number):
 	return {
 		close = close,
 		alive = alive,
+		callRaw = callRaw,
+	}
+end
+
+local function connect(executable: string, directory: string, deadline: number): Connection
+	local generation = 0
+	local function open(limit: number): Reconnect.Connection
+		generation += 1
+		return connectOnce(
+			executable,
+			if generation == 1 then directory else ("%s/reconnect-%d"):format(directory, generation),
+			limit
+		)
+	end
+	local recovered = Reconnect.wrap(nil, { open = open, now = os.clock, wait = task.wait })
+	local function callRaw(name: string, argumentsJson: string, limit: number, replaySafe: boolean?): Exchange
+		return recovered.callRaw(name, argumentsJson, limit, replaySafe == true or name == "list_roblox_studios")
+	end
+	return {
+		close = recovered.close,
+		alive = recovered.alive,
 		callRaw = callRaw,
 		call = function(name, arguments)
 			local argumentsJson = if next(arguments) == nil

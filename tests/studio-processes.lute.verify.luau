@@ -56,8 +56,8 @@ return function(suite: Core.Harness)
 			local procs: { Processes.Proc } = {
 				{ pid = 10, ppid = 1, command = STUDIO .. " -task EditFile -localPlaceFile /x/Mine.rbxlx" },
 				{ pid = 20, ppid = 1, command = STUDIO .. " -task EditFile -localPlaceFile /x/Verify-1.rbxlx" },
-				{ pid = 21, ppid = 1, command = STUDIO .. " -task StartServer -placeId 1" },
-				{ pid = 22, ppid = 1, command = STUDIO .. " -rbxTransportToken abc" },
+				{ pid = 21, ppid = 20, command = STUDIO .. " -task StartServer -placeId 1" },
+				{ pid = 22, ppid = 21, command = STUDIO .. " -rbxTransportToken abc" },
 				{ pid = 30, ppid = 1, command = "/usr/bin/other" },
 			}
 			local env = fake({ procs[1] }, {}, {})
@@ -76,10 +76,10 @@ return function(suite: Core.Harness)
 
 		suite:case("reports a process that survives both signals", function(check)
 			local procs: { Processes.Proc } = {
-				{ pid = 21, ppid = 1, command = STUDIO .. " -task StartServer -placeId 1" },
+				{ pid = 21, ppid = 20, command = STUDIO .. " -task StartServer -placeId 1" },
 			}
 			local env = fake(procs, { [21] = true }, { [21] = true })
-			local cleanup = Processes.reap({}, nil, env.deps)
+			local cleanup = Processes.reap({}, { root = 21 }, env.deps)
 			check:expect(cleanup.survivors):toEqual { 21 }
 			check:expect(table.find(env.signals, "TERM:21") ~= nil):toBe(true)
 			check:expect(table.find(env.signals, "KILL:21") ~= nil):toBe(true)
@@ -93,12 +93,28 @@ return function(suite: Core.Harness)
 			check:expect(Processes.owned(procs, {}, 20, nil)):toEqual { 20, 25 }
 		end)
 
+		suite:case("never claims another concurrent run by multiplayer flags alone", function(check)
+			local procs: { Processes.Proc } = {
+				{ pid = 20, ppid = 1, command = STUDIO .. " -localPlaceFile Verify-A.rbxlx" },
+				{ pid = 21, ppid = 20, command = STUDIO .. " -task StartServer" },
+				{ pid = 30, ppid = 1, command = STUDIO .. " -localPlaceFile Verify-B.rbxlx" },
+				{ pid = 31, ppid = 30, command = STUDIO .. " -task StartServer" },
+				{ pid = 32, ppid = 31, command = STUDIO .. " -rbxTransportToken other" },
+				{ pid = 40, ppid = 1, command = STUDIO .. " -rbxTransportToken orphan" },
+			}
+			local env = fake(procs, {}, {})
+			local cleanup = Processes.reap({}, { root = 20, markers = { "Verify-A.rbxlx" } }, env.deps)
+			check:expect(cleanup.terminated):toEqual { 20, 21 }
+			check:expect(env.alive[30] and env.alive[31] and env.alive[32] and env.alive[40]):toBe(true)
+			check:expect(Processes.owned(procs, {}, nil, { "Verify-A.rbxlx" })):toEqual { 20, 21 }
+		end)
+
 		suite:case("owns Windows Studio processes by the same names, flags and descent", function(check)
 			local studio = '"C:\\Users\\a\\AppData\\Local\\Roblox\\Versions\\version-1\\RobloxStudioBeta.exe"'
 			local procs: { Processes.Proc } = {
 				{ pid = 10, ppid = 1, command = studio },
 				{ pid = 20, ppid = 2, command = studio .. " -task EditFile -localPlaceFile C:/t/Verify-1.rbxlx" },
-				{ pid = 21, ppid = 1, command = studio .. " -task StartServer -placeId 1" },
+				{ pid = 21, ppid = 20, command = studio .. " -task StartServer -placeId 1" },
 				{ pid = 25, ppid = 20, command = "C:\\x\\RobloxCrashHandler.exe --crashCounter Win-ROBLOXStudio" },
 				{ pid = 26, ppid = 20, command = studio .. " -helper" },
 			}

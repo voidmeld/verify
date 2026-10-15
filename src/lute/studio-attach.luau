@@ -25,7 +25,7 @@ export type Request = {
 export type Authorization = { ok: boolean, reason: string? }
 
 export type Transport = {
-	call: (tool: string, argumentsJson: string, deadline: number) -> Mcp.Exchange,
+	call: (tool: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Mcp.Exchange,
 	close: () -> (),
 }
 
@@ -140,7 +140,7 @@ local function mcpTransport(executable: string, directory: string): Transport
 		end
 	end
 	return {
-		call = function(tool, argumentsJson, deadline)
+		call = function(tool, argumentsJson, deadline, replaySafe)
 			if connection == nil then
 				local fresh, problem = open(deadline)
 				if fresh == nil then
@@ -151,35 +151,13 @@ local function mcpTransport(executable: string, directory: string): Transport
 				end
 				connection = fresh
 			end
-			local first = (connection :: Mcp.Connection).callRaw(tool, argumentsJson, deadline)
+			local first = (connection :: Mcp.Connection).callRaw(tool, argumentsJson, deadline, replaySafe)
 			if first.lost ~= true then
 				return first
 			end
 			drop()
 			wasLost = true
-			if first.status ~= "unsent" then
-				return {
-					status = first.status,
-					detail = "session_lost: " .. (first.detail or Mcp.EXITED),
-					lost = true,
-				}
-			end
-			local fresh, problem = open(deadline)
-			if fresh == nil then
-				return { status = "unsent", detail = "session_lost: " .. (problem or Mcp.EXITED), lost = true }
-			end
-			connection = fresh
-			local second = fresh.callRaw(tool, argumentsJson, deadline)
-			if second.lost == true then
-				drop()
-				wasLost = true
-				return {
-					status = second.status,
-					detail = "session_lost: " .. (second.detail or Mcp.EXITED),
-					lost = true,
-				}
-			end
-			return second
+			return { status = first.status, detail = "session_lost: " .. (first.detail or Mcp.EXITED), lost = true }
 		end,
 		close = drop,
 	}
@@ -249,7 +227,7 @@ local function attach(options: Options): (Session?, Refusal?)
 	local playing: boolean? = if priorMode == "play" then true else false
 	local closed: Cleanup? = nil
 
-	local function dispatch(tool: string, argumentsJson: string, cleaning: boolean): Response
+	local function dispatch(tool: string, argumentsJson: string, cleaning: boolean, replaySafe: boolean?): Response
 		local decoded, fields: unknown = pcall(Wire.parse, argumentsJson)
 		if not decoded or type(fields) ~= "table" then
 			return unsent "request arguments are not a JSON object"
@@ -286,7 +264,7 @@ local function attach(options: Options): (Session?, Refusal?)
 		end
 		local slot: { done: boolean, exchange: Mcp.Exchange? } = { done = false, exchange = nil }
 		task.spawn(function()
-			local sent, value: unknown = pcall(transport.call, tool, argumentsJson, limit)
+			local sent, value: unknown = pcall(transport.call, tool, argumentsJson, limit, replaySafe)
 			slot.exchange = if sent
 				then value :: Mcp.Exchange
 				else { status = "unanswered", detail = "transport raised: " .. tostring(value) }
@@ -391,14 +369,15 @@ local function attach(options: Options): (Session?, Refusal?)
 		return dispatch(tool, argumentsJson, false)
 	end
 
-	local function execute(datamodel: string, code: string): Response
+	local function execute(datamodel: string, code: string, replaySafe: boolean?): Response
 		if not DATAMODELS[datamodel] then
 			return unsent("unknown datamodel " .. datamodel)
 		end
 		return dispatch(
 			EXECUTE,
 			argumentsFor(',"datamodel_type":' .. json.serialize(datamodel) .. ',"code":' .. json.serialize(code)),
-			false
+			false,
+			replaySafe
 		)
 	end
 
@@ -437,8 +416,8 @@ local function attach(options: Options): (Session?, Refusal?)
 	local function report(datamodel: string, code: string, runId: string, onPoll: (() -> ())?): ReportResponse
 		local last: Response? = nil
 		local outcome = Detached.run {
-			execute = function(model: string, source: string): Detached.Reply
-				local response = execute(model, source)
+			execute = function(model: string, source: string, replaySafe: boolean?): Detached.Reply
+				local response = execute(model, source, replaySafe)
 				last = response
 				return {
 					ok = response.ok,

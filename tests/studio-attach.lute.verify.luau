@@ -796,7 +796,7 @@ return function(suite: Verify.Harness)
 			return script, root
 		end
 
-		suite:case("returns unsent at once for a pipe with no reader and never hangs", function(check)
+		suite:case("reopens a pipe with no reader without repeating its uncertain call", function(check)
 			local script, root = child(check)
 			local connection = Mcp.connect(script, root .. "/direct", os.clock() + 5)
 			check:expect(connection.callRaw("echo", "{}", os.clock() + 5).status):toBe "answered"
@@ -806,10 +806,9 @@ return function(suite: Verify.Harness)
 			check:expect(dying.lost):toBe(true)
 			check:expect(os.clock() - began < 4):toBe(true)
 			local after = os.clock()
-			local unsent = connection.callRaw("echo", "{}", os.clock() + 5)
-			check:expect(unsent.status):toBe "unsent"
-			check:expect(unsent.detail):toBe(Mcp.EXITED)
-			check:expect(os.clock() - after < 2):toBe(true)
+			local resumed = connection.callRaw("echo", "{}", os.clock() + 5)
+			check:expect(resumed.status):toBe "answered"
+			check:expect(os.clock() - after < 5):toBe(true)
 			connection.close()
 		end)
 
