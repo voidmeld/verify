@@ -242,7 +242,7 @@ The collector reads each property in a protected call, so a missing property rea
 | `touch-target-small` | medium | A control is smaller than `minTouchTarget` (default 44) times the scale, on a touch device. |
 | `interactive-overlap` | medium | Two controls in the same root partly overlap. A control that is the ancestor of the other, or whose rectangle holds the whole rectangle of the other (for example a full-screen scrim behind a dialog), does not count. |
 | `gamepad-unreachable` | medium | A control is not selectable, or no selection path from the selected or top-left control reaches it. |
-| `focus-hidden` | medium | A selectable control has an invisible `SelectionImageObject`. |
+| `focus-hidden` | medium | On a gamepad device: a selectable control has an invisible `SelectionImageObject`. |
 | `selection-link-broken` | low | `NextSelection*` names a control that is hidden or not selectable. |
 | `press-feedback-missing` | low | With `pressFeedback = true` only: a button has no automatic color, hover image, pressed image or `stateStyled` state. |
 | `type-scale` | low | Each distinct text size above `maxTypeSizes` (default 6). |

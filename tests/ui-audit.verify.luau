@@ -352,6 +352,8 @@ return function(suite: Verify.Harness)
 			local report = Audit.analyze(dump(elements))
 			context:expect(paths(report, "focus-hidden")):toEqual { "Gui.NoFocus" }
 			context:expect(count(report, "press-feedback-missing")):toBe(0)
+			local pointer = Audit.analyze(dump(elements), { gamepad = false })
+			context:expect(count(pointer, "focus-hidden")):toBe(0)
 			local strict = Audit.analyze(dump(elements), { pressFeedback = true })
 			context:expect(paths(strict, "press-feedback-missing")):toEqual { "Gui.Flat" }
 		end)

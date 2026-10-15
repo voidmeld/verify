@@ -356,7 +356,7 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 		if element.interactive and element.focus ~= nil then
 			local focus = element.focus :: Focus
-			if element.selectable and focus.selectionImage == "hidden" then
+			if resolved.gamepad and element.selectable and focus.selectionImage == "hidden" then
 				add("focus-hidden", element, "the selection image is invisible", nil)
 			end
 			if
