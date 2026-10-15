@@ -52,6 +52,73 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("roblox test environment", function()
+		suite:case("retains unobserved fires when signals are first read and connected", function(check)
+			local env = environment()
+			local widget = env.createInstance "Widget"
+			widget.Count = 1
+			widget.Count = 2
+			widget:SetAttribute("Probe", 1)
+			env.fire(widget, "Pinged", "before")
+			local changed = widget:GetPropertyChangedSignal "Count"
+			local attribute = widget:GetAttributeChangedSignal "Probe"
+			local pinged = widget.Pinged :: Environment.Signal
+			check:expect(env.firesOf(changed)):toEqual(2)
+			check:expect(env.firesOf(attribute)):toEqual(1)
+			check:expect(env.signalOf(widget, "Pinged").fires()):toEqual(1)
+			check:expect(env.liveConnections()):toEqual(0)
+			local calls: { string } = {}
+			changed:Connect(function()
+				table.insert(calls, "property")
+			end)
+			attribute:Connect(function()
+				table.insert(calls, "attribute")
+			end)
+			local connection = pinged:Connect(function(value: unknown)
+				table.insert(calls, tostring(value))
+			end)
+			check:expect(calls):toEqual {}
+			widget.Count = 3
+			widget:SetAttribute("Probe", 2)
+			env.fire(widget, "Pinged", "after")
+			check:expect(calls):toEqual { "property", "attribute", "after" }
+			check:expect(env.firesOf(changed)):toEqual(3)
+			widget:Destroy()
+			check:expect(connection.Connected):toEqual(false)
+			check:expect(env.liveConnections()):toEqual(0)
+			check:expect(env.signalOf(widget, "Destroying").fires()):toEqual(1)
+		end)
+
+		suite:case("materializes a later signal during an earlier notification", function(check)
+			local env = environment()
+			local widget = env.createInstance "Widget"
+			widget.Count = 1
+			local changes: { string } = {}
+			widget:GetPropertyChangedSignal("Count"):Connect(function()
+				check:expect(env.signalOf(widget, "Changed").fires()):toEqual(1)
+				widget.Changed:Connect(function(property: string)
+					table.insert(changes, property)
+				end)
+			end)
+			widget.Count = 2
+			check:expect(changes):toEqual { "Count" }
+			check:expect(env.signalOf(widget, "Changed").fires()):toEqual(2)
+		end)
+
+		suite:case("retains unobserved hierarchy fires through removal and destruction", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local child = env.createInstance("Folder", { Parent = parent })
+			child.Parent = nil
+			check:expect(env.signalOf(parent, "ChildAdded").fires()):toEqual(1)
+			check:expect(env.signalOf(parent, "ChildRemoved").fires()):toEqual(1)
+			check:expect(env.signalOf(parent, "DescendantAdded").fires()):toEqual(1)
+			check:expect(env.signalOf(parent, "DescendantRemoving").fires()):toEqual(1)
+			check:expect(env.signalOf(child, "AncestryChanged").fires()):toEqual(2)
+			check:expect(env.firesOf(child:GetPropertyChangedSignal "Parent")):toEqual(2)
+			child:Destroy()
+			check:expect(env.signalOf(child, "Destroying").fires()):toEqual(1)
+		end)
+
 		suite:case("lets a class override a builtin with its own method", function(check)
 			local env = environment()
 			local calls = 0

@@ -208,9 +208,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return guarded((body :: unknown) :: (...unknown) -> ...unknown)
 	end
 
-	local function newSignal<A...>(): Signal<A...>
+	local function newSignal<A...>(initialFires: number?): Signal<A...>
 		local live: { { handler: (A...) -> (), connected: boolean, connection: Connection } } = {}
-		local fired = 0
+		local fired = initialFires or 0
 		local signal = {} :: Signal<A...>
 		function signal:Connect(handler: (A...) -> ()): Connection
 			local connection = { Connected = true } :: Connection
@@ -233,6 +233,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		local function dispatch(_self: Signal<A...>, ...: A...)
 			fired += 1
+			if #live == 0 then
+				return
+			end
 			for _, record in table.clone(live) do
 				if record.connected then
 					local ok, thrown: unknown = pcall(record.handler, ...)
@@ -271,10 +274,20 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local function signalFor(state: State, key: string): Signal
 		local existing = state.signals[key]
 		if existing == nil then
-			existing = newSignal()
+			existing = newSignal(state.signalFires[key])
 			state.signals[key] = existing
+			state.signalFires[key] = nil
 		end
 		return existing
+	end
+
+	local function fireSignal(state: State, key: string, ...: unknown)
+		local signal = state.signals[key]
+		if signal ~= nil then
+			signal:Fire(...)
+		else
+			state.signalFires[key] = (state.signalFires[key] or 0) + 1
+		end
 	end
 
 	local function describe(state: State): string
@@ -323,8 +336,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function changed(object: Instance, state: State, property: string)
-		signalFor(state, "prop:" .. property):Fire()
-		signalFor(state, "Changed"):Fire(property)
+		fireSignal(state, "prop:" .. property)
+		fireSignal(state, "Changed", property)
 	end
 
 	local function subtree(object: Instance): { Instance }
@@ -363,7 +376,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		for _, descendant in objects do
 			for _, ancestor in before do
 				if table.find(after, ancestor) == nil then
-					signalFor(stateOf(ancestor), "DescendantRemoving"):Fire(descendant)
+					fireSignal(stateOf(ancestor), "DescendantRemoving", descendant)
 				end
 			end
 		end
@@ -382,21 +395,21 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			stateOf(descendant).removing = false
 		end
 		if previous ~= nil then
-			signalFor(stateOf(previous), "ChildRemoved"):Fire(object)
+			fireSignal(stateOf(previous), "ChildRemoved", object)
 		end
 		if parent ~= nil then
-			signalFor(stateOf(parent), "ChildAdded"):Fire(object)
+			fireSignal(stateOf(parent), "ChildAdded", object)
 		end
 		for _, descendant in objects do
 			for _, ancestor in after do
 				if table.find(before, ancestor) == nil then
-					signalFor(stateOf(ancestor), "DescendantAdded"):Fire(descendant)
+					fireSignal(stateOf(ancestor), "DescendantAdded", descendant)
 				end
 			end
 		end
 		changed(object, state, "Parent")
 		for _, descendant in objects do
-			signalFor(stateOf(descendant), "AncestryChanged"):Fire(object, parent)
+			fireSignal(stateOf(descendant), "AncestryChanged", object, parent)
 		end
 	end
 
@@ -433,7 +446,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		inject("destroy", describe(state), object, nil, nil)
 		state.destroying = true
-		signalFor(state, "Destroying"):Fire()
+		fireSignal(state, "Destroying")
 		move(object, state, nil)
 		for _, child in table.clone(state.children) do
 			destroy(child, stateOf(child))
@@ -717,8 +730,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 					return
 				end
 				state.attributes[name] = value
-				signalFor(state, "attr:" .. name):Fire()
-				signalFor(state, "AttributeChanged"):Fire(name)
+				fireSignal(state, "attr:" .. name)
+				fireSignal(state, "AttributeChanged", name)
 			end
 		elseif key == "GetAttribute" then
 			return function(_self: Instance, name: string): unknown
@@ -885,6 +898,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				attributes = {},
 				tags = {},
 				signals = {},
+				signalFires = {},
 				extras = {},
 				doubles = {},
 				destroyed = false,
@@ -1050,7 +1064,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			if not state.class.events[event] then
 				memberError(state, event)
 			end
-			signalFor(state, event):Fire(...)
+			fireSignal(state, event, ...)
 		end) :: unknown
 	) :: (object: Instance, event: string, ...unknown) -> ()
 	environment.fakeOn = function<A..., R...>(object: Instance, name: string, handler: (Instance, A...) -> R...)

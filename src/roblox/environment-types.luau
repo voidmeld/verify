@@ -173,6 +173,7 @@ export type State = {
 	attributes: { [string]: unknown },
 	tags: { [string]: boolean },
 	signals: { [string]: Signal },
+	signalFires: { [string]: number },
 	extras: { [string]: boolean },
 	doubles: { [string]: unknown },
 	destroyed: boolean,
