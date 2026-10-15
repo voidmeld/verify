@@ -26,33 +26,9 @@ export type Options<S = Surface> = {
 	selection: Selection?,
 }
 
-export type ProvidedOptions<S> = {
-	executor: string,
-	bind: ((Harness.Context) -> Operations.Host)?,
-	cancelled: (() -> boolean)?,
-	environment: { [string]: string },
-	capabilities: { string }?,
-	now: (() -> number)?,
-	surface: SurfaceFactory<S>,
+export type ProvidedOptions<S> = Options<S> & { surface: SurfaceFactory<S> }
 
-	runtimeVerbs: { string }?,
-	prefixCaseIds: boolean?,
-	selection: Selection?,
-}
-
-export type DefaultOptions = {
-	executor: string,
-	bind: ((Harness.Context) -> Operations.Host)?,
-	cancelled: (() -> boolean)?,
-	environment: { [string]: string },
-	capabilities: { string }?,
-	now: (() -> number)?,
-	surface: nil,
-
-	runtimeVerbs: { string }?,
-	prefixCaseIds: boolean?,
-	selection: Selection?,
-}
+export type DefaultOptions = Options<Surface> & { surface: nil }
 
 export type Session<S = Surface> = {
 	verbs: S,
