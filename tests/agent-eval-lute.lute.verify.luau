@@ -1,10 +1,12 @@
 --!strict
 
+local process = require "@std/process"
 local AgentEval = require "../src/agent-eval"
 local Verify = require "../src/core"
 
 local binding = AgentEval.lute
 local ROOT = binding.absolute ".lute/tmp/agent-eval-lute"
+local LUTE = binding.absolute(tostring(process.execPath()))
 
 local AGENT = [[
 local io = require("@lute/io")
@@ -12,18 +14,23 @@ local process = require("@std/process")
 local task = require("@std/task")
 local ok, input = pcall(io.read)
 local echoed = if ok then string.gsub(input, "%s+$", "") else ""
-print('{"type":"system","subtype":"init","echo":"' .. echoed .. '"}')
+io.write('{"echo":"' .. echoed .. '"}\n')
 task.wait(0.4)
-print('{"type":"result","subtype":"success"}')
+io.write('{"type":"result"}\n')
 process.exit(3)
 ]]
-
-local SHELL_AGENT = [[read line; echo "{\"echo\":\"$line\"}"; sleep 0.4; echo '{"type":"result"}'; exit 3]]
 
 local SLEEPER = [[
 local task = require("@std/task")
 task.wait(30)
 print("late")
+]]
+
+local ECHO_ARGUMENTS = [[
+local process = require("@std/process")
+for index = 2, #process.args do
+	print("<" .. process.args[index] .. ">")
+end
 ]]
 
 local function prepare(): string
@@ -34,6 +41,7 @@ local function prepare(): string
 	files.makeDirectory(ROOT .. "/scratch")
 	files.write(ROOT .. "/agent.luau", AGENT)
 	files.write(ROOT .. "/sleeper.luau", SLEEPER)
+	files.write(ROOT .. "/arguments.luau", ECHO_ARGUMENTS)
 	files.write(ROOT .. "/prompt.md", "hello")
 	return ROOT
 end
@@ -44,7 +52,7 @@ return function(suite: Verify.Harness)
 			local root = prepare()
 			local services = binding.services { workspaces = root .. "/live" }
 			local execution = services.execute {
-				argv = { "sh", "-c", SHELL_AGENT },
+				argv = { LUTE, "run", root .. "/agent.luau" },
 				cwd = root,
 				input = root .. "/prompt.md",
 				deadlineSeconds = 60,
@@ -67,7 +75,7 @@ return function(suite: Verify.Harness)
 			local root = prepare()
 			local services = binding.services { workspaces = root .. "/live" }
 			local plain = services.execute {
-				argv = { "lute", "run", root .. "/agent.luau" },
+				argv = { LUTE, "run", root .. "/agent.luau" },
 				cwd = root,
 				input = nil,
 				deadlineSeconds = 60,
@@ -76,9 +84,9 @@ return function(suite: Verify.Harness)
 			}
 			context:expect(plain.exitcode):toBe(3)
 			context:expect(plain.lines[1].at):toBe(nil)
-			context:expect(plain.lines[1].text):toBe '{"type":"system","subtype":"init","echo":""}'
+			context:expect(plain.lines[1].text):toBe '{"echo":""}'
 			local late = services.execute {
-				argv = { "lute", "run", root .. "/sleeper.luau" },
+				argv = { LUTE, "run", root .. "/sleeper.luau" },
 				cwd = root,
 				input = nil,
 				deadlineSeconds = 1,
@@ -87,6 +95,32 @@ return function(suite: Verify.Harness)
 			}
 			context:expect(late.timedOut):toBe(true)
 			context:expect(#late.lines):toBe(0)
+		end)
+
+		suite:case("passes arguments with spaces, quotes and backslashes unchanged", function(context)
+			local root = prepare()
+			local services = binding.services { workspaces = root .. "/live" }
+			local words = { "plain", "two words", 'say "hi"', "trailing\\", 'back\\"quote', "", "tab\tand" }
+			local argv = { LUTE, "run", root .. "/arguments.luau" }
+			local expected: { string } = {}
+			for _, word in words do
+				table.insert(argv, word)
+				table.insert(expected, "<" .. word .. ">")
+			end
+			local execution = services.execute {
+				argv = argv,
+				cwd = root,
+				input = nil,
+				deadlineSeconds = 60,
+				stamp = false,
+				scratch = root .. "/scratch",
+			}
+			context:expect(execution.exitcode):toBe(0)
+			local echoed: { string } = {}
+			for _, line in execution.lines do
+				table.insert(echoed, line.text)
+			end
+			context:expect(echoed):toEqual(expected)
 		end)
 
 		suite:case("copies, lists, moves and removes trees through the file binding", function(context)
