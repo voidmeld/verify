@@ -119,50 +119,22 @@ local function unsent(detail: string, refused: boolean?, expired: boolean?): Res
 end
 
 local function mcpTransport(executable: string, directory: string): Transport
-	local connection: Mcp.Connection? = nil
-	local generation = 0
-	local wasLost = false
-	local function open(limit: number): (Mcp.Connection?, string?)
-		generation += 1
-		local opened, value: unknown =
-			pcall(Mcp.connect, executable, ("%s/mcp-%d"):format(directory, generation), limit)
-		if not opened then
-			return nil, tostring(value)
-		end
-		wasLost = false
-		return value :: Mcp.Connection, nil
-	end
-	local function drop()
-		local active = connection
-		connection = nil
-		if active ~= nil then
-			active.close()
-		end
-	end
+	local connection = Mcp.connect(executable, directory, math.huge)
 	return {
 		call = function(tool, argumentsJson, deadline, replaySafe)
-			if connection == nil then
-				local fresh, problem = open(deadline)
-				if fresh == nil then
-					if wasLost then
-						return { status = "unsent", detail = "session_lost: " .. (problem or Mcp.EXITED), lost = true }
-					end
-					return { status = "unsent", detail = problem }
-				end
-				connection = fresh
+			local exchange = connection.callRaw(tool, argumentsJson, deadline, replaySafe)
+			if exchange.lost == true then
+				return {
+					status = exchange.status,
+					detail = "session_lost: " .. (exchange.detail or Mcp.EXITED),
+					lost = true,
+				}
 			end
-			local first = (connection :: Mcp.Connection).callRaw(tool, argumentsJson, deadline, replaySafe)
-			if first.lost ~= true then
-				return first
-			end
-			drop()
-			wasLost = true
-			return { status = first.status, detail = "session_lost: " .. (first.detail or Mcp.EXITED), lost = true }
+			return exchange
 		end,
-		close = drop,
+		close = connection.close,
 	}
 end
-
 local function discovered(text: string): { StudioInfo }
 	local seen: { [string]: string } = {}
 	local function visit(value: unknown)
