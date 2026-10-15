@@ -42,6 +42,7 @@ export type Disposable<T = unknown> = {
 export type Resource<T = unknown> = (() -> ()) | (T & { dispose: (T) -> () }) | (T & { destroy: (T) -> () })
 
 export type Context = {
+	id: string,
 	unsupported: (self: Context, requirement: string) -> never,
 	await: <I, O>(
 		self: Context,
@@ -531,6 +532,7 @@ local function createHarness(options: {
 		local runtimeSkipReason: string? = nil
 		local started = now()
 		local context = {} :: Context
+		context.id = entry.id
 		local deadline = if entry.timeoutSeconds then started + entry.timeoutSeconds else math.huge
 		local host: Operations.Host? = nil
 		local evidence: Types.Evidence = { observations = {}, checkpoints = {}, reviews = {}, measurements = {} }

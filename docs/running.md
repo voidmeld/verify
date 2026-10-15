@@ -79,6 +79,33 @@ Exit zero means that the report is nonempty and every selected case passed.
 Skips, unsupported requirements, timeouts, partial reports and failed cleanup exit nonzero.
 A selected pass is not whole-project acceptance.
 
+Studio platform runs collect `MessageError` and `MessageWarning` entries from the server and every joined client.
+Each case drains the collectors after its other cleanup and attaches `engine.log`, including actor and any source path and line supplied by Roblox.
+An unexpected error fails the case; warnings remain evidence. An entry factory can declare `expectedErrors = { [caseId] = { "literal error text" } }`.
+Only errors containing a declared literal are expected. Other errors still fail, including errors during cleanup.
+Engine sources rooted at `CorePackages`, `CoreGui` and `ScriptContext` are filtered; matching words in an application message are retained.
+Collectors start before Play in launched fixtures and replay available log history when connecting, so startup crashes reach the first executed case.
+Attached runs connect in Play and include the available history of that Play session. Roblox bounds that history; earlier entries may already be gone.
+A plain warning may carry no location. Verify retains the message and does not invent a source or line.
+Failure to install or drain a collector fails the run or case. A fake-host pass proves no native log delivery.
+
+To probe structured logging on an already open Studio, run this in Edit:
+
+```sh
+lute run tools/logservice-spike.luau <studio-id> install
+```
+
+Start Play yourself, wait five seconds, and run:
+
+```sh
+lute run tools/logservice-spike.luau <studio-id> read
+```
+
+The read probes Server and Client only. `roundTrips` records whether each Logger method preserves context through `MessageOut` and `GetLogHistory`; the raw dictionaries remain in the output.
+`Error` throws even when it emits successfully, so its call failure alone does not disprove delivery.
+Stop Play yourself afterward. Remove `VerifyLogSpike` from ReplicatedStorage and the two `VerifyLogSpikeServer` and `VerifyLogSpikeClient` scripts before reinstalling.
+The progress channel keeps its framed console path until a native spike proves structured context delivery.
+
 Each run keeps `report.json`, `summary.txt` and the available artifacts together.
 Simulator output is in `host.log`. Studio process and MCP diagnostics are below `studio/`.
 A failed native launch keeps its diagnostics.

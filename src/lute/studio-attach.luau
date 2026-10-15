@@ -10,6 +10,7 @@ local Mcp = require "./studio-mcp"
 local Progress = require "./studio-progress"
 local Reply = require "./studio-reply"
 local Wire = require "./wire"
+local Logs = require "./studio-logs"
 
 export type StudioInfo = { id: string, name: string }
 
@@ -487,6 +488,17 @@ export type SessionRun = {
 }
 
 local function runSession(opened: Session, options: SessionRun, directory: string, runId: string): Core.BatchOutcome
+	if options.context ~= "Edit" then
+		for _, model in { "Server", "Client" } do
+			local prepared = opened.execute(model, Logs.source)
+			if not prepared.ok then
+				return {
+					status = if prepared.expired then "timed_out" else "faulted",
+					detail = describe("install " .. model .. " logs", prepared),
+				}
+			end
+		end
+	end
 	local token = string.format("%q", runId)
 	local progressPath = options.progressFile
 	local listening: Progress.Listener? = nil

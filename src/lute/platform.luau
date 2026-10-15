@@ -15,6 +15,7 @@ local Published = require "./published-source"
 local Studio = require "./studio"
 local Attach = require "./studio-attach"
 local Wire = require "./wire"
+local Logs = require "./studio-logs"
 
 type Attachments_Limits = Core.AttachmentLimits
 
@@ -84,7 +85,9 @@ local function engineCode(framework: string, entry: string, ids: { string }?, ho
 		.. (host or "studio")
 		.. "', "
 		.. literalIds(ids)
-		.. ", progress, runId)\n"
+		.. ", progress, runId"
+		.. (if host == nil or host == "studio" then ", " .. Logs.drain else "")
+		.. ")\n"
 		.. "return game:GetService('HttpService'):JSONEncode(Channel.envelope(runId, report))"
 end
 

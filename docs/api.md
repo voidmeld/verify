@@ -1,6 +1,7 @@
 # API reference
 
 Verify gives each case an isolated lifecycle and records the result in a report.
+The case context exposes its registered case ID as `context.id`.
 Start with cases and assertions.
 Use sessions, plans and host adapters when you coordinate several sources or collect observations on another host.
 

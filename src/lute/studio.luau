@@ -15,6 +15,7 @@ local Processes = require "./studio-processes"
 local Reply = require "./studio-reply"
 local Install = require "./studio-install"
 local Launch = require "./studio-launch"
+local Logs = require "./studio-logs"
 
 local CALL_SECONDS = 30
 
@@ -70,6 +71,8 @@ local function worker(path: string)
 				.. "); return game:GetService('ReplicatedStorage'):GetAttribute('VerifyRun')",
 		}))
 		assert(string.find(edit, runId, 1, true) ~= nil, "Studio did not acknowledge run identity")
+		local installedLogs = session.execute("Edit", Logs.install)
+		assert(installedLogs.ok, installedLogs.detail)
 		local progressToken = Detached.tokenFor(runId)
 		local players = fields.players
 		local datamodel = textField "context"

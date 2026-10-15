@@ -677,10 +677,13 @@ return function(suite: Verify.Harness)
 					"execute_luau",
 					"execute_luau",
 					"execute_luau",
+					"execute_luau",
+					"execute_luau",
 					"screen_capture",
 					"start_stop_play",
 				}
-				check:expect(self.calls[3].arguments.datamodel_type):toEqual "Client"
+				check:expect(self.calls[3].arguments.datamodel_type):toEqual "Server"
+				check:expect(self.calls[4].arguments.datamodel_type):toEqual "Client"
 				check:expect(self.playing):toEqual(false)
 			end,
 		})
