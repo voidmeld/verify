@@ -24,9 +24,9 @@ local function sortedUnique(values: { string }?, label: string): { string }
 	return result
 end
 
-local function setOf(values: { string }): { [string]: boolean }
+local function setOf(values: { string }?): { [string]: boolean }
 	local result: { [string]: boolean } = {}
-	for _, value in values do
+	for _, value in values or ({} :: { string }) do
 		result[value] = true
 	end
 	return result
@@ -71,4 +71,5 @@ return {
 	union = union,
 	explain = explain,
 	sorted = sortedUnique,
+	set = setOf,
 }

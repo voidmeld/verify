@@ -1,5 +1,6 @@
 --!strict
 
+local Capability = require "./capability"
 local Attachment = require "./attachment"
 local Matchers = require "./matchers"
 local ReportModel = require "./report"
@@ -182,22 +183,7 @@ local function checkedName(kind: string, name: string): string
 	return name
 end
 
-local function copySortedUnique(values: { string }?, label: string): { string }
-	local seen: { [string]: boolean } = {}
-	local copy: { string } = {}
-	local sourceValues: { string } = if values ~= nil then values else {}
-	for _, value in sourceValues do
-		if value == "" then
-			error(label .. " values must not be empty", 3)
-		end
-		if not seen[value] then
-			seen[value] = true
-			table.insert(copy, value)
-		end
-	end
-	table.sort(copy)
-	return copy
-end
+local copySortedUnique = Capability.sorted
 
 local function copyEnvironment(values: { [string]: string }?): { [string]: string }
 	local result: { [string]: string } = {}
@@ -254,14 +240,7 @@ local function defaultInvoke(_phase: Types.InvocationPhase, run: () -> ()): Invo
 	return if ok then { outcome = "returned" } else { outcome = "failed", error = result }
 end
 
-local function selectionSet(values: { string }?): { [string]: boolean }
-	local result: { [string]: boolean } = {}
-	local sourceValues: { string } = if values ~= nil then values else {}
-	for _, value in sourceValues do
-		result[value] = true
-	end
-	return result
-end
+local selectionSet = Capability.set
 
 local function intersects(values: { string }, wanted: { [string]: boolean }): boolean
 	for _, value in values do
@@ -514,7 +493,6 @@ local function createHarness(options: {
 				artifacts = {},
 				limitations = base.limitations,
 				missingCapabilities = missing,
-				skipReason = nil,
 				origin = runOrigin,
 			}
 		end
