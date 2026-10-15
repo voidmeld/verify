@@ -3,7 +3,6 @@
 local fs = require "@std/fs"
 local process = require "@std/process"
 local system = require "@std/system"
-local task = require "@std/task"
 local json = require "@std/json"
 local Core = require "../core"
 local Attach = require "./studio-attach"
@@ -35,26 +34,6 @@ export type Options = {
 	progressFile: string?,
 }
 
-local function studios(connection: Mcp.Connection): { [string]: string }
-	local result: { [string]: string } = {}
-	local function visit(value: unknown)
-		if type(value) ~= "table" then
-			return
-		end
-		local fields = value :: { [unknown]: unknown }
-		if type(fields.id) == "string" and type(fields.name) == "string" then
-			result[fields.id] = fields.name
-		end
-		for _, child in fields do
-			if type(child) == "table" then
-				visit(child)
-			end
-		end
-	end
-	visit(Wire.parse(Reply.texts(connection.call("list_roblox_studios", {}))))
-	return result
-end
-
 local function worker(path: string)
 	local fields = Mcp.record(Wire.parse(fs.readFileToString(path)))
 	local function textField(name: string): string
@@ -66,37 +45,25 @@ local function worker(path: string)
 	local seconds = fields.deadlineSeconds
 	assert(type(seconds) == "number" and seconds > 0, "native worker requires a deadline")
 	local deadline = os.clock() + seconds
-	local connection = Mcp.connect(textField "mcpExecutable", directory .. "/mcp", deadline)
-	local pid: number? = nil
-	local before = Processes.snapshot()
-	local studioId: string? = nil
+	local launched, failure = Launch.open({
+		place = textField "place",
+		studioExecutable = textField "studioExecutable",
+		mcpExecutable = textField "mcpExecutable",
+		runSeconds = seconds,
+		callSeconds = CALL_SECONDS,
+	}, directory, textField "place", textField "placeName", deadline)
+	assert(launched ~= nil, failure)
+	local owner = launched :: Launch.Launched
+	local session = owner.session
+	local function call(tool: string, arguments: { [string]: unknown }): unknown
+		local response = session.call(tool, Wire.encode(arguments))
+		assert(response.ok, response.detail)
+		return response.result
+	end
 	local ok, reason = pcall(function()
-		local previous = studios(connection)
-		pid = Processes.start(
-			textField "studioExecutable",
-			textField "place",
-			textField "placeName",
-			deadline,
-			directory .. "/studio.log"
-		)
-		local selected: string? = nil
-		while selected == nil do
-			local candidates: { string } = {}
-			for id, name in studios(connection) do
-				if not previous[id] and name == textField "placeName" then
-					table.insert(candidates, id)
-				end
-			end
-			assert(#candidates <= 1, "multiple Studios appeared during launch; refusing ambiguous target")
-			selected = candidates[1]
-			if selected == nil then
-				task.wait(0.25)
-			end
-		end
-		local id = selected :: string
-		studioId = id
+		local id = session.studio.id
 		local token = string.format("%q", runId)
-		local edit = Reply.texts(connection.call("execute_luau", {
+		local edit = Reply.texts(call("execute_luau", {
 			studio_id = id,
 			datamodel_type = "Edit",
 			code = "game:GetService('ReplicatedStorage'):SetAttribute('VerifyRun', "
@@ -108,36 +75,10 @@ local function worker(path: string)
 		local polling = type(progressPath) == "string" and progressPath ~= ""
 		local listening: Progress.Listener? = if polling
 			then Progress.listener(progressPath :: string, runId, function(): string
-				return Reply.texts(connection.call("get_console_output", { studio_id = id }))
+				return Reply.texts(call("get_console_output", { studio_id = id }))
 			end)
 			else nil
 		local progressToken = Detached.tokenFor(runId)
-		local function engine(datamodel: string, code: string, replaySafe: boolean?): Detached.Reply
-			local limit = math.min(deadline, os.clock() + CALL_SECONDS)
-			local exchange = connection.callRaw(
-				"execute_luau",
-				json.serialize { studio_id = id, datamodel_type = datamodel, code = code },
-				limit,
-				replaySafe
-			)
-			if exchange.status ~= "answered" then
-				return {
-					ok = false,
-					detail = exchange.detail or exchange.status,
-					lost = exchange.lost == true,
-					expired = exchange.lost ~= true and os.clock() >= limit,
-				}
-			end
-			if exchange.detail ~= nil then
-				return { ok = false, detail = exchange.detail, lost = false, expired = false }
-			end
-			local record = Mcp.record(exchange.result)
-			local text = Reply.texts(exchange.result)
-			if record.isError == true then
-				return { ok = false, detail = text, lost = false, expired = false }
-			end
-			return { ok = true, text = text, lost = false, expired = false }
-		end
 		local players = fields.players
 		local datamodel = textField "context"
 		local code: string
@@ -152,7 +93,7 @@ local function worker(path: string)
 				.. "; local ok, result = pcall(function() "
 				.. textField "code"
 				.. " end); game:GetService('StudioTestService'):EndTest(if ok then result else {error = tostring(result)})"
-			connection.call("execute_luau", {
+			call("execute_luau", {
 				studio_id = id,
 				datamodel_type = "Edit",
 				code = "local runner = Instance.new('Script'); runner.Name = 'VerifyServer'; runner.Source = "
@@ -164,7 +105,7 @@ local function worker(path: string)
 				.. tostring(players)
 				.. ", {})"
 		else
-			connection.call("start_stop_play", { studio_id = id, is_start = true })
+			call("start_stop_play", { studio_id = id, is_start = true })
 			datamodel = textField "context"
 			code = "assert(game:GetService('ReplicatedStorage'):GetAttribute('VerifyRun') == "
 				.. token
@@ -175,27 +116,15 @@ local function worker(path: string)
 				.. "; "
 				.. textField "code"
 		end
-		local outcome = Detached.run {
-			execute = engine,
-			datamodel = datamodel,
-			code = code,
-			runId = runId,
-			deadline = deadline,
-			pollSeconds = 1,
-			onPoll = if listening ~= nil then listening.poll else nil,
-		}
+		local outcome = session.report(datamodel, code, runId, if listening ~= nil then listening.poll else nil)
 		if listening ~= nil then
 			listening.finish()
 		end
-		if outcome.status ~= "done" then
-			error(outcome.detail or outcome.status, 0)
-		end
-		local payload = outcome.text :: string
-		local report = Reply.report(payload, runId)
-		assert(report ~= nil, "engine did not return the run-bound report envelope: " .. payload:sub(1, 1000))
+		assert(outcome.report ~= nil, outcome.problem or outcome.response.detail)
+		local report = outcome.report :: Core.Report
 		if fields.finalCapture == true then
 			local image = Reply.saveCapture(
-				connection.call("screen_capture", { studio_id = id, capture_id = "verify-final" }),
+				call("screen_capture", { studio_id = id, capture_id = "verify-final" }),
 				directory,
 				"final"
 			)
@@ -208,20 +137,14 @@ local function worker(path: string)
 		end
 		fs.writeStringToFile(directory .. "/report", Wire.encode(report))
 	end)
-	if studioId ~= nil and fields.players ~= nil then
+	if fields.players ~= nil then
 		pcall(
-			connection.callRaw,
-			"execute_luau",
-			json.serialize {
-				studio_id = studioId,
-				datamodel_type = "Edit",
-				code = "pcall(function() game:GetService('StudioTestService'):EndTest({}) end) return 'ended'",
-			},
-			os.clock() + 5
+			session.execute,
+			"Edit",
+			"pcall(function() game:GetService('StudioTestService'):EndTest({}) end) return 'ended'"
 		)
 	end
-	connection.close()
-	local cleanup = Processes.reap(before, { root = pid, markers = { textField "placeName" } })
+	local cleanup = owner.close()
 	fs.writeStringToFile(
 		directory .. "/cleanup",
 		json.serialize { terminated = cleanup.terminated, survivors = cleanup.survivors }
