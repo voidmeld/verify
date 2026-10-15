@@ -11,8 +11,10 @@ local function receive(message, kind)
     kind = tostring(kind)
     if kind ~= 'Enum.MessageType.MessageError' and kind ~= 'Enum.MessageType.MessageWarning' then return end
     local source, line = string.match(message, '^(.-):(%d+):')
+    local logger = string.match(message, '^%[Roblox%]%[([^%]]+)%]')
+    if logger then source, line = logger, nil end
     local root = source and string.match(source, '^([^%.:/]+)')
-    if root == 'CorePackages' or root == 'CoreGui' or root == 'ScriptContext' then return end
+    if root == 'CorePackages' or root == 'CoreGui' or root == 'ScriptContext' or root == 'Script Context' then return end
     table.insert(rows, {message = message, kind = kind, source = source, line = tonumber(line), actor = if server then 'server' else 'client'})
 end
 for _, entry in logs:GetLogHistory() do receive(entry.message, entry.messageType) end

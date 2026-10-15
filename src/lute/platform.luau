@@ -78,8 +78,8 @@ local function engineCode(framework: string, entry: string, ids: { string }?, ho
 			then "local Progress = require("
 				.. Place.moduleExpression(framework .. "/src/roblox/progress-channel.luau")
 				.. ")\n"
-				.. "local http = game:GetService('HttpService')\n"
-				.. "local progress = Progress.publisher(runId, progressToken, function(value) return http:JSONEncode(value) end, print)\n"
+				.. "local logger = game:GetService('LogService'):GetLogger(Progress.LOGGER)\n"
+				.. "local progress = Progress.publisher(runId, progressToken, function(message, context) logger:Info(message, context) end)\n"
 			else "local progress = nil\n")
 		.. "local report = Entry.run(factory, '"
 		.. (host or "studio")

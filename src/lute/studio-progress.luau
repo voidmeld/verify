@@ -13,13 +13,13 @@ export type Listener = {
 	finish: () -> (),
 }
 
-local function listener(path: string, runId: string, readConsole: () -> string): Listener
+local function listener(path: string, runId: string, readHistory: () -> string): Listener
 	local token = Detached.tokenFor(runId)
 	local polled = 0
 	local rejected, foreign, failures = 0, 0, 0
 	local firstProblem: string? = nil
 	local function read()
-		local collected = ProgressChannel.collect(readConsole(), token, runId, Wire.parse)
+		local collected = ProgressChannel.collect(Wire.parse(readHistory()) :: { unknown }, token, runId)
 		rejected = math.max(rejected, collected.rejected)
 		foreign = math.max(foreign, collected.foreign)
 		if collected.first ~= nil and firstProblem == nil then
@@ -27,6 +27,10 @@ local function listener(path: string, runId: string, readConsole: () -> string):
 		end
 		for _, event in collected.events do
 			if event.sequence > polled then
+				if event.sequence > polled + 1 then
+					rejected += event.sequence - polled - 1
+					firstProblem = firstProblem or "progress history lost events"
+				end
 				polled = event.sequence
 				ProgressFile.append(path, event)
 			end

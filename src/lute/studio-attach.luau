@@ -8,6 +8,7 @@ local Files = require "./files"
 local Install = require "./studio-install"
 local Mcp = require "./studio-mcp"
 local Progress = require "./studio-progress"
+local ProgressChannel = require "../roblox/progress-channel"
 local Reply = require "./studio-reply"
 local Wire = require "./wire"
 local Logs = require "./studio-logs"
@@ -504,9 +505,9 @@ local function runSession(opened: Session, options: SessionRun, directory: strin
 	local injected = ""
 	if progressPath ~= nil and progressPath ~= "" then
 		listening = Progress.listener(progressPath, runId, function(): string
-			local read = opened.console()
+			local read = opened.execute(options.context or "Server", ProgressChannel.read)
 			if not read.ok or read.text == nil then
-				error(describe("console read", read), 0)
+				error(describe("progress history read", read), 0)
 			end
 			return read.text
 		end)

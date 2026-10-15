@@ -136,6 +136,24 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 				if self.lose.execute_luau then
 					return { status = "unanswered", detail = "studio_mcp_exited", lost = true }
 				end
+				if arguments.code == Roblox.progressChannel.read then
+					local make = self.console
+					local runId: string?
+					local token: string?
+					for index = #self.calls_by_source, 1, -1 do
+						local source = self.calls_by_source[index]
+						local foundToken = string.match(source, 'local progressToken = "([^"]+)"')
+						local foundRun = string.match(source, 'local runId = "([^"]+)"')
+						if foundToken ~= nil and foundRun ~= nil then
+							token, runId = foundToken, foundRun
+							break
+						end
+					end
+					if make == nil or runId == nil or token == nil then
+						return { status = "answered", result = text "[]" }
+					end
+					return { status = "answered", result = text(make(runId, token)) }
+				end
 				table.insert(self.calls_by_source, arguments.code :: string)
 				local began = os.clock()
 				local output = self.engine(arguments.datamodel_type :: string, arguments.code :: string)
@@ -143,23 +161,6 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 					return { status = "answered", detail = '{"message":"Request timeout","code":-32603}' }
 				end
 				return { status = "answered", result = text(output) }
-			elseif tool == "get_console_output" then
-				local make = self.console
-				local runId: string?
-				local token: string?
-				for index = #self.calls_by_source, 1, -1 do
-					local source = self.calls_by_source[index]
-					local foundToken = string.match(source, 'local progressToken = "([^"]+)"')
-					local foundRun = string.match(source, 'local runId = "([^"]+)"')
-					if foundToken ~= nil and foundRun ~= nil then
-						token, runId = foundToken, foundRun
-						break
-					end
-				end
-				if make == nil or runId == nil or token == nil then
-					return { status = "answered", result = text "" }
-				end
-				return { status = "answered", result = text(make(runId, token)) }
 			elseif tool == "start_stop_play" then
 				self.playing = arguments.is_start == true
 				return { status = "answered", result = text "ok" }
@@ -844,19 +845,20 @@ return function(suite: Verify.Harness)
 			session.close()
 		end)
 		suite:case(
-			"polls the console for framed progress during an attached run and writes it in order",
+			"polls Logger history for structured progress during an attached run and writes it in order",
 			function(check)
 				local self = fake(ONE)
 				self.console = function(runId: string, token: string): string
-					local lines: { string } = {}
-					local publisher = Roblox.progressChannel.publisher(runId, token, function(value: unknown): string
-						return json.serialize((value :: unknown) :: json.Value)
-					end, function(line: string)
-						table.insert(lines, line)
+					local lines: { unknown } = {}
+					local publisher = Roblox.progressChannel.publisher(runId, token, function(message, context)
+						table.insert(
+							lines,
+							{ message = message, loggerFullPath = Roblox.progressChannel.LOGGER, context = context }
+						)
 					end)
 					publisher.publish("case-1", "server", "first", "started", nil)
 					publisher.publish("case-1", "server", "first", "finished", "passed")
-					return "noise\n" .. table.concat(lines, "\n")
+					return json.serialize((lines :: unknown) :: json.Value)
 				end
 				local directory = Files.claimDirectory(Files.temporary "verify-attach-progress-a")
 				local file = directory .. "/progress.jsonl"
@@ -881,10 +883,13 @@ return function(suite: Verify.Harness)
 					},
 				}
 				check:expect(outcome.status):toEqual "returned"
-				check:expect(table.find(seen, "get_console_output") ~= nil):toBe(true)
+				check:expect(table.find(seen, "get_console_output")):toBeNil()
 				local first = table.find(seen, "execute_luau")
-				local read = table.find(seen, "get_console_output")
-				check:expect(first ~= nil and read ~= nil and (first :: number) < (read :: number)):toBe(true)
+				local read = false
+				for _, call in self.calls do
+					read = read or call.arguments.code == Roblox.progressChannel.read
+				end
+				check:expect(first ~= nil and read):toBe(true)
 				local events = ProgressFile.read(file, runIdSeen)
 				check:expect(#events):toBe(2)
 				check:expect(events[1].sequence):toBe(1)
@@ -900,20 +905,22 @@ return function(suite: Verify.Harness)
 		)
 
 		suite:case(
-			"surfaces rejected progress frames and a refused console read without failing the run",
+			"surfaces rejected progress contexts and a refused history read without failing the run",
 			function(check)
 				local tampered = fake(ONE)
 				tampered.console = function(runId: string, token: string): string
-					local lines: { string } = {}
-					local publisher = Roblox.progressChannel.publisher(runId, token, function(value: unknown): string
-						return json.serialize((value :: unknown) :: json.Value)
-					end, function(line: string)
-						table.insert(lines, line)
+					local lines: { unknown } = {}
+					local publisher = Roblox.progressChannel.publisher(runId, token, function(message, context)
+						table.insert(
+							lines,
+							{ message = message, loggerFullPath = Roblox.progressChannel.LOGGER, context = context }
+						)
 					end)
 					publisher.publish("case-1", "server", "first", "started", nil)
 					publisher.publish("case-1", "server", "first", "finished", "passed")
-					local head, body = string.match(lines[2], "^(.-|%d+|%x+|)(%x+)$")
-					return lines[1] .. "\n" .. (head :: string) .. string.gsub(body :: string, "%d", "1")
+					lines[2] =
+						{ loggerFullPath = Roblox.progressChannel.LOGGER, context = { token = token, event = {} } }
+					return json.serialize((lines :: unknown) :: json.Value)
 				end
 				local directory = Files.claimDirectory(Files.temporary "verify-attach-progress-b")
 				local file = directory .. "/progress.jsonl"
@@ -936,8 +943,8 @@ return function(suite: Verify.Harness)
 					attach = {
 						authorize = function(request): Lute.StudioAuthorization
 							return {
-								ok = request.tool ~= "get_console_output",
-								reason = "console reads are not granted",
+								ok = request.fields.code ~= Roblox.progressChannel.read,
+								reason = "history reads are not granted",
 							}
 						end,
 						studioId = "studio-a",
@@ -946,7 +953,7 @@ return function(suite: Verify.Harness)
 				}
 				check:expect(outcome2.status):toEqual "returned"
 				local diagnostics = fs.readFileToString(second .. "/progress.jsonl.diagnostics")
-				check:expect(diagnostics):toContain "console read"
+				check:expect(diagnostics):toContain "history read"
 				pcall(fs.removeDirectory, second, { recursive = true })
 			end
 		)

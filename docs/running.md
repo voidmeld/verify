@@ -83,7 +83,7 @@ Studio platform runs collect `MessageError` and `MessageWarning` entries from th
 Each case drains the collectors after its other cleanup and attaches `engine.log`, including actor and any source path and line supplied by Roblox.
 An unexpected error fails the case; warnings remain evidence. An entry factory can declare `expectedErrors = { [caseId] = { "literal error text" } }`.
 Only errors containing a declared literal are expected. Other errors still fail, including errors during cleanup.
-Engine sources rooted at `CorePackages`, `CoreGui` and `ScriptContext` are filtered; matching words in an application message are retained.
+Engine sources rooted at `CorePackages`, `CoreGui`, `ScriptContext` and `Script Context` are filtered, including bracketed Logger prefixes; matching words in an application message are retained.
 Collectors start before Play in launched fixtures and replay available log history when connecting, so startup crashes reach the first executed case.
 Attached runs connect in Play and include the available history of that Play session. Roblox bounds that history; earlier entries may already be gone.
 A plain warning may carry no location. Verify retains the message and does not invent a source or line.
@@ -101,10 +101,10 @@ Start Play yourself, wait five seconds, and run:
 lute run tools/logservice-spike.luau <studio-id> read
 ```
 
-The read probes Server and Client only. `roundTrips` records whether each Logger method preserves context through `MessageOut` and `GetLogHistory`; the raw dictionaries remain in the output.
-`Error` throws even when it emits successfully, so its call failure alone does not disprove delivery.
+The read probes four contexts: Server and Client scripts installed before Play, and plugin commands in Server and Client. `roundTrips` records whether each Logger method preserves context through `MessageOut` and `GetLogHistory`; the raw dictionaries remain in the output.
+`Error` can throw even when it emits successfully, so its call failure alone does not disprove delivery.
 Stop Play yourself afterward. Remove `VerifyLogSpike` from ReplicatedStorage and the two `VerifyLogSpikeServer` and `VerifyLogSpikeClient` scripts before reinstalling.
-The progress channel keeps its framed console path until a native spike proves structured context delivery.
+Studio 0.743.0.7431133 on Windows preserved the token, side, sequence and nested payload through both MessageOut and GetLogHistory for Info, Warn, Error, Output and Log in all four contexts. The server flood retained the newest 512 entries in ascending order. Progress uses Logger contexts.
 
 Each run keeps `report.json`, `summary.txt` and the available artifacts together.
 Simulator output is in `host.log`. Studio process and MCP diagnostics are below `studio/`.
@@ -130,9 +130,9 @@ An event is `{ runId, sequence, actor, caseId, step, phase, status? }`. `phase` 
 `sequence` rises by one in each run. A step with no actor reports the actor `case`.
 A watchdog process reads the file. A `started` event with no `finished` event names the actor and step that is still running.
 A file with no new line for too long means a stalled run.
-A launched Studio run reads the console on every poll of the detached run. See [native Studio execution](execution.md#native-studio-execution).
+A launched Studio run reads Logger history on every poll of the detached run. See [native Studio execution](execution.md#native-studio-execution).
 An attached Studio run reports progress the same way. Pass `progressFile` or `onProgress`. See [attached Studio](execution.md#attached-studio).
-A Studio run frames each event as hex text with a token, a length and a checksum, because the Studio console tool rewrites path-shaped text. The host counts frames that it rejects and adds the count to the limitations of the first case. It also writes `<progressFile>.diagnostics`.
+A Studio run emits each event in the context of the VerifyProgress Logger, with a run token. The host reads GetLogHistory directly through execute_luau, validates the context and run identity, orders events and ignores repeats. Roblox bounds the history; sequence gaps, invalid contexts and failed reads produce `<progressFile>.diagnostics` and a limitation on the first case.
 `onProgress` receives the same events in order after the run returns, because a worker process blocks the caller.
 A run with no listener and no file behaves as before. The report is the same, and progress never proves a pass.
 

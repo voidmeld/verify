@@ -254,7 +254,7 @@ The poll finds one of these states:
 | Gone | The play session ended or Studio closed. The run faults with `session_lost`. |
 | No answer until `deadlineSeconds` | The run is `timed_out`. |
 
-Each poll also reads the Studio console for progress when the run has a `progressFile`. An attached run does the same. See [attached Studio](#attached-studio).
+Each poll also reads Logger history for progress when the run has a `progressFile`. An attached run does the same. See [attached Studio](#attached-studio).
 The code must still be valid code for the engine, and it can yield.
 The engine keeps the result in the attributes of `ReplicatedStorage`, named `VerifyRun<digest>_*`.
 Verify clears them after a fetch.
@@ -281,8 +281,8 @@ The default portable gate does not run it and cannot establish native parity.
 Use the native gate when you change engine behavior or the launcher.
 
 Use `basePlace` to run in your own XML place. Verify copies it, mounts the modules and entry scripts, and leaves the rest untouched. See [mounting](running.md#mounting-and-custom-hosts).
-Studio runs report progress through the Studio console. The engine prints one framed `VERIFY_PROGRESS` line for each step event. The frame holds a path-free run token, the length and a checksum of the hex-encoded event, so a rewritten frame is rejected and counted.
-The worker reads the console through `get_console_output` while the run executes and appends each new event to `progressFile`. Only the simulator path was run without Studio.
+Studio runs report progress through the VerifyProgress Logger. Each context holds a run token and the ordinary step event.
+The worker reads structured GetLogHistory contexts through execute_luau while the run executes and appends each new validated event to `progressFile`. Native conformance checks path-shaped step names on both startup-crash fixtures.
 Progress is never evidence. See [watch a run](running.md#watch-a-run).
 
 Set `players = 1..8` to run a server with that many actual Studio clients through `StudioTestService:ExecuteMultiplayerTestAsync`.
@@ -370,11 +370,11 @@ Verify builds, copies and installs nothing.
 Attached runs do not support `players`.
 
 An attached run accepts `progressFile`, and `onProgress` through `Lute.platform.run`. Verify then injects `local progressToken` into the engine code exactly as a launched run does.
-It reads the console during the detached run's poll loop and once more when the run ends, and appends each new event to `progressFile` in order.
-Rejected frames, foreign output and failed reads are counted in `<progressFile>.diagnostics` and added to the limitations of the first case, as for a launched run.
-A console read never fails the run. A run with no `progressFile` and no `onProgress` reads no console and injects no token.
-The console read is its own request kind. Every read is a `get_console_output` request (`Lute.studio.attach` exposes it as `session.console()`), and `authorize` receives it with `tool = "get_console_output"` and `fields = { studio_id }` before it is sent.
-Refuse it to forbid console reads. The run continues, and the refusal appears in the diagnostics as `console read refused`.
+It reads Logger history during the detached run's poll loop and once more when the run ends, and appends each new event to `progressFile` in order.
+Invalid contexts, sequence gaps and failed reads are counted in `<progressFile>.diagnostics` and added to the limitations of the first case, as for a launched run.
+A progress history read never fails the run. A run with no `progressFile` and no `onProgress` reads no progress history and injects no token.
+Each progress read is an execute_luau request in the run context; authorize receives its source in fields.code before it is sent. session.console() remains available for explicit console reads.
+Refusing a progress history read leaves the run verdict unchanged and records the refusal in progress diagnostics.
 A host other than the simulator or Studio refuses `progressFile`, as before.
 They share the Studio of the developer with no isolation, so the work can see and change the state of the open place.
 Use a launched run for isolation.

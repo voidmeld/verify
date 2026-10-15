@@ -69,3 +69,5 @@ local timeout = Lute.studio.run {
 }
 assert(timeout.status == "timed_out", "wedged engine must time out: " .. tostring(timeout.detail))
 print "native conformance: server parity, defect detection, client physics and enforced timeout passed"
+
+require "./native-logs"()

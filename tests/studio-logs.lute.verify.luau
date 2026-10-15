@@ -72,16 +72,35 @@ return function(suite: Core.Harness)
 			local native = fake()
 			native.emit("Server", "CorePackages.Internal:1: engine noise", "MessageError")
 			native.emit("Client", "CoreGui.Internal:2: engine noise", "MessageWarning")
-			native.emit("Server", "ServerScriptService.Game:45: CorePackages in payload", "MessageError")
+			native.emit(
+				"Client",
+				"[Roblox][CoreGui.RobloxGui.Modules.PlayerPermissionsModule] Invalid value for enum CreatorType\nCoreGui.Internal:25: stack",
+				"MessageError"
+			)
+			native.emit("Server", "[Roblox][CorePackages.Internal] engine noise", "MessageError")
+			native.emit("Client", "[Roblox][ScriptContext] engine noise", "MessageError")
+			native.emit(
+				"Client",
+				"[Roblox][Script Context.StarterScript] Script Context.StarterScript:507: engine noise",
+				"MessageError"
+			)
+			native.emit(
+				"Server",
+				"ServerScriptService.Game:45: [Roblox][CoreGui.Internal] CorePackages in payload",
+				"MessageError"
+			)
+			native.emit("Server", "[Roblox][ServerScriptService.Game] CoreGui in payload", "MessageError")
 			native.emit("Client", "Players.Player.Client:9: warning", "MessageWarning")
 			native.emit("Server", "ordinary output", "MessageOutput")
 			local rows = native.drain()
-			check:expect(#rows):toBe(4)
+			check:expect(#rows):toBe(5)
 			check:expect(rows[1].source):toBe "ServerScript"
 			check:expect(rows[1].line):toBe(12)
 			check:expect(rows[2].source):toBe "ServerScriptService.Game"
-			check:expect(rows[4].actor):toBe "client-42"
-			check:expect(rows[4].line):toBe(9)
+			check:expect(rows[3].source):toBe "ServerScriptService.Game"
+			check:expect(rows[3].line):toBeNil()
+			check:expect(rows[5].actor):toBe "client-42"
+			check:expect(rows[5].line):toBe(9)
 			check:expect(#native.drain()):toBe(0)
 		end)
 
