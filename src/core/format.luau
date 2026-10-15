@@ -3,6 +3,12 @@
 local Performance = require "./performance"
 local Types = require "./types"
 
+local function append(lines: { string }): (string, ...unknown) -> ()
+	return function(template: string, ...: unknown)
+		table.insert(lines, if select("#", ...) == 0 then template else string.format(template, ...))
+	end
+end
+
 local function number(value: number?): string
 	return if value == nil then "-" else ("%.4g"):format(value)
 end
@@ -24,44 +30,43 @@ end
 
 local function format(report: Types.Report): string
 	local lines = { ("Verify receipt v%d — %s"):format(report.schemaVersion, report.executor) }
+	local add = append(lines)
 	local environmentKeys: { string } = {}
 	for key in report.environment do
 		table.insert(environmentKeys, key)
 	end
 	table.sort(environmentKeys)
 	for _, key in environmentKeys do
-		table.insert(lines, ("  %s: %s"):format(key, report.environment[key]))
+		add("  %s: %s", key, report.environment[key])
 	end
 	for _, result in report.results do
-		table.insert(lines, ("  %-11s %s"):format(result.status, result.id))
+		add("  %-11s %s", result.status, result.id)
 		if result.skipReason ~= nil then
-			table.insert(lines, "              " .. result.skipReason)
+			add("              " .. result.skipReason)
 		end
 		if #result.missingCapabilities > 0 then
-			table.insert(lines, "              missing: " .. table.concat(result.missingCapabilities, ", "))
+			add("              missing: " .. table.concat(result.missingCapabilities, ", "))
 		end
 		for _, failure in result.failures do
-			table.insert(lines, ("              %s/%s: %s"):format(failure.phase, failure.outcome, failure.message))
+			add("              %s/%s: %s", failure.phase, failure.outcome, failure.message)
 		end
 		if result.evidence ~= nil then
 			for _, measurement in result.evidence.measurements do
-				table.insert(lines, "              " .. measurementLine(measurement))
+				add("              " .. measurementLine(measurement))
 			end
 		end
 	end
-	table.insert(
-		lines,
-		("%d passed, %d failed, %d skipped, %d unsupported, %d timed out, %d cancelled (%d total)"):format(
-			report.passed,
-			report.failed,
-			report.skipped,
-			report.unsupported,
-			report.timedOut,
-			report.cancelled,
-			report.total
-		)
+	add(
+		"%d passed, %d failed, %d skipped, %d unsupported, %d timed out, %d cancelled (%d total)",
+		report.passed,
+		report.failed,
+		report.skipped,
+		report.unsupported,
+		report.timedOut,
+		report.cancelled,
+		report.total
 	)
 	return table.concat(lines, "\n")
 end
 
-return { format = format }
+return { format = format, append = append }
