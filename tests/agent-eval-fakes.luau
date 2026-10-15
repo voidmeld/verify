@@ -46,6 +46,17 @@ local function memory(): Memory
 			directories[built] = true
 		end
 	end
+	local function relocate<T>(store: { [string]: T }, source: string, target: string?)
+		local prefix = source .. "/"
+		for path, value in table.clone(store) do
+			if path == source or string.sub(path, 1, #prefix) == prefix then
+				store[path] = nil
+				if target ~= nil then
+					store[target .. string.sub(path, #source + 1)] = value
+				end
+			end
+		end
+	end
 	local files: AgentEval.Files = {
 		read = function(path: string): string
 			local value = contents[normalize(path)]
@@ -97,18 +108,8 @@ local function memory(): Memory
 		makeDirectory = makeDirectory,
 		remove = function(path: string)
 			local value = normalize(path)
-			contents[value] = nil
-			local prefix = value .. "/"
-			for file in table.clone(contents) do
-				if string.sub(file, 1, #prefix) == prefix then
-					contents[file] = nil
-				end
-			end
-			for directory in table.clone(directories) do
-				if directory == value or string.sub(directory, 1, #prefix) == prefix then
-					directories[directory] = nil
-				end
-			end
+			relocate(contents, value, nil)
+			relocate(directories, value, nil)
 		end,
 		copy = function(from: string, to: string)
 			local source = contents[normalize(from)]
@@ -131,22 +132,8 @@ local function memory(): Memory
 			if not directories[source] then
 				error(("no path %s"):format(from), 0)
 			end
-			local prefix = source .. "/"
-			for file, text in table.clone(contents) do
-				if string.sub(file, 1, #prefix) == prefix then
-					contents[target .. "/" .. string.sub(file, #prefix + 1)] = text
-					contents[file] = nil
-				end
-			end
-			for directory in table.clone(directories) do
-				if directory == source then
-					directories[directory] = nil
-					directories[target] = true
-				elseif string.sub(directory, 1, #prefix) == prefix then
-					directories[directory] = nil
-					directories[target .. "/" .. string.sub(directory, #prefix + 1)] = true
-				end
-			end
+			relocate(contents, source, target)
+			relocate(directories, source, target)
 		end,
 	}
 	return { files = files, contents = contents, directories = directories }
@@ -327,13 +314,10 @@ local function stream(options: StreamOptions): { AgentEval.Line }
 		assistant(at, { { type = "text", text = "working" } })
 		assistant(at + 0.1, { { type = "tool_use", id = tool, name = "Write", input = {} } })
 		at += 1
-		emit(
-			at,
-			{
-				type = "user",
-				message = { role = "user", content = { { type = "tool_result", tool_use_id = tool, content = "ok" } } },
-			}
-		)
+		emit(at, {
+			type = "user",
+			message = { role = "user", content = { { type = "tool_result", tool_use_id = tool, content = "ok" } } },
+		})
 	end
 	if options.result ~= false then
 		at += 0.5
