@@ -6,6 +6,12 @@ local Types = require "./environment-types"
 return table.freeze(({
 	Instance = { creatable = false },
 	Folder = { super = "Instance" },
+	BindableFunction = { super = "Instance", access = { OnInvoke = "callback" }, methods = { Invoke = true } },
+	RemoteFunction = {
+		super = "Instance",
+		access = { OnServerInvoke = "callback", OnClientInvoke = "callback" },
+		methods = { InvokeServer = true, InvokeClient = true },
+	},
 	Model = { super = "Instance", properties = { PrimaryPart = false } },
 	Configuration = { super = "Instance" },
 	BasePart = {

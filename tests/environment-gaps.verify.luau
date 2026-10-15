@@ -118,6 +118,53 @@ local function raisingHandler(): () -> ()
 end
 
 return function(suite: Verify.Harness)
+	suite:suite("member access", function()
+		suite:case(
+			"callback members stay write-only before and after assignment with permissive doubles",
+			function(check)
+				local env =
+					Environment.create { functionDoubles = true, undeclaredWrites = true, undeclaredReads = "nil" }
+				local callbacks: { [string]: { string } } = {
+					RemoteFunction = { "OnServerInvoke", "OnClientInvoke" },
+					BindableFunction = { "OnInvoke" },
+				}
+				for className, members in callbacks do
+					local object = env.createInstance(className)
+					for _, member in members do
+						local expected = member
+							.. " is a callback member of "
+							.. className
+							.. "; you can only set the callback value, get is not available"
+						for _, assigned in { false, true } do
+							if assigned then
+								object[member] = function() end
+							end
+							check
+								:expect(string.find(
+									thrown(function()
+										return object[member]
+									end),
+									expected,
+									1,
+									true
+								) ~= nil)
+								:toBe(true)
+						end
+						check
+							:expect(succeeds(function()
+								object[member] = nil
+							end))
+							:toBe(true)
+						check
+							:expect(succeeds(function()
+								object[member] = 1
+							end))
+							:toBe(false)
+					end
+				end
+			end
+		)
+	end)
 	suite:suite("handler errors", function()
 		suite:case("collect is the default and keeps the errors", function(check)
 			local env = plain()

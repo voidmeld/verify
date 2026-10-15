@@ -67,6 +67,7 @@ export type ClassSpec<P = { [string]: unknown }, M = { [string]: unknown }> = {
 	properties: P?,
 	events: { string }?,
 	methods: M?,
+	access: { [string]: "read" | "write" | "none" | "callback" }?,
 }
 
 export type DefineOptions = {
@@ -159,6 +160,7 @@ export type Environment = {
 
 export type Resolved = {
 	creatable: boolean,
+	access: { [string]: "read" | "write" | "none" | "callback" },
 	properties: { [string]: unknown },
 	events: { [string]: true },
 	methods: { [string]: unknown },

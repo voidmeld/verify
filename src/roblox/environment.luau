@@ -112,6 +112,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		local result: Resolved = {
 			creatable = if spec.creatable ~= nil then spec.creatable else true,
+			access = if parent ~= nil then table.clone(parent.access) else {},
 			properties = if parent ~= nil then table.clone(parent.properties) else { Name = false, Archivable = true },
 			events = if parent ~= nil then table.clone(parent.events) else {},
 			methods = if parent ~= nil then table.clone(parent.methods) else {},
@@ -130,6 +131,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			result.events[event] = true
 		end
 		local declaredMethods: { [string]: unknown } = spec.methods or {}
+		local declaredAccess: { [string]: "read" | "write" | "none" | "callback" } = spec.access or {}
+		for key in declaredAccess do
+			result.access[key] = declaredAccess[key]
+		end
 		for key, method in declaredMethods do
 			result.methods[key] = method
 		end
@@ -775,6 +780,18 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	local function readMember(object: Instance, key: string): unknown
 		local state = stateOf(object)
+		local access = state.class.access[key]
+		if access == "callback" then
+			error(
+				("%s is a callback member of %s; you can only set the callback value, get is not available"):format(
+					key,
+					state.className
+				),
+				2
+			)
+		elseif access == "write" or access == "none" then
+			error(("%s cannot be read on %s"):format(key, describe(state)), 2)
+		end
 		if key == "ClassName" then
 			return state.className
 		elseif key == "Parent" then
@@ -825,6 +842,14 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	local function writeMember(object: Instance, key: string, value: unknown)
 		local state = stateOf(object)
+		local access = state.class.access[key]
+		if access == "callback" then
+			assert(value == nil or type(value) == "function", key .. " must be a function or nil")
+			state.doubles[key] = value
+			return
+		elseif access == "read" or access == "none" then
+			error(("%s is read-only on %s"):format(key, describe(state)), 3)
+		end
 		if key == "Parent" then
 			setParent(object, state, value :: Instance?)
 			return

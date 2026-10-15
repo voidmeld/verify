@@ -1,6 +1,7 @@
 --!strict
 
 local Environment = require "./environment"
+local Classes = require "./environment-classes"
 
 export type Property = { Name: string, Datatype: string, Scriptability: string, Tags: { string } }
 export type Class = {
@@ -48,10 +49,21 @@ local function create(options: Options): Environment.Environment
 		local members = if super then table.clone(properties[super]) else {}
 		local values = if super then table.clone(defaults[super]) else {}
 		local declared: { [string]: unknown } = {}
+		local builtin = Classes[name]
+		local access: { [string]: "read" | "write" | "none" | "callback" } =
+			table.clone(if builtin ~= nil then builtin.access or {} else {})
 		for key, property in class.Properties do
 			if key ~= "ClassName" and key ~= "Parent" then
 				members[key] = property
 				declared[key] = false
+				local mode: ("read" | "write" | "none")? = if property.Scriptability == "None"
+					then "none"
+					elseif property.Scriptability == "Write" then "write"
+					elseif property.Scriptability == "Read" or table.find(property.Tags, "ReadOnly") ~= nil then "read"
+					else nil
+				if mode ~= nil then
+					access[key] = mode
+				end
 			end
 		end
 		for key, value in class.DefaultProperties do
@@ -61,6 +73,7 @@ local function create(options: Options): Environment.Environment
 			super = super,
 			creatable = table.find(class.Tags, "NotCreatable") == nil and table.find(class.Tags, "Service") == nil,
 			properties = declared,
+			access = access,
 			events = class.Events,
 		}
 		properties[name], defaults[name] = members, values
@@ -85,6 +98,12 @@ local function create(options: Options): Environment.Environment
 			end
 		end
 		merged.events, merged.methods = events, overlay.methods
+		local access: { [string]: "read" | "write" | "none" | "callback" } = table.clone(base.access or {})
+		local extraAccess: { [string]: "read" | "write" | "none" | "callback" } = overlay.access or {}
+		for key in extraAccess do
+			access[key] = extraAccess[key]
+		end
+		merged.access = access
 		local declared = table.clone(base.properties or {})
 		local added: { [string]: unknown } = overlay.properties or {}
 		for key, value in added do
@@ -143,14 +162,6 @@ local function create(options: Options): Environment.Environment
 					return options.validateProperty(className, key, value, operation)
 				end
 				return nil
-			end
-			if operation == "set" then
-				assert(
-					table.find(property.Tags, "ReadOnly") == nil
-						and property.Scriptability ~= "Read"
-						and property.Scriptability ~= "None",
-					"read-only property: " .. key
-				)
 			end
 			local expected = property.Datatype
 			local actual = if Environment.isInstance(value) then "Instance" else options.typeName(value)

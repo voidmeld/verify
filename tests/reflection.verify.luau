@@ -23,6 +23,8 @@ local function database(): Reflection.Database
 				Size = property("Size", "Vector3"),
 				Material = property("Material", "Enum.Material"),
 				Mass = property("Mass", "Float32", { "ReadOnly" }),
+				Secret = { Name = "Secret", Datatype = "String", Scriptability = "None", Tags = {} },
+				WriteOnly = { Name = "WriteOnly", Datatype = "String", Scriptability = "Write", Tags = {} },
 			},
 			DefaultProperties = { Mass = 1 },
 			Tags = {},
@@ -44,8 +46,47 @@ local function database(): Reflection.Database
 		end,
 	}
 end
+local function succeeds(callback: () -> ...unknown): boolean
+	return (pcall(callback))
+end
+
 return function(suite: Core.Harness)
 	suite:suite("reflection adapter", function()
+		suite:case("protected and write-only reads cannot escape through doubles or computed getters", function(check)
+			local computed: { [string]: Environment.Computed } = {
+				["Part.Secret"] = function()
+					return "leaked"
+				end,
+			}
+			local env = Reflection.create {
+				database = database(),
+				typeName = typeof,
+				functionDoubles = true,
+				computed = computed,
+			}
+			local part = env.createInstance "Part"
+			part.WriteOnly = "accepted"
+			check
+				:expect(succeeds(function()
+					return part.WriteOnly
+				end))
+				:toBe(false)
+			check
+				:expect(succeeds(function()
+					return part.Secret
+				end))
+				:toBe(false)
+			check
+				:expect(succeeds(function()
+					part.Secret = "denied"
+				end))
+				:toBe(false)
+			check
+				:expect(succeeds(function()
+					part.Mass = function() end
+				end))
+				:toBe(false)
+		end)
 		suite:case(
 			"inherits defaults and rejects unknown, readonly and invalid properties before mutation",
 			function(check)
