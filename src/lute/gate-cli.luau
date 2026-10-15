@@ -31,10 +31,8 @@ local function parse(args: { string }): (Command?, string?)
 		tiers = {},
 		cases = {},
 		files = {},
-		name = nil,
 		rerun = false,
 		list = false,
-		explain = nil,
 	}
 	local index = 1
 	while index <= #args do

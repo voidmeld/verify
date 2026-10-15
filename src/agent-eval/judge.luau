@@ -147,7 +147,6 @@ local DEFAULT_RUBRIC: Rubric = {
 			description = "Device fit: layout, target sizes and text sizes suit the stated screen and input.",
 		},
 	},
-	instructions = nil,
 }
 
 local function choice(value: unknown, label: string): Choice
@@ -291,11 +290,7 @@ local function compare(comparison: Comparison, options: CompareOptions): Judgmen
 		status = "failed",
 		order = if aFirst then "a-first" else "b-first",
 		presentations = {},
-		scoreA = nil,
 		criteria = {},
-		winner = nil,
-		consistent = nil,
-		detail = nil,
 	}
 	local aEmpty = #comparison.a.images == 0
 	local bEmpty = #comparison.b.images == 0
@@ -320,10 +315,6 @@ local function compare(comparison: Comparison, options: CompareOptions): Judgmen
 		local presentation: Presentation = {
 			first = firstSide :: "a" | "b",
 			attempts = 0,
-			model = nil,
-			raw = nil,
-			verdict = nil,
-			error = nil,
 		}
 		local first = if firstSide == "a" then comparison.a else comparison.b
 		local second = if firstSide == "a" then comparison.b else comparison.a
@@ -415,16 +406,12 @@ local function anthropic(options: AnthropicOptions): Transport
 				local kind = Media.mediaType(bytes)
 				if kind == nil then
 					return {
-						text = nil,
 						error = ("%s is not a PNG, JPEG, GIF or WebP image"):format(part.image :: string),
-						model = nil,
 					}
 				end
 				if #bytes > limit then
 					return {
-						text = nil,
 						error = ("%s has %d bytes, above the limit of %d"):format(part.image :: string, #bytes, limit),
-						model = nil,
 					}
 				end
 				table.insert(
@@ -464,12 +451,10 @@ local function anthropic(options: AnthropicOptions): Transport
 		if answer.status ~= 200 then
 			local message = if decoded then field(field(value, "error"), "message") else nil
 			return {
-				text = nil,
 				error = ("HTTP %d: %s"):format(
 					answer.status,
 					if type(message) == "string" then message else string.sub(answer.body, 1, 300)
 				),
-				model = nil,
 			}
 		end
 		if not decoded then
@@ -543,7 +528,6 @@ local function claudeCli(options: CliOptions): Transport
 		local execution = options.execute {
 			argv = argv,
 			cwd = directory,
-			env = nil,
 			input = promptFile,
 			deadlineSeconds = options.deadlineSeconds or 600,
 			stamp = false,
@@ -558,20 +542,16 @@ local function claudeCli(options: CliOptions): Transport
 		local decoded, value = pcall(options.decode, execution.stdout)
 		if not decoded then
 			return {
-				text = nil,
 				error = ("the judge command printed no JSON (exit %d): %s"):format(
 					execution.exitcode,
 					string.sub(execution.stderr, 1, 300)
 				),
-				model = nil,
 			}
 		end
 		if field(value, "is_error") == true then
 			local message = field(value, "result")
 			return {
-				text = nil,
 				error = "the judge command failed: " .. (if type(message) == "string" then message else "no detail"),
-				model = nil,
 			}
 		end
 		local result = field(value, "result")
@@ -618,8 +598,6 @@ local function calibrate(judgments: { Judgment }, labels: { Label }): Calibratio
 	local pairs: { { human: string, judge: string } } = {}
 	local calibration: Calibration = {
 		compared = 0,
-		agreement = nil,
-		kappa = nil,
 		categories = {},
 		confusion = {},
 		unlabeled = {},

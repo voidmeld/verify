@@ -454,7 +454,6 @@ local function blocked(producer: Producer, ctx: Context, by: string, status: str
 		accounted = false,
 		caseIds = { producer.id },
 		deselected = {},
-		deferral = nil,
 	}
 end
 
@@ -475,7 +474,6 @@ local function notRun(
 		accounted = false,
 		caseIds = { producer.id },
 		deselected = {},
-		deferral = nil,
 	}
 end
 
@@ -488,7 +486,6 @@ local function refusedReuse(producer: Producer, ctx: Context, reason: string): B
 		accounted = false,
 		caseIds = { producer.id },
 		deselected = {},
-		deferral = nil,
 	}
 end
 

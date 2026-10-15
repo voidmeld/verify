@@ -293,7 +293,6 @@ local function phaseResult(
 		spread = relativeSpread(samples),
 		invalid = {},
 		comparison = comparisonOf(spec, phase.baseline, summary, samples, before, after),
-		judgment = nil,
 		series = series,
 	}
 	if phase.maxSpread ~= nil and #samples > 0 then
@@ -417,9 +416,6 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 			summary = summary,
 			spread = relativeSpread(samples),
 			invalid = invalid,
-			comparison = nil,
-			heap = nil,
-			judgment = nil,
 			failure = failure,
 			elapsedSeconds = math.max(0, clock() - started),
 		}
@@ -671,11 +667,7 @@ local function blankResult(spec: Spec, failure: string?): Result
 		yardstickBefore = {},
 		yardstickAfter = {},
 		summary = summaryOf(spec, {}),
-		spread = nil,
 		invalid = {},
-		comparison = nil,
-		heap = nil,
-		judgment = nil,
 		failure = failure,
 		elapsedSeconds = 0,
 	}

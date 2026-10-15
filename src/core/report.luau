@@ -618,7 +618,6 @@ local function compose(payloads: { Types.ShardPayload }, executor: string, envir
 		into.ids[chosen] = shardId
 		table.insert(into.results, {
 			id = chosen,
-			source = nil,
 			path = {},
 			name = name,
 			status = "failed" :: Status,
@@ -634,7 +633,6 @@ local function compose(payloads: { Types.ShardPayload }, executor: string, envir
 			artifacts = {},
 			limitations = {},
 			missingCapabilities = {},
-			skipReason = nil,
 			origin = composedOrigin,
 		})
 	end

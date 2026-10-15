@@ -248,7 +248,6 @@ local function schedule(
 			reused = reuse ~= nil and built.status ~= "failed",
 			reuseReference = if reuse ~= nil then reuse.reference else nil,
 			deferral = built.deferral,
-			blockedBy = nil,
 		}
 		if options.observe ~= nil then
 			pcall(options.observe, records[producer.id])
@@ -523,18 +522,13 @@ local function placeholder(
 		status = status,
 		selected = selected,
 		pulledByDependency = false,
-		exitcode = nil,
 		timedOut = false,
 		durationMicros = 0,
 		detail = detail,
-		log = nil,
 		reportAccounted = false,
 		caseIds = {},
 		deselected = {},
 		reused = false,
-		reuseReference = nil,
-		deferral = nil,
-		blockedBy = nil,
 	}
 end
 

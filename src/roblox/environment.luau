@@ -917,7 +917,6 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				class = class,
 				values = values,
 				children = {},
-				parent = nil,
 				attributes = {},
 				tags = {},
 				signals = {},

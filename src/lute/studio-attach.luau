@@ -431,7 +431,6 @@ local function attach(options: Options): (Session?, Refusal?)
 		if found == nil then
 			return {
 				response = response,
-				report = nil,
 				problem = "engine did not return the run-bound report envelope: " .. (outcome.text or ""):sub(1, 1000),
 			}
 		end

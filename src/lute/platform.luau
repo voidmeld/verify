@@ -227,7 +227,6 @@ local function run(options: Options): Result
 			cloud = session.run {
 				code = engineCode(framework, options.entry, options.caseIds, "open-cloud"),
 				runId = directory,
-				requires = nil,
 			}
 			local finished = cloud :: OpenCloud.Outcome
 			outcome = if finished.status == "returned"

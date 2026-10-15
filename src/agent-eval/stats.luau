@@ -73,9 +73,6 @@ local function bootstrap<T>(options: BootstrapOptions<T>): Interval
 	assert(resamples >= 1 and resamples % 1 == 0, "a bootstrap needs a positive whole number of resamples")
 	local units = options.units
 	local interval: Interval = {
-		estimate = nil,
-		lower = nil,
-		upper = nil,
 		resamples = resamples,
 		valid = 0,
 		confidence = confidence,

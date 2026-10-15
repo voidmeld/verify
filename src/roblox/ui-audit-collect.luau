@@ -261,11 +261,6 @@ local function collect(options: Options?): Audit.Dump
 						color = colorOf(read(child, "BackgroundColor3")),
 						transparency = math.clamp(numberOf(read(child, "BackgroundTransparency"), 1), 0, 1),
 					},
-					image = nil,
-					text = nil,
-					focus = nil,
-					padding = nil,
-					layout = nil,
 				}
 				for _, direction in DIRECTIONS do
 					if enumName(read(child, "SelectionBehavior" .. direction)) == "Stop" then
