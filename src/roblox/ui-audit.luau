@@ -93,6 +93,8 @@ local RULES: { [string]: Severity } = {
 	["outside-safe-area"] = "medium",
 	["touch-target-small"] = "medium",
 	["interactive-overlap"] = "medium",
+	["text-overlap"] = "high",
+	["action-covered"] = "high",
 	["gamepad-unreachable"] = "medium",
 	["focus-hidden"] = "medium",
 	["selection-link-broken"] = "low",
@@ -302,6 +304,14 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 		for index in backdrops do
 			if above(dump.elements[index], element) then
+				if element.interactive and element.interactable then
+					add(
+						"action-covered",
+						element,
+						"an active backdrop covers the control: " .. dump.elements[index].path,
+						nil
+					)
+				end
 				visibleRects[element.index] = nil
 				metrics.visible -= 1
 				if element.interactive then
@@ -522,6 +532,55 @@ local function analyze(dump: Dump, options: Options?): Report
 	end
 
 	local interactive: { Element } = {}
+	local function ink(element: Element): Rect?
+		local text = element.text
+		if text == nil or text.content == "" or text.transparency >= 1 then
+			return nil
+		end
+		local box = element.rect
+		local width, height = text.bounds.width, text.bounds.height
+		local x = if text.xAlignment == "Left"
+			then box.x
+			elseif text.xAlignment == "Right" then box.x + box.width - width
+			else box.x + (box.width - width) / 2
+		local y = if text.yAlignment == "Top"
+			then box.y
+			elseif text.yAlignment == "Bottom" then box.y + box.height - height
+			else box.y + (box.height - height) / 2
+		return Dump.intersect({ x = x, y = y, width = width, height = height }, visibleRects[element.index])
+	end
+	for leftIndex, left in dump.elements do
+		if visibleRects[left.index] == nil then
+			continue
+		end
+		local textRect = ink(left)
+		if textRect == nil then
+			continue
+		end
+		for _, right in dump.elements do
+			if
+				left == right
+				or visibleRects[right.index] == nil
+				or ancestorOf(left.index, right)
+				or ancestorOf(right.index, left)
+			then
+				continue
+			end
+			local other = ink(right)
+			if other ~= nil and right.index < leftIndex then
+				continue
+			end
+			if other == nil and right.interactive and right.interactable and not backdrops[right.index] then
+				other = visibleRects[right.index]
+			end
+			if other then
+				local shared = Dump.intersect(textRect, other) :: Rect
+				if shared.width > EDGE and shared.height > EDGE then
+					add("text-overlap", left, "text overlaps " .. right.path, area(shared))
+				end
+			end
+		end
+	end
 	for _, element in dump.elements do
 		if element.interactive and visibleRects[element.index] ~= nil and onScreen(element) then
 			table.insert(interactive, element)
@@ -589,7 +648,7 @@ local function analyze(dump: Dump, options: Options?): Report
 				if candidate == from then
 					continue
 				end
-				if bounded and groupOf(candidate) ~= group then
+				if bounded and group ~= nil and not ancestorOf(group.index, candidate) then
 					continue
 				end
 				local x, y = center(candidate)

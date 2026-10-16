@@ -187,6 +187,41 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("ui audit analyzer", function()
+		suite:case("reports text intersections without treating label boxes as ink", function(context)
+			local a = label(1, { rect = rect(100, 100, 200, 30) })
+			local b = label(2, { rect = rect(120, 100, 200, 30) })
+			context:expect(count(Audit.analyze(dump { a, b }), "text-overlap")):toBe(1)
+			b.rect = rect(180, 100, 200, 30)
+			context:expect(count(Audit.analyze(dump { a, b }), "text-overlap")):toBe(0)
+			local target = button(2, 190, 100)
+			context:expect(count(Audit.analyze(dump { a, target }), "text-overlap")):toBe(1)
+			target.parent = 1
+			context:expect(count(Audit.analyze(dump { a, target }), "text-overlap")):toBe(0)
+		end)
+		suite:case("reports active controls under a backdrop and accepts disabled controls", function(context)
+			local target = button(1, 100, 100)
+			local backdrop = button(2, 0, 0, {
+				rect = rect(0, 0, 800, 400),
+				selectable = false,
+				zIndex = 10,
+				text = { content = "", size = 18, bounds = { width = 0, height = 0 }, color = WHITE },
+			})
+			context:expect(count(Audit.analyze(dump { target, backdrop }), "action-covered")):toBe(1)
+			target.interactable = false
+			target.selectable = false
+			context:expect(count(Audit.analyze(dump { target, backdrop }), "action-covered")):toBe(0)
+		end)
+		suite:case("a stopped group can enter its nested selection group", function(context)
+			local outer = label(1, { selectionGroup = true, stops = { "up", "down", "left", "right" }, text = nil })
+			local inner = label(3, { parent = 1, selectionGroup = true })
+			local report = Audit.analyze(dump {
+				outer,
+				button(2, 100, 100, { parent = 1 }),
+				inner,
+				button(4, 100, 200, { parent = 3 }),
+			})
+			context:expect(count(report, "gamepad-unreachable")):toBe(0)
+		end)
 		suite:case("keeps modal content rules and excludes a full viewport dismiss target", function(context)
 			local scrim = button(3, 0, 0, {
 				rect = rect(0, 0, 800, 400),
@@ -282,7 +317,8 @@ return function(suite: Verify.Harness)
 			})
 			context:expect(paths(report, "text-truncated")):toEqual { "Gui.Label1" }
 			context:expect(paths(report, "text-clipped")):toEqual { "Gui.Clipped" }
-			context:expect(report.score):toBe(88)
+			context:expect(count(report, "text-overlap")):toBe(6)
+			context:expect(report.score):toBe(68)
 		end)
 
 		suite:case("measures contrast against the composited background", function(context)
