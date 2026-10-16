@@ -416,6 +416,7 @@ local function analyze(dump: Dump, options: Options?): Report
 				not backdrops[element.index]
 				and dump.screen.safeArea ~= nil
 				and not inside(shown, dump.screen.safeArea :: Rect, EDGE)
+				and not (dump.screen.topbarSafeArea ~= nil and inside(shown, dump.screen.topbarSafeArea :: Rect, EDGE))
 			then
 				add("outside-safe-area", element, "the element extends past the safe area", nil)
 			end

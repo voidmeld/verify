@@ -224,8 +224,9 @@ The adapter name `fixture` reads a recorded stream and files from the agent opti
 
 `Roblox.uiAudit.collect(options)` runs in the engine. It walks the visible `ScreenGui`, `SurfaceGui` and `BillboardGui` roots and returns a dump that `HttpService:JSONEncode` can encode.
 By default the roots are the layer collectors in the `PlayerGui` of the local player, or in `StarterGui` when the player has none. `world = true` adds the `SurfaceGui` and `BillboardGui` instances in the workspace.
-The options are `game`, `roots`, `world`, `device`, `scale`, `input`, `safeArea`, `safeAreaRoot`, `maxElements` (default 5000) and `stateStyled`.
+The options are `game`, `roots`, `world`, `device`, `scale`, `input`, `safeArea`, `safeAreaRoot`, `topbarSafeArea`, `topbarSafeAreaRoot`, `maxElements` (default 5000) and `stateStyled`.
 `safeAreaRoot` is a `ScreenGui` with `ScreenInsets = DeviceSafeInsets`. Its rectangle becomes the safe area.
+`topbarSafeAreaRoot` is a `ScreenGui` with `ScreenInsets = TopbarSafeInsets`. Its rectangle becomes the top-bar safe area: the free part of the top bar beside the core buttons. An element inside the safe area or inside the top-bar safe area is not outside the safe area.
 
 The dump has `screen` (viewport size, scale, `GetGuiInset`, safe area, input), `roots` and `elements`.
 An element records its class, path, parent, screen rectangle, rotation, visibility in the tree, the clip rectangle of its clipping ancestors, the viewport of its scrolling ancestors, `ZIndex`, selection properties, `NextSelection*` targets, background, image transparency, text properties and `TextBounds`, focus properties, `UIPadding` and layout padding.

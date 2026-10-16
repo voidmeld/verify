@@ -10,6 +10,7 @@ export type Screen = {
 	scale: number,
 	guiInset: Insets,
 	safeArea: Rect?,
+	topbarSafeArea: Rect?,
 	input: { string },
 	device: string?,
 }
@@ -229,6 +230,7 @@ local function decode(value: unknown): Dump
 			then insets(screenRaw.guiInset, "screen.guiInset")
 			else { left = 0, top = 0, right = 0, bottom = 0 },
 		safeArea = optionalRect(screenRaw.safeArea, "screen.safeArea"),
+		topbarSafeArea = optionalRect(screenRaw.topbarSafeArea, "screen.topbarSafeArea"),
 		input = input,
 		device = optionalText(screenRaw.device, "screen.device"),
 	}

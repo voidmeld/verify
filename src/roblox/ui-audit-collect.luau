@@ -12,6 +12,8 @@ export type Options = {
 	input: { string }?,
 	safeArea: Audit.Rect?,
 	safeAreaRoot: unknown?,
+	topbarSafeArea: Audit.Rect?,
+	topbarSafeAreaRoot: unknown?,
 	maxElements: number?,
 	stateStyled: ((instance: unknown) -> boolean)?,
 }
@@ -416,6 +418,10 @@ local function collect(options: Options?): Audit.Dump
 			safeArea = if given.safeArea ~= nil
 				then given.safeArea
 				elseif given.safeAreaRoot ~= nil then rectOf(given.safeAreaRoot, false)
+				else nil,
+			topbarSafeArea = if given.topbarSafeArea ~= nil
+				then given.topbarSafeArea
+				elseif given.topbarSafeAreaRoot ~= nil then rectOf(given.topbarSafeAreaRoot, false)
 				else nil,
 			input = given.input or {},
 			device = given.device,

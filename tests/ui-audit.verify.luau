@@ -330,6 +330,19 @@ return function(suite: Verify.Harness)
 			context:expect(Audit.contrastRatio(WHITE, BLACK)):toBeCloseTo(21)
 		end)
 
+		suite:case("accepts content inside the top-bar safe area and flags content over core buttons", function(context)
+			local report = Audit.analyze(dump({
+				button(1, 700, 4, { path = "Gui.TopbarAction" }),
+				button(2, 20, 4, { path = "Gui.OverCoreButtons" }),
+				button(3, 300, 100, { path = "Gui.Content" }),
+			}, { safeArea = rect(0, 58, 800, 342), topbarSafeArea = rect(164, 0, 636, 58) }))
+			context:expect(paths(report, "outside-safe-area")):toEqual { "Gui.OverCoreButtons" }
+			local without = Audit.analyze(dump({
+				button(1, 700, 4, { path = "Gui.TopbarAction" }),
+			}, { safeArea = rect(0, 58, 800, 342) }))
+			context:expect(paths(without, "outside-safe-area")):toEqual { "Gui.TopbarAction" }
+		end)
+
 		suite:case("flags off-screen, unsafe, small and overlapping controls", function(context)
 			local report = Audit.analyze(dump({
 				button(1, 780, 100, { path = "Gui.Edge" }),
@@ -543,6 +556,7 @@ return function(suite: Verify.Harness)
 				{ panel, hidden, folder }
 			)
 			local safe = instance("ScreenGui", "Probe", gui(44, 0, 712, 400))
+			local topbar = instance("ScreenGui", "TopbarProbe", gui(164, -36, 636, 36))
 			local playerGui = instance("PlayerGui", "PlayerGui", { SelectionImageObject = nil }, { screen })
 			local player: Fake = {
 				Name = "Player",
@@ -571,6 +585,7 @@ return function(suite: Verify.Harness)
 				device = "tablet",
 				input = { "touch", "gamepad" },
 				safeAreaRoot = safe,
+				topbarSafeAreaRoot = topbar,
 			}
 			context:expect(collected.screen):toEqual {
 				width = 800,
@@ -578,6 +593,7 @@ return function(suite: Verify.Harness)
 				scale = 1,
 				guiInset = { left = 0, top = 36, right = 0, bottom = 0 },
 				safeArea = { x = 44, y = 36, width = 712, height = 400 },
+				topbarSafeArea = { x = 164, y = 0, width = 636, height = 36 },
 				input = { "touch", "gamepad" },
 				device = "tablet",
 			}
