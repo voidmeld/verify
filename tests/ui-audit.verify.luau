@@ -215,6 +215,25 @@ return function(suite: Verify.Harness)
 			target.selectable = false
 			context:expect(count(Audit.analyze(dump { target, backdrop }), "action-covered")):toBe(0)
 		end)
+		suite:case("recognizes a backdrop clipped to its root's inset viewport", function(context)
+			local inset = rect(0, 58, 800, 342)
+			local evidence = dump {
+				button(1, 100, 100),
+				button(2, 0, 0, {
+					rect = rect(0, 0, 800, 400),
+					clip = inset,
+					selectable = false,
+					zIndex = 10,
+					text = { content = "", size = 18, bounds = { width = 0, height = 0 }, color = WHITE },
+				}),
+				button(3, 100, 200, { zIndex = 11 }),
+			}
+			evidence.roots[1].rect = { x = 0, y = 58, width = 800, height = 342 }
+			local report = Audit.analyze(evidence)
+			context:expect(count(report, "action-covered")):toBe(1)
+			context:expect(count(report, "gamepad-unreachable")):toBe(0)
+			context:expect(count(report, "text-overlap")):toBe(0)
+		end)
 		suite:case("a stopped group can enter its nested selection group", function(context)
 			local outer = label(1, { selectionGroup = true, stops = { "up", "down", "left", "right" }, text = nil })
 			local inner = label(3, { parent = 1, selectionGroup = true })

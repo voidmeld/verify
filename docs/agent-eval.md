@@ -3,7 +3,7 @@
 The UI audit reports `text-overlap` when visible text bounds intersect unrelated
 text or an action. It uses native text alignment and clips the bounds to the
 visible region. A text child inside its own action is allowed. `action-covered`
-reports an interactable action below an active full-screen backdrop. Disable
+reports an interactable action below an active backdrop that covers its root. Disable
 background actions while a modal is open. A saved dump checks geometry and
 selection policy. Real input still needs a live host check.
 

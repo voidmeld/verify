@@ -273,8 +273,7 @@ local function analyze(dump: Dump, options: Options?): Report
 			or not element.interactable
 			or element.selectable
 			or not onScreen(element)
-			or not inside(screenRect, shown, EDGE)
-			or not inside(shown, screenRect, EDGE)
+			or not inside(roots[element.root].rect, shown, EDGE)
 			or (element.text ~= nil and element.text.content ~= "")
 			or (element.image ~= nil and element.image.transparency < 1)
 		then
@@ -304,7 +303,7 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 		for index in backdrops do
 			if above(dump.elements[index], element) then
-				if element.interactive and element.interactable then
+				if element.interactive and element.interactable and not backdrops[element.index] then
 					add(
 						"action-covered",
 						element,
