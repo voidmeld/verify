@@ -389,7 +389,8 @@ local function analyze(dump: Dump, options: Options?): Report
 					textValue.bounds.width - element.rect.width
 				)
 			end
-			if element.clip ~= nil and not inside(element.rect, element.clip :: Rect, EDGE) then
+			local expected = Dump.intersect(element.rect, element.scrollClip) :: Rect
+			if element.clip ~= nil and area(expected) > 0 and not inside(expected, element.clip :: Rect, EDGE) then
 				add("text-clipped", element, "an ancestor that clips its descendants cuts the text", nil)
 			end
 			if not textValue.scaled then
@@ -570,7 +571,13 @@ local function analyze(dump: Dump, options: Options?): Report
 			if other ~= nil and right.index < leftIndex then
 				continue
 			end
-			if other == nil and right.interactive and right.interactable and not backdrops[right.index] then
+			if
+				other == nil
+				and right.interactive
+				and right.interactable
+				and not backdrops[right.index]
+				and (right.background.transparency < 1 or (right.image ~= nil and right.image.transparency < 1))
+			then
 				other = visibleRects[right.index]
 			end
 			if other then

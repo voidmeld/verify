@@ -197,6 +197,10 @@ return function(suite: Verify.Harness)
 			context:expect(count(Audit.analyze(dump { a, target }), "text-overlap")):toBe(1)
 			target.parent = 1
 			context:expect(count(Audit.analyze(dump { a, target }), "text-overlap")):toBe(0)
+			target.parent = nil
+			target.background = { color = BLACK, transparency = 1 }
+			target.text = { content = "", size = 18, bounds = { width = 0, height = 0 }, color = WHITE }
+			context:expect(count(Audit.analyze(dump { a, target }), "text-overlap")):toBe(0)
 		end)
 		suite:case("reports active controls under a backdrop and accepts disabled controls", function(context)
 			local target = button(1, 100, 100)
@@ -319,6 +323,12 @@ return function(suite: Verify.Harness)
 			context:expect(paths(report, "text-clipped")):toEqual { "Gui.Clipped" }
 			context:expect(count(report, "text-overlap")):toBe(6)
 			context:expect(report.score):toBe(68)
+		end)
+		suite:case("allows the scroll viewport edge but detects a smaller content clip", function(context)
+			local text = label(1, { clip = rect(100, 300, 100, 30), scrollClip = rect(100, 300, 90, 30) })
+			context:expect(count(Audit.analyze(dump { text }), "text-clipped")):toBe(0)
+			text.clip = rect(100, 300, 80, 30)
+			context:expect(count(Audit.analyze(dump { text }), "text-clipped")):toBe(1)
 		end)
 
 		suite:case("measures contrast against the composited background", function(context)
