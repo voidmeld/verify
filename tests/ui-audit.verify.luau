@@ -204,6 +204,16 @@ return function(suite: Verify.Harness)
 			context:expect(count(report, "interactive-overlap")):toBe(1)
 			context:expect(paths(report, "outside-safe-area")):toEqual { "Gui.Button4" }
 			context:expect(report.metrics.interactive):toBe(3)
+			context:expect(count(report, "gamepad-unreachable")):toBe(0)
+			local unselectable = button(4, 100, 100, { selectable = false, zIndex = 11 })
+			local blocked = Audit.analyze(dump {
+				button(1, 100, 100),
+				button(2, 130, 100),
+				scrim,
+				unselectable,
+			})
+			context:expect(paths(blocked, "gamepad-unreachable")):toEqual { "Gui.Button4" }
+			context:expect(blocked.metrics.selectable):toBe(0)
 			scrim.selectable = true
 			scrim.index = 1
 			local content = Audit.analyze(dump({ scrim }, { safeArea = rect(20, 20, 760, 360) }))

@@ -554,6 +554,9 @@ local function analyze(dump: Dump, options: Options?): Report
 		local nodes: { Element } = {}
 		local isNode: { [number]: boolean } = {}
 		for _, element in interactive do
+			if backdrops[element.index] then
+				continue
+			end
 			if element.selectable and element.interactable then
 				table.insert(nodes, element)
 				isNode[element.index] = true
