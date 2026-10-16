@@ -967,6 +967,17 @@ This adapter adds no renderer and no native engine claim.
 Choose a ruleset: `Consumer.generic` or `Consumer.roblox`.
 [Consumer diagnostics](lint.md) describes the rules and their limits.
 
+## Shape predicates
+
+`Core.shape` exposes predicates over unknown values without coercion:
+
+- `finite(value)` accepts numbers other than NaN and infinities.
+- `finiteNonnegative(value)` also requires a value at least zero.
+- `nonnegativeInteger(value)` also requires a whole number.
+- `denseRows(value, count)` requires a metatable-free array of the exact length. It permits userdata marker keys used by JSON encoders.
+
+Consumers retain their field sets, identifiers and acceptance policy.
+
 ## Named case collections
 
 `Core.runCases(cases, options, now, ids?)` executes ordinary named cases with exact selection.

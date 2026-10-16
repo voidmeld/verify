@@ -3,6 +3,7 @@
 local Wait = require "@self/wait"
 local Operations = require "@self/operations"
 local Performance = require "@self/performance"
+local Shape = require "@self/shape"
 
 local Capability = require "@self/capability"
 local Execution = require "@self/execution"
@@ -119,6 +120,12 @@ return {
 	bindOperation = Operations.bind,
 	progress = Progress,
 	performance = Performance,
+	shape = {
+		finite = Shape.finite,
+		finiteNonnegative = Shape.finiteNonnegative,
+		nonnegativeInteger = Shape.nonnegativeInteger,
+		denseRows = Shape.denseRows,
+	},
 	memorySink = Provenance.memorySink,
 	decode = ReportModel.decode,
 	merge = ReportModel.merge,

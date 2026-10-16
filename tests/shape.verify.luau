@@ -2,7 +2,8 @@
 
 local Verify = require "../src/core"
 
-local Shape = require "../src/core/shape"
+local InternalShape = require "../src/core/shape"
+local Shape = Verify.shape
 
 return function(suite: Verify.Harness)
 	suite:suite("shape predicates", function()
@@ -23,12 +24,14 @@ return function(suite: Verify.Harness)
 		end)
 
 		suite:case("nonnegativeInteger requires a whole nonnegative number", function(check)
+			check:expect((Shape.nonnegativeInteger(0))):toEqual(true)
 			check:expect((Shape.nonnegativeInteger(2))):toEqual(true)
 			check:expect((Shape.nonnegativeInteger(1.5))):toEqual(false)
 			check:expect((Shape.nonnegativeInteger(-1))):toEqual(false)
 		end)
 
 		suite:case("denseRows checks a metatable-free array of the exact length", function(check)
+			check:expect((Shape.denseRows({}, 0))):toEqual(true)
 			check:expect((Shape.denseRows({ 1, 2, 3 }, 3))):toEqual(true)
 			check:expect((Shape.denseRows({ 1, 2 }, 3))):toEqual(false)
 			check:expect((Shape.denseRows({ 1, 2, 3, extra = true }, 3))):toEqual(false)
@@ -38,11 +41,11 @@ return function(suite: Verify.Harness)
 
 		suite:case("exact requires every named field present and no others", function(check)
 			local fields = { a = true, b = true }
-			check:expect((Shape.exact({ a = 1, b = 2 }, fields))):toEqual(true)
-			check:expect((Shape.exact({ a = 1 }, fields))):toEqual(false)
-			check:expect((Shape.exact({ a = 1, b = 2, c = 3 }, fields))):toEqual(false)
-			check:expect((Shape.exact(setmetatable({ a = 1, b = 2 }, {}), fields))):toEqual(false)
-			check:expect((Shape.exact("nope", fields))):toEqual(false)
+			check:expect((InternalShape.exact({ a = 1, b = 2 }, fields))):toEqual(true)
+			check:expect((InternalShape.exact({ a = 1 }, fields))):toEqual(false)
+			check:expect((InternalShape.exact({ a = 1, b = 2, c = 3 }, fields))):toEqual(false)
+			check:expect((InternalShape.exact(setmetatable({ a = 1, b = 2 }, {}), fields))):toEqual(false)
+			check:expect((InternalShape.exact("nope", fields))):toEqual(false)
 		end)
 	end)
 end
