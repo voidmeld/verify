@@ -504,8 +504,10 @@ local function runSession(opened: Session, options: SessionRun, directory: strin
 	local listening: Progress.Listener? = nil
 	local injected = ""
 	if progressPath ~= nil and progressPath ~= "" then
-		listening = Progress.listener(progressPath, runId, function(): string
-			local read = opened.execute(options.context or "Server", ProgressChannel.read)
+		local progressToken = Detached.tokenFor(runId)
+		listening = Progress.listener(progressPath, runId, function(afterSequence: number): string
+			local read =
+				opened.execute(options.context or "Server", ProgressChannel.readPage(progressToken, afterSequence))
 			if not read.ok or read.text == nil then
 				error(describe("progress history read", read), 0)
 			end

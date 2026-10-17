@@ -49,14 +49,40 @@ local function collect(rows: { unknown }, token: string, runId: string): Collect
 	return result
 end
 
-local read = [==[
+local history = [==[
 local rows = {}
 for _, entry in game:GetService('LogService'):GetLogHistory() do
     if entry.loggerFullPath == 'VerifyProgress' then
         table.insert(rows, {loggerFullPath = entry.loggerFullPath, context = entry.context})
     end
 end
-return game:GetService('HttpService'):JSONEncode(rows)
 ]==]
 
-return { LOGGER = LOGGER, publisher = publisher, collect = collect, read = read }
+local read = history .. "return game:GetService('HttpService'):JSONEncode(rows)\n"
+
+local function readPage(token: string, afterSequence: number): string
+	assert(token ~= "", "progress token must not be empty")
+	assert(afterSequence >= 0 and afterSequence < math.huge and afterSequence % 1 == 0, "invalid progress cursor")
+	return string.format("local PROGRESS_TOKEN = %q\nlocal AFTER = %.0f\n", token, afterSequence)
+		.. history
+		.. [==[
+local http = game:GetService('HttpService')
+local pieces, bytes = {}, 2
+for _, row in rows do
+    local context = row.context
+    local event = if type(context) == 'table' then context.event else nil
+    local sequence = if type(event) == 'table' then event.sequence else nil
+    if type(context) ~= 'table' or (context.token == PROGRESS_TOKEN and (type(sequence) ~= 'number' or sequence > AFTER)) then
+        local encoded = http:JSONEncode(row)
+        assert(#encoded + 2 <= 32768, 'progress event exceeds the transport page limit')
+        local added = #encoded + (if #pieces > 0 then 1 else 0)
+        if bytes + added > 32768 then break end
+        table.insert(pieces, encoded)
+        bytes += added
+    end
+end
+return '[' .. table.concat(pieces, ',') .. ']'
+]==]
+end
+
+return { LOGGER = LOGGER, publisher = publisher, collect = collect, read = read, readPage = readPage }

@@ -13,13 +13,13 @@ export type Listener = {
 	finish: () -> (),
 }
 
-local function listener(path: string, runId: string, readHistory: () -> string): Listener
+local function listener(path: string, runId: string, readHistory: (number) -> string): Listener
 	local token = Detached.tokenFor(runId)
 	local polled = 0
 	local rejected, foreign, failures = 0, 0, 0
 	local firstProblem: string? = nil
 	local function read()
-		local collected = ProgressChannel.collect(Wire.parse(readHistory()) :: { unknown }, token, runId)
+		local collected = ProgressChannel.collect(Wire.parse(readHistory(polled)) :: { unknown }, token, runId)
 		rejected = math.max(rejected, collected.rejected)
 		foreign = math.max(foreign, collected.foreign)
 		if collected.first ~= nil and firstProblem == nil then
@@ -37,7 +37,13 @@ local function listener(path: string, runId: string, readHistory: () -> string):
 		end
 	end
 	local function poll()
-		local ok, problem: unknown = pcall(read)
+		local ok, problem: unknown = pcall(function()
+			local before: number
+			repeat
+				before = polled
+				read()
+			until polled == before
+		end)
 		if not ok then
 			failures += 1
 			if firstProblem == nil then

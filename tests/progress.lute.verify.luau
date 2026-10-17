@@ -10,7 +10,29 @@ local Platform = require "../src/lute/platform"
 local ProgressFile = require "../src/lute/progress-file"
 local Roblox = require "../src/roblox"
 local StudioProgress = require "../src/lute/studio-progress"
+local StudioEngine = require "./studio-engine"
+local Wire = require "../src/lute/wire"
 local json = require "@std/json"
+
+local function historyReader(rows: { unknown }): StudioEngine.Engine
+	return StudioEngine.new {
+		game = {
+			GetService = function(_self: unknown, name: string): unknown
+				return if name == "LogService"
+					then {
+						GetLogHistory = function()
+							return rows
+						end,
+					}
+					else {
+						JSONEncode = function(_http: unknown, value: unknown): string
+							return json.serialize(value :: json.Value)
+						end,
+					}
+			end,
+		},
+	}
+end
 
 local function nothing(value: unknown): nil
 	assert(value == nil, "expected no payload")
@@ -170,6 +192,65 @@ return function(suite: Core.Harness)
 	end)
 
 	suite:suite("Studio progress history", function()
+		suite:case("pages only newer events of the token and retains malformed contexts for diagnosis", function(check)
+			local rows: { unknown } = {}
+			local token = 'quoted"\\é'
+			local function receive(_message: string, context: unknown)
+				table.insert(rows, { loggerFullPath = Roblox.progressChannel.LOGGER, context = context })
+			end
+			local own = Roblox.progressChannel.publisher("run", token, receive)
+			local foreign = Roblox.progressChannel.publisher("other", "foreign", receive)
+			own.publish("case", "client", "step", "started", nil)
+			foreign.publish("case", "client", "step", "started", nil)
+			own.publish("case", "client", "step", "finished", "passed")
+			table.insert(rows, { loggerFullPath = Roblox.progressChannel.LOGGER })
+			table.insert(
+				rows,
+				{ loggerFullPath = Roblox.progressChannel.LOGGER, context = { token = token, event = {} } }
+			)
+			local native = historyReader(rows)
+			local page = native.run("Client", Roblox.progressChannel.readPage(token, 1))
+			local collected = Roblox.progressChannel.collect(Wire.parse(page) :: { unknown }, token, "run")
+			check:expect(#page <= 32768):toBe(true)
+			check:expect(#collected.events):toBe(1)
+			check:expect(collected.events[1].sequence):toBe(2)
+			check:expect(collected.rejected):toBe(2)
+			check:expect(collected.foreign):toBe(0)
+			local all = Roblox.progressChannel.collect(
+				Wire.parse(native.run("Client", Roblox.progressChannel.read)) :: { unknown },
+				token,
+				"run"
+			)
+			check:expect(#all.events):toBe(2)
+			check:expect(all.foreign):toBe(1)
+		end)
+
+		suite:case("refuses an oversized event and invalid cursors instead of truncating progress", function(check)
+			local rows: { unknown } = {}
+			local publisher = Roblox.progressChannel.publisher("run", "token", function(_, context)
+				table.insert(rows, { loggerFullPath = Roblox.progressChannel.LOGGER, context = context })
+			end)
+			publisher.publish("case", "client", string.rep("x", 40000), "started", nil)
+			local native = historyReader(rows)
+			check
+				:expect(function()
+					native.run("Client", Roblox.progressChannel.readPage("token", 0))
+				end)
+				:toThrow "page limit"
+			for _, cursor in { -1, 1.5, math.huge, math.nan } do
+				check
+					:expect(function()
+						Roblox.progressChannel.readPage("token", cursor)
+					end)
+					:toThrow "cursor"
+			end
+			check
+				:expect(function()
+					Roblox.progressChannel.readPage("", 0)
+				end)
+				:toThrow "token"
+		end)
+
 		suite:case("reports overwritten history while appending each surviving sequence once", function(check)
 			local root = temporary(check, "verify-progress-history")
 			local path = root .. "/events.jsonl"

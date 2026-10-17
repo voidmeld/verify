@@ -132,7 +132,7 @@ A watchdog process reads the file. A `started` event with no `finished` event na
 A file with no new line for too long means a stalled run.
 A launched Studio run reads Logger history on every poll of the detached run. See [native Studio execution](execution.md#native-studio-execution).
 An attached Studio run reports progress the same way. Pass `progressFile` or `onProgress`. See [attached Studio](execution.md#attached-studio).
-A Studio run emits each event in the context of the VerifyProgress Logger, with a run token. The host reads GetLogHistory directly through execute_luau, validates the context and run identity, orders events and ignores repeats. Roblox bounds the history; sequence gaps, invalid contexts and failed reads produce `<progressFile>.diagnostics` and a limitation on the first case.
+A Studio run emits each event in the context of the VerifyProgress Logger, with a run token. The host reads GetLogHistory through bounded pages of newer events for that token. It validates the context and run identity, orders events and ignores repeats. `Roblox.progressChannel.readPage(token, afterSequence)` generates one page read. Each response stays within 32 KiB; an event larger than the page is refused. Roblox bounds the history; sequence gaps, invalid contexts and failed reads produce `<progressFile>.diagnostics` and a limitation on the first case.
 `onProgress` receives the same events in order after the run returns, because a worker process blocks the caller.
 A run with no listener and no file behaves as before. The report is the same, and progress never proves a pass.
 

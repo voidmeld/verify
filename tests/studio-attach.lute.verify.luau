@@ -41,6 +41,7 @@ type Fake = {
 	requestSeconds: number?,
 	calls_by_source: { string },
 	console: ((runId: string, token: string) -> string)?,
+	consoleLimit: number?,
 }
 
 local function text(value: string): unknown
@@ -136,7 +137,13 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 				if self.lose.execute_luau then
 					return { status = "unanswered", detail = "studio_mcp_exited", lost = true }
 				end
-				if arguments.code == Roblox.progressChannel.read then
+				if
+					arguments.code == Roblox.progressChannel.read
+					or (
+						type(arguments.code) == "string"
+						and string.find(arguments.code, "local PROGRESS_TOKEN = ", 1, true)
+					)
+				then
 					local make = self.console
 					local runId: string?
 					local token: string?
@@ -152,7 +159,26 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 					if make == nil or runId == nil or token == nil then
 						return { status = "answered", result = text "[]" }
 					end
-					return { status = "answered", result = text(make(runId, token)) }
+					local rows = Wire.parse(make(runId, token))
+					local native = StudioEngine.new {
+						game = {
+							GetService = function(_self: unknown, name: string): unknown
+								return if name == "LogService"
+									then {
+										GetLogHistory = function()
+											return rows
+										end,
+									}
+									else {
+										JSONEncode = function(_http: unknown, value: unknown): string
+											return json.serialize(value :: json.Value)
+										end,
+									}
+							end,
+						},
+					}
+					local output = native.run("Client", arguments.code :: string)
+					return { status = "answered", result = text(string.sub(output, 1, self.consoleLimit or #output)) }
 				end
 				table.insert(self.calls_by_source, arguments.code :: string)
 				local began = os.clock()
@@ -887,7 +913,7 @@ return function(suite: Verify.Harness)
 				local first = table.find(seen, "execute_luau")
 				local read = false
 				for _, call in self.calls do
-					read = read or call.arguments.code == Roblox.progressChannel.read
+					read = read or string.find(tostring(call.arguments.code), "local PROGRESS_TOKEN = ", 1, true) ~= nil
 				end
 				check:expect(first ~= nil and read):toBe(true)
 				local events = ProgressFile.read(file, runIdSeen)
@@ -903,6 +929,40 @@ return function(suite: Verify.Harness)
 				pcall(fs.removeDirectory, directory, { recursive = true })
 			end
 		)
+
+		suite:case("drains long progress histories below the Studio output limit without losing events", function(check)
+			local self = fake(ONE)
+			self.consoleLimit = 100000
+			local runIdSeen = ""
+			self.console = function(runId: string, token: string): string
+				runIdSeen = runId
+				local rows: { unknown } = {}
+				local publisher = Roblox.progressChannel.publisher(runId, token, function(_, context)
+					table.insert(rows, { loggerFullPath = Roblox.progressChannel.LOGGER, context = context })
+				end)
+				for index = 1, 256 do
+					local step = tostring(index) .. string.rep('long/quoted"/é/', 40)
+					publisher.publish("case-1", "client", step, "started", nil)
+					publisher.publish("case-1", "client", step, "finished", "passed")
+				end
+				return json.serialize((rows :: unknown) :: json.Value)
+			end
+			local directory = temporary(check, "verify-attach-progress-large")
+			local file = directory .. "/progress.jsonl"
+			local outcome = Lute.studio.run {
+				code = "return 1",
+				directory = directory,
+				progressFile = file,
+				attach = { authorize = allow, studioId = "studio-a", transport = self.transport },
+			}
+			check:expect(outcome.status):toEqual "returned"
+			local events: { Verify.ProgressEvent } = if fs.exists(file) then ProgressFile.read(file, runIdSeen) else {}
+			check:expect(#events):toBe(512)
+			for index, event in events do
+				check:expect(event.sequence):toBe(index)
+			end
+			check:expect(fs.exists(file .. ".diagnostics")):toBe(false)
+		end)
 
 		suite:case(
 			"surfaces rejected progress contexts and a refused history read without failing the run",
@@ -943,7 +1003,8 @@ return function(suite: Verify.Harness)
 					attach = {
 						authorize = function(request): Lute.StudioAuthorization
 							return {
-								ok = request.fields.code ~= Roblox.progressChannel.read,
+								ok = string.find(tostring(request.fields.code), "local PROGRESS_TOKEN = ", 1, true)
+									== nil,
 								reason = "history reads are not granted",
 							}
 						end,
