@@ -204,7 +204,16 @@ Limits:
 
 ## Native Studio execution
 
-`Lute.studio.run({place, code, worker, context?, deadlineSeconds?, directory?, studioExecutable?, mcpExecutable?, players?, finalCapture?})` runs code in a disposable Studio.
+`Lute.studio.run({place, code, worker, context?, deadlineSeconds?, directory?, studioExecutable?, mcpExecutable?, players?, finalCapture?, identity?})` runs code in a disposable Studio.
+
+For a local place that needs native storage, `identity = {placeId, universeId}`
+sets both IDs in the owned Edit model before Play or multiplayer starts. Both
+IDs must be positive safe integers. The launcher checks their readback and
+closes the owned session if setup fails. It refuses this option with `attach`.
+`Lute.platform.run` exposes the same option as `studioIdentity` for its Studio
+host only. The caller owns permission to use that universe and must isolate
+test data. This option does not publish, change API access or supply credentials.
+Roblox owns the PluginSecurity `DataModel:SetPlaceId` and `SetUniverseId` calls.
 
 1. It copies an XML place into an isolated run directory.
 2. It starts a disposable Studio and selects its unique document through the official Studio MCP.

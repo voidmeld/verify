@@ -37,6 +37,7 @@ export type Options = {
 	clientEntry: string?,
 	serverEntry: string?,
 	players: number?,
+	studioIdentity: Studio.Identity?,
 	context: ("Server" | "Client")?,
 	finalCapture: boolean?,
 	attachments: Attachments_Limits?,
@@ -127,6 +128,9 @@ local function run(options: Options): Result
 	local ok, thrown = pcall(function()
 		assert(seconds > 0 and seconds < math.huge, "deadline must be finite and positive")
 		assert(options.entry ~= "", "entry module is required")
+		if options.host ~= "studio" then
+			assert(options.studioIdentity == nil, "studioIdentity requires the Studio host")
+		end
 		assert(
 			options.host == "simulator"
 				or options.host == "studio"
@@ -212,6 +216,7 @@ local function run(options: Options): Result
 				deadlineSeconds = seconds,
 				directory = directory .. "/studio",
 				players = options.players,
+				identity = options.studioIdentity,
 				context = options.context,
 				finalCapture = options.finalCapture,
 				progressFile = if progressPath ~= nil then absolute(progressPath) else nil,

@@ -16,9 +16,11 @@ Place.build {
 	rootName = "VerifySemanticFixture",
 }
 local result = Lute.studio.run {
+	identity = { placeId = 123, universeId = 456 },
 	place = place,
 	worker = "tools/studio-worker.luau",
 	code = [[
+assert(game.PlaceId == 123 and game.GameId == 456, 'configured Studio identity must reach the server')
 local root = game:GetService('ReplicatedStorage').VerifySemanticFixture
 local Core = require(root.src.core)
 local Roblox = require(root.src.roblox)
