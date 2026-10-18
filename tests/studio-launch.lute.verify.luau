@@ -196,21 +196,45 @@ return function(suite: Core.Harness)
 			context:expect(self.signals):toEqual { "TERM:4242" }
 		end)
 
-		suite:case("refuses a binary place and a missing MCP server before it starts Studio", function(context)
+		suite:case("copies binary place bytes with the native extension and preserves cleanup", function(context)
+			local self = world()
+			local contents = "<roblox!\137\255\r\n\26\n" .. string.rep("\0", 18)
+			local launched, problem = Lute.studio.launch {
+				place = placeFile(contents),
+				transport = self.transport,
+				processes = self.deps,
+				start = function(place: string, name: string): number
+					context:expect(fs.readFileToString(place)):toBe(contents)
+					context:expect(string.sub(name, -5)):toBe ".rbxl"
+					table.insert(self.procs, { pid = 4242, ppid = 1, command = STUDIO .. " " .. place })
+					table.insert(self.studios, { id = "binary", name = name })
+					return 4242
+				end,
+			}
+			context:expect(problem):toBe(nil)
+			local session = assert(launched)
+			context:expect(session.session.studio.id):toBe "binary"
+			context:expect(session.close().survivors):toEqual {}
+			context:expect(self.signals):toEqual { "TERM:4242" }
+		end)
+
+		suite:case("refuses an invalid place and a missing MCP server before it starts Studio", function(context)
 			local self = world()
 			local started = false
 			local function start(): number
 				started = true
 				return 1
 			end
-			local binary, binaryProblem = Lute.studio.launch {
-				place = placeFile "<rbxl!\137\255 binary",
-				transport = self.transport,
-				start = start,
-				processes = self.deps,
-			}
-			context:expect(binary):toBe(nil)
-			context:expect(string.find(binaryProblem or "", "XML", 1, true) ~= nil):toBe(true)
+			for _, contents in { "<rbxl!\137\255 binary", "<roblox!\137\254\r\n\26\n", "<roblox!" } do
+				local invalid, problem = Lute.studio.launch {
+					place = placeFile(contents),
+					transport = self.transport,
+					start = start,
+					processes = self.deps,
+				}
+				context:expect(invalid):toBe(nil)
+				context:expect(string.find(problem or "", "XML", 1, true) ~= nil):toBe(true)
+			end
 			self.listing = false
 			local silent, silentProblem = Lute.studio.launch {
 				place = placeFile(PLACE),

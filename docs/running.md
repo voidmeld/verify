@@ -13,7 +13,7 @@ A passing run proves only what the host can observe.
 | --- | --- | --- | --- | --- |
 | Simulator | `--host simulator` (default) | The case in the Lute process, over the [simulated environment](api.md#simulated-environment). | Lute. | Proves Luau logic over the declared surface. It proves no rendering, physics, replication or input. |
 | Lute worker | `Lute.host` | One Lute process per batch. | Lute. See [platform support](#platform-support). | Proves Luau logic under Lute. See [Lute workers](execution.md#lute-workers). |
-| Studio, launched | `--host studio` | A disposable Studio on a copy of an XML place. | Installed, authenticated Studio with its MCP tools. macOS reference. See [platform support](#platform-support) for Windows. | One Studio per run. Supports 1 to 8 clients. Saves a final view for one client. See [native Studio execution](execution.md#native-studio-execution). |
+| Studio, launched | `--host studio` | A disposable Studio on a copy of a binary or XML Roblox place. | Installed, authenticated Studio with its MCP tools. macOS reference. See [platform support](#platform-support) for Windows. | One Studio per run. Supports 1 to 8 clients. Saves a final view for one client. See [native Studio execution](execution.md#native-studio-execution). |
 | Studio, attached | `attach` option of `Lute.platform.run` | The case in a Studio that the developer already has open. | An open Studio and an `authorize` function. | No isolation. No `players`. The command line cannot attach. See [attached Studio](execution.md#attached-studio). |
 | Player | `--host player` | The case in a published place, through the signed-in Player. | A published test place and a closed Player. macOS only. | One client per machine. No durable screenshots. See [published Player execution](execution.md#published-player-execution). |
 | Open Cloud | `--host open-cloud` | The case as a Luau execution task on an exact place version. | A caller module for `request` and `authorize`. | Server only. No input, physics, replication, rendering, audio or capture. See [Open Cloud execution](execution.md#open-cloud-execution). |
@@ -64,7 +64,7 @@ Do not also set `options.selection`. Each case declares a finite timeout and the
 | `--output directory` | Parent for unique evidence directories. Defaults to `.verify`. |
 | `--framework directory` | Framework checkout. Inferred from the path of this command. |
 | `--root directory` | Additional mounted module directory. Repeat as needed. Verify follows literal imports automatically. |
-| `--place fixture.rbxlx` | Existing Studio fixture that contains the mounted entry. Without it, the command builds an isolated floor and spawn fixture. |
+| `--place file` | Existing binary (`.rbxl`) or XML (`.rbxlx`) Studio fixture that contains the mounted entry. Without it, the command builds an isolated floor and spawn fixture. |
 | `--base-place place.rbxlx` | Merge the mounted modules and entry scripts into a copy of this XML place. Do not combine it with `--place`. |
 | `--context Server\|Client` | Studio execution side. Defaults to Server. |
 | `--players count` | Studio server with 1 to 8 clients. |

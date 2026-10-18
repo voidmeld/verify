@@ -193,14 +193,14 @@ local function run(options: Options): Core.BatchOutcome
 	end
 	local directory = Files.claimDirectory(options.directory or Files.temporary "verify-studio")
 	local input = directory .. "/request"
+	local source = fs.readFileToString(place)
+	local extension = assert(Launch.extension(source), "Studio launcher requires a Roblox XML or binary place")
 	local placeName = "Verify-"
 		.. tostring(process.pid())
 		.. "-"
 		.. (string.match(directory, if system.win32 then "[^/\\]+$" else "[^/]+$") :: string)
-		.. ".rbxlx"
+		.. extension
 	local placePath = directory .. "/" .. placeName
-	local source = fs.readFileToString(place)
-	assert(string.find(source, "<roblox", 1, true) ~= nil, "Studio launcher requires an XML rbxlx place")
 	fs.writeStringToFile(placePath, source)
 	fs.writeStringToFile(
 		input,

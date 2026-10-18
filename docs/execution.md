@@ -215,7 +215,7 @@ host only. The caller owns permission to use that universe and must isolate
 test data. This option does not publish, change API access or supply credentials.
 Roblox owns the PluginSecurity `DataModel:SetPlaceId` and `SetUniverseId` calls.
 
-1. It copies an XML place into an isolated run directory.
+1. It copies a binary or XML Roblox place into an isolated run directory. The copy keeps the format and all file bytes.
 2. It starts a disposable Studio and selects its unique document through the official Studio MCP.
 3. It starts play and executes `code` in `Server` (default) or `Client`.
 
@@ -390,13 +390,13 @@ Use a launched run for isolation.
 
 ## Launched Studio session
 
-`Lute.studio.launch(options)` starts a disposable Studio on a copy of an XML place and returns a session that you drive, `launched, problem`.
+`Lute.studio.launch(options)` starts a disposable Studio on a copy of a binary or XML Roblox place and returns a session that you drive, `launched, problem`.
 Use it when one run needs more than one engine call: for example several play sessions, calls on both the server and the client, or captures at more than one checkpoint.
 `Lute.studio.run` stays the choice for one report from one call.
 
 `options` is `{ place, directory?, studioExecutable?, mcpExecutable?, launchSeconds?, callSeconds?, runSeconds?, cleanupSeconds?, authorize? }`.
 
-1. It copies the place to `Verify-<pid>-<run>.rbxlx` in a new run directory. The default parent is `verify-studio-launch` in the system temporary directory.
+1. It copies the place to `Verify-<pid>-<run>.rbxl` or `Verify-<pid>-<run>.rbxlx` in a new run directory. The file header selects the extension. The default parent is `verify-studio-launch` in the system temporary directory.
 2. It lists the open Studios through the Studio MCP server, starts Studio on the copy and waits up to `launchSeconds` (default 180) for a new Studio with that file name.
 3. It attaches to that Studio, exactly as [attached Studio](#attached-studio) does, in `edit` mode. `authorize` defaults to a hook that accepts every request, because the Studio and the place copy belong to the run.
 

@@ -164,16 +164,24 @@ local function open(
 		nil
 end
 
+local function extension(source: string): string?
+	if string.sub(source, 1, 8) == "<roblox!" then
+		return if string.sub(source, 1, 14) == "<roblox!\137\255\r\n\26\n" then ".rbxl" else nil
+	end
+	return if string.find(source, "<roblox", 1, true) ~= nil then ".rbxlx" else nil
+end
+
 local function launch(options: Options): (Launched?, string?)
 	if type(options) ~= "table" or type(options.place) ~= "string" or options.place == "" then
-		return nil, "launch requires the path of an XML place"
+		return nil, "launch requires the path of a Roblox place"
 	end
 	if not fs.exists(options.place) then
 		return nil, "no place exists at " .. options.place
 	end
 	local source = fs.readFileToString(options.place)
-	if string.find(source, "<roblox", 1, true) == nil then
-		return nil, "launch requires an XML rbxlx place"
+	local format = extension(source)
+	if format == nil then
+		return nil, "launch requires a Roblox XML or binary place"
 	end
 	local studioExecutable = options.studioExecutable
 	local mcpExecutable = options.mcpExecutable
@@ -191,7 +199,7 @@ local function launch(options: Options): (Launched?, string?)
 	end
 	local directory = Files.claimDirectory(options.directory or Files.temporary "verify-studio-launch")
 	local leaf = string.match(directory, "[^/\\]+$") or "run"
-	local name = ("Verify-%d-%s.rbxlx"):format(process.pid(), leaf)
+	local name = ("Verify-%d-%s%s"):format(process.pid(), leaf, format)
 	local place = directory .. "/" .. name
 	fs.writeStringToFile(place, source)
 	local deadline = os.clock() + launchSeconds
@@ -201,4 +209,4 @@ local function launch(options: Options): (Launched?, string?)
 	return open(settings, directory, place, name, deadline)
 end
 
-return { launch = launch, open = open }
+return { launch = launch, open = open, extension = extension }

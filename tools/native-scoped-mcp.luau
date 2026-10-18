@@ -10,7 +10,9 @@ return function()
 	local directory = Files.claimDirectory(Files.temporary "verify-native-scope")
 	local services = Eval.lute.services()
 	local project = directory .. "/fixture.project.json"
-	local place = directory .. "/fixture.rbxlx"
+	local place = directory .. "/fixture.rbxl"
+	local payload = directory .. "/payload.luau"
+	fs.writeStringToFile(payload, '--!strict\nreturn "left]]>right"\n')
 	fs.writeStringToFile(
 		project,
 		Eval.lute.encode {
@@ -18,6 +20,10 @@ return function()
 			tree = {
 				["$className"] = "DataModel",
 				Lighting = { ["$properties"] = { Technology = "Future" } },
+				ReplicatedStorage = {
+					["$className"] = "ReplicatedStorage",
+					Payload = { ["$path"] = payload },
+				},
 				Workspace = {
 					["$className"] = "Workspace",
 					Floor = {
@@ -59,7 +65,10 @@ return function()
 		request("initialize", {})
 		call("list_roblox_studios", {})
 		call("execute_luau", { studio_id = "outside-this-run", datamodel_type = "Edit", code = "error('forwarded')" })
-		call("execute_luau", { datamodel_type = "Edit", code = "print('verify scoped console'); return 'scoped edit'" })
+		call("execute_luau", {
+			datamodel_type = "Edit",
+			code = "assert(require(game.ReplicatedStorage.Payload) == 'left]]>right'); print('verify scoped console'); return 'scoped edit'",
+		})
 		call("screen_capture", {})
 		call("start_stop_play", { is_start = true })
 		call("input", {
