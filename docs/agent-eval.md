@@ -244,7 +244,7 @@ The collector reads each property in a protected call, so a missing property rea
 
 | Rule | Severity | Finds |
 | --- | --- | --- |
-| `text-truncated` | high | `TextFits` is false, or the text bounds are larger than the element. Scaled text counts only when it does not fit. |
+| `text-truncated` | high | The text bounds are larger than the element, or `TextFits` is false for text with a `TextTruncate` mode. A false `TextFits` without truncation, where the bounds fit, comes from sub-pixel rounding of automatic sizes and does not count. Scaled text counts only when it does not fit. |
 | `text-clipped` | high | An ancestor with `ClipsDescendants` cuts a text element. A scrolling frame does not count. |
 | `contrast-low` | high | The text contrast is below 4.5:1, or 3:1 for large text, over both a black and a white world behind the backgrounds. |
 | `offscreen` | high | A visible control or text extends past the screen. |

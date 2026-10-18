@@ -375,7 +375,8 @@ local function analyze(dump: Dump, options: Options?): Report
 					textValue.bounds.width > element.rect.width + EDGE
 					or textValue.bounds.height > element.rect.height + EDGE
 				)
-			if textValue.fits == false or overflows then
+			local truncated = textValue.fits == false and textValue.truncate ~= nil and textValue.truncate ~= "None"
+			if truncated or overflows then
 				add(
 					"text-truncated",
 					element,

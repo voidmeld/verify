@@ -314,6 +314,36 @@ return function(suite: Verify.Harness)
 			context:expect(report.metrics.reachable):toBe(2)
 		end)
 
+		suite:case("trusts a false TextFits only for text that truncates", function(context)
+			local report = Audit.analyze(dump {
+				label(1, {
+					path = "Gui.Rounded",
+					rect = rect(100, 300, 28, 16),
+					text = {
+						content = "NEW",
+						size = 16,
+						bounds = { width = 28, height = 16 },
+						fits = false,
+						truncate = "None",
+						color = WHITE,
+					},
+				}),
+				label(2, {
+					path = "Gui.Ellipsis",
+					rect = rect(100, 340, 60, 16),
+					text = {
+						content = "A long name",
+						size = 16,
+						bounds = { width = 60, height = 16 },
+						fits = false,
+						truncate = "AtEnd",
+						color = WHITE,
+					},
+				}),
+			})
+			context:expect(paths(report, "text-truncated")):toEqual { "Gui.Ellipsis" }
+		end)
+
 		suite:case("finds truncated text and text cut by a clipping ancestor", function(context)
 			local report = Audit.analyze(dump {
 				label(1, {
