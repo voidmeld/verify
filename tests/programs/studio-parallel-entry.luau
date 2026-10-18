@@ -22,14 +22,15 @@ local factory: Roblox.CaseEntryFactory = function(host, runId)
 		name = "one case survives MCP replacement in its own Studio",
 		timeoutSeconds = 45,
 		run = function(context: Core.Context)
-			context:expect(storage:GetAttribute "VerifyRun"):toBe(runId)
+			local token = storage:GetAttribute "VerifyRun"
+			context:expect(type(token) == "string" and #token > 0 and #token <= 50):toBe(true)
 			context:expect(storage:GetAttribute "VerifyParallelStarts"):toBe(nil)
 			storage:SetAttribute("VerifyParallelStarts", 1)
 			context:step("hold for MCP replacement", function()
 				globals.task.wait(30)
 			end)
 			context:expect(storage:GetAttribute "VerifyParallelStarts"):toBe(1)
-			context:expect(storage:GetAttribute "VerifyRun"):toBe(runId)
+			context:expect(storage:GetAttribute "VerifyRun"):toBe(token)
 		end,
 	}
 	return { cases = { case }, now = os.clock, options = { executor = "roblox-studio" } }

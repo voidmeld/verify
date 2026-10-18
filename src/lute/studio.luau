@@ -67,14 +67,16 @@ local function worker(path: string)
 	local ok, reason = pcall(function()
 		local id = session.studio.id
 		local token = string.format("%q", runId)
+		local runToken = Detached.tokenFor(runId)
+		local attribute = string.format("%q", runToken)
 		local edit = Reply.texts(call("execute_luau", {
 			studio_id = id,
 			datamodel_type = "Edit",
 			code = "game:GetService('ReplicatedStorage'):SetAttribute('VerifyRun', "
-				.. token
+				.. attribute
 				.. "); return game:GetService('ReplicatedStorage'):GetAttribute('VerifyRun')",
 		}))
-		assert(string.find(edit, runId, 1, true) ~= nil, "Studio did not acknowledge run identity")
+		assert(string.find(edit, runToken, 1, true) ~= nil, "Studio did not acknowledge run identity")
 		if fields.identity ~= nil then
 			local configured = session.execute("Edit", Identity.source(Identity.read(fields.identity)))
 			assert(configured.ok, configured.detail)
@@ -92,7 +94,7 @@ local function worker(path: string)
 		if type(players) == "number" then
 			assert(players >= 1 and players <= 8 and players % 1 == 0, "Studio multiplayer supports 1 to 8 clients")
 			local source = "game:GetService('ReplicatedStorage'):SetAttribute('VerifyRun', "
-				.. token
+				.. attribute
 				.. "); local runId = "
 				.. token
 				.. "; local progressToken = "
@@ -115,7 +117,7 @@ local function worker(path: string)
 			call("start_stop_play", { studio_id = id, is_start = true })
 			datamodel = textField "context"
 			code = "assert(game:GetService('ReplicatedStorage'):GetAttribute('VerifyRun') == "
-				.. token
+				.. attribute
 				.. ", 'wrong Verify run'); local runId = "
 				.. token
 				.. "; local progressToken = "
