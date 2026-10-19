@@ -358,7 +358,7 @@ local function analyze(dump: Dump, options: Options?): Report
 		local found: Element? = nil
 		for _, other in dump.elements do
 			if
-				other.order < element.order
+				(other.zIndex < element.zIndex or (other.zIndex == element.zIndex and other.order < element.order))
 				and other.background.transparency < 1
 				and visibleRects[other.index] ~= nil
 				and other.index ~= cursor.index
@@ -368,7 +368,11 @@ local function analyze(dump: Dump, options: Options?): Report
 				and x <= other.rect.x + other.rect.width
 				and y >= other.rect.y
 				and y <= other.rect.y + other.rect.height
-				and (found == nil or other.order > (found :: Element).order)
+				and (
+					found == nil
+					or other.zIndex > (found :: Element).zIndex
+					or (other.zIndex == (found :: Element).zIndex and other.order > (found :: Element).order)
+				)
 			then
 				found = other
 			end
