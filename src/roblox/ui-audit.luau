@@ -86,6 +86,7 @@ export type ResolvedOptions = {
 
 local EDGE = 1
 local RULES: { [string]: Severity } = {
+	["control-failed"] = "high",
 	["text-truncated"] = "high",
 	["text-clipped"] = "high",
 	["contrast-low"] = "high",
@@ -182,6 +183,18 @@ local function analyze(dump: Dump, options: Options?): Report
 			path = if element ~= nil then element.path else "",
 			detail = detail,
 			value = value,
+		})
+	end
+
+	local failures: { Dump.Failure } = dump.failures or {}
+	for _, failure in failures do
+		counts["control-failed"] = (counts["control-failed"] or 0) + 1
+		penalties["control-failed"] = (penalties["control-failed"] or 0) + resolved.weights.high
+		table.insert(violations, {
+			rule = "control-failed",
+			severity = "high",
+			path = failure.path,
+			detail = `{failure.attribute}: {failure.message}`,
 		})
 	end
 

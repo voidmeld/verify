@@ -85,6 +85,8 @@ export type Element = {
 	layout: Layout?,
 }
 
+export type Failure = { path: string, attribute: string, message: string }
+
 export type Dump = {
 	schemaVersion: number,
 	screen: Screen,
@@ -93,6 +95,7 @@ export type Dump = {
 	selected: number?,
 	instances: number,
 	truncated: boolean,
+	failures: { Failure }?,
 }
 
 local SCHEMA_VERSION = 1
@@ -369,6 +372,18 @@ local function decode(value: unknown): Dump
 			layout = layout,
 		})
 	end
+	local failures: { Failure } = {}
+	if present(raw.failures) then
+		for index, item in array(raw.failures, "failures") do
+			local where = ("failures[%d]"):format(index)
+			local entry = object(item, where)
+			table.insert(failures, {
+				path = text(entry.path, where .. ".path"),
+				attribute = text(entry.attribute, where .. ".attribute"),
+				message = text(entry.message, where .. ".message"),
+			})
+		end
+	end
 	return {
 		schemaVersion = SCHEMA_VERSION,
 		screen = screen,
@@ -377,6 +392,7 @@ local function decode(value: unknown): Dump
 		selected = optionalNumber(raw.selected, "selected"),
 		instances = optionalNumber(raw.instances, "instances") or #elements,
 		truncated = boolean(raw.truncated, "truncated", false),
+		failures = if present(raw.failures) then failures else nil,
 	}
 end
 

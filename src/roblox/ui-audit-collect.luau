@@ -16,6 +16,7 @@ export type Options = {
 	topbarSafeAreaRoot: unknown?,
 	maxElements: number?,
 	stateStyled: ((instance: unknown) -> boolean)?,
+	failureAttributes: { string }?,
 }
 
 type Object = { [string]: unknown }
@@ -407,6 +408,23 @@ local function collect(options: Options?): Audit.Dump
 		end
 	end
 
+	local failures: { Audit.Failure } = {}
+	local attributes: { string } = given.failureAttributes or {}
+	for _, name in attributes do
+		for _, root in roots do
+			local _, descendants = call(root, "GetDescendants")
+			local scanned: { unknown } = { root }
+			for _, descendant in (if type(descendants) == "table" then descendants else {}) :: { unknown } do
+				table.insert(scanned, descendant)
+			end
+			for _, instance in scanned do
+				local ok, value = call(instance, "GetAttribute", name)
+				if ok and value ~= nil then
+					table.insert(failures, { path = fullName(instance), attribute = name, message = tostring(value) })
+				end
+			end
+		end
+	end
 	local selectedObject = read(guiService, "SelectedObject")
 	return {
 		schemaVersion = Audit.SCHEMA_VERSION,
@@ -431,6 +449,7 @@ local function collect(options: Options?): Audit.Dump
 		selected = if selectedObject ~= nil then indexOf[selectedObject] else nil,
 		instances = instances,
 		truncated = truncated,
+		failures = if given.failureAttributes ~= nil then failures else nil,
 	}
 end
 

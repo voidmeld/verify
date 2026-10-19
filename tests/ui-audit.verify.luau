@@ -187,6 +187,16 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("ui audit analyzer", function()
+		suite:case("reports each named failure attribute as a high control-failed finding", function(context)
+			local value = dump {}
+			value.failures =
+				{ { path = "Gui.Shop", attribute = "Failure", message = "the grid needs a horizontal list" } }
+			local report = Audit.analyze(value)
+			context:expect(paths(report, "control-failed")):toEqual { "Gui.Shop" }
+			context:expect(report.violations[1].detail):toBe "Failure: the grid needs a horizontal list"
+			context:expect(count(Audit.analyze(dump {}), "control-failed")):toBe(0)
+		end)
+
 		suite:case("reports text intersections without treating label boxes as ink", function(context)
 			local a = label(1, { rect = rect(100, 100, 200, 30) })
 			local b = label(2, { rect = rect(120, 100, 200, 30) })
