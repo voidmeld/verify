@@ -443,6 +443,35 @@ return function(suite: Verify.Harness)
 				}),
 			})
 			context:expect(paths(report, "contrast-low")):toEqual { "Gui.Low", "Gui.Small" }
+			local host = label(
+				1,
+				{ path = "Gui.Host", class = "Frame", background = { color = BLACK, transparency = 0 }, order = 1 }
+			)
+			host.text = nil
+			local fill = label(2, {
+				path = "Gui.Host.Fill",
+				class = "Frame",
+				parent = 1,
+				order = 2,
+				background = { color = WHITE, transparency = 0 },
+			})
+			fill.text = nil
+			local over = label(3, {
+				path = "Gui.Host.OverFill",
+				parent = 1,
+				order = 3,
+				background = { color = BLACK, transparency = 1 },
+				text = { content = "All", size = 14, bounds = { width = 20, height = 14 }, color = BLACK },
+			})
+			context:expect(count(Audit.analyze(dump { host, fill, over }), "contrast-low")):toBe(0)
+			local alone = label(2, {
+				path = "Gui.Host.Alone",
+				parent = 1,
+				order = 2,
+				background = { color = BLACK, transparency = 1 },
+				text = { content = "All", size = 14, bounds = { width = 20, height = 14 }, color = BLACK },
+			})
+			context:expect(count(Audit.analyze(dump { host, alone }), "contrast-low")):toBe(1)
 			context:expect(report.metrics.contrastUnknown):toBe(2)
 			context:expect(Audit.contrastRatio(WHITE, BLACK)):toBeCloseTo(21)
 		end)

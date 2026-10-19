@@ -337,6 +337,45 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 	end
 
+	local function within(element: Element, ancestor: number): boolean
+		local cursor = element.parent
+		while cursor ~= nil do
+			if cursor == ancestor then
+				return true
+			end
+			cursor = dump.elements[cursor].parent
+		end
+		return false
+	end
+
+	local function behind(element: Element, cursor: Element): Element?
+		local parent = cursor.parent
+		if parent == nil then
+			return nil
+		end
+		local rect = element.rect
+		local x, y = rect.x + rect.width / 2, rect.y + rect.height / 2
+		local found: Element? = nil
+		for _, other in dump.elements do
+			if
+				other.order < element.order
+				and other.background.transparency < 1
+				and visibleRects[other.index] ~= nil
+				and other.index ~= cursor.index
+				and not within(element, other.index)
+				and within(other, parent)
+				and x >= other.rect.x
+				and x <= other.rect.x + other.rect.width
+				and y >= other.rect.y
+				and y <= other.rect.y + other.rect.height
+				and (found == nil or other.order > (found :: Element).order)
+			then
+				found = other
+			end
+		end
+		return found
+	end
+
 	local function background(element: Element): (Color?, Color?)
 		local layers: { { color: Color, alpha: number } } = {}
 		local cursor: Element? = element
@@ -352,6 +391,13 @@ local function analyze(dump: Dump, options: Options?): Report
 			end
 			if alpha >= 1 then
 				break
+			end
+			local fill = behind(element, cursor)
+			if fill ~= nil then
+				table.insert(layers, { color = fill.background.color, alpha = 1 - fill.background.transparency })
+				if fill.background.transparency <= 0 then
+					break
+				end
 			end
 			cursor = if cursor.parent ~= nil then dump.elements[cursor.parent] else nil
 		end
