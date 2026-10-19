@@ -410,9 +410,10 @@ local function analyze(dump: Dump, options: Options?): Report
 				typeSizes[round(textValue.size)] = true
 			end
 			local overBlack, overWhite = background(element)
+			local inactive = element.interactive and not element.interactable
 			if overBlack == nil or overWhite == nil then
 				metrics.contrastUnknown += 1
-			else
+			elseif not inactive then
 				local alpha = 1 - textValue.transparency
 				local lowBlack = ratio(blend(textValue.color, alpha, overBlack :: Color), overBlack :: Color)
 				local lowWhite = ratio(blend(textValue.color, alpha, overWhite :: Color), overWhite :: Color)

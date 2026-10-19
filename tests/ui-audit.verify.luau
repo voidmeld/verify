@@ -429,6 +429,18 @@ return function(suite: Verify.Harness)
 					image = { transparency = 0 },
 				}),
 				label(5, { path = "Gui.OverWorld", background = { color = BLACK, transparency = 0.5 } }),
+				label(6, {
+					path = "Gui.Disabled",
+					interactive = true,
+					interactable = false,
+					background = { color = BLACK, transparency = 0 },
+					text = {
+						content = "Buy",
+						size = 14,
+						bounds = { width = 30, height = 14 },
+						color = { r = 0.2, g = 0.2, b = 0.2 },
+					},
+				}),
 			})
 			context:expect(paths(report, "contrast-low")):toEqual { "Gui.Low", "Gui.Small" }
 			context:expect(report.metrics.contrastUnknown):toBe(2)
