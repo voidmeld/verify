@@ -425,6 +425,58 @@ return function(suite: Verify.Harness)
 			context:expect(adapter.run(request, services).status):toBe "unsupported"
 		end)
 
+		suite:case("completes only the configured Claude turn limit exception", function(context)
+			local services = Fakes.services(Fakes.memory().files)
+			local scenarios: { { subtype: string, turns: number, limit: number?, exitcode: number, status: string } } =
+				{
+					{ subtype = "error_max_turns", turns = 2, limit = 2, exitcode = 1, status = "completed" },
+					{ subtype = "error_max_turns", turns = 1, limit = 2, exitcode = 0, status = "failed" },
+					{ subtype = "error_max_turns", turns = 2, exitcode = 0, status = "failed" },
+					{ subtype = "error_during_execution", turns = 2, limit = 2, exitcode = 0, status = "failed" },
+					{ subtype = "success", turns = 1, limit = 2, exitcode = 1, status = "failed" },
+				}
+			for _, scenario in scenarios do
+				local lines =
+					Fakes.stream { session = "s", subtype = scenario.subtype, turns = scenario.turns, output = 9 }
+				local request: AgentEval.AgentRequest = {
+					run = "r",
+					task = "t",
+					arm = "a",
+					workspace = "/w",
+					directory = "/e",
+					suiteDirectory = "/s",
+					prompt = "brief",
+					promptFile = "/e/prompt.md",
+					env = {},
+					seed = 1,
+					budgets = { maxTurns = scenario.limit, wallSeconds = 30 },
+					options = {},
+				}
+				services.execute = function(_command: AgentEval.Command): AgentEval.Execution
+					return {
+						started = true,
+						exitcode = scenario.exitcode,
+						timedOut = false,
+						unsupported = false,
+						stdout = "",
+						stderr = "",
+						lines = lines,
+						seconds = 1,
+					}
+				end
+				context
+					:expect(AgentEval.adapters.claudeCode(Lute.parse).run(request, services).status)
+					:toBe(scenario.status)
+				local replay = AgentEval.adapters.replay {
+					decode = Lute.parse,
+					respond = function(_request: AgentEval.AgentRequest): AgentEval.ReplayResponse
+						return { lines = lines, exitcode = scenario.exitcode }
+					end,
+				}
+				context:expect(replay.run(request, services).status):toBe(scenario.status)
+			end
+		end)
+
 		suite:case("expands command adapter placeholders without naming the arm", function(context)
 			local memory = Fakes.memory()
 			local services = Fakes.services(memory.files)
@@ -447,7 +499,7 @@ return function(suite: Verify.Harness)
 				argv = { "agent", "--model", "{model}", "--prompt", "{prompt_file}", "{arm}" },
 				decode = Lute.parse,
 			}
-			local outcome = adapter.run({
+			local request: AgentEval.AgentRequest = {
 				run = "r",
 				task = "t",
 				arm = "secret",
@@ -461,10 +513,24 @@ return function(suite: Verify.Harness)
 				seed = 1,
 				budgets = { wallSeconds = 30 },
 				options = {},
-			}, services)
+			}
+			local outcome = adapter.run(request, services)
 			context:expect(seen[1].argv):toEqual { "agent", "--model", "m", "--prompt", "/e/prompt.md", "{arm}" }
 			context:expect(outcome.status):toBe "completed"
 			context:expect(outcome.transcript.result):toBe "final answer"
+			services.execute = function(_command: AgentEval.Command): AgentEval.Execution
+				return {
+					started = true,
+					exitcode = 1,
+					timedOut = false,
+					unsupported = false,
+					stdout = "",
+					stderr = "",
+					lines = { { at = 1, text = "partial answer" } },
+					seconds = 1,
+				}
+			end
+			context:expect(adapter.run(request, services).status):toBe "failed"
 		end)
 	end)
 end

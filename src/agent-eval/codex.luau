@@ -182,23 +182,15 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 	local started: { [string]: number? } = {}
 	local counted: { [string]: boolean } = {}
 	local intervals: { { number } } = {}
-	local previousAt: number? = nil
-	local lastStepAt: number? = nil
+	local turnStartedAt: number? = nil
+	local previousTurnStartedAt: number? = nil
+	local turnOpen = false
+	local turnTimingValid = true
 	local timed = true
 	local completedTurns = 0
 	local failedTurn = false
 	local streamError: string? = nil
 	local usageSeen = false
-
-	local function step(at: number?)
-		transcript.messages += 1
-		if at ~= nil then
-			local base = previousAt or transcript.startupSeconds or 0
-			table.insert(transcript.turnLatencies, math.max(0, at - base))
-			table.insert(transcript.turnIntervals, math.max(0, at - (lastStepAt or transcript.startupSeconds or 0)))
-			lastStepAt = at
-		end
-	end
 
 	for _, line in lines do
 		if string.match(line.text, "^%s*$") ~= nil then
@@ -220,6 +212,12 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 			if at ~= nil and transcript.startupSeconds == nil then
 				transcript.startupSeconds = at
 			end
+		elseif kind == "turn.started" then
+			if turnOpen then
+				turnTimingValid = false
+			end
+			turnOpen = true
+			turnStartedAt = at
 		elseif kind == "item.started" or kind == "item.updated" or kind == "item.completed" then
 			local item = field(event, "item")
 			local id = textOf(field(item, "id")) or ("line-" .. tostring(transcript.events))
@@ -231,7 +229,6 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 					transcript.toolCalls += 1
 					transcript.toolNames[name] = (transcript.toolNames[name] or 0) + 1
 					started[id] = at
-					step(at)
 				end
 				if kind == "item.completed" then
 					if failed(item) then
@@ -243,6 +240,7 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 					end
 				end
 			elseif itemKind == "agent_message" and kind == "item.completed" then
+				transcript.messages += 1
 				local text = textOf(field(item, "text"))
 				if text ~= nil then
 					transcript.result = string.sub(text, 1, RESULT_LIMIT)
@@ -250,7 +248,18 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 			end
 		elseif kind == "turn.completed" then
 			completedTurns += 1
-			step(at)
+			streamError = nil
+			if turnOpen and turnStartedAt ~= nil and at ~= nil and at >= turnStartedAt then
+				table.insert(transcript.turnLatencies, at - turnStartedAt)
+				if previousTurnStartedAt ~= nil and turnStartedAt >= previousTurnStartedAt then
+					table.insert(transcript.turnIntervals, turnStartedAt - previousTurnStartedAt)
+				end
+				previousTurnStartedAt = turnStartedAt
+			else
+				turnTimingValid = false
+			end
+			turnOpen = false
+			turnStartedAt = nil
 			local usage = field(event, "usage")
 			if type(usage) == "table" then
 				usageSeen = true
@@ -263,6 +272,8 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 			end
 		elseif kind == "turn.failed" then
 			failedTurn = true
+			turnOpen = false
+			turnStartedAt = nil
 			local message = textOf(field(field(event, "error"), "message"))
 			if message ~= nil then
 				transcript.result = string.sub(message, 1, RESULT_LIMIT)
@@ -271,7 +282,6 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 			streamError = textOf(field(event, "message")) or streamError
 		end
 		if at ~= nil then
-			previousAt = at
 			transcript.lastAt = at
 		end
 	end
@@ -279,19 +289,23 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 	if failedTurn then
 		transcript.status = "error"
 		transcript.subtype = "turn.failed"
-	elseif completedTurns > 0 then
-		transcript.status = "success"
-		transcript.subtype = "success"
 	elseif streamError ~= nil then
 		transcript.status = "error"
 		transcript.subtype = "error"
 		transcript.result = string.sub(streamError :: string, 1, RESULT_LIMIT)
+	elseif completedTurns > 0 and not turnOpen then
+		transcript.status = "success"
+		transcript.subtype = "success"
 	end
 	transcript.usageSource = if usageSeen then "result" else "none"
-	transcript.turns = transcript.messages
+	transcript.turns = completedTurns
 	if timed and transcript.events > 0 then
 		transcript.toolSeconds = Transcript.union(intervals)
 	else
+		transcript.turnLatencies = {}
+		transcript.turnIntervals = {}
+	end
+	if not turnTimingValid then
 		transcript.turnLatencies = {}
 		transcript.turnIntervals = {}
 	end

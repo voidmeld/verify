@@ -324,6 +324,127 @@ return function(suite: Verify.Harness)
 			context:expect(seen[1].argv[table.find(seen[1].argv, "--model") :: number + 1]):toBe "claude-opus-5-5"
 		end)
 
+		suite:case("attaches neutral Codex images in both presentation orders with the rubric schema", function(context)
+			local memory = Fakes.memory()
+			memory.files.makeDirectory "/author/treatment"
+			memory.files.makeDirectory "/author/baseline"
+			memory.files.write("/author/treatment/main.png", PNG .. "a")
+			memory.files.write("/author/baseline/main.png", PNG .. "b")
+			local seen: { AgentEval.Command } = {}
+			local firstImages: { string } = {}
+			local transport = AgentEval.judge.codexCli {
+				files = memory.files,
+				directory = "/neutral",
+				encode = Fakes.json,
+				decode = Lute.parse,
+				model = "gpt-6.1-sol",
+				effort = "medium",
+				command = { "codex-fixture" },
+				deadlineSeconds = 23,
+				execute = function(command: AgentEval.Command): AgentEval.Execution
+					table.insert(seen, command)
+					local directory = assert(command.cwd)
+					table.insert(firstImages, memory.files.read(directory .. "/image-01.png"))
+					context:expect(memory.files.read(directory .. "/prompt.md")):toContain "./image-02.png"
+					local schema =
+						Lute.parse(memory.files.read(directory .. "/schema.json")) :: { properties: { criteria: { required: { string } } } }
+					context:expect(schema.properties.criteria.required):toEqual { "fit" }
+					memory.files.write(
+						directory .. "/answer.json",
+						Fakes.json { criteria = { fit = "tie" }, overall = "tie", confidence = 1, reasons = { "same" } }
+					)
+					return {
+						started = true,
+						exitcode = 0,
+						timedOut = false,
+						stdout = '{"type":"turn.started"}\n{"type":"turn.completed"}\n',
+						stderr = "",
+						lines = {},
+						seconds = 1,
+					}
+				end,
+			}
+			local result =
+				AgentEval.judge.compare(comparison({ "/author/treatment/main.png" }, { "/author/baseline/main.png" }), {
+					transport = transport,
+					decode = Lute.parse,
+					seed = 2,
+					attempts = 1,
+					rubric = { criteria = { { id = "fit", description = "Fit" } } },
+				})
+			context:expect(result.status):toBe "judged"
+			context:expect(result.consistent):toBe(true)
+			context:expect(#seen):toBe(2)
+			context:expect(firstImages[1] ~= firstImages[2]):toBe(true)
+			for _, command in seen do
+				local argv = command.argv
+				local joined = table.concat(argv, " ")
+				context:expect((string.find(joined, "/author", 1, true))):toBe(nil)
+				context:expect(joined):toContain 'model_reasoning_effort="medium"'
+				context:expect(argv[1]):toBe "codex-fixture"
+				for _, flag in { "--ignore-user-config", "--ephemeral", "--output-schema", "--output-last-message" } do
+					context:expect(table.find(argv, flag) ~= nil):toBe(true)
+				end
+				context:expect(argv[assert(table.find(argv, "--sandbox")) + 1]):toBe "read-only"
+				local attachments: { string } = {}
+				for index, argument in argv do
+					if argument == "--image" then
+						table.insert(attachments, argv[index + 1])
+					end
+				end
+				context:expect(attachments):toEqual { "./image-01.png", "./image-02.png" }
+				context:expect(command.deadlineSeconds):toBe(23)
+			end
+		end)
+
+		for _, mode in { "not-started", "timeout", "exit", "tools", "unknown-tool", "incomplete", "missing", "invalid" } do
+			suite:case("rejects Codex judge " .. mode, function(context)
+				local memory = Fakes.memory()
+				local transport = AgentEval.judge.codexCli {
+					files = memory.files,
+					directory = "/neutral",
+					encode = Fakes.json,
+					decode = Lute.parse,
+					execute = function(command: AgentEval.Command): AgentEval.Execution
+						if mode ~= "missing" then
+							memory.files.write(
+								assert(command.cwd) .. "/answer.json",
+								if mode == "invalid" then "{}" else verdict "tie"
+							)
+						end
+						return {
+							started = mode ~= "not-started",
+							timedOut = mode == "timeout",
+							exitcode = if mode == "exit" then 9 else 0,
+							detail = "cannot start",
+							stderr = "quota error",
+							stdout = if mode == "tools"
+								then '{"type":"item.completed","item":{"id":"1","type":"command_execution"}}\n{"type":"turn.completed"}\n'
+								elseif
+									mode == "unknown-tool"
+								then '{"type":"item.completed","item":{"id":"1","type":"image_view"}}\n{"type":"turn.completed"}\n'
+								elseif mode == "incomplete" then '{"type":"turn.started"}\n'
+								else '{"type":"turn.started"}\n{"type":"turn.completed"}\n',
+							lines = {},
+							seconds = 1,
+						}
+					end,
+				}
+				local reply = transport { system = "judge", parts = {} }
+				if mode == "invalid" then
+					local parsed =
+						AgentEval.judge.parseVerdict(assert(reply.text), AgentEval.judge.DEFAULT_RUBRIC, Lute.parse)
+					context:expect(parsed):toBe(nil)
+				else
+					context:expect(reply.text):toBe(nil)
+					context:expect(reply.error ~= nil):toBe(true)
+					if mode == "exit" then
+						context:expect(assert(reply.error)):toContain "quota error"
+					end
+				end
+			end)
+		end
+
 		suite:case("measures agreement with human labels as percent and Cohen's kappa", function(context)
 			local humans = { "a", "a", "a", "a", "b", "b", "b", "tie", "tie", "a" }
 			local judges = { "a", "a", "a", "b", "b", "b", "a", "tie", "a", "a" }

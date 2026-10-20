@@ -27,6 +27,16 @@ The agent gets play/stop, capture, execute, console output and input. `input`
 runs the supplied native VirtualInput code on Client through `execute_luau`.
 It takes `{ code, studio_id? }`. It does not emulate computer or browser input.
 Capture results, including image content, pass through without text conversion.
+Each proxy process claims a fresh transport directory. Restarting the same MCP
+configuration keeps its Studio id and does not reuse old process or close files.
+Each native request has a 60-second deadline, capped by the remaining run time.
+An operator can set a finite positive `callSeconds` in the private scope file
+before starting the proxy. The run's `seconds` limit still applies. Start long
+work without waiting for completion and inspect its progress in later calls.
+A request that returns no answer may have been applied. The proxy closes that
+transport and reports the uncertainty without replaying the request. The next
+explicit request opens a fresh transport to the same Studio. Late answers stay
+with the old transport; they cannot satisfy the next request.
 
 The runner closes the Studio before hidden checks. It also closes it when the
 adapter raises. A cleanup failure fails the run. The proxy does not retry an

@@ -4,8 +4,187 @@ local Eval = require "../src/agent-eval"
 local Verify = require "../src/core"
 local Files = require "../src/lute/files"
 local json = require "@std/json"
+local Lute = require "../src/lute"
 
 return function(harness: Verify.Harness)
+	for _, mode in { "unanswered", "unsent", "raised", "normal-error", "run-deadline", "override" } do
+		harness:case("scoped MCP bounds and drains queued requests after " .. mode, function(t)
+			local now, opened, closed, claimed = 0, 0, 0, 0
+			local calls: { { connection: number, name: string, limit: number, arguments: string } } = {}
+			local responses: { string } = {}
+			local pending = table.concat({
+				'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"screen_capture","arguments":{}}}',
+				'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"execute_luau","arguments":{"datamodel_type":"Edit","code":"return true"}}}',
+				'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_roblox_studios","arguments":{}}}',
+			}, "\n") .. "\n"
+			local config = Eval.lute.encode {
+				studio = { id = "own", name = "run" },
+				executable = "unused",
+				directory = "transport",
+				seconds = if mode == "run-deadline" then 10 else 120,
+				callSeconds = if mode == "override" then 5 else nil,
+			}
+			local imports: { [string]: unknown } = {
+				["@std/fs"] = {
+					readFileToString = function()
+						return config
+					end,
+				},
+				["@std/process"] = { args = { "proxy", "scope.json" } },
+				["@std/json"] = json,
+				["@lute/io"] = {
+					read = function(): string
+						local value = pending
+						pending = ""
+						return value
+					end,
+					write = function(value: string)
+						table.insert(responses, value)
+					end,
+				},
+				["../src/agent-eval"] = Eval,
+				["../src/lute/files"] = {
+					claimDirectory = function(): string
+						claimed += 1
+						return "transport/" .. claimed
+					end,
+				},
+				["../src/lute/studio-mcp"] = {
+					connect = function()
+						opened += 1
+						local connection = opened
+						return {
+							close = function()
+								closed += 1
+							end,
+							callRaw = function(name: string, arguments: string, limit: number): unknown
+								table.insert(
+									calls,
+									{ connection = connection, name = name, limit = limit, arguments = arguments }
+								)
+								if #calls == 1 then
+									if mode == "raised" then
+										error("secret-other-backend", 0)
+									end
+									if mode == "normal-error" then
+										return { status = "answered", detail = "secret-other-backend" }
+									end
+									if mode == "unsent" then
+										return { status = "unsent" }
+									end
+									now = limit
+									return { status = "unanswered" }
+								end
+								return {
+									status = "answered",
+									result = {
+										content = {
+											{
+												type = "text",
+												text = if connection == 1 and mode ~= "normal-error"
+													then "late-old-response"
+													else "new-response",
+											},
+										},
+									},
+								}
+							end,
+						}
+					end,
+				},
+			}
+			local environment: { [string]: unknown } = {
+				require = function(path: string): unknown
+					return assert(imports[path], path)
+				end,
+				os = {
+					clock = function(): number
+						return now
+					end,
+				},
+				assert = assert,
+				error = error,
+				pcall = pcall,
+				type = type,
+				tostring = tostring,
+				math = math,
+				string = string,
+				table = table,
+			}
+			Lute.chunk.load(Eval.lute.services().files.read "tools/scoped-studio-mcp.luau", {
+				environment = environment,
+				name = "scoped-deadline-" .. mode,
+			})()
+			t:expect(#responses):toBe(3)
+			local first = Eval.lute.decode(responses[1]) :: { error: { message: string } }
+			t:expect((string.find(first.error.message, "secret-other", 1, true))):toBe(nil)
+			local uncertain = mode ~= "unsent" and mode ~= "normal-error"
+			t:expect(string.find(first.error.message, "may have been applied", 1, true) ~= nil):toBe(uncertain)
+			t:expect(calls[1].limit):toBe(if mode == "override" then 5 else if mode == "run-deadline" then 10 else 60)
+			t:expect(calls[1].name):toBe "screen_capture"
+			local second =
+				Eval.lute.decode(responses[2]) :: { error: unknown?, result: { content: { { text: string } } }? }
+			if mode == "run-deadline" then
+				t:expect(second.error ~= nil):toBe(true)
+				t:expect(#calls):toBe(1)
+				t:expect(opened):toBe(1)
+			else
+				t:expect(second.error):toBe(nil)
+				t:expect(assert(second.result).content[1].text):toBe "new-response"
+				t:expect(#calls):toBe(2)
+				t:expect(calls[2].name):toBe "execute_luau"
+				t:expect(string.find(calls[2].arguments, '"studio_id":"own"', 1, true) ~= nil):toBe(true)
+				t:expect(opened):toBe(if mode == "normal-error" then 1 else 2)
+			end
+			t:expect(closed):toBe(opened)
+			t:expect(claimed):toBe(opened)
+		end)
+	end
+	harness:case("restarting one scoped MCP configuration never reuses a previous transport directory", function(t)
+		local directory = Files.claimDirectory(Files.temporary "verify-scope-restart")
+		t:defer(function()
+			Files.removeIfPresent(directory)
+		end)
+		local services = Eval.lute.services()
+		local transport = directory .. "/mcp"
+		services.files.makeDirectory(transport)
+		for _, name in { "close", "exited", "pid" } do
+			services.files.write(transport .. "/" .. name, "stale")
+		end
+		local scope, input = directory .. "/scope.json", directory .. "/input.jsonl"
+		services.files.write(
+			scope,
+			Eval.lute.encode {
+				studio = { id = "own", name = "run" },
+				executable = "unused",
+				directory = transport,
+				seconds = 10,
+			}
+		)
+		services.files.write(
+			input,
+			'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_roblox_studios","arguments":{}}}\n'
+		)
+		for count = 1, 4 do
+			local result = services.execute {
+				argv = { "lute", "run", "tools/scoped-studio-mcp.luau", scope },
+				input = input,
+				deadlineSeconds = 10,
+			}
+			t:expect(result.exitcode):toBe(0)
+			t:expect(string.find(result.stdout, "own", 1, true) ~= nil):toBe(true)
+			local claimed = 0
+			for _, entry in services.files.list(transport) do
+				if entry.kind == "directory" then
+					claimed += 1
+					for _, name in { "close", "exited", "pid" } do
+						services.files.write(transport .. "/" .. entry.name .. "/" .. name, "stale")
+					end
+				end
+			end
+			t:expect(claimed):toBe(count)
+		end
+	end)
 	harness:case("scoped MCP handshake serializes capability and ping objects", function(t)
 		local directory = Files.claimDirectory(Files.temporary "verify-scope-handshake")
 		t:defer(function()

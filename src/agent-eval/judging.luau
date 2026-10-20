@@ -90,10 +90,6 @@ local function comparisons(suite: Model.Suite, results: { Result.RunResult }): {
 	return list
 end
 
-local function fileName(id: string): string
-	return (string.gsub(id, "[^%w%._%-]", "_")) .. ".json"
-end
-
 local function decodeJudgment(value: unknown): Judge.Judgment
 	local entry = Schema.record(value, "judgment")
 	local status = Schema.text(entry.status, "judgment.status")
@@ -182,7 +178,7 @@ local function run(options: Options): { Judge.Judgment }
 		end
 		table.insert(pieces, tostring(options.seed))
 		local key = options.hash(table.concat(pieces, "\n"))
-		local path = Paths.join(directory, fileName(comparison.id))
+		local path = Paths.join(directory, key .. ".json")
 		local reused: Judge.Judgment? = nil
 		if options.resume ~= false and files.exists(path) then
 			local ok, stored = pcall(function(): Stored

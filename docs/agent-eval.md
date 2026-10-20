@@ -35,7 +35,7 @@ The [example](../examples/agent-eval) is a complete corpus that runs with no net
 ```sh
 lute run tools/agent-eval.luau plan   --suite eval.json
 lute run tools/agent-eval.luau run    --suite eval.json [--parallel 2] [--task id] [--arm id] [--agent id] [--seed n] [--fresh]
-lute run tools/agent-eval.luau judge  --suite eval.json [--transport api|cli] [--model id] [--effort level]
+lute run tools/agent-eval.luau judge  --suite eval.json [--provider anthropic|openai] [--transport api|cli] [--model id] [--effort level]
 lute run tools/agent-eval.luau report --suite eval.json --thresholds thresholds.json [--labels labels.json] [--verify-report path --run id]
 lute run tools/agent-eval.luau audit  dump.json [--out audit.json]
 ```
@@ -65,7 +65,7 @@ lute run tools/agent-eval.luau audit  dump.json [--out audit.json]
 | `evidence` | no | The evidence directory relative to the suite file. |
 | `budgets` | no | Default budgets for each task. |
 | `devices` | no | Default devices for each task. |
-| `judge` | no | `{ model?, seed? }` for the `judge` command. |
+| `judge` | no | `{ provider?, transport?, model?, seed? }` for the `judge` command. Effort is a command-line option only. |
 
 An identifier has 1 to 64 letters, digits, `.`, `_` or `-`, and starts with a letter or a digit.
 An unknown field fails the load. Every error names the field.
@@ -149,7 +149,9 @@ A run has these steps:
 
 After each run Verify writes `index.json`. Before the runs it writes `plan.json`.
 A run passes only when the agent completed, every required check passed and no budget was exceeded.
-A run that hits `maxTurns` completes. A run that exceeds `wallSeconds`, `maxOutputTokens` or `maxCostUsd` fails and names the budget in `exceeded`.
+An agent completes only with a successful terminal result and process exit. A terminal error or missing terminal result fails, even when the process exits with code zero. A command adapter with the default plain-text parser uses the process exit as its completion signal.
+The Claude adapter also completes when its `error_max_turns` result reports exactly the configured `maxTurns`, including when that result exits with a nonzero code. This exception does not apply to other errors or adapters. Replay uses the same rules as its selected parser.
+A run that exceeds `wallSeconds`, `maxOutputTokens` or `maxCostUsd` fails and names the budget in `exceeded`. Hidden checks still run after an agent failure and retain their diagnostics; passing checks do not turn an agent failure into a passing run.
 A follow-up whose earlier run has no result or no workspace is `blocked`.
 An unknown adapter is `unsupported`. An adapter that raises is `provision_failed`, and its result still exists.
 
@@ -212,15 +214,26 @@ Codex takes no turn or cost limit. The adapter enforces only the wall-clock budg
 
 | Value | Source |
 | --- | --- |
-| Turns | The model steps: one for each tool item and one for each `turn.completed` event. Parallel tool calls of one model response count as more than one step. |
+| Turns | The number of `turn.completed` events. Tool items do not add turns. Messages count completed `agent_message` items separately. |
 | Tokens | The sum of the `usage` of the `turn.completed` events. Input is `input_tokens` minus `cached_input_tokens` and `cache_write_input_tokens`. Cache reads are `cached_input_tokens`, cache writes are `cache_write_input_tokens` and output is `output_tokens`. |
 | Tools | Each `command_execution`, `file_change`, `mcp_tool_call`, `web_search` and `todo_list` item counts once. A failed or declined item, or a command with a nonzero exit code, is a tool error. |
-| Turn latency, interval | For each model step, the time from the previous line, and the time from the previous step. |
+| Turn latency | The elapsed time from `turn.started` to its matching `turn.completed`, including all tools and model work in that CLI turn. No duration is inferred for an interrupted turn or a missing boundary. |
+| Turn interval | The time between the starts of consecutive completed CLI turns. There is no interval for the first turn. |
 | Tool time | The union of the intervals from `item.started` to `item.completed` of the tool items. |
 | Status | `error` after `turn.failed`, `success` after `turn.completed`, `error` when only an `error` event arrived, otherwise `incomplete`. |
 | Result | The text of the last `agent_message` item, or the message of the failure. |
 
 Codex reports no cost, so the cost is absent.
+
+Codex latency measures an end-to-end CLI turn. It does not isolate model thinking
+or a model response within code mode. Tool calls and their combined time remain
+separate measurements. Missing timestamps or unmatched completion boundaries
+leave turn timing unavailable. An unfinished final turn leaves the stream
+incomplete.
+
+Claude latency measures the gap before a top-level assistant message, rather
+than an end-to-end CLI turn. Compare latency only between runs of the same
+adapter. Do not compare these latency values across adapters.
 
 `AgentEval.adapters.command({ id, argv, parse?, stamp?, stdin?, decode })` runs another agent command line.
 `argv` can use `{prompt_file}`, `{workspace}`, `{model}`, `{max_turns}`, `{mcp_config}`, `{seed}` and `{evidence}`.
@@ -288,12 +301,54 @@ A judgment with one valid presentation states that position bias is not controll
 When only one side has screenshots, the other side wins as a `forfeit`. When neither has screenshots, the judgment is `skipped`.
 The rubric criteria are hierarchy, clarity, consistency, polish, fitness for the task and device fit. Pass `rubric` to replace them.
 
-Two transports exist:
+The judge callback is `AgentEval.JudgeTransport`: it accepts a presentation and
+returns response text or an error. The library supplies three implementations:
 
 - `AgentEval.judge.anthropic({ request, apiKey, read, encode, decode, model?, maxTokens?, effort?, url?, deadlineSeconds?, maxImageBytes? })` posts to the Messages API with `anthropic-version: 2023-06-01`. Each image is a base64 content block. The default model is `claude-opus-5-5`. The transport refuses a file that is not PNG, JPEG, GIF or WebP, or that has more than 5 MiB. A `refusal` stop reason is an error. The judge sends no fallback model, so one model judges every comparison.
 - `AgentEval.judge.claudeCli({ execute, files, directory, decode, model?, command?, deadlineSeconds? })` copies the images to neutral names in a new directory and runs `claude -p --output-format json --tools Read` there. The prompt names the files.
+- `AgentEval.judge.codexCli({ execute, files, directory, encode, decode, model?, effort?, command?, deadlineSeconds? })` copies the same images to neutral names and attaches them in presentation order with `codex exec --image`. It uses `--output-schema` and reads the final response from `--output-last-message`. The default model is `gpt-6.1-sol`, with `medium` effort. It uses the local Codex login and needs no API key. Set `directory` to a neutral temporary path outside the source tree. The command line selects that path automatically. Do not put author names or arm names in this path.
 
-Verify keeps each judgment in `judgments/` with a key of the comparison, the image hashes, the rubric, the transport and the seed. A new `judge` reuses a judgment with the same key.
+The Codex judge uses an ephemeral session, ignores user configuration, and runs
+with a read-only sandbox. It attaches images directly and instructs the judge to
+use no tools. Codex has no supported tool allowlist flag. Verify rejects a
+presentation if the event stream records any tool call. This check detects tool
+use after the run; the sandbox does not restrict all reads to the neutral
+directory. Do not use this transport as a general sandbox for untrusted work.
+The shared verdict validator still checks the returned JSON against the rubric.
+The transport starts no Studio and measures no author efficiency values.
+
+The command line selects the provider and the transport separately:
+
+| Provider | Transport | Implementation |
+| --- | --- | --- |
+| `anthropic` | `api` | Messages API |
+| `anthropic` | `cli` | Claude CLI |
+| `openai` | `cli` | Codex CLI |
+
+Provider and transport each use the command-line value, then the suite value,
+then the defaults `anthropic` and `api`. OpenAI with the API
+transport is unsupported and fails before authentication or execution. Unknown
+providers and transports also fail. Use
+`judge --provider openai --transport cli --model gpt-6.1-sol --effort medium`
+for Codex. There is no `codex` transport value.
+
+The model uses `--model`, then `suite.judge.model`, then the provider default.
+A suite model belongs to `suite.judge.provider`, or to `anthropic` when that
+field is omitted. If `--provider` changes that provider, also pass `--model`.
+This prevents a configured model from being sent to another provider without an
+explicit choice. A suite with `judge = { provider = "openai", transport = "cli",
+model = "gpt-6.1-sol" }` needs no repeated model argument.
+
+Anthropic API passes an explicit `--effort` to the provider. When it is omitted,
+the provider selects the effort. OpenAI CLI defaults to `medium`. Anthropic CLI
+does not support the judge's `--effort` option and rejects it.
+
+The canonical judgment identity includes the provider, transport, model and configured
+effort. It records `provider-default` for omitted Anthropic API effort and
+`not-configured` for Anthropic CLI; neither value claims a known provider effort
+level. Keep results with different identities separate.
+
+Verify keeps each judgment in `judgments/<key>.json` with a key of the comparison, the image hashes, the rubric, the transport and the seed. Different keys coexist. A new `judge` reuses a judgment with the same key.
 `judgments.json` holds every judgment of the last `judge` command with its seed and transport.
 
 `AgentEval.judge.calibrate(judgments, labels)` compares the winners with human labels.

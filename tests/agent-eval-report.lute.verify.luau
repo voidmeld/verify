@@ -82,6 +82,129 @@ local function result(task: string, arm: string, shape: Shape): AgentEval.RunRes
 	}
 end
 
+type JudgeCliFixture = {
+	invoke: (extra: { string }) -> number,
+	identity: () -> Object,
+	configure: (judge: Object) -> (),
+	requests: { AgentEval.HttpRequest },
+	commands: { AgentEval.Command },
+	messages: { string },
+	authReads: () -> number,
+}
+
+local function judgeCliFixture(): JudgeCliFixture
+	local memory = Fakes.memory()
+	local files = memory.files
+	local function put(path: string, text: string)
+		files.makeDirectory(assert(string.match(path, "^(.*)/[^/]+$")))
+		files.write(path, text)
+	end
+	put(
+		"/s/eval.json",
+		Fakes.json {
+			schemaVersion = 1,
+			id = "suite",
+			tasks = { "tasks/t" },
+			arms = { { id = "treatment" }, { id = "baseline" } },
+			agents = { { id = "agent", adapter = "replay" } },
+			devices = { { id = "phone", width = 800, height = 400, input = { "touch" } } },
+		}
+	)
+	put(
+		"/s/tasks/t/task.json",
+		Fakes.json { schemaVersion = 1, id = "t", title = "T", brief = "brief.md", starter = "starter" }
+	)
+	put("/s/tasks/t/brief.md", "Make a shop.")
+	put("/s/tasks/t/starter/a.txt", "a")
+	local entries: { { path: string } } = {}
+	for _, arm in { "treatment", "baseline" } do
+		local saved = result("t", arm, { passed = true, tokens = 1, wall = 1, latencies = {} })
+		local image = "/e/" .. arm .. "/main.png"
+		put(image, "\137PNG\r\n\26\npixels")
+		saved.captures = { { device = "phone", label = "main", path = image, sha256 = arm, size = 14 } }
+		put("/e/" .. arm .. "/result.json", Fakes.json(saved))
+		table.insert(entries, { path = arm })
+	end
+	put("/e/index.json", Fakes.json { runs = entries })
+	local criteria: Object = {}
+	for _, criterion in AgentEval.judge.DEFAULT_RUBRIC.criteria do
+		criteria[criterion.id] = "tie"
+	end
+	local answer = Fakes.json { criteria = criteria, overall = "tie", confidence = 1, reasons = { "same" } }
+	local services = Fakes.services(files)
+	local requests: { AgentEval.HttpRequest } = {}
+	local commands: { AgentEval.Command } = {}
+	local messages: { string } = {}
+	local authReads = 0
+	services.print = function(message: string)
+		table.insert(messages, message)
+	end
+	services.environment = function(name: string): string?
+		if name == "ANTHROPIC_API_KEY" then
+			authReads += 1
+			return "key"
+		end
+		return if name == "TEMP" then "/neutral" else nil
+	end
+	services.request = function(request: AgentEval.HttpRequest): (AgentEval.HttpResponse?, string?)
+		table.insert(requests, request)
+		return { status = 200, body = Fakes.json { content = { { type = "text", text = answer } } } }, nil
+	end
+	services.execute = function(command: AgentEval.Command): AgentEval.Execution
+		table.insert(commands, command)
+		if command.argv[1] == "codex" then
+			files.write(assert(command.cwd) .. "/answer.json", answer)
+		end
+		return {
+			started = true,
+			exitcode = 0,
+			timedOut = false,
+			seconds = 1,
+			stderr = "",
+			stdout = Fakes.json { result = answer },
+			lines = { { at = 0, text = '{"type":"turn.started"}' }, { at = 1, text = '{"type":"turn.completed"}' } },
+		}
+	end
+	local cli: AgentEval.CliContext = {
+		services = services,
+		loader = Fakes.loader(files),
+		encode = Lute.encode,
+		decode = Lute.parse,
+		absolute = function(path: string): string
+			return path
+		end,
+		writeVerifyReport = function()
+			error "no report expected"
+		end,
+	}
+	local function invoke(extra: { string }): number
+		local args = { "judge", "--suite", "/s/eval.json", "--evidence", "/e" }
+		for _, word in extra do
+			table.insert(args, word)
+		end
+		return AgentEval.cli(args, cli)
+	end
+	local function identity(): Object
+		local aggregate = Lute.parse(files.read "/e/judgments.json") :: { transport: string }
+		return Lute.parse(aggregate.transport) :: Object
+	end
+	local function configureJudge(judge: Object)
+		local configuration = Lute.parse(files.read "/s/eval.json") :: Object
+		configuration.judge = judge
+		files.write("/s/eval.json", Fakes.json(configuration))
+	end
+	return {
+		invoke = invoke,
+		identity = identity,
+		configure = configureJudge,
+		requests = requests,
+		commands = commands,
+		messages = messages,
+		authReads = function(): number
+			return authReads
+		end,
+	}
+end
 local function judgment(task: string, scoreA: number, seed: number?): AgentEval.Judgment
 	return {
 		id = ("%s/agent/seed-%d/phone/treatment~baseline"):format(task, seed or 1),
@@ -366,6 +489,170 @@ return function(suite: Verify.Harness)
 			context:expect(refusal(none)):toContain "at least one rule"
 		end)
 
+		suite:case("routes judge provider and transport independently with canonical identities", function(context)
+			local fixture = judgeCliFixture()
+			context:expect(fixture.invoke {}):toBe(0)
+			context:expect(#fixture.requests):toBe(2)
+			context:expect(#fixture.commands):toBe(0)
+			context:expect(fixture.identity()):toEqual {
+				provider = "anthropic",
+				transport = "api",
+				model = "claude-opus-5-5",
+				effort = "provider-default",
+			}
+			context:expect(fixture.invoke { "--transport", "cli" }):toBe(0)
+			context:expect(fixture.commands[#fixture.commands].argv[1]):toBe "claude"
+			context:expect(fixture.identity()):toEqual {
+				provider = "anthropic",
+				transport = "cli",
+				model = "claude-opus-5-5",
+				effort = "not-configured",
+			}
+			context:expect(fixture.invoke { "--provider", "openai", "--transport", "cli" }):toBe(0)
+			context:expect(fixture.commands[#fixture.commands].argv[1]):toBe "codex"
+			context
+				:expect(fixture.identity())
+				:toEqual { provider = "openai", transport = "cli", model = "gpt-6.1-sol", effort = "medium" }
+		end)
+
+		suite:case("keeps judge effort caches separate and reuses the original configuration", function(context)
+			local fixture = judgeCliFixture()
+			for _, effort in { "high", "low" } do
+				local before = #fixture.requests
+				context:expect(fixture.invoke { "--effort", effort }):toBe(0)
+				context:expect(#fixture.requests - before):toBe(2)
+				context:expect(fixture.identity().effort):toBe(effort)
+				local request =
+					Lute.parse(assert(fixture.requests[#fixture.requests].body)) :: { output_config: { effort: string } }
+				context:expect(request.output_config.effort):toBe(effort)
+			end
+			local apiCalls = #fixture.requests
+			context:expect(fixture.invoke { "--effort", "high" }):toBe(0)
+			context:expect(#fixture.requests):toBe(apiCalls)
+			context:expect(fixture.invoke { "--provider", "openai", "--transport", "cli" }):toBe(0)
+			local cliCalls = #fixture.commands
+			context
+				:expect(fixture.invoke {
+					"--provider",
+					"openai",
+					"--transport",
+					"cli",
+					"--model",
+					"custom:model",
+					"--effort",
+					"high",
+				})
+				:toBe(0)
+			context:expect(#fixture.commands - cliCalls):toBe(2)
+			context
+				:expect(fixture.identity())
+				:toEqual { provider = "openai", transport = "cli", model = "custom:model", effort = "high" }
+			cliCalls = #fixture.commands
+			context:expect(fixture.invoke { "--provider", "openai", "--transport", "cli" }):toBe(0)
+			context:expect(#fixture.commands):toBe(cliCalls)
+		end)
+
+		suite:case("honors suite judge models and requires an explicit model when changing provider", function(context)
+			local fixture = judgeCliFixture()
+			fixture.configure { model = "historical-model" }
+			context:expect(fixture.invoke {}):toBe(0)
+			context:expect(fixture.identity()):toEqual {
+				provider = "anthropic",
+				transport = "api",
+				model = "historical-model",
+				effort = "provider-default",
+			}
+			local request = Lute.parse(assert(fixture.requests[#fixture.requests].body)) :: { model: string }
+			context:expect(request.model):toBe "historical-model"
+			local beforeAuth, beforeCommands = fixture.authReads(), #fixture.commands
+			context:expect(fixture.invoke { "--provider", "openai", "--transport", "cli" }):toBe(2)
+			context
+				:expect(fixture.messages[#fixture.messages])
+				:toContain "changing the suite judge provider requires --model"
+			context:expect(fixture.authReads()):toBe(beforeAuth)
+			context:expect(#fixture.commands):toBe(beforeCommands)
+			context
+				:expect(
+					fixture.invoke { "--provider", "openai", "--transport", "cli", "--model", "chosen-openai-model" }
+				)
+				:toBe(0)
+			context
+				:expect(fixture.identity())
+				:toEqual { provider = "openai", transport = "cli", model = "chosen-openai-model", effort = "medium" }
+			context:expect(fixture.commands[#fixture.commands].argv[1]):toBe "codex"
+			fixture.configure { provider = "openai", transport = "cli", model = "configured-openai-model" }
+			context:expect(fixture.invoke {}):toBe(0)
+			context
+				:expect(fixture.identity())
+				:toEqual { provider = "openai", transport = "cli", model = "configured-openai-model", effort = "medium" }
+			context:expect(fixture.commands[#fixture.commands].argv[1]):toBe "codex"
+			beforeCommands = #fixture.commands
+			context:expect(fixture.invoke { "--provider", "anthropic" }):toBe(2)
+			context
+				:expect(fixture.messages[#fixture.messages])
+				:toContain "changing the suite judge provider requires --model"
+			context:expect(#fixture.commands):toBe(beforeCommands)
+			context
+				:expect(fixture.invoke {
+					"--provider",
+					"anthropic",
+					"--transport",
+					"api",
+					"--model",
+					"chosen-anthropic-model",
+				})
+				:toBe(0)
+			context:expect(fixture.identity()):toEqual {
+				provider = "anthropic",
+				transport = "api",
+				model = "chosen-anthropic-model",
+				effort = "provider-default",
+			}
+		end)
+
+		suite:case("rejects invalid judge configurations before authentication or execution", function(context)
+			for _, refusal in
+				{
+					{ flags = { "--provider", "unknown" }, message = "--provider must be anthropic or openai" },
+					{ flags = { "--transport", "unknown" }, message = "--transport must be api or cli" },
+					{ flags = { "--transport", "codex" }, message = "--transport must be api or cli" },
+					{ flags = { "--provider", "openai" }, message = "does not support --transport api" },
+					{
+						flags = { "--provider", "openai", "--transport", "api" },
+						message = "does not support --transport api",
+					},
+					{ flags = { "--transport", "cli", "--effort", "high" }, message = "--effort is not supported" },
+				}
+			do
+				local fixture = judgeCliFixture()
+				context:expect(fixture.invoke(refusal.flags)):toBe(2)
+				context:expect(fixture.messages[#fixture.messages]):toContain(refusal.message)
+				context:expect(fixture.authReads()):toBe(0)
+				context:expect(#fixture.commands):toBe(0)
+				context:expect(#fixture.requests):toBe(0)
+			end
+			local invalidConfigurations: { { judge: Object, message: string } } = {
+				{ judge = { provider = false }, message = "suite.judge.provider" },
+				{ judge = { provider = "unknown" }, message = "suite.judge.provider" },
+				{ judge = { transport = false }, message = "suite.judge.transport" },
+				{ judge = { transport = "codex" }, message = "suite.judge.transport" },
+				{ judge = { model = 42 }, message = "suite.judge.model" },
+				{
+					judge = { provider = "openai", transport = "api" },
+					message = "does not support --transport api",
+				},
+			}
+			for _, invalid in invalidConfigurations do
+				local fixture = judgeCliFixture()
+				fixture.configure(invalid.judge)
+				context:expect(fixture.invoke {}):toBe(2)
+				context:expect(fixture.messages[#fixture.messages]):toContain(invalid.message)
+				context:expect(fixture.authReads()):toBe(0)
+				context:expect(#fixture.commands):toBe(0)
+				context:expect(#fixture.requests):toBe(0)
+			end
+		end)
+
 		suite:case("judges captured screenshots once and reuses unchanged judgments", function(context)
 			local memory = Fakes.memory()
 			local files = memory.files
@@ -445,9 +732,19 @@ return function(suite: Verify.Harness)
 			context:expect(calls):toBe(2)
 			context:expect(again[1].winner):toBe "treatment"
 			context:expect(#again[1].presentations):toBe(2)
-			left.captures[1].sha256 = "changed"
+			options.transportName = "codex:model-a:medium"
 			AgentEval.judge.run(options)
 			context:expect(calls):toBe(4)
+			options.transportName = "codex:model-b:high"
+			AgentEval.judge.run(options)
+			context:expect(calls):toBe(6)
+			options.transportName = "fake"
+			AgentEval.judge.run(options)
+			context:expect(calls):toBe(6)
+			context:expect(#files.list "/e/judgments"):toBe(3)
+			left.captures[1].sha256 = "changed"
+			AgentEval.judge.run(options)
+			context:expect(calls):toBe(8)
 			local loaded = AgentEval.judge.load("/e", files, Lute.parse)
 			context:expect(#loaded):toBe(1)
 			context:expect(loaded[1].scoreA):toBe(1)
