@@ -445,9 +445,19 @@ return function(suite: Verify.Harness)
 			context:expect(calls):toBe(2)
 			context:expect(again[1].winner):toBe "treatment"
 			context:expect(#again[1].presentations):toBe(2)
-			left.captures[1].sha256 = "changed"
+			options.transportName = "codex:model-a:medium"
 			AgentEval.judge.run(options)
 			context:expect(calls):toBe(4)
+			options.transportName = "codex:model-b:high"
+			AgentEval.judge.run(options)
+			context:expect(calls):toBe(6)
+			options.transportName = "fake"
+			AgentEval.judge.run(options)
+			context:expect(calls):toBe(6)
+			context:expect(#files.list "/e/judgments"):toBe(3)
+			left.captures[1].sha256 = "changed"
+			AgentEval.judge.run(options)
+			context:expect(calls):toBe(8)
 			local loaded = AgentEval.judge.load("/e", files, Lute.parse)
 			context:expect(#loaded):toBe(1)
 			context:expect(loaded[1].scoreA):toBe(1)

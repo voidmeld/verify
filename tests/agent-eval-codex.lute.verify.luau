@@ -263,6 +263,54 @@ return function(suite: Verify.Harness)
 			context:expect(empty.turnLatencies):toEqual {}
 		end)
 
+		suite:case("accepts completion after transport recovery but rejects later failures", function(context)
+			local lines: { AgentEval.Line } = {
+				{ at = 0, text = Fakes.json { type = "turn.started" } },
+				{
+					at = 3,
+					text = Fakes.json {
+						type = "error",
+						message = "Reconnecting... 2/5 (stream disconnected before completion: websocket closed by server before response.completed)",
+					},
+				},
+				{
+					at = 14,
+					text = Fakes.json {
+						type = "item.completed",
+						item = {
+							id = "item_0",
+							type = "error",
+							message = "Falling back from WebSockets to HTTPS transport. stream disconnected before completion: websocket closed by server before response.completed",
+						},
+					},
+				},
+				{
+					at = 20,
+					text = Fakes.json {
+						type = "item.completed",
+						item = { id = "item_1", type = "agent_message", text = "answer" },
+					},
+				},
+				{ at = 21, text = Fakes.json { type = "turn.completed" } },
+			}
+			local recovered = AgentEval.transcript.parseCodexStream(lines, Lute.parse)
+			context:expect(recovered.status):toBe "success"
+			context:expect(recovered.result):toBe "answer"
+			context:expect(recovered.turnLatencies):toEqual { 21 }
+			context:expect(recovered.toolCalls):toBe(0)
+			table.insert(lines, { at = 22, text = Fakes.json { type = "error", message = "terminal failure" } })
+			local terminal = AgentEval.transcript.parseCodexStream(lines, Lute.parse)
+			context:expect(terminal.status):toBe "error"
+			context:expect(terminal.result):toBe "terminal failure"
+			table.remove(lines)
+			table.insert(lines, { at = 22, text = Fakes.json { type = "turn.started" } })
+			table.insert(
+				lines,
+				{ at = 23, text = Fakes.json { type = "turn.failed", error = { message = "failed final turn" } } }
+			)
+			context:expect(AgentEval.transcript.parseCodexStream(lines, Lute.parse).status):toBe "error"
+		end)
+
 		suite:case("runs the Codex adapter through an injected executor", function(context)
 			local memory = Fakes.memory()
 			local services = Fakes.services(memory.files)

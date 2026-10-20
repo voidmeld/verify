@@ -35,7 +35,7 @@ local USAGE = table.concat({
 	"commands:",
 	"  plan   --suite eval.json [--task id]... [--arm id]... [--agent id]... [--seed n]...",
 	"  run    --suite eval.json [--evidence dir] [--workspaces dir] [--parallel n] [--fresh|--checks-only] [selection]",
-	"  judge  --suite eval.json [--evidence dir] [--transport api|cli] [--model id] [--effort level]",
+	"  judge  --suite eval.json [--evidence dir] [--transport api|cli|codex] [--model id] [--effort level]",
 	"         [--seed n] [--attempts n] [--fresh]",
 	"  report --suite eval.json --thresholds thresholds.json [--evidence dir] [--labels labels.json]",
 	"         [--out dir] [--verify-report path --run id]",
@@ -232,7 +232,8 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 	local transportName = one(parsed, "transport") or "api"
 	local model = one(parsed, "model")
 		or (if type(suite.judge.model) == "string" then suite.judge.model :: string else nil)
-		or Judge.DEFAULT_MODEL
+		or (if transportName == "codex" then Judge.DEFAULT_CODEX_MODEL else Judge.DEFAULT_MODEL)
+	local effort = one(parsed, "effort") or (if transportName == "codex" then Judge.DEFAULT_CODEX_EFFORT else nil)
 	local transport: Judge.Transport
 	if transportName == "api" then
 		local key = services.environment "ANTHROPIC_API_KEY"
@@ -261,8 +262,22 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 			decode = context.decode,
 			model = model,
 		}
+	elseif transportName == "codex" then
+		local temporary = services.environment "TEMP" or services.environment "TMPDIR" or "/tmp"
+		transport = Judge.codexCli {
+			execute = services.execute,
+			files = context.loader.files,
+			directory = Paths.join(
+				Paths.join(temporary, "verify-codex-judge"),
+				services.hash(evidence .. tostring(services.now()))
+			),
+			decode = context.decode,
+			encode = context.encode,
+			model = model,
+			effort = effort,
+		}
 	else
-		services.print "agent-eval: --transport must be api or cli"
+		services.print "agent-eval: --transport must be api, cli or codex"
 		return 2
 	end
 	local seed = numberFlag(parsed, "seed")
@@ -272,7 +287,9 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 		suite = suite,
 		results = results,
 		transport = transport,
-		transportName = transportName .. ":" .. model,
+		transportName = transportName .. ":" .. model .. (if transportName == "codex"
+			then ":" .. assert(effort)
+			else ""),
 		files = context.loader.files,
 		hash = services.hash,
 		encode = context.encode,

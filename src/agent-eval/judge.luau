@@ -1,6 +1,7 @@
 --!strict
 
 local Base64 = require "../codec/base64"
+local Codex = require "./codex"
 local Media = require "../codec/image"
 local Paths = require "../codec/path"
 local Random = require "./random"
@@ -38,7 +39,7 @@ export type Verdict = {
 
 export type Part = { text: string?, image: string? }
 
-export type Request = { system: string, parts: { Part } }
+export type Request = { system: string, parts: { Part }, criteria: { string }? }
 
 export type Reply = { text: string?, error: string?, model: string? }
 
@@ -103,6 +104,8 @@ export type CliOptions = {
 	deadlineSeconds: number?,
 }
 
+export type CodexCliOptions = CliOptions & { encode: (value: unknown) -> string, effort: string? }
+
 export type Label = { comparison: string, winner: string }
 
 export type Calibration = {
@@ -116,6 +119,8 @@ export type Calibration = {
 }
 
 local DEFAULT_MODEL = "claude-opus-5-5"
+local DEFAULT_CODEX_MODEL = "gpt-6.1-sol"
+local DEFAULT_CODEX_EFFORT = "medium"
 local API_URL = "https://api.anthropic.com/v1/messages"
 local API_VERSION = "2023-06-01"
 local MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -263,7 +268,11 @@ local function request(comparison: Comparison, first: Side, second: Side, rubric
 		text = "Compare the first and the second interface on each criterion and overall. Reply with this JSON shape: "
 			.. format(rubric),
 	})
-	return { system = system(rubric), parts = parts }
+	local ids: { string } = {}
+	for _, criterion in rubric.criteria do
+		table.insert(ids, criterion.id)
+	end
+	return { system = system(rubric), parts = parts, criteria = ids }
 end
 
 local function score(presentation: Presentation, value: Choice): number
@@ -481,30 +490,35 @@ local function anthropic(options: AnthropicOptions): Transport
 	end
 end
 
+local function cliInput(options: CliOptions, input: Request, sequence: number): (string, string, { string })
+	local directory = Paths.join(options.directory, ("request-%d"):format(sequence))
+	if options.files.exists(directory) then
+		options.files.remove(directory)
+	end
+	options.files.makeDirectory(directory)
+	local lines: { string } = {}
+	local images: { string } = {}
+	for _, part in input.parts do
+		if part.text ~= nil then
+			table.insert(lines, part.text :: string)
+		elseif part.image ~= nil then
+			local extension = string.match(part.image :: string, "(%.[%w]+)$") or ".png"
+			local name = ("image-%02d%s"):format(#images + 1, string.lower(extension))
+			options.files.copy(part.image :: string, Paths.join(directory, name))
+			table.insert(images, "./" .. name)
+			table.insert(lines, ("Read the image file ./%s."):format(name))
+		end
+	end
+	local promptFile = Paths.join(directory, "prompt.md")
+	options.files.write(promptFile, table.concat(lines, "\n\n"))
+	return directory, promptFile, images
+end
+
 local function claudeCli(options: CliOptions): Transport
 	local sequence = 0
 	return function(input: Request): Reply
 		sequence += 1
-		local directory = Paths.join(options.directory, ("request-%d"):format(sequence))
-		if options.files.exists(directory) then
-			options.files.remove(directory)
-		end
-		options.files.makeDirectory(directory)
-		local lines: { string } = {}
-		local images = 0
-		for _, part in input.parts do
-			if part.text ~= nil then
-				table.insert(lines, part.text :: string)
-			elseif part.image ~= nil then
-				images += 1
-				local extension = string.match(part.image :: string, "(%.[%w]+)$") or ".png"
-				local name = ("image-%02d%s"):format(images, string.lower(extension))
-				options.files.copy(part.image :: string, Paths.join(directory, name))
-				table.insert(lines, ("Read the image file ./%s."):format(name))
-			end
-		end
-		local promptFile = Paths.join(directory, "prompt.md")
-		options.files.write(promptFile, table.concat(lines, "\n\n"))
+		local directory, promptFile = cliInput(options, input, sequence)
 		local argv: { string } = table.clone(options.command or { "claude" })
 		for _, word in
 			{
@@ -559,6 +573,110 @@ local function claudeCli(options: CliOptions): Transport
 			return { text = nil, error = "the judge command returned no result text", model = nil }
 		end
 		return { text = result, error = nil, model = options.model or DEFAULT_MODEL }
+	end
+end
+
+local function codexCli(options: CodexCliOptions): Transport
+	local sequence = 0
+	local model = options.model or DEFAULT_CODEX_MODEL
+	local effort = options.effort or DEFAULT_CODEX_EFFORT
+	return function(input: Request): Reply
+		sequence += 1
+		local directory, promptFile, images = cliInput(options, input, sequence)
+		local ids: { string } = input.criteria or {}
+		if input.criteria == nil then
+			for _, criterion in DEFAULT_RUBRIC.criteria do
+				table.insert(ids, criterion.id)
+			end
+		end
+		local choiceSchema = { type = "string", enum = { "first", "second", "tie" } }
+		local properties: { [string]: unknown } = {}
+		for _, id in ids do
+			properties[id] = choiceSchema
+		end
+		local schema = {
+			type = "object",
+			additionalProperties = false,
+			required = { "criteria", "overall", "confidence", "reasons" },
+			properties = {
+				criteria = { type = "object", additionalProperties = false, properties = properties, required = ids },
+				overall = choiceSchema,
+				confidence = { type = "number", minimum = 0, maximum = 1 },
+				reasons = { type = "array", minItems = 1, maxItems = 5, items = { type = "string" } },
+			},
+		}
+		options.files.write(Paths.join(directory, "schema.json"), options.encode(schema))
+		local extra =
+			{ "--ignore-user-config", "--output-schema", "./schema.json", "--output-last-message", "./answer.json" }
+		for _, image in images do
+			table.insert(extra, "--image")
+			table.insert(extra, image)
+		end
+		local argv = Codex.arguments({
+			workspace = directory,
+			model = model,
+			instructions = input.system
+				.. "\nUse only the attached images and the prompt. Do not use tools or inspect other files.",
+			options = { command = options.command, effort = effort, sandbox = "read-only", arguments = extra },
+		}, nil, options.decode)
+		local execution = options.execute {
+			argv = argv,
+			cwd = directory,
+			input = promptFile,
+			deadlineSeconds = options.deadlineSeconds or 600,
+			stamp = true,
+			scratch = directory,
+		}
+		local events: { string } = {}
+		for _, line in execution.lines do
+			table.insert(events, line.text)
+		end
+		options.files.write(
+			Paths.join(directory, "events.jsonl"),
+			if #events > 0 then table.concat(events, "\n") .. "\n" else execution.stdout
+		)
+		options.files.write(Paths.join(directory, "stderr.txt"), execution.stderr)
+		if not execution.started then
+			return { error = execution.detail or "the judge command did not start", model = model }
+		end
+		if execution.timedOut then
+			return { error = "the judge command timed out", model = model }
+		end
+		if execution.exitcode ~= 0 then
+			return {
+				error = ("the judge command failed (exit %d): %s"):format(
+					execution.exitcode,
+					string.sub(execution.stderr, 1, 300)
+				),
+				model = model,
+			}
+		end
+		local lines: { Services.Line } = if #execution.lines > 0
+			then execution.lines
+			else Services.lines(execution.stdout)
+		local transcript = Codex.parse(lines, options.decode)
+		local otherItem = false
+		for _, line in lines do
+			local decoded, event = pcall(options.decode, line.text)
+			local kind = if decoded then field(event, "type") else nil
+			if kind == "item.started" or kind == "item.updated" or kind == "item.completed" then
+				local itemKind = field(field(event, "item"), "type")
+				if itemKind ~= "agent_message" and itemKind ~= "reasoning" and itemKind ~= "error" then
+					otherItem = true
+				end
+			end
+		end
+		if transcript.toolCalls > 0 or otherItem then
+			return { error = "the judge command used tools; the blind presentation is invalid", model = model }
+		end
+		if transcript.status ~= "success" or transcript.malformed > 0 then
+			return { error = "the judge command did not complete a turn", model = model }
+		end
+		local answer = Paths.join(directory, "answer.json")
+		if not options.files.exists(answer) then
+			return { error = "the judge command returned no result text", model = model }
+		end
+		return { text = options.files.read(answer), model = model }
 	end
 end
 
@@ -654,12 +772,15 @@ end
 
 return {
 	DEFAULT_MODEL = DEFAULT_MODEL,
+	DEFAULT_CODEX_MODEL = DEFAULT_CODEX_MODEL,
+	DEFAULT_CODEX_EFFORT = DEFAULT_CODEX_EFFORT,
 	DEFAULT_RUBRIC = DEFAULT_RUBRIC,
 	parseVerdict = parseVerdict,
 	request = request,
 	compare = compare,
 	anthropic = anthropic,
 	claudeCli = claudeCli,
+	codexCli = codexCli,
 	decodeLabels = decodeLabels,
 	calibrate = calibrate,
 }

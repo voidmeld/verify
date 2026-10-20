@@ -248,6 +248,7 @@ local function parse(lines: { Services.Line }, decode: (text: string) -> unknown
 			end
 		elseif kind == "turn.completed" then
 			completedTurns += 1
+			streamError = nil
 			if turnOpen and turnStartedAt ~= nil and at ~= nil and at >= turnStartedAt then
 				table.insert(transcript.turnLatencies, at - turnStartedAt)
 				if previousTurnStartedAt ~= nil and turnStartedAt >= previousTurnStartedAt then

@@ -35,7 +35,7 @@ The [example](../examples/agent-eval) is a complete corpus that runs with no net
 ```sh
 lute run tools/agent-eval.luau plan   --suite eval.json
 lute run tools/agent-eval.luau run    --suite eval.json [--parallel 2] [--task id] [--arm id] [--agent id] [--seed n] [--fresh]
-lute run tools/agent-eval.luau judge  --suite eval.json [--transport api|cli] [--model id] [--effort level]
+lute run tools/agent-eval.luau judge  --suite eval.json [--transport api|cli|codex] [--model id] [--effort level]
 lute run tools/agent-eval.luau report --suite eval.json --thresholds thresholds.json [--labels labels.json] [--verify-report path --run id]
 lute run tools/agent-eval.luau audit  dump.json [--out audit.json]
 ```
@@ -299,12 +299,27 @@ A judgment with one valid presentation states that position bias is not controll
 When only one side has screenshots, the other side wins as a `forfeit`. When neither has screenshots, the judgment is `skipped`.
 The rubric criteria are hierarchy, clarity, consistency, polish, fitness for the task and device fit. Pass `rubric` to replace them.
 
-Two transports exist:
+Three transports exist:
 
 - `AgentEval.judge.anthropic({ request, apiKey, read, encode, decode, model?, maxTokens?, effort?, url?, deadlineSeconds?, maxImageBytes? })` posts to the Messages API with `anthropic-version: 2023-06-01`. Each image is a base64 content block. The default model is `claude-opus-5-5`. The transport refuses a file that is not PNG, JPEG, GIF or WebP, or that has more than 5 MiB. A `refusal` stop reason is an error. The judge sends no fallback model, so one model judges every comparison.
 - `AgentEval.judge.claudeCli({ execute, files, directory, decode, model?, command?, deadlineSeconds? })` copies the images to neutral names in a new directory and runs `claude -p --output-format json --tools Read` there. The prompt names the files.
+- `AgentEval.judge.codexCli({ execute, files, directory, encode, decode, model?, effort?, command?, deadlineSeconds? })` copies the same images to neutral names and attaches them in presentation order with `codex exec --image`. It uses `--output-schema` and reads the final response from `--output-last-message`. The default model is `gpt-6.1-sol`, with `medium` effort. It uses the local Codex login and needs no API key. Set `directory` to a neutral temporary path outside the source tree. The command line selects that path automatically. Do not put author names or arm names in this path.
 
-Verify keeps each judgment in `judgments/` with a key of the comparison, the image hashes, the rubric, the transport and the seed. A new `judge` reuses a judgment with the same key.
+The Codex judge uses an ephemeral session, ignores user configuration, and runs
+with a read-only sandbox. It attaches images directly and instructs the judge to
+use no tools. Codex has no supported tool allowlist flag. Verify rejects a
+presentation if the event stream records any tool call. This check detects tool
+use after the run; the sandbox does not restrict all reads to the neutral
+directory. Do not use this transport as a general sandbox for untrusted work.
+The shared verdict validator still checks the returned JSON against the rubric.
+The transport starts no Studio and measures no author efficiency values.
+
+For example, use `judge --transport codex --model gpt-6.1-sol --effort medium`.
+Its judgment key includes `codex`, the model and the effort. Keep results from
+different judge transports, models or effort levels separate. Existing `api`
+and `cli` transport names and behavior stay unchanged.
+
+Verify keeps each judgment in `judgments/<key>.json` with a key of the comparison, the image hashes, the rubric, the transport and the seed. Different keys coexist. A new `judge` reuses a judgment with the same key.
 `judgments.json` holds every judgment of the last `judge` command with its seed and transport.
 
 `AgentEval.judge.calibrate(judgments, labels)` compares the winners with human labels.
