@@ -6,6 +6,51 @@ local Files = require "../src/lute/files"
 local json = require "@std/json"
 
 return function(harness: Verify.Harness)
+	harness:case("restarting one scoped MCP configuration never reuses a previous transport directory", function(t)
+		local directory = Files.claimDirectory(Files.temporary "verify-scope-restart")
+		t:defer(function()
+			Files.removeIfPresent(directory)
+		end)
+		local services = Eval.lute.services()
+		local transport = directory .. "/mcp"
+		services.files.makeDirectory(transport)
+		for _, name in { "close", "exited", "pid" } do
+			services.files.write(transport .. "/" .. name, "stale")
+		end
+		local scope, input = directory .. "/scope.json", directory .. "/input.jsonl"
+		services.files.write(
+			scope,
+			Eval.lute.encode {
+				studio = { id = "own", name = "run" },
+				executable = "unused",
+				directory = transport,
+				seconds = 10,
+			}
+		)
+		services.files.write(
+			input,
+			'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_roblox_studios","arguments":{}}}\n'
+		)
+		for count = 1, 4 do
+			local result = services.execute {
+				argv = { "lute", "run", "tools/scoped-studio-mcp.luau", scope },
+				input = input,
+				deadlineSeconds = 10,
+			}
+			t:expect(result.exitcode):toBe(0)
+			t:expect(string.find(result.stdout, "own", 1, true) ~= nil):toBe(true)
+			local claimed = 0
+			for _, entry in services.files.list(transport) do
+				if entry.kind == "directory" then
+					claimed += 1
+					for _, name in { "close", "exited", "pid" } do
+						services.files.write(transport .. "/" .. entry.name .. "/" .. name, "stale")
+					end
+				end
+			end
+			t:expect(claimed):toBe(count)
+		end
+	end)
 	harness:case("scoped MCP handshake serializes capability and ping objects", function(t)
 		local directory = Files.claimDirectory(Files.temporary "verify-scope-handshake")
 		t:defer(function()

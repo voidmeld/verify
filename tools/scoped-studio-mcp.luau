@@ -6,13 +6,14 @@ local process = require "@std/process"
 local json = require "@std/json"
 local Eval = require "../src/agent-eval"
 local Mcp = require "../src/lute/studio-mcp"
+local Files = require "../src/lute/files"
 
 local path = process.args[2]
 assert(path ~= nil and #process.args == 2, "usage: lute run tools/scoped-studio-mcp.luau <run scope file>")
 local raw =
 	Eval.lute.decode(fs.readFileToString(path)) :: { studio: { id: string, name: string }, executable: string, directory: string, seconds: number }
 local deadline = os.clock() + raw.seconds
-local transport = Mcp.connect(raw.executable, raw.directory, deadline)
+local transport = Mcp.connect(raw.executable, Files.claimDirectory(raw.directory), deadline)
 local function encode(value: unknown): string
 	return json.serialize(value :: json.Value)
 end

@@ -27,6 +27,8 @@ The agent gets play/stop, capture, execute, console output and input. `input`
 runs the supplied native VirtualInput code on Client through `execute_luau`.
 It takes `{ code, studio_id? }`. It does not emulate computer or browser input.
 Capture results, including image content, pass through without text conversion.
+Each proxy process claims a fresh transport directory. Restarting the same MCP
+configuration keeps its Studio id and does not reuse old process or close files.
 
 The runner closes the Studio before hidden checks. It also closes it when the
 adapter raises. A cleanup failure fails the run. The proxy does not retry an
