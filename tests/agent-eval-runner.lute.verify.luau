@@ -421,6 +421,48 @@ return function(suite: Verify.Harness)
 			context:expect(missing.results[1].detail):toBe "no adapter is named replay"
 		end)
 
+		suite:case("retains passing checks without passing an author failure", function(context)
+			local memory = Fakes.memory()
+			corpus(memory)
+			local adapter = AgentEval.adapters.replay {
+				decode = Lute.parse,
+				parse = AgentEval.transcript.parseCodexStream,
+				respond = function(_request: AgentEval.AgentRequest): AgentEval.ReplayResponse
+					return {
+						files = { ["main.luau"] = "return {}" },
+						exitcode = 0,
+						lines = {
+							{ at = 0, text = Fakes.json { type = "turn.started" } },
+							{
+								at = 1,
+								text = Fakes.json {
+									type = "error",
+									message = "Selected model is at capacity. Please try a different model.",
+								},
+							},
+							{
+								at = 1.1,
+								text = Fakes.json {
+									type = "turn.failed",
+									error = { message = "Selected model is at capacity. Please try a different model." },
+								},
+							},
+						},
+					}
+				end,
+			}
+			local summary = execute(memory, { requests = {} }, {
+				adapters = { replay = adapter },
+				selection = { tasks = { "one" } },
+			})
+			local result = find(summary, "one/treatment/agent/1")
+			context:expect(result.status):toBe "failed"
+			context:expect(result.checksPassed):toBe(true)
+			context:expect(result.passed):toBe(false)
+			context:expect(result.timeToPassSeconds):toBe(nil)
+			context:expect(#result.checks > 0):toBe(true)
+		end)
+
 		suite:case("records an agent timeout and a raising adapter without losing the run", function(context)
 			local memory = Fakes.memory()
 			corpus(memory)

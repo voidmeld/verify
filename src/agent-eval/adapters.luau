@@ -147,14 +147,56 @@ local function claudeArguments(request: Request): { string }
 	return argv
 end
 
-local function statusOf(execution: Services.Execution): (Status, string?)
-	if not execution.started then
-		return "failed", execution.detail or "the agent command did not start"
+type ExecutionStatus = {
+	started: boolean,
+	timedOut: boolean,
+	exitcode: number,
+	unsupported: boolean?,
+	detail: string?,
+}
+
+local function statusOf(
+	execution: ExecutionStatus,
+	transcript: Transcript.Transcript,
+	turnLimit: boolean
+): (Status, string?)
+	if execution.unsupported == true then
+		return "unsupported", execution.detail
 	end
 	if execution.timedOut then
 		return "timed_out", "the agent exceeded its wall-clock budget"
 	end
+	if not execution.started then
+		return "failed", execution.detail or "the agent command did not start"
+	end
+	if turnLimit then
+		return "completed", nil
+	end
+	if transcript.status == "error" then
+		return "failed",
+			"the agent reported " .. (transcript.subtype or "an error") .. (if transcript.result ~= nil
+				then ": " .. transcript.result
+				else "") .. (if execution.exitcode ~= 0 then (" (exit %d)"):format(execution.exitcode) else "")
+	end
+	if execution.exitcode ~= 0 then
+		return "failed",
+			("the agent exited with %d%s"):format(
+				execution.exitcode,
+				if transcript.status == "incomplete" then " and reported no result" else ""
+			)
+	end
+	if transcript.status == "incomplete" then
+		return "failed", "the agent reported no completed result"
+	end
 	return "completed", nil
+end
+
+local function configuredTurnLimit(request: Request, transcript: Transcript.Transcript, claude: boolean): boolean
+	return claude
+		and request.budgets.maxTurns ~= nil
+		and transcript.status == "error"
+		and transcript.subtype == "error_max_turns"
+		and transcript.reportedTurns == request.budgets.maxTurns
 end
 
 local function executeCommand(
@@ -164,7 +206,8 @@ local function executeCommand(
 	stamp: boolean,
 	stdin: boolean,
 	parse: Parser,
-	decode: (text: string) -> unknown
+	decode: (text: string) -> unknown,
+	claude: boolean?
 ): Outcome
 	local execution = services.execute {
 		argv = argv,
@@ -175,16 +218,9 @@ local function executeCommand(
 		stamp = stamp,
 		scratch = request.directory,
 	}
-	local status: Status, detail: string? = statusOf(execution)
-	if execution.unsupported == true then
-		status = "unsupported"
-		detail = execution.detail
-	end
 	local transcript = parse(execution.lines, decode)
-	if status == "completed" and transcript.status == "incomplete" and execution.exitcode ~= 0 then
-		status = "failed"
-		detail = ("the agent exited with %d and reported no result"):format(execution.exitcode)
-	end
+	local status: Status, detail: string? =
+		statusOf(execution, transcript, configuredTurnLimit(request, transcript, claude == true))
 	return {
 		status = status,
 		exitcode = if execution.started then execution.exitcode else nil,
@@ -207,7 +243,8 @@ local function claudeCode(decode: (text: string) -> unknown): Adapter
 				true,
 				true,
 				Transcript.parseClaudeStream,
-				decode
+				decode,
+				true
 			)
 		end,
 	}
@@ -304,15 +341,12 @@ local function replay(options: ReplayOptions): Adapter
 			local lines = response.lines or {}
 			local seconds = response.seconds or (if #lines > 0 then lines[#lines].at else nil) or 0
 			local transcript = parse(lines, options.decode)
-			local status: Status = "completed"
-			local detail: string? = nil
-			if response.timedOut == true then
-				status = "timed_out"
-				detail = "the agent exceeded its wall-clock budget"
-			elseif (response.exitcode or 0) ~= 0 and transcript.status == "incomplete" then
-				status = "failed"
-				detail = ("the agent exited with %d and reported no result"):format(response.exitcode or 0)
-			end
+			local status: Status, detail: string? = statusOf({
+				started = true,
+				exitcode = response.exitcode or 0,
+				timedOut = response.timedOut == true,
+				unsupported = false,
+			}, transcript, configuredTurnLimit(request, transcript, parse == Transcript.parseClaudeStream))
 			return {
 				status = status,
 				exitcode = response.exitcode or 0,
