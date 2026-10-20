@@ -6,6 +6,7 @@ local system = require "@std/system"
 local Core = require "../src/core"
 local Files = require "../src/lute/files"
 local Processes = require "../src/lute/studio-processes"
+local Powershell = require "../src/lute/powershell"
 
 type Fake = {
 	deps: Processes.Deps,
@@ -52,6 +53,41 @@ local STUDIO = "/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio"
 
 return function(suite: Core.Harness)
 	suite:suite("launched Studio process ownership", function()
+		suite:case("Windows launches maximize Studio and preserve literal paths and its actual PID", function(check)
+			local script = Processes.windowsStart(
+				"C:/O'Brien/$(unused)/RobloxStudioBeta.exe",
+				"C:/Game files/玩家's place.rbxlx"
+			)
+			check:expect(script):toContain "-WindowStyle Maximized -PassThru"
+			if system.win32 then
+				local stub = [[
+function Start-Process {
+  param($FilePath, $ArgumentList, $WindowStyle, [switch]$PassThru)
+  if ($FilePath -ne 'C:/O''Brien/$(unused)/RobloxStudioBeta.exe') { throw 'executable changed' }
+  if ($ArgumentList -ne '-task EditFile -localPlaceFile "C:\Game files\玩家''s place.rbxlx"') { throw 'arguments changed' }
+  if ($WindowStyle -ne 'Maximized' -or -not $PassThru) { throw 'startup options changed' }
+  [pscustomobject]@{ Id = 418 }
+}
+]]
+				local ran = process.run(Powershell.command(stub .. script))
+				check:expect(ran.exitcode):toBe(0)
+				check:expect(ran.stdout):toBe "418\r\n"
+			end
+		end)
+		suite:case("Windows launch failure does not return a wrapper PID", function(check)
+			if system.win32 then
+				local ok, failure = pcall(
+					Processes.start,
+					"C:/verify-missing-studio.exe",
+					"C:/Verify-test.rbxlx",
+					"Verify-test",
+					os.clock() + 5,
+					"unused"
+				)
+				check:expect(ok):toBe(false)
+				check:expect(tostring(failure)):toContain "Start-Process"
+			end
+		end)
 		suite:case("ends the launched Studio and its multiplayer children and never an earlier Studio", function(check)
 			local procs: { Processes.Proc } = {
 				{ pid = 10, ppid = 1, command = STUDIO .. " -task EditFile -localPlaceFile /x/Mine.rbxlx" },

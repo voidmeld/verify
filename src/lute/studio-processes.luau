@@ -104,13 +104,32 @@ local function spawn(argv: { string }, marker: string, deadline: number, list: (
 	)
 end
 
+local function windowsStart(executable: string, place: string): string
+	local function literal(value: string): string
+		return "'" .. string.gsub(value, "'", "''") .. "'"
+	end
+	local arguments = '-task EditFile -localPlaceFile "' .. string.gsub(place, "/", "\\") .. '"'
+	return table.concat({
+		"$ErrorActionPreference = 'Stop'",
+		"$studio = Start-Process -FilePath "
+			.. literal(executable)
+			.. " -ArgumentList "
+			.. literal(arguments)
+			.. " -WindowStyle Maximized -PassThru",
+		"$studio.Id",
+	}, "\n")
+end
+
 local function start(executable: string, place: string, marker: string, deadline: number, log: string): number
 	if system.win32 then
-		return spawn(
-			{ executable, "-task", "EditFile", "-localPlaceFile", (string.gsub(place, "/", "\\")) },
-			marker,
-			deadline
-		)
+		local command = Powershell.command(windowsStart(executable, place))
+		table.insert(command, 2, "Hidden")
+		table.insert(command, 2, "-WindowStyle")
+		local launched = process.run(command)
+		assert(launched.ok, launched.stderr)
+		local pid = tonumber(string.match(launched.stdout, "^%s*(%d+)%s*$"))
+		assert(pid ~= nil, "Studio launch did not return a process id")
+		return pid
 	end
 	local launched = process.run {
 		"sh",
@@ -262,4 +281,5 @@ return {
 	parse = parse,
 	spawn = spawn,
 	start = start,
+	windowsStart = windowsStart,
 }
