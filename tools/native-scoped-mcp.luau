@@ -214,6 +214,40 @@ return 'scoped input'
 			end
 			assert(image, "scoped capture lost its image")
 		end
+		local aScope = directory .. "/a/studio-scope.json"
+		local originalScope = fs.readFileToString(aScope)
+		local limited = Eval.lute.decode(originalScope) :: { [string]: unknown }
+		limited.callSeconds = 5
+		fs.writeStringToFile(aScope, Eval.lute.encode(limited))
+		local afterTimeout = exchange(services, a.config, directory .. "/native-request-timeout", {
+			{
+				name = "execute_luau",
+				arguments = {
+					datamodel_type = "Edit",
+					code = "game:SetAttribute('ScopeSlowCount', (game:GetAttribute('ScopeSlowCount') or 0) + 1); task.wait(8); return 'slow complete'",
+				},
+				refusal = "may have been applied",
+			},
+			{ name = "list_roblox_studios", arguments = {} },
+			{
+				name = "execute_luau",
+				arguments = {
+					datamodel_type = "Edit",
+					code = "assert(game:GetAttribute('ScopeSlowCount') == 1); return 'observed once'",
+				},
+			},
+		})
+		local timeoutListing =
+			Eval.lute.decode(assert(assert(afterTimeout[2].result).content[1].text)) :: { studios: { Studio } }
+		assert(
+			#timeoutListing.studios == 1 and timeoutListing.studios[1].id == aInfo.id,
+			"timeout changed the scoped Studio"
+		)
+		assert(
+			assert(afterTimeout[3].result).content[1].text == "observed once",
+			"timed-out native command was replayed"
+		)
+		fs.writeStringToFile(aScope, originalScope)
 		a.close()
 		assert(not fs.exists(directory .. "/a/studio-scope.json"), "first scope remained after cleanup")
 		survivor "first-closed"

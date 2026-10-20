@@ -212,15 +212,26 @@ Codex takes no turn or cost limit. The adapter enforces only the wall-clock budg
 
 | Value | Source |
 | --- | --- |
-| Turns | The model steps: one for each tool item and one for each `turn.completed` event. Parallel tool calls of one model response count as more than one step. |
+| Turns | The number of `turn.completed` events. Tool items do not add turns. Messages count completed `agent_message` items separately. |
 | Tokens | The sum of the `usage` of the `turn.completed` events. Input is `input_tokens` minus `cached_input_tokens` and `cache_write_input_tokens`. Cache reads are `cached_input_tokens`, cache writes are `cache_write_input_tokens` and output is `output_tokens`. |
 | Tools | Each `command_execution`, `file_change`, `mcp_tool_call`, `web_search` and `todo_list` item counts once. A failed or declined item, or a command with a nonzero exit code, is a tool error. |
-| Turn latency, interval | For each model step, the time from the previous line, and the time from the previous step. |
+| Turn latency | The elapsed time from `turn.started` to its matching `turn.completed`, including all tools and model work in that CLI turn. No duration is inferred for an interrupted turn or a missing boundary. |
+| Turn interval | The time between the starts of consecutive completed CLI turns. There is no interval for the first turn. |
 | Tool time | The union of the intervals from `item.started` to `item.completed` of the tool items. |
 | Status | `error` after `turn.failed`, `success` after `turn.completed`, `error` when only an `error` event arrived, otherwise `incomplete`. |
 | Result | The text of the last `agent_message` item, or the message of the failure. |
 
 Codex reports no cost, so the cost is absent.
+
+Codex latency measures an end-to-end CLI turn. It does not isolate model thinking
+or a model response within code mode. Tool calls and their combined time remain
+separate measurements. Missing timestamps or unmatched completion boundaries
+leave turn timing unavailable. An unfinished final turn leaves the stream
+incomplete.
+
+Claude latency measures the gap before a top-level assistant message, rather
+than an end-to-end CLI turn. Compare latency only between runs of the same
+adapter. Do not compare these latency values across adapters.
 
 `AgentEval.adapters.command({ id, argv, parse?, stamp?, stdin?, decode })` runs another agent command line.
 `argv` can use `{prompt_file}`, `{workspace}`, `{model}`, `{max_turns}`, `{mcp_config}`, `{seed}` and `{evidence}`.

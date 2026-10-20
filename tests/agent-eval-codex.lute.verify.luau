@@ -172,7 +172,7 @@ return function(suite: Verify.Harness)
 				:toThrow 'unknown field "maxTurns"'
 		end)
 
-		suite:case("reads tokens, model steps, tools and timing from the JSON events", function(context)
+		suite:case("reads one end-to-end CLI turn while counting its tools separately", function(context)
 			local transcript = AgentEval.transcript.parseCodexStream(stream(), Lute.parse)
 			context:expect(transcript.status):toBe "success"
 			context:expect(transcript.session):toBe "thread-1"
@@ -180,15 +180,63 @@ return function(suite: Verify.Harness)
 			context:expect(transcript.toolCalls):toBe(3)
 			context:expect(transcript.toolErrors):toBe(1)
 			context:expect(transcript.toolNames):toEqual { command = 1, file_change = 1, mcp__docs__search = 1 }
-			context:expect(transcript.messages):toBe(4)
-			context:expect(transcript.turns):toBe(4)
+			context:expect(transcript.messages):toBe(2)
+			context:expect(transcript.turns):toBe(1)
 			context:expect(transcript.reportedTurns):toBe(nil)
 			context:expect(transcript.usageSource):toBe "result"
 			context:expect(transcript.usage):toEqual { input = 300, cacheCreation = 100, cacheRead = 600, output = 50 }
 			context:expect(transcript.result):toBe "Done."
 			context:expect(transcript.toolSeconds):toBeCloseTo(1.5)
-			context:expect(#transcript.turnIntervals):toBe(4)
-			context:expect(transcript.turnIntervals[1]):toBeCloseTo(1.7)
+			context:expect(#transcript.turnLatencies):toBe(1)
+			context:expect(transcript.turnLatencies[1]):toBeCloseTo(7.7)
+			context:expect(transcript.turnIntervals):toEqual {}
+		end)
+
+		suite:case("measures completed CLI turns and their start intervals", function(context)
+			local lines = stream()
+			table.insert(lines, { at = 10, text = Fakes.json { type = "turn.started" } })
+			table.insert(lines, { at = 15, text = Fakes.json { type = "turn.completed" } })
+			local transcript = AgentEval.transcript.parseCodexStream(lines, Lute.parse)
+			context:expect(transcript.turns):toBe(2)
+			context:expect(#transcript.turnLatencies):toBe(2)
+			context:expect(transcript.turnLatencies[1]):toBeCloseTo(7.7)
+			context:expect(transcript.turnLatencies[2]):toBe(5)
+			context:expect(transcript.turnIntervals):toEqual { 9.5 }
+			context:expect(transcript.toolCalls):toBe(3)
+			context:expect(transcript.toolSeconds):toBeCloseTo(1.5)
+		end)
+
+		suite:case("does not invent a duration for an interrupted CLI turn", function(context)
+			local lines = stream()
+			table.remove(lines)
+			local interrupted = AgentEval.transcript.parseCodexStream(lines, Lute.parse)
+			context:expect(interrupted.status):toBe "incomplete"
+			context:expect(interrupted.turns):toBe(0)
+			context:expect(interrupted.turnLatencies):toEqual {}
+			local later = stream()
+			table.insert(later, { at = 10, text = Fakes.json { type = "turn.started" } })
+			local partial = AgentEval.transcript.parseCodexStream(later, Lute.parse)
+			context:expect(partial.status):toBe "incomplete"
+			context:expect(partial.turns):toBe(1)
+			context:expect(#partial.turnLatencies):toBe(1)
+			context:expect(partial.turnLatencies[1]):toBeCloseTo(7.7)
+		end)
+
+		suite:case("leaves CLI turn durations unavailable without matched timed boundaries", function(context)
+			local lines = stream()
+			table.remove(lines, 2)
+			local unmatched = AgentEval.transcript.parseCodexStream(lines, Lute.parse)
+			context:expect(unmatched.turns):toBe(1)
+			context:expect(unmatched.turnLatencies):toEqual {}
+			context:expect(unmatched.turnIntervals):toEqual {}
+			lines = stream()
+			for _, line in lines do
+				line.at = nil
+			end
+			local untimed = AgentEval.transcript.parseCodexStream(lines, Lute.parse)
+			context:expect(untimed.turnLatencies):toEqual {}
+			context:expect(untimed.turnIntervals):toEqual {}
+			context:expect(untimed.toolSeconds):toBe(nil)
 		end)
 
 		suite:case("reports a failed turn, a stream error and a stream with no turn", function(context)
@@ -202,6 +250,7 @@ return function(suite: Verify.Harness)
 			context:expect(failed.subtype):toBe "turn.failed"
 			context:expect(failed.result):toBe "usage limit"
 			context:expect(failed.usageSource):toBe "none"
+			context:expect(failed.turnLatencies):toEqual {}
 			local broken = AgentEval.transcript.parseCodexStream({
 				{ at = 0.1, text = Fakes.json { type = "error", message = "stream disconnected" } },
 				{ at = 0.2, text = "not json" },
