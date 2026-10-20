@@ -149,7 +149,9 @@ A run has these steps:
 
 After each run Verify writes `index.json`. Before the runs it writes `plan.json`.
 A run passes only when the agent completed, every required check passed and no budget was exceeded.
-A run that hits `maxTurns` completes. A run that exceeds `wallSeconds`, `maxOutputTokens` or `maxCostUsd` fails and names the budget in `exceeded`.
+An agent completes only with a successful terminal result and process exit. A terminal error or missing terminal result fails, even when the process exits with code zero. A command adapter with the default plain-text parser uses the process exit as its completion signal.
+The Claude adapter also completes when its `error_max_turns` result reports exactly the configured `maxTurns`, including when that result exits with a nonzero code. This exception does not apply to other errors or adapters. Replay uses the same rules as its selected parser.
+A run that exceeds `wallSeconds`, `maxOutputTokens` or `maxCostUsd` fails and names the budget in `exceeded`. Hidden checks still run after an agent failure and retain their diagnostics; passing checks do not turn an agent failure into a passing run.
 A follow-up whose earlier run has no result or no workspace is `blocked`.
 An unknown adapter is `unsupported`. An adapter that raises is `provision_failed`, and its result still exists.
 

@@ -311,6 +311,78 @@ return function(suite: Verify.Harness)
 			context:expect(AgentEval.transcript.parseCodexStream(lines, Lute.parse).status):toBe "error"
 		end)
 
+		suite:case("fails terminal author errors even when the process exits successfully", function(context)
+			local failed = stream()
+			table.remove(failed)
+			table.insert(
+				failed,
+				{ at = 9, text = Fakes.json { type = "error", message = "Selected model is at capacity." } }
+			)
+			table.insert(failed, {
+				at = 9.1,
+				text = Fakes.json { type = "turn.failed", error = { message = "Selected model is at capacity." } },
+			})
+			local recovered = stream()
+			local completion = table.remove(recovered)
+			table.insert(recovered, { at = 8.1, text = Fakes.json { type = "error", message = "retrying request" } })
+			assert(completion ~= nil)
+			table.insert(recovered, completion)
+			local truncated = stream()
+			table.remove(truncated)
+			local terminal = stream()
+			table.insert(terminal, { at = 9, text = Fakes.json { type = "error", message = "stream disconnected" } })
+			local cases: { { lines: { AgentEval.Line }, code: number, expected: string, timedOut: boolean?, unsupported: boolean? } } =
+				{
+					{ lines = failed, code = 0, expected = "failed" },
+					{ lines = failed, code = 1, expected = "failed" },
+					{ lines = truncated, code = 0, expected = "failed" },
+					{ lines = stream(), code = 1, expected = "failed" },
+					{ lines = recovered, code = 0, expected = "completed" },
+					{ lines = terminal, code = 0, expected = "failed" },
+					{ lines = failed, code = 1, timedOut = true, expected = "timed_out" },
+					{ lines = failed, code = 1, timedOut = true, unsupported = true, expected = "unsupported" },
+				}
+			for _, case in cases do
+				local memory = Fakes.memory()
+				local services = Fakes.services(memory.files)
+				services.execute = function(_command: AgentEval.Command): AgentEval.Execution
+					return {
+						started = true,
+						exitcode = case.code,
+						timedOut = case.timedOut == true,
+						unsupported = case.unsupported == true,
+						stdout = "",
+						stderr = "",
+						lines = case.lines,
+						seconds = 10,
+					}
+				end
+				local outcome = AgentEval.adapters.codex(Lute.parse).run(request(), services)
+				context:expect(outcome.status):toBe(case.expected)
+				if case.lines == failed and case.expected == "failed" then
+					context:expect(string.find(outcome.detail or "", "at capacity", 1, true) ~= nil):toBe(true)
+					context:expect(outcome.transcript.toolCalls):toBe(3)
+				end
+				if case.unsupported ~= true then
+					local replay = AgentEval.adapters
+						.replay({
+							decode = Lute.parse,
+							parse = AgentEval.transcript.parseCodexStream,
+							respond = function(): AgentEval.ReplayResponse
+								return {
+									lines = case.lines,
+									exitcode = case.code,
+									timedOut = case.timedOut,
+									seconds = 10,
+								}
+							end,
+						})
+						.run(request(), services)
+					context:expect(replay.status):toBe(case.expected)
+				end
+			end
+		end)
+
 		suite:case("runs the Codex adapter through an injected executor", function(context)
 			local memory = Fakes.memory()
 			local services = Fakes.services(memory.files)
