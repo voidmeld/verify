@@ -35,7 +35,8 @@ local USAGE = table.concat({
 	"commands:",
 	"  plan   --suite eval.json [--task id]... [--arm id]... [--agent id]... [--seed n]...",
 	"  run    --suite eval.json [--evidence dir] [--workspaces dir] [--parallel n] [--fresh|--checks-only] [selection]",
-	"  judge  --suite eval.json [--evidence dir] [--transport api|cli|codex] [--model id] [--effort level]",
+	"  judge  --suite eval.json [--evidence dir] [--provider anthropic|openai] [--transport api|cli]",
+	"         [--model id] [--effort level]",
 	"         [--seed n] [--attempts n] [--fresh]",
 	"  report --suite eval.json --thresholds thresholds.json [--evidence dir] [--labels labels.json]",
 	"         [--out dir] [--verify-report path --run id]",
@@ -225,17 +226,52 @@ local function runCommand(parsed: Parsed, context: Context): number
 end
 
 local function judgeCommand(parsed: Parsed, context: Context): number
-	local suite = loadSuite(parsed, context)
-	local evidence = evidenceOf(parsed, suite, context)
 	local services = context.services
+	local suite = loadSuite(parsed, context)
+	local suiteProvider = Schema.optionalText(suite.judge.provider, "suite.judge.provider") or "anthropic"
+	local suiteTransport = Schema.optionalText(suite.judge.transport, "suite.judge.transport") or "api"
+	local suiteModel = Schema.optionalText(suite.judge.model, "suite.judge.model")
+	if suiteProvider ~= "anthropic" and suiteProvider ~= "openai" then
+		services.print "agent-eval: suite.judge.provider must be anthropic or openai"
+		return 2
+	end
+	if suiteTransport ~= "api" and suiteTransport ~= "cli" then
+		services.print "agent-eval: suite.judge.transport must be api or cli"
+		return 2
+	end
+	local provider = one(parsed, "provider") or suiteProvider
+	local transportName = one(parsed, "transport") or suiteTransport
+	if provider ~= "anthropic" and provider ~= "openai" then
+		services.print "agent-eval: --provider must be anthropic or openai"
+		return 2
+	end
+	if transportName ~= "api" and transportName ~= "cli" then
+		services.print "agent-eval: --transport must be api or cli"
+		return 2
+	end
+	local isApi = transportName == "api"
+	if provider == "openai" and isApi then
+		services.print "agent-eval: --provider openai does not support --transport api; use --transport cli"
+		return 2
+	end
+	local requestedEffort = Schema.optionalText(one(parsed, "effort"), "--effort")
+	if provider == "anthropic" and not isApi and requestedEffort ~= nil then
+		services.print "agent-eval: --effort is not supported with --provider anthropic --transport cli"
+		return 2
+	end
+	local specifiedModel = Schema.optionalText(one(parsed, "model"), "--model")
+	if provider ~= suiteProvider and suiteModel ~= nil and specifiedModel == nil then
+		services.print "agent-eval: changing the suite judge provider requires --model; suite.judge.model belongs to suite.judge.provider (anthropic when omitted)"
+		return 2
+	end
+	local evidence = evidenceOf(parsed, suite, context)
 	local results = Runner.load(evidence, context.loader.files, context.decode)
-	local transportName = one(parsed, "transport") or "api"
-	local model = one(parsed, "model")
-		or (if type(suite.judge.model) == "string" then suite.judge.model :: string else nil)
-		or (if transportName == "codex" then Judge.DEFAULT_CODEX_MODEL else Judge.DEFAULT_MODEL)
-	local effort = one(parsed, "effort") or (if transportName == "codex" then Judge.DEFAULT_CODEX_EFFORT else nil)
+	local model = specifiedModel
+		or suiteModel
+		or (if provider == "openai" then Judge.DEFAULT_CODEX_MODEL else Judge.DEFAULT_MODEL)
+	local effort = requestedEffort or (if provider == "openai" then Judge.DEFAULT_CODEX_EFFORT else nil)
 	local transport: Judge.Transport
-	if transportName == "api" then
+	if isApi then
 		local key = services.environment "ANTHROPIC_API_KEY"
 		if key == nil or key == "" then
 			services.print "agent-eval: ANTHROPIC_API_KEY is not set"
@@ -252,9 +288,9 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 			encode = context.encode,
 			decode = context.decode,
 			model = model,
-			effort = one(parsed, "effort"),
+			effort = effort,
 		}
-	elseif transportName == "cli" then
+	elseif provider == "anthropic" then
 		transport = Judge.claudeCli {
 			execute = services.execute,
 			files = context.loader.files,
@@ -262,7 +298,7 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 			decode = context.decode,
 			model = model,
 		}
-	elseif transportName == "codex" then
+	else
 		local temporary = services.environment "TEMP" or services.environment "TMPDIR" or "/tmp"
 		transport = Judge.codexCli {
 			execute = services.execute,
@@ -276,9 +312,6 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 			model = model,
 			effort = effort,
 		}
-	else
-		services.print "agent-eval: --transport must be api, cli or codex"
-		return 2
 	end
 	local seed = numberFlag(parsed, "seed")
 		or (if type(suite.judge.seed) == "number" then suite.judge.seed :: number else nil)
@@ -287,9 +320,12 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 		suite = suite,
 		results = results,
 		transport = transport,
-		transportName = transportName .. ":" .. model .. (if transportName == "codex"
-			then ":" .. assert(effort)
-			else ""),
+		transportName = Schema.canonical {
+			provider = provider,
+			transport = transportName,
+			model = model,
+			effort = effort or (if isApi then "provider-default" else "not-configured"),
+		},
 		files = context.loader.files,
 		hash = services.hash,
 		encode = context.encode,

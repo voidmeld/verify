@@ -35,7 +35,7 @@ The [example](../examples/agent-eval) is a complete corpus that runs with no net
 ```sh
 lute run tools/agent-eval.luau plan   --suite eval.json
 lute run tools/agent-eval.luau run    --suite eval.json [--parallel 2] [--task id] [--arm id] [--agent id] [--seed n] [--fresh]
-lute run tools/agent-eval.luau judge  --suite eval.json [--transport api|cli|codex] [--model id] [--effort level]
+lute run tools/agent-eval.luau judge  --suite eval.json [--provider anthropic|openai] [--transport api|cli] [--model id] [--effort level]
 lute run tools/agent-eval.luau report --suite eval.json --thresholds thresholds.json [--labels labels.json] [--verify-report path --run id]
 lute run tools/agent-eval.luau audit  dump.json [--out audit.json]
 ```
@@ -65,7 +65,7 @@ lute run tools/agent-eval.luau audit  dump.json [--out audit.json]
 | `evidence` | no | The evidence directory relative to the suite file. |
 | `budgets` | no | Default budgets for each task. |
 | `devices` | no | Default devices for each task. |
-| `judge` | no | `{ model?, seed? }` for the `judge` command. |
+| `judge` | no | `{ provider?, transport?, model?, seed? }` for the `judge` command. Effort is a command-line option only. |
 
 An identifier has 1 to 64 letters, digits, `.`, `_` or `-`, and starts with a letter or a digit.
 An unknown field fails the load. Every error names the field.
@@ -299,7 +299,8 @@ A judgment with one valid presentation states that position bias is not controll
 When only one side has screenshots, the other side wins as a `forfeit`. When neither has screenshots, the judgment is `skipped`.
 The rubric criteria are hierarchy, clarity, consistency, polish, fitness for the task and device fit. Pass `rubric` to replace them.
 
-Three transports exist:
+The judge callback is `AgentEval.JudgeTransport`: it accepts a presentation and
+returns response text or an error. The library supplies three implementations:
 
 - `AgentEval.judge.anthropic({ request, apiKey, read, encode, decode, model?, maxTokens?, effort?, url?, deadlineSeconds?, maxImageBytes? })` posts to the Messages API with `anthropic-version: 2023-06-01`. Each image is a base64 content block. The default model is `claude-opus-5-5`. The transport refuses a file that is not PNG, JPEG, GIF or WebP, or that has more than 5 MiB. A `refusal` stop reason is an error. The judge sends no fallback model, so one model judges every comparison.
 - `AgentEval.judge.claudeCli({ execute, files, directory, decode, model?, command?, deadlineSeconds? })` copies the images to neutral names in a new directory and runs `claude -p --output-format json --tools Read` there. The prompt names the files.
@@ -314,10 +315,36 @@ directory. Do not use this transport as a general sandbox for untrusted work.
 The shared verdict validator still checks the returned JSON against the rubric.
 The transport starts no Studio and measures no author efficiency values.
 
-For example, use `judge --transport codex --model gpt-6.1-sol --effort medium`.
-Its judgment key includes `codex`, the model and the effort. Keep results from
-different judge transports, models or effort levels separate. Existing `api`
-and `cli` transport names and behavior stay unchanged.
+The command line selects the provider and the transport separately:
+
+| Provider | Transport | Implementation |
+| --- | --- | --- |
+| `anthropic` | `api` | Messages API |
+| `anthropic` | `cli` | Claude CLI |
+| `openai` | `cli` | Codex CLI |
+
+Provider and transport each use the command-line value, then the suite value,
+then the defaults `anthropic` and `api`. OpenAI with the API
+transport is unsupported and fails before authentication or execution. Unknown
+providers and transports also fail. Use
+`judge --provider openai --transport cli --model gpt-6.1-sol --effort medium`
+for Codex. There is no `codex` transport value.
+
+The model uses `--model`, then `suite.judge.model`, then the provider default.
+A suite model belongs to `suite.judge.provider`, or to `anthropic` when that
+field is omitted. If `--provider` changes that provider, also pass `--model`.
+This prevents a configured model from being sent to another provider without an
+explicit choice. A suite with `judge = { provider = "openai", transport = "cli",
+model = "gpt-6.1-sol" }` needs no repeated model argument.
+
+Anthropic API passes an explicit `--effort` to the provider. When it is omitted,
+the provider selects the effort. OpenAI CLI defaults to `medium`. Anthropic CLI
+does not support the judge's `--effort` option and rejects it.
+
+The canonical judgment identity includes the provider, transport, model and configured
+effort. It records `provider-default` for omitted Anthropic API effort and
+`not-configured` for Anthropic CLI; neither value claims a known provider effort
+level. Keep results with different identities separate.
 
 Verify keeps each judgment in `judgments/<key>.json` with a key of the comparison, the image hashes, the rubric, the transport and the seed. Different keys coexist. A new `judge` reuses a judgment with the same key.
 `judgments.json` holds every judgment of the last `judge` command with its seed and transport.
