@@ -82,7 +82,7 @@ local function fingerprint(text)
 end
 local function publish(ok, value)
 	if not ok then
-		payload("error", tostring(value))
+		payload("error", string.sub(tostring(value), 1, 4000))
 		R:SetAttribute("state", "raised")
 		return
 	end
@@ -125,7 +125,7 @@ task.spawn(function()
 end))
 end)
 if not published then
-	payload("error", tostring(reason))
+	payload("error", string.sub(tostring(reason), 1, 4000))
 	R:SetAttribute("state", "raised")
 end
 end)
