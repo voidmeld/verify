@@ -263,7 +263,7 @@ return function(suite: Core.Harness)
 							}
 						elseif tool == "execute_luau" then
 							local code = arguments.code :: string
-							if string.find(code, 'P .. "p" .. I', 1, true) ~= nil then
+							if string.find(code, "local I = ", 1, true) ~= nil then
 								fetches += 1
 							end
 							local started = string.gsub(code, "return produce", "return produce")

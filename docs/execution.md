@@ -265,8 +265,10 @@ The poll finds one of these states:
 
 Each poll also reads Logger history for progress when the run has a `progressFile`. An attached run does the same. See [attached Studio](#attached-studio).
 The code must still be valid code for the engine, and it can yield.
-The engine keeps the result in the attributes of `ReplicatedStorage`, named `VerifyRun<digest>_*`.
-Verify clears them after a fetch.
+The engine keeps each result in one `VerifyRun<digest>_` Folder under `ReplicatedStorage`.
+Payload segments and errors use StringValue children; bounded state and digest metadata use attributes.
+Publication failures use the same raised outcome as execution failures.
+Verify destroys the owned Folder after a fetch.
 
 The default run limit is 90 seconds.
 A launched Studio run owns every Studio process that it starts. The worker records the Studio processes before the launch. On every exit it ends the multiplayer test with `StudioTestService:EndTest`, then sends TERM and then KILL to the Studio processes that appeared for this run (on Windows, `taskkill` and then `taskkill /F`): the launched Studio and the descendants of processes identified by its PID or unique place marker. Generic multiplayer flags alone establish no ownership. It never signals a Studio that ran before or an unrelated concurrent launch. A detached process whose ancestry and run marker are both gone cannot safely be claimed by cleanup. A process that survives both signals is listed as a limitation of the report.

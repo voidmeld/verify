@@ -83,7 +83,7 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 		calls_by_source = {},
 		engine = function(datamodel: string, code: string): string
 			if string.find(code, 'local P = "VerifyRun', 1, true) ~= nil then
-				local body = string.match(code, "publish%(pcall%(function%(%)\n(.-)\nend%)%)\nend%)\nreturn 'started'")
+				local body = string.match(code, "publish%(pcall%(function%(%)\n(.-)\nend%)%)")
 				local runId = if body ~= nil then string.match(body, 'local runId = "([^"]+)"') else nil
 				if
 					body ~= nil
@@ -242,7 +242,7 @@ end
 local function segmentCalls(self: Fake): number
 	local count = 0
 	for _, source in self.calls_by_source do
-		if string.find(source, 'P .. "p" .. I', 1, true) ~= nil then
+		if string.find(source, "local I = ", 1, true) ~= nil then
 			count += 1
 		end
 	end
@@ -521,6 +521,43 @@ return function(suite: Verify.Harness)
 			check:expect(size > 250000):toBe(true)
 			check:expect(segmentCalls(self)):toEqual(1 + math.ceil(size / Detached.SEGMENT_BYTES))
 			check:expect((large.report :: Verify.Report).passed):toEqual(1)
+		end)
+
+		suite:case("terminates execution and publication failures with intact errors and owned cleanup", function(check)
+			for _, failure in
+				{
+					{
+						code = 'error(string.rep("execution failure", 20))',
+						needle = string.rep("execution failure", 20),
+					},
+					{
+						code = 'local occupied = Instance.new("Folder") occupied.Name = "p1" occupied.Parent = RS:FindFirstChild(P) return "report"',
+						needle = "Value",
+					},
+				}
+			do
+				local runs = 0
+				local engine = StudioEngine.new {
+					run = function()
+						runs += 1
+					end,
+				}
+				local outcome = Detached.run {
+					execute = function(datamodel, code): Detached.Reply
+						return { ok = true, text = engine.run(datamodel, code), lost = false, expired = false }
+					end,
+					datamodel = "Server",
+					code = "run() " .. failure.code,
+					runId = "failed-publication",
+					deadline = os.clock() + 3,
+				}
+				check:expect(outcome.status):toBe "failed"
+				check:expect(outcome.detail):toContain(failure.needle)
+				check:expect(runs):toBe(1)
+				check
+					:expect(engine.run("Server", 'return #game:GetService("ReplicatedStorage"):GetChildren()'))
+					:toBe "0"
+			end
 		end)
 
 		suite:case("keeps multibyte text whole when it cuts a segment", function(check)
