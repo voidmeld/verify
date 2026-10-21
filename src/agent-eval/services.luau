@@ -57,7 +57,7 @@ export type Services = {
 		place: string,
 		build: { string },
 		seconds: number
-	) -> { config: string, close: () -> () })?,
+	) -> { config: string, close: (keep: boolean?) -> () })?,
 	files: Files,
 	execute: (command: Command) -> Execution,
 	checks: (gate: Gate.Definition, directory: string, runId: string) -> Gate.Outcome,

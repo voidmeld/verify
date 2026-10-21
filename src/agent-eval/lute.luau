@@ -351,7 +351,7 @@ local function studio(
 	place: string,
 	build: { string },
 	seconds: number
-): { config: string, close: () -> () }
+): { config: string, close: (keep: boolean?) -> () }
 	assert(#build > 0, "scoped Studio requires a build command")
 	local built = execute(if system.win32 then nil else "sh") {
 		argv = build,
@@ -389,7 +389,23 @@ local function studio(
 	end
 	return {
 		config = config,
-		close = function()
+		close = function(keep: boolean?)
+			if keep then
+				local stopped = opened.session.play(false)
+				assert(stopped.ok, stopped.detail)
+				local released = opened.session.close()
+				assert(released.acknowledged and released.restored, "scoped Studio release failed")
+				files.write(
+					directory .. "/studio-place.json",
+					encode {
+						studio = opened.session.studio,
+						place = opened.place,
+						pid = opened.pid,
+					}
+				)
+				files.remove(scopeFile)
+				return
+			end
 			local closed = opened.close()
 			files.remove(scopeFile)
 			assert(#closed.survivors == 0 and closed.session.acknowledged, "scoped Studio cleanup failed")

@@ -45,6 +45,15 @@ build command must rebuild the place after source edits; the initial place is
 the provisioned snapshot. Agents can use Edit execution to inspect and update
 their Studio. A live source sync service is not provided.
 
+For an agent that authors in Studio, set `studio.keep` to `true`. After the
+bounded author process returns, Verify stops Play, closes its MCP session,
+and leaves the owned Studio open. `studio-place.json` in the run directory
+records the Studio id, local place path, and process id. The consumer must save
+that place before closing Studio and evaluate the saved bytes. Keeping Studio
+does not save the place or establish a submission. Hidden checks still run;
+a missing saved submission must fail the consumer's checks. An adapter exception
+still closes Studio, including when `keep` is set.
+
 Use an agent setup that ignores user MCP configuration and disables unrelated
 plugins, computer use and browser use. `studio` cannot be combined with another
 MCP configuration. This scope restricts the supplied MCP tools. The workspace

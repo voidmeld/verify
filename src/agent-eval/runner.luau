@@ -550,7 +550,7 @@ local function create(options: Options): () -> Summary
 		files.makeDirectory(directory)
 		local workspace = Paths.join(services.workspaces, ("%s/%s"):format(suite.id, spec.path))
 		local finished = false
-		local closeStudio: (() -> ())? = nil
+		local closeStudio: ((boolean?) -> ())? = nil
 		local ok, problem = pcall(function(): string?
 			local source = spec.task.starter
 			if spec.task.from ~= nil then
@@ -639,7 +639,7 @@ local function create(options: Options): () -> Summary
 			log(("run %s: agent %s started"):format(spec.id, adapter.id))
 			local outcome = adapter.run(request, services)
 			if closeStudio ~= nil then
-				closeStudio()
+				closeStudio(studio ~= nil and studio.keep == true)
 				closeStudio = nil
 			end
 			files.write(Paths.join(directory, "transcript.jsonl"), stampedText(outcome.lines))
@@ -660,7 +660,7 @@ local function create(options: Options): () -> Summary
 		end)
 		if closeStudio ~= nil then
 			local cleaned, cleanupProblem = pcall(function(): string?
-				(closeStudio :: () -> ())()
+				(closeStudio :: (boolean?) -> ())(false)
 				return nil
 			end)
 			if not cleaned then
