@@ -262,6 +262,13 @@ The collector reads each property in a protected call, so a missing property rea
 
 `Roblox.uiAudit.analyze(dump, options?)` returns a report with a score from 0 to 100. `decode(value)` validates a dump that crossed a wire.
 
+`Roblox.uiAudit.isAbove(dump, left, right)` compares the paint order of two
+elements from separate branches in the same decoded dump. It uses root
+`DisplayOrder`, global `ZIndex`, or the first different sibling ancestors and
+their `ZIndex` and order. A tie, the same element, or an ancestor pair under
+`Sibling` returns false. The query does not check visibility, opacity, clipping
+or whether one element covers another.
+
 | Rule | Severity | Finds |
 | --- | --- | --- |
 | `text-truncated` | high | The text bounds are larger than the element, or `TextFits` is false for text with a `TextTruncate` mode. A false `TextFits` without truncation, where the bounds fit, comes from sub-pixel rounding of automatic sizes and does not count. Scaled text counts only when it does not fit. |

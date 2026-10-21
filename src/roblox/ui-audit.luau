@@ -168,6 +168,40 @@ local function round(value: number): number
 	return math.floor(value + 0.5)
 end
 
+local function orderedAbove(roots: { [number]: Root }, elements: { Element }, left: Element, right: Element): boolean
+	if left.root ~= right.root then
+		return (roots[left.root].displayOrder or 0) > (roots[right.root].displayOrder or 0)
+	end
+	if roots[left.root].zIndexBehavior == "Global" then
+		return if left.zIndex ~= right.zIndex then left.zIndex > right.zIndex else left.order > right.order
+	end
+	local leftBranch, rightBranch = { left }, { right }
+	local function parents(branch: { Element })
+		local parent = branch[1].parent
+		while parent do
+			table.insert(branch, 1, elements[parent])
+			parent = elements[parent].parent
+		end
+	end
+	parents(leftBranch)
+	parents(rightBranch)
+	for index = 1, math.min(#leftBranch, #rightBranch) do
+		local a, b = leftBranch[index], rightBranch[index]
+		if a.index ~= b.index then
+			return if a.zIndex ~= b.zIndex then a.zIndex > b.zIndex else a.order > b.order
+		end
+	end
+	return false
+end
+
+local function isAbove(dump: Dump, left: Element, right: Element): boolean
+	local roots: { [number]: Root } = {}
+	for _, root in dump.roots do
+		roots[root.index] = root
+	end
+	return orderedAbove(roots, dump.elements, left, right)
+end
+
 local function analyze(dump: Dump, options: Options?): Report
 	local resolved = resolve(options, dump.screen)
 	local violations: { Violation } = {}
@@ -252,29 +286,7 @@ local function analyze(dump: Dump, options: Options?): Report
 		return false
 	end
 	local function above(left: Element, right: Element): boolean
-		if left.root ~= right.root then
-			return (roots[left.root].displayOrder or 0) > (roots[right.root].displayOrder or 0)
-		end
-		if roots[left.root].zIndexBehavior == "Global" then
-			return if left.zIndex ~= right.zIndex then left.zIndex > right.zIndex else left.order > right.order
-		end
-		local leftBranch, rightBranch = { left }, { right }
-		local function parents(branch: { Element })
-			local parent = branch[1].parent
-			while parent do
-				table.insert(branch, 1, dump.elements[parent])
-				parent = dump.elements[parent].parent
-			end
-		end
-		parents(leftBranch)
-		parents(rightBranch)
-		for index = 1, math.min(#leftBranch, #rightBranch) do
-			local a, b = leftBranch[index], rightBranch[index]
-			if a.index ~= b.index then
-				return if a.zIndex ~= b.zIndex then a.zIndex > b.zIndex else a.order > b.order
-			end
-		end
-		return false
+		return orderedAbove(roots, dump.elements, left, right)
 	end
 	local function canInteract(element: Element): boolean
 		local cursor: Element? = element
@@ -899,4 +911,5 @@ return {
 	analyze = analyze,
 	contrastRatio = ratio,
 	intersect = Dump.intersect,
+	isAbove = isAbove,
 }

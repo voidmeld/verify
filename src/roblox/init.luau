@@ -164,5 +164,6 @@ return {
 		decode = UiAudit.decode,
 		analyze = UiAudit.analyze,
 		contrastRatio = UiAudit.contrastRatio,
+		isAbove = UiAudit.isAbove,
 	},
 }
