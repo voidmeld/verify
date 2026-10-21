@@ -694,18 +694,22 @@ local function analyze(dump: Dump, options: Options?): Report
 	if resolved.gamepad then
 		local nodes: { Element } = {}
 		local isNode: { [number]: boolean } = {}
-		for _, element in interactive do
-			if backdrops[element.index] then
+		for _, element in dump.elements do
+			if backdrops[element.index] or visibleRects[element.index] == nil or not onScreen(element) then
 				continue
 			end
 			if element.selectable and canInteract(element) then
 				table.insert(nodes, element)
 				isNode[element.index] = true
-			elseif canInteract(element) then
+			elseif element.interactive and canInteract(element) then
 				add("gamepad-unreachable", element, "the control is not selectable", nil)
 			end
 		end
-		metrics.selectable = #nodes
+		for _, node in nodes do
+			if node.interactive then
+				metrics.selectable += 1
+			end
+		end
 		local function groupOf(element: Element): Element?
 			local cursor: Element? = element
 			while cursor ~= nil do
@@ -794,6 +798,9 @@ local function analyze(dump: Dump, options: Options?): Report
 				end
 			end
 			for _, node in nodes do
+				if not node.interactive then
+					continue
+				end
 				if reached[node.index] then
 					metrics.reachable += 1
 				else

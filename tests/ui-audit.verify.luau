@@ -585,6 +585,53 @@ return function(suite: Verify.Harness)
 			context:expect(count(mouse, "gamepad-unreachable")):toBe(0)
 		end)
 
+		suite:case("uses selectable containers as transit without adding action obligations", function(context)
+			local function links(index: number): { Object }
+				local result: { Object } = {}
+				for _, direction in { "up", "down", "left", "right" } do
+					table.insert(result, { direction = direction, index = index, path = "Gui.Node" .. index } :: Object)
+				end
+				return result
+			end
+			for _, class in { "Frame", "ScrollingFrame" } do
+				local function analyze(extra: Object): Audit.Report
+					local container: Object = {
+						index = 2,
+						root = 1,
+						class = class,
+						path = "Gui.Node2",
+						rect = rect(200, 100, 60, 48),
+						visible = true,
+						interactive = false,
+						selectable = true,
+						interactable = true,
+						next = links(3),
+						background = { color = BLACK, transparency = 1 },
+					}
+					for key, value in extra do
+						container[key] = value
+					end
+					return Audit.analyze(dump {
+						button(1, 100, 100, { next = links(2) }),
+						container,
+						button(3, 300, 100, { next = links(1) }),
+					})
+				end
+				local valid = analyze {}
+				context:expect(count(valid, "selection-link-broken")):toBe(0)
+				context:expect(count(valid, "gamepad-unreachable")):toBe(0)
+				context:expect(valid.metrics.selectable):toBe(2)
+				context:expect(valid.metrics.reachable):toBe(2)
+				local invalidContainers: { Object } =
+					{ { selectable = false }, { visible = false }, { interactable = false } }
+				for _, invalid in invalidContainers do
+					local blocked = analyze(invalid)
+					context:expect(paths(blocked, "gamepad-unreachable")):toEqual { "Gui.Button3" }
+					context:expect(count(blocked, "selection-link-broken")):toBe(4)
+				end
+			end
+		end)
+
 		suite:case("follows gamepad selection paths and refuses broken links", function(context)
 			local links = function(target: number, path: string): { Object }
 				local list: { Object } = {}
