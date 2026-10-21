@@ -6,6 +6,8 @@ visible region. A text child inside its own action is allowed. `action-covered`
 reports an interactable action below an active backdrop that covers its root. Disable
 background actions while a modal is open. A saved dump checks geometry and
 selection policy. Real input still needs a live host check.
+The analyzer treats a control as non-interactable when it or any ancestor has
+`Interactable = false`. Raw element values remain unchanged in the dump.
 
 An agent evaluation runs coding agents on a corpus of tasks and compares two or more arms.
 An arm is one setup that the agents get, for example a set of files, instructions and tools.

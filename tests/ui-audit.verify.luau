@@ -225,6 +225,75 @@ return function(suite: Verify.Harness)
 			target.selectable = false
 			context:expect(count(Audit.analyze(dump { target, backdrop }), "action-covered")):toBe(0)
 		end)
+		suite:case("inactive ancestors suppress child backdrops without changing raw evidence", function(context)
+			local evidence = dump {
+				button(1, 100, 100),
+				{
+					index = 2,
+					root = 1,
+					class = "Frame",
+					path = "Gui.Modal",
+					rect = rect(0, 0, 800, 400),
+					visible = true,
+					background = { color = BLACK, transparency = 1 },
+					interactable = false,
+					zIndex = 10,
+				},
+				{
+					index = 3,
+					root = 1,
+					class = "Frame",
+					path = "Gui.Modal.Group",
+					parent = 2,
+					rect = rect(0, 0, 800, 400),
+					visible = true,
+					background = { color = BLACK, transparency = 1 },
+					interactable = true,
+				},
+				button(4, 0, 0, {
+					parent = 3,
+					rect = rect(0, 0, 800, 400),
+					interactable = true,
+					selectable = false,
+					text = { content = "", size = 18, bounds = { width = 0, height = 0 }, color = WHITE },
+				}),
+			}
+			context:expect(count(Audit.analyze(evidence), "action-covered")):toBe(0)
+			context:expect(evidence.elements[2].interactable):toBe(false)
+			context:expect(evidence.elements[4].interactable):toBe(true)
+			evidence.elements[2].interactable = true
+			context:expect(count(Audit.analyze(evidence), "action-covered")):toBe(1)
+			evidence.elements[2].interactable = false
+			local sibling = dump {
+				button(1, 100, 100),
+				button(2, 0, 0, {
+					rect = rect(0, 0, 800, 400),
+					selectable = false,
+					zIndex = 20,
+					text = { content = "", size = 18, bounds = { width = 0, height = 0 }, color = WHITE },
+				}),
+			}
+			table.insert(evidence.elements, sibling.elements[2])
+			evidence.elements[5].index = 5
+			context:expect(count(Audit.analyze(evidence), "action-covered")):toBe(1)
+		end)
+		suite:case("ancestor interactivity controls disabled contrast and gamepad eligibility", function(context)
+			local evidence = dump {
+				label(1, { class = "Frame", interactable = false }),
+				button(2, 100, 100, {
+					parent = 1,
+					text = { content = "Go", size = 18, bounds = { width = 20, height = 18 }, color = BLACK },
+				}),
+			}
+			evidence.elements[1].text = nil
+			local inactive = Audit.analyze(evidence)
+			context:expect(inactive.metrics.selectable):toBe(0)
+			context:expect(count(inactive, "contrast-low")):toBe(0)
+			evidence.elements[1].interactable = true
+			local active = Audit.analyze(evidence)
+			context:expect(active.metrics.selectable):toBe(1)
+			context:expect(count(active, "contrast-low")):toBe(1)
+		end)
 		suite:case("recognizes a backdrop clipped to its root's inset viewport", function(context)
 			local inset = rect(0, 58, 800, 342)
 			local evidence = dump {
