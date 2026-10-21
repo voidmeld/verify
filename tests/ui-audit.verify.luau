@@ -197,6 +197,38 @@ return function(suite: Verify.Harness)
 			context:expect(count(Audit.analyze(dump {}), "control-failed")):toBe(0)
 		end)
 
+		suite:case("compares paint branches by root order and native ZIndex behavior", function(context)
+			local value = dump {
+				label(1, { class = "Frame", zIndex = 1, order = 1 }),
+				label(2, { parent = 1, zIndex = 50, order = 2 }),
+				label(3, { class = "Frame", zIndex = 100, order = 3 }),
+				label(4, { parent = 3, zIndex = 1, order = 4 }),
+			}
+			local left, right = value.elements[4], value.elements[2]
+			value.roots[1].zIndexBehavior = "Sibling"
+			context:expect(Audit.isAbove(value, left, right)):toBe(true)
+			context:expect(Audit.isAbove(value, right, left)):toBe(false)
+			context:expect(Audit.isAbove(value, left, value.elements[3])):toBe(false)
+			context:expect(Audit.isAbove(value, left, left)):toBe(false)
+			value.elements[3].zIndex = 1
+			context:expect(Audit.isAbove(value, left, right)):toBe(true)
+			value.elements[3].order = 0
+			context:expect(Audit.isAbove(value, left, right)):toBe(false)
+			value.roots[1].zIndexBehavior = "Global"
+			context:expect(Audit.isAbove(value, left, right)):toBe(false)
+			left.zIndex = right.zIndex
+			context:expect(Audit.isAbove(value, left, right)):toBe(true)
+			left.order = right.order
+			context:expect(Audit.isAbove(value, left, right)):toBe(false)
+			left.root = 2
+			value.roots[2].displayOrder = 2
+			context:expect(Audit.isAbove(value, left, right)):toBe(true)
+			value.roots[2].displayOrder = -1
+			context:expect(Audit.isAbove(value, left, right)):toBe(false)
+			value.roots[2].displayOrder = value.roots[1].displayOrder
+			context:expect(Audit.isAbove(value, left, right)):toBe(false)
+		end)
+
 		suite:case("reports text intersections without treating label boxes as ink", function(context)
 			local a = label(1, { rect = rect(100, 100, 200, 30) })
 			local b = label(2, { rect = rect(120, 100, 200, 30) })
