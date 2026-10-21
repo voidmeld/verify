@@ -3,6 +3,7 @@
 local json = require "@std/json"
 local luau = require "@std/luau"
 local task = require "@std/task"
+local Environment = require "../src/roblox/environment"
 
 export type Engine = {
 	run: (datamodel: string, code: string) -> string,
@@ -21,28 +22,21 @@ local function text(value: unknown): string
 end
 
 local function new(globals: { [string]: unknown }): Engine
-	local stores: { [string]: { [string]: unknown } } = {}
-	local function store(datamodel: string): { [string]: unknown }
+	local stores: { [string]: Environment.Environment } = {}
+	local function store(datamodel: string): Environment.Environment
 		local existing = stores[datamodel]
 		if existing == nil then
-			existing = {}
+			existing = Environment.create {
+				limits = { attributeStringLength = 50 },
+				classes = { StringValue = { super = "Instance", properties = { Value = "" } } },
+			}
 			stores[datamodel] = existing
 		end
-		return existing :: { [string]: unknown }
+		return existing
 	end
 	local function environment(datamodel: string): { [string]: unknown }
-		local attributes = store(datamodel)
-		local replicated = {
-			GetAttributes = function(): { [string]: unknown }
-				return table.clone(attributes)
-			end,
-			SetAttribute = function(_self: unknown, name: string, value: unknown)
-				attributes[name] = value
-			end,
-			GetAttribute = function(_self: unknown, name: string): unknown
-				return attributes[name]
-			end,
-		}
+		local instances = store(datamodel)
+		local replicated = instances.root
 		local http = {
 			JSONEncode = function(_self: unknown, value: unknown): string
 				return json.serialize(value :: json.Value)
@@ -50,6 +44,7 @@ local function new(globals: { [string]: unknown }): Engine
 		}
 		local services: { [string]: unknown } = { ReplicatedStorage = replicated, HttpService = http }
 		local env: { [string]: unknown } = {
+			Instance = { new = instances.createInstance },
 			game = {
 				GetService = function(_self: unknown, name: string): unknown
 					return services[name]
@@ -82,9 +77,11 @@ local function new(globals: { [string]: unknown }): Engine
 			return text(chunk())
 		end,
 		clear = function(datamodel: string)
-			table.clear(store(datamodel))
+			stores[datamodel] = nil
 		end,
-		attributes = store,
+		attributes = function(datamodel: string): { [string]: unknown }
+			return store(datamodel).root:GetAttributes()
+		end,
 	}
 end
 

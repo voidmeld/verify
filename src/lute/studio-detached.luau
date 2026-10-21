@@ -54,16 +54,24 @@ local function startSource(prefix: string, code: string, segmentBytes: number): 
 		.. tostring(segmentBytes)
 		.. [==[
 
-local state = RS:GetAttribute(P .. "state")
-if state ~= nil then
+local R = RS:FindFirstChild(P)
+if R ~= nil then
 	return 'started'
 end
-for name in RS:GetAttributes() do
-	if string.sub(name, 1, #P) == P then
-		RS:SetAttribute(name, nil)
+R = Instance.new("Folder")
+R.Name = P
+R.Parent = RS
+R:SetAttribute("state", "running")
+local function payload(name, text)
+	local value = R:FindFirstChild(name)
+	if value == nil then
+		value = Instance.new("StringValue")
+		value.Name = name
+		value.Parent = R
 	end
+	value.Value = text
 end
-RS:SetAttribute(P .. "state", "running")
+payload("error", "")
 local function fingerprint(text)
 	local hash = 2166136261
 	for index = 1, #text do
@@ -74,8 +82,8 @@ local function fingerprint(text)
 end
 local function publish(ok, value)
 	if not ok then
-		RS:SetAttribute(P .. "error", string.sub(tostring(value), 1, 4000))
-		RS:SetAttribute(P .. "state", "raised")
+		payload("error", string.sub(tostring(value), 1, 4000))
+		R:SetAttribute("state", "raised")
 		return
 	end
 	local text = value
@@ -98,33 +106,46 @@ local function publish(ok, value)
 		end
 		index += 1
 		local piece = string.sub(text, cursor, last)
-		RS:SetAttribute(P .. "p" .. index, piece)
-		RS:SetAttribute(P .. "d" .. index, fingerprint(piece))
+		payload("p" .. index, piece)
+		R:SetAttribute("d" .. index, fingerprint(piece))
 		cursor = last + 1
 	end
-	RS:SetAttribute(P .. "count", index)
-	RS:SetAttribute(P .. "bytes", #text)
-	RS:SetAttribute(P .. "digest", fingerprint(text))
-	RS:SetAttribute(P .. "state", "done")
+	R:SetAttribute("count", index)
+	R:SetAttribute("bytes", #text)
+	R:SetAttribute("digest", fingerprint(text))
+	R:SetAttribute("state", "done")
 end
 task.spawn(function()
-	publish(pcall(function()
+	local published, reason = pcall(function()
+		publish(pcall(function()
 ]==]
 		.. code
-		.. "\nend))\nend)\nreturn 'started'"
+		.. "\n"
+		.. [==[
+end))
+end)
+if not published then
+	payload("error", string.sub(tostring(reason), 1, 4000))
+	R:SetAttribute("state", "raised")
+end
+end)
+return 'started'
+]==]
 end
 
 local function statusSource(prefix: string): string
 	return header(prefix)
 		.. [==[
-local state = RS:GetAttribute(P .. "state")
+local R = RS:FindFirstChild(P)
+local state = if R ~= nil then R:GetAttribute("state") else nil
 local out = { state = if state == nil then "absent" else state }
 if state == "done" then
-	out.count = RS:GetAttribute(P .. "count")
-	out.bytes = RS:GetAttribute(P .. "bytes")
-	out.digest = RS:GetAttribute(P .. "digest")
+	out.count = R:GetAttribute("count")
+	out.bytes = R:GetAttribute("bytes")
+	out.digest = R:GetAttribute("digest")
 elseif state == "raised" then
-	out.error = RS:GetAttribute(P .. "error")
+	local error = R:FindFirstChild("error")
+	out.error = if error ~= nil then error.Value else nil
 end
 return game:GetService('HttpService'):JSONEncode(out)]==]
 end
@@ -135,23 +156,23 @@ local function segmentSource(prefix: string, index: number): string
 		.. tostring(index)
 		.. [==[
 
+local R = RS:FindFirstChild(P)
+local value = if R ~= nil then R:FindFirstChild("p" .. I) else nil
 return game:GetService('HttpService'):JSONEncode({
 	index = I,
-	count = RS:GetAttribute(P .. "count"),
-	digest = RS:GetAttribute(P .. "d" .. I),
-	totalDigest = RS:GetAttribute(P .. "digest"),
-	totalBytes = RS:GetAttribute(P .. "bytes"),
-	payload = RS:GetAttribute(P .. "p" .. I),
+	count = R:GetAttribute("count"),
+	digest = R:GetAttribute("d" .. I),
+	totalDigest = R:GetAttribute("digest"),
+	totalBytes = R:GetAttribute("bytes"),
+	payload = if value ~= nil then value.Value else nil,
 })]==]
 end
 
 local function releaseSource(prefix: string): string
-	return header(prefix)
-		.. [==[
-for name in RS:GetAttributes() do
-	if string.sub(name, 1, #P) == P then
-		RS:SetAttribute(name, nil)
-	end
+	return header(prefix) .. [==[
+local R = RS:FindFirstChild(P)
+if R ~= nil then
+	R:Destroy()
 end
 return 'released']==]
 end
@@ -281,6 +302,7 @@ local function run(options: Options): Outcome
 					detail = "session_lost: the run is gone from the Studio; the play session ended or Studio closed",
 				}
 			elseif status.state == "raised" then
+				pcall(options.execute, options.datamodel, releaseSource(prefix), true)
 				return {
 					status = "failed",
 					detail = "engine code raised: " .. tostring(status.error),
