@@ -6,6 +6,13 @@ visible region. A text child inside its own action is allowed. `action-covered`
 reports an interactable action below an active backdrop that covers its root. Disable
 background actions while a modal is open. A saved dump checks geometry and
 selection policy. Real input still needs a live host check.
+The analyzer treats a control as non-interactable when it or any ancestor has
+`Interactable = false`. Raw element values remain unchanged in the dump.
+The selection graph includes visible, interactable `Selectable` containers as
+navigation targets, including `Frame` and `ScrollingFrame`. An explicit
+`NextSelectionDown` link can lead through such a container. Action metrics and
+unreachable findings count interactive controls. The graph uses the recorded
+links and geometry; it does not model selection redirects made by callbacks.
 
 An agent evaluation runs coding agents on a corpus of tasks and compares two or more arms.
 An arm is one setup that the agents get, for example a set of files, instructions and tools.
