@@ -70,6 +70,7 @@ local function payload(name, text)
 		value.Parent = R
 	end
 	value.Value = text
+	return value
 end
 payload("error", "")
 local function fingerprint(text)
@@ -106,8 +107,7 @@ local function publish(ok, value)
 		end
 		index += 1
 		local piece = string.sub(text, cursor, last)
-		payload("p" .. index, piece)
-		R:SetAttribute("d" .. index, fingerprint(piece))
+		payload("p" .. index, piece):SetAttribute("digest", fingerprint(piece))
 		cursor = last + 1
 	end
 	R:SetAttribute("count", index)
@@ -161,7 +161,7 @@ local value = if R ~= nil then R:FindFirstChild("p" .. I) else nil
 return game:GetService('HttpService'):JSONEncode({
 	index = I,
 	count = R:GetAttribute("count"),
-	digest = R:GetAttribute("d" .. I),
+	digest = if value ~= nil then value:GetAttribute("digest") else nil,
 	totalDigest = R:GetAttribute("digest"),
 	totalBytes = R:GetAttribute("bytes"),
 	payload = if value ~= nil then value.Value else nil,
