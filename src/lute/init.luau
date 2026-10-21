@@ -34,6 +34,7 @@ export type EvidenceResult = Evidence.Result
 export type EvidenceSealOptions = EvidenceStore.SealOptions
 export type EvidenceValidateOptions = EvidenceStore.ValidateOptions
 export type PlaceOptions = Place.Options
+export type PlaceBundleOptions = Place.BundleOptions
 export type PublishedOptions = Published.Options
 export type PlayerOptions = Player.Options
 export type PlayerBackend = Player.Backend
