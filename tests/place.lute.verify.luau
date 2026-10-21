@@ -5,6 +5,7 @@ local temporary = require "./temporary"
 local fs = require "@std/fs"
 local Core = require "../src/core"
 local Place = require "../src/lute/place"
+local Model = require "../src/lute/model"
 
 local function directory(context: Core.Context): string
 	local root = temporary(context, "verify-place-tests")
@@ -37,6 +38,27 @@ return function(suite: Core.Harness)
 			check:expect(output:find("&lt;client&gt;", 1, true) ~= nil):toBe(true)
 			check:expect(output:find("require(&quot;", 1, true) == nil):toBe(true)
 			check:expect(output:find("./missing", 1, true) ~= nil):toBe(true)
+		end)
+		suite:case("bundles a standalone module closure without world or bootstrap instances", function(check)
+			local root = directory(check)
+			fs.writeStringToFile(root .. "/child.luau", "return '<child & value>'")
+			fs.writeStringToFile(root .. "/entry.luau", 'return require "./child"')
+			local bundled =
+				Model.read(Place.bundle { roots = {}, modules = { root .. "/entry.luau" }, rootName = "Mounted" })
+			check:expect(#bundled):toBe(1)
+			check:expect(bundled[1].name):toBe "Mounted"
+			local sources: { [string]: string } = {}
+			for _, item in Model.descendants(bundled) do
+				if item.className == "ModuleScript" then
+					sources[item.name] = item.properties.Source.value
+				else
+					check:expect(item.className):toBe "Folder"
+				end
+			end
+			check:expect(sources.child):toBe "return '<child & value>'"
+			check
+				:expect(sources.entry)
+				:toBe("return require(" .. Place.moduleExpression(root .. "/child.luau", "Mounted") .. ")")
 		end)
 		suite:case("rejects missing external and dynamic imports and ambiguous module mounts", function(check)
 			local root = directory(check)

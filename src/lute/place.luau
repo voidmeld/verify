@@ -5,13 +5,15 @@ local fs = require "@std/fs"
 local Paths = require "../codec/path"
 local Xml = require "../codec/xml"
 
-export type Options = {
-	output: string,
+export type BundleOptions = {
 	roots: { string },
 	modules: { string }?,
+	rootName: string?,
+}
+export type Options = BundleOptions & {
+	output: string,
 	clientSource: string?,
 	serverSource: string?,
-	rootName: string?,
 	basePlace: string?,
 }
 local function normalize(path: string): string
@@ -194,8 +196,7 @@ local function merge(base: string, additions: { Addition }): string
 	return xml
 end
 
-local function build(options: Options)
-	local path, clientSource = options.output, options.clientSource
+local function moduleTree(options: BundleOptions): string
 	local rootName = options.rootName or "VerifyModules"
 	assert(rootName ~= "", "place module root needs a name")
 	local files: { [string]: string } = {}
@@ -292,6 +293,17 @@ local function build(options: Options)
 		table.insert(pieces, "</Item>")
 		return table.concat(pieces)
 	end
+	return node ""
+end
+
+local function bundle(options: BundleOptions): string
+	return '<roblox version="4">' .. moduleTree(options) .. "</roblox>"
+end
+
+local function build(options: Options)
+	local path, clientSource = options.output, options.clientSource
+	local rootName = options.rootName or "VerifyModules"
+	local tree = moduleTree(options)
 	local clientItem = if clientSource
 		then '<Item class="LocalScript"><Properties><string name="Name">VerifyClient</string><ProtectedString name="Source">'
 			.. xml(clientSource)
@@ -304,7 +316,7 @@ local function build(options: Options)
 		else nil
 	if options.basePlace ~= nil then
 		local additions: { Addition } = {
-			{ path = { "ReplicatedStorage" }, item = node "", unique = rootName },
+			{ path = { "ReplicatedStorage" }, item = tree, unique = rootName },
 		}
 		if clientItem then
 			table.insert(additions, {
@@ -322,7 +334,7 @@ local function build(options: Options)
 	fs.writeStringToFile(
 		path,
 		'<roblox version="4"><Item class="ReplicatedStorage">'
-			.. node ""
+			.. tree
 			.. "</Item>"
 			.. '<Item class="Lighting"><Properties><token name="Technology">4</token></Properties></Item>'
 			.. (if clientItem
@@ -333,4 +345,4 @@ local function build(options: Options)
 	)
 end
 
-return { build = build, moduleExpression = moduleExpression }
+return { build = build, bundle = bundle, moduleExpression = moduleExpression }

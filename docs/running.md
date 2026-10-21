@@ -324,6 +324,8 @@ See [attached Studio](execution.md#attached-studio).
 
 ## Mounting and custom hosts
 
+`Lute.place.bundle({ roots, modules?, rootName? })` returns an XML model containing only the rewritten module tree. A consumer can mount that model in an existing place and supply its required client bootstrap before an attached run. It uses the same literal-import closure and module paths as `Lute.place.build`; it does not install instances or start Studio.
+
 `Lute.place.build({ output, roots, modules?, clientSource?, serverSource?, rootName? })` builds an XML fixture with a floor and a spawn.
 It follows literal relative imports and `@self` imports, mounts the dependency closure and rejects dynamic and external imports.
 It resolves them as Luau does. An ordinary file `a/b.luau` resolves `./c` as `a/c`, `../c` as `c` and `@self/c` as `a/b/c`.
