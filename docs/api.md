@@ -387,6 +387,12 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
+`PlaceRuntimeEngine.environment` is the authoritative simulated environment. The binding supplies its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment property, event and method-double operations; the engine contract has no mutable `stateOf` or `serviceMethods` table.
+
+Runtime options are `{ aliases, cache, host, methodDoubles? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
+
+ModuleScript results are cached by instance and execution context. Relative requires resolve against the mounted source tree. Runtime and compile failures remain failed cache entries and raise again on a repeated require.
+
 ## Host observations
 
 Use typed operations, `context:perform`, `await`, `checkpoint`, `judge` and `measure` in the ordinary case.
@@ -538,7 +544,7 @@ Check a supported behavior against the real engine before you rely on it.
 | A derived property such as `TextBounds` | Reads as stored. | `computed` is a test convenience. A computed property is read-only unless it declares `writable = true`. |
 | An undeclared write raises | Engine-true. | `undeclaredWrites = true` is a test convenience. |
 | An undeclared read raises | Engine-true. | `undeclaredReads = "nil"` is a test convenience. |
-| `GetStyled` and `GetStyledPropertyChangedSignal` | Plain property fakes. | None. |
+| `GetStyled` and `GetStyledPropertyChangedSignal` | Bounded flat style cascade and style notifications. | No native rendering or timed transitions. |
 
 ### Options and result
 
@@ -557,8 +563,12 @@ Check a supported behavior against the real engine before you rely on it.
 The result has these members:
 
 - `root`, `createInstance(className, props?)`, `defineClass`, `newSignal`, `heartbeat`.
+- `createEngineInstance(className, props?)` creates a known engine-owned Instance class, including a class whose metadata forbids script construction. It bypasses only creatability; defaults, property validation, creation hooks and lifetime accounting remain active. Script constructors still use `createInstance` and retain their restrictions. Use `poke` for engine-owned read-only properties.
+- `createEngineObject(className, props?)` uses the same allocation path for a known Object class. An Object that does not inherit Instance has no Instance hierarchy, name, attributes or destruction methods. `releaseObject(object)` releases an owned Object or Instance and its signal connections. It is an environment cleanup operation, not a simulated native Object method or garbage collector. Creation hooks and fixture tracking receive Objects.
 - `task` with `spawn`, `defer`, `delay`, `wait` and `cancel` on virtual time. Also `scheduler`, `step(seconds)` and `now`.
+- `scheduler.block(register)` suspends the current task. The registration may return a cleanup function. The scheduler calls it once when the task resumes or is canceled, then releases it. Cleanup failures enter `scheduler.failures`; cancellation still closes the task.
 - Inspection: `childrenOf`, `parentOf`, `propertyOf`, `attributeOf`, `isAlive`, `liveObjects` and `liveConnections`.
+- `propertyOf` can inspect a declared callback. The script-side instance getter still rejects callback reads. Method doubles and undeclared callback names are not exposed by `propertyOf`.
 - `poke` and `fire`, which apply an engine-side change and an engine-side event.
 - `failNext(operation)` and `clearFailures`.
 - `errors`, the handler errors that the engine would only print.
@@ -568,6 +578,7 @@ The result has these members:
 
 `createInstance` takes children in the array part: `createInstance("Model", {Name = "m", childA, childB, Parent = root})`.
 `Roblox.isInstance(value)` and `Roblox.typeName(value)` identify instances and datatypes.
+`isInstance` rejects Objects that do not inherit Instance. `typeName` returns `Object` for those Objects. A Studio Client capture on 2026-10-22, version `0.744.0.7441077`, confirmed this identity for VirtualInput, its distinct factory objects and its Object-only members.
 
 The package exports the types `Environment`, `EnvironmentOptions`, `EnvironmentDefineOptions`, `EnvironmentSnapshot`, `EnvironmentMethod`, `Signal`, `Connection`, `VirtualScheduler`, `VirtualTask` and `VirtualCallback`.
 Instance properties and per-class methods are dynamic schema boundaries.
@@ -627,9 +638,11 @@ These types describe the values for the type checker. At run time each value is 
 ### Instance behavior
 
 - Instances support `Parent`, `Name`, children events, find and ancestor lookups and `GetFullName`.
+- `WaitForChild(name, timeout?)` returns an existing direct child without yielding. Otherwise it waits on the virtual scheduler until a child is added or renamed to `name`. A positive timeout returns nil when it expires; nil waits indefinitely. Nonpositive timeouts raise before the existing-child lookup. The simulator does not print the engine's infinite-yield warning.
 - `Destroy` locks the parent, destroys the descendants and disconnects the signals of the instance.
 - Attributes have change signals. Property change signals fire only on change.
 - Signals fire in connect order. A connection that disconnects during a fire is skipped.
+- `signal:Wait()` yields through the existing scheduler until the next fire and returns its complete argument tuple. It ignores previous fires. Resumption and task cancellation release the wait listener.
 - `signalOf(object, event)` returns `{ fire, connections, fires }` for one event.
   A test can fire the event and count its live connections and fires.
 - `connectionsOf(signal)` and `firesOf(signal)` count any signal that the environment made.
@@ -687,7 +700,7 @@ Any other value of `handlerErrors` raises when you create the environment.
 A class declares each member that an instance has. A read of any other member raises.
 A test sometimes needs a member that the schema omits, such as `GetFocusedTextBox` or `IsKeyDown`.
 
-- `fakeOn(object, name, handler)` installs `handler` for that instance only.
+- `fakeOn(object, name, handler)` installs `handler` for that instance only. It returns idempotent cleanup that restores the previous active override. Out-of-order cleanup does not restore an already disposed handler. Later explicit method assignments remain in place. Overrides use the instance's existing method-double storage.
   The call passes the instance as `self`. A second call replaces the first.
   It raises for a property, an event, `ClassName` and `Parent`. It never reaches another instance or a clone.
 - `functionDoubles = true` lets `object.Name = function(self, ...) end` do the same.
@@ -755,7 +768,7 @@ Pass `Roblox.reflectionSnapshot.database(snapshot)` and `Roblox.typeName`.
 
 ### Fixture bridge
 
-`Roblox.fixtureBridge { database, typeName, enumType?, library?, classes?, referenceClass?, validateProperty?, defaultProperty?, handlerErrors?, computed?, undeclaredWrites?, functionDoubles?, ui? }` composes reflection, the event metadata of the simulator, UI fakes and the engine seam over one environment.
+`Roblox.fixtureBridge { database, typeName, enumType?, library?, classes?, referenceClass?, validateProperty?, defaultProperty?, handlerErrors?, computed?, undeclaredWrites?, functionDoubles?, ui?, layout? }` composes reflection, the event metadata of the simulator, UI fakes and the engine seam over one environment.
 
 - UI fake classes that the database lacks appear in `unavailable`. The bridge does not invent them.
 - `ui = false` omits the UI fakes. Entries in `classes` replace the defaults.
@@ -764,11 +777,18 @@ Pass `Roblox.reflectionSnapshot.database(snapshot)` and `Roblox.typeName`.
 - UI validation acts only on `SelectedObject`. Every other write makes no extra call.
 - `ui.selection` is `"raise"` (default) or `"ignore"`. See [rejected selection](#rejected-selection).
 - `ui.requirePlayerGui = true` requires the target to descend from a `PlayerGui`.
+- `GuiService.GetGuiInset` requires an explicit `ui.methods["GuiService.GetGuiInset"]` handler that returns both current inset vectors. There is no inferred inset or relationship to `TopbarInset`. A provider supplies representative host state; it does not establish native inset or safe-area coverage.
 
 The options `defaultProperty`, `computed`, `handlerErrors`, `undeclaredWrites` and `functionDoubles` pass to the environment.
 `Lute.fixture.bridge` accepts the same options.
 
-The bridge returns `{ environment, engine, ui, unavailable, faults, hasClass, observe, track, record, instanceHost, accounting, close }`.
+The bridge returns `{ environment, engine, ui, layout, unavailable, faults, hasClass, observe, track, record, instanceHost, accounting, close }`.
+
+`layout = { roots, viewport, origin?, read?, vector? }` enables explicit simulated layout. `roots()` returns the mounted roots and `viewport()` returns `{ X, Y }`. Call `bridge.layout.step()` after mutations, before the frame observations. It publishes geometry through the same environment. It does not step time or connect frame handlers.
+
+`layout.objectsAtPosition(root, x, y)` queries published rectangular geometry in GUI coordinates. It returns visible hit objects from front to back, including non-interactable objects. Global and Sibling ordering, ancestor clipping and enabled ScreenGuis are supported. Right and bottom edges are inclusive, matching the native conformance fixture. Coordinates must be finite integers. Equal DisplayOrder across ScreenGuis and unsupported geometry raise. The simulated input backend supplies separate input eligibility and press/release routing over this query; the query itself does not dispatch events.
+
+Layout supports UDim2 dimensions, anchors, scale, fixed padding, size constraints and simple list placement. Intrinsic `AutomaticSize` supports fixed child bounds and simple lists, including growth and shrink. Text measurement, flex, wrapping, grids, rotation, intrinsic scale dependencies and LayerCollectors other than ScreenGui raise `unsupported_ui_layout` before geometry is published. A `StyleLink` requires an effective-property `read(instance, property)` provider; the bridge supplies its UI style reader by default. Supplied reader errors propagate. `vector(x, y)` selects the output datatype constructor. These mechanisms are simulated and do not establish native rendering or input coverage.
 
 - `track()` lists created instances and cloned `{ source, copy }` pairs until `stop()`.
 - `faults` wraps `failNext`. `assertConsumed` refuses an injection that never fired.
@@ -916,9 +936,11 @@ A probe proves only the expression that it runs.
 `Roblox.uiFakes.classes` declares optional UI methods.
 Supply it as a class overlay.
 Pass `uiFakes.validateProperty` as the property validator to reject the selection of hidden or unselectable controls.
-`Instance:GetStyled(property)` reads the plain property.
-`Instance:GetStyledPropertyChangedSignal(property)` returns the property changed signal.
-Both are test fakes. They apply no style rules.
+`Instance:GetStyled(property)` resolves the nearest linked StyleSheet with flat class or tag selectors, rule priorities, and attribute tokens. A nondefault raw property overrides the style. Writing the default or resetting the property exposes the style again. Empty links do not replace an ancestor scope.
+
+`Instance:GetStyledPropertyChangedSignal(property)` observes the underlying style value and linked scope. Raw writes do not fire this signal. Style changes can fire it while a raw override masks the returned value. Call `controller.step()` to refresh observations; the fixture layout controller does this before layout. `controller.styled(object, property)` exposes the same effective read to host adapters. Closing the controller disconnects its observations.
+
+Nested rules, complex selectors, derived sheets, multiple links at one scope, equal-priority conflicts, selector arguments, and nonzero transitions raise `unsupported_ui_style`. This is modeled coverage. Studio Client probes on 2026-10-22, version `0.744.0.7441077`, confirmed scope replacement, raw/default precedence, token aliases, zero-duration transitions, inherited class matching, and the notification distinction.
 
 #### Rejected selection
 

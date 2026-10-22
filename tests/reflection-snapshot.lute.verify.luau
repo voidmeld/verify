@@ -14,6 +14,66 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
+		suite:case(
+			"engine-created InputObject retains metadata validation while script construction stays forbidden",
+			function(check)
+				local snapshot: Roblox.ReflectionSnapshot = {
+					schemaVersion = 2,
+					engineVersion = "0.742.0.7421053",
+					classes = {
+						Instance = {
+							tags = { "NotCreatable" },
+							defaults = {},
+							properties = { Name = { datatype = "String", scriptability = "ReadWrite", tags = {} } },
+						},
+						InputObject = {
+							superclass = "Instance",
+							tags = { "NotCreatable" },
+							defaults = {},
+							properties = {
+								Position = { datatype = "Vector3", scriptability = "ReadWrite", tags = {} },
+							},
+						},
+					},
+				}
+				local bridge = Lute.fixture.bridge(snapshot)
+				local env = bridge.environment
+				local created = 0
+				local hook = env.onCreate(function()
+					created += 1
+				end)
+				local object = env.createEngineInstance(
+					"InputObject",
+					{ Name = "OwnedInput", Position = Datatypes.Vector3.new(3, 4, 0) }
+				)
+				check:expect(Roblox.isInstance(object)):toBe(true)
+				check:expect(Roblox.typeName(object)):toBe "Instance"
+				check:expect(object:IsA "InputObject"):toBe(true)
+				check:expect(object.Name):toBe "OwnedInput"
+				check:expect(object.Position):toBe(Datatypes.Vector3.new(3, 4, 0))
+				check:expect(env.liveObjects()):toBe(1)
+				check:expect(created):toBe(1)
+				check
+					:expect(pcall(function()
+						bridge.engine.new "InputObject"
+					end))
+					:toBe(false)
+				check
+					:expect(pcall(function()
+						env.createEngineInstance "UnknownInput"
+					end))
+					:toBe(false)
+				check
+					:expect(pcall(function()
+						object.Position = "invalid"
+					end))
+					:toBe(false)
+				check:expect(object.Position):toBe(Datatypes.Vector3.new(3, 4, 0))
+				object:Destroy()
+				hook:Disconnect()
+				check:expect(env.liveObjects()):toBe(0)
+			end
+		)
 		suite:case("builds the bridge from the exported file", function(check)
 			local bridge = Lute.fixture.bridge(FIXTURE)
 			local env = bridge.environment
@@ -22,6 +82,68 @@ return function(suite: Verify.Harness)
 			check:expect((part.Size :: Datatypes.Vector3Value).X):toBe(4)
 			check:expect(bridge.hasClass "TextLabel"):toBe(true)
 			check:expect(bridge.hasClass "Camera"):toBe(false)
+			check:expect(bridge.layout):toBe(nil)
+		end)
+
+		suite:case("steps layout over mounted snapshot instances and updates after resize", function(check)
+			local roots: { Roblox.Instance } = {}
+			local bridge = Lute.fixture.bridge(FIXTURE, {
+				layout = {
+					roots = function()
+						return roots
+					end,
+					viewport = function()
+						return { X = 800, Y = 600 }
+					end,
+				},
+			})
+			local env = bridge.environment
+			local root = env.createInstance("Frame", { Size = Datatypes.UDim2.fromOffset(120, 80) })
+			local child = env.createInstance("Frame", {
+				Parent = root,
+				Size = Datatypes.UDim2.new(0.5, 0, 0, 20),
+				Position = Datatypes.UDim2.fromOffset(7, 9),
+			})
+			table.insert(roots, root)
+			local changes = 0
+			child:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+				changes += 1
+			end)
+			assert(bridge.layout).step()
+			check:expect(child.AbsoluteSize):toEqual(Datatypes.Vector2.new(60, 20))
+			check:expect(child.AbsolutePosition):toEqual(Datatypes.Vector2.new(7, 9))
+			root.Size = Datatypes.UDim2.fromOffset(200, 80)
+			assert(bridge.layout).step()
+			check:expect(child.AbsoluteSize):toEqual(Datatypes.Vector2.new(100, 20))
+			check:expect(changes):toBe(2)
+			check:expect(env.now()):toBe(0)
+		end)
+
+		suite:case("snapshot layout rejects unsupported text before publishing its mounted ancestors", function(check)
+			local roots: { Roblox.Instance } = {}
+			local snapshot = Lute.fixture.load(FIXTURE)
+			local types = Roblox.reflectionSnapshot.library(snapshot)
+			local bridge = Roblox.reflectionSnapshot.bridge(snapshot, {
+				layout = {
+					roots = function()
+						return roots
+					end,
+					viewport = function()
+						return { X = 800, Y = 600 }
+					end,
+				},
+			})
+			local env = bridge.environment
+			local root = env.createInstance("Frame", { Size = types.UDim2.fromOffset(120, 80) })
+			env.createInstance("TextLabel", { Parent = root, AutomaticSize = types.Enum.AutomaticSize.XY })
+			table.insert(roots, root)
+			local before = root.AbsoluteSize
+			local ok, message = pcall(function()
+				assert(bridge.layout).step()
+			end)
+			check:expect(ok):toBe(false)
+			check:expect(tostring(message)):toContain "AutomaticSize text measurement"
+			check:expect(root.AbsoluteSize):toEqual(before)
 		end)
 
 		suite:case("accepts and refuses writes like the real database did when it was exported", function(check)

@@ -6,6 +6,7 @@ local CaseEntry = require "@self/case-entry"
 local EnvironmentEngineAdapter = require "@self/environment-engine"
 local Reflection = require "@self/reflection"
 local UiFakes = require "@self/ui-fakes"
+local UiLayout = require "@self/ui-layout"
 local FixtureBridge = require "@self/fixture-bridge"
 local ReflectionSnapshot = require "@self/reflection-snapshot"
 local Multiplayer = require "@self/multiplayer"
@@ -36,6 +37,7 @@ export type MultiplayerClientOptions = Multiplayer.ClientOptions
 export type InputKey = InputHost.Key
 export type InputPointer = InputHost.Pointer
 export type InputBackend = InputHost.Backend
+export type SimulatedInputOptions = InputHost.SimulatedOptions
 export type InputGuiTarget = InputHost.GuiTarget
 export type EnvironmentEngine = EnvironmentEngineAdapter.Engine
 export type EnvironmentEngineVector2 = EnvironmentEngineAdapter.Vector2
@@ -56,6 +58,8 @@ export type ReflectionOptions = Reflection.Options
 export type ReflectionDatabase = Reflection.Database
 export type ReflectionClass = Reflection.Class
 export type UiFakeOptions = UiFakes.Options
+export type UiLayoutOptions = UiLayout.Options
+export type UiLayoutController = UiLayout.Controller
 export type FixtureBridgeOptions<
 	V2 = EnvironmentEngineVector2,
 	V3 = EnvironmentEngineVector3,
@@ -91,6 +95,7 @@ export type EnvironmentLimits = Environment.Limits
 export type EnvironmentOperation = Environment.Operation
 export type Environment = Environment.Environment
 export type Instance = Environment.Instance
+export type Object = Environment.Object
 export type EnvironmentSnapshot = Environment.Snapshot
 export type EnvironmentMethod = Environment.Method
 export type Signal<A... = ...unknown> = Environment.Signal<A...>
@@ -127,6 +132,7 @@ export type UiAuditViolation = UiAudit.Violation
 export type UiAuditCollectOptions = UiAuditCollect.Options
 
 export type PlaceBootStage = PlaceBoot.Stage
+export type PlaceRuntimeEngine = PlaceBoot.Engine
 export type PlaceBootView = PlaceBoot.View
 export type PlaceBootHost<B = unknown, C = () -> unknown> = PlaceBoot.Host<B, C>
 export type PlaceBootFiles = PlaceBoot.Files

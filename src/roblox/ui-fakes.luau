@@ -14,6 +14,8 @@ export type Options = {
 export type Rejection = { target: Instance, reason: string }
 export type Controller = {
 	focused: () -> Instance?,
+	styled: (Instance, string) -> unknown,
+	step: () -> (),
 	rejectedSelections: () -> { Rejection },
 	close: () -> (),
 }
@@ -32,7 +34,12 @@ local classes = (
 			methods = { CaptureFocus = true, ReleaseFocus = true, IsFocused = true },
 		},
 		UserInputService = { super = "Instance", creatable = true, methods = { GetFocusedTextBox = true } },
-		GuiService = { super = "Instance", creatable = true, properties = { SelectedObject = false } },
+		GuiService = {
+			super = "Instance",
+			creatable = true,
+			properties = { SelectedObject = false },
+			methods = { GetGuiInset = true },
+		},
 		TextService = {
 			super = "Instance",
 			creatable = true,
@@ -53,6 +60,7 @@ local classes = (
 				SetDefaultPropertyTransition = true,
 			},
 		},
+		StyleLink = { super = "Instance", properties = { StyleSheet = false } },
 		StyleSheet = { super = "Instance", methods = { GetDerives = true, SetDerives = true } },
 		VideoFrame = {
 			super = "GuiObject",
@@ -313,17 +321,145 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 			points[copy] = table.clone(points[source])
 		end
 	end)
-	env.fake("Instance.GetStyled", function(object: Instance, property: string): unknown
-		return object[property]
+	type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
+	local watches = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [Instance]: { [string]: Watch } }
+	local function unsupported(detail: string)
+		error("unsupported_ui_style: " .. detail, 0)
+	end
+	local function scope(object: Instance): Instance?
+		local current: Instance? = object
+		while current do
+			local link: Instance? = nil
+			for _, child in current:GetChildren() do
+				if child:IsA "StyleLink" then
+					if link then
+						unsupported "multiple StyleLinks"
+					end
+					link = child
+				end
+			end
+			if link then
+				local sheet = env.propertyOf(link, "StyleSheet")
+				if sheet ~= nil then
+					assert(
+						Environment.isInstance(sheet) and (sheet :: Instance):IsA "StyleSheet",
+						"StyleLink requires a StyleSheet"
+					)
+					return sheet :: Instance
+				end
+			end
+			current = current.Parent
+		end
+		return nil
+	end
+	local function token(sheet: Instance, value: unknown): unknown
+		local seen: { [string]: boolean } = {}
+		while type(value) == "string" and value:sub(1, 1) == "$" do
+			local name = value:sub(2)
+			if seen[name] then
+				unsupported("cyclic token " .. name)
+			end
+			seen[name] = true
+			value = sheet:GetAttribute(name)
+			if value == nil then
+				unsupported("missing token " .. name)
+			end
+		end
+		return value
+	end
+	local function underlying(object: Instance, property: string): (Instance?, unknown)
+		local fallback = env.defaultPropertyOf(object, property)
+		local sheet = scope(object)
+		if sheet == nil then
+			return nil, fallback
+		end
+		if #(derives[sheet] or {}) > 0 then
+			unsupported "StyleSheet derives"
+		end
+		local winning: number? = nil
+		local result = fallback
+		for _, candidate in sheet:GetChildren() do
+			if candidate:IsA "StyleRule" then
+				if #candidate:GetChildren() > 0 then
+					unsupported "nested StyleRules"
+				end
+				local selector = env.propertyOf(candidate, "Selector")
+				assert(type(selector) == "string", "StyleRule.Selector requires a string")
+				local className = selector:match "^([%a_][%w_]*)$"
+				local tag = selector:match "^%.([%a_][%w_%-]*)$"
+				if className == nil and tag == nil then
+					unsupported("selector " .. selector)
+				end
+				local matches = if className
+					then object:IsA(className)
+					else table.find(env.tagsOf(object), tag :: string) ~= nil
+				local value = (properties[candidate] or {})[property]
+				if matches and value ~= nil then
+					local priority = env.propertyOf(candidate, "Priority")
+					assert(type(priority) == "number", "StyleRule.Priority requires a number")
+					if winning == priority then
+						unsupported("equal-priority property " .. property)
+					end
+					if winning == nil or priority > winning then
+						local transition = (transitions[candidate] or {})[property] or defaults[candidate]
+						if transition ~= nil then
+							transition = token(sheet, transition)
+							local info = transition :: { Time: number }
+							if info.Time ~= 0 then
+								unsupported "nonzero property transition"
+							end
+						end
+						winning, result = priority, token(sheet, value)
+					end
+				end
+			end
+		end
+		return sheet, result
+	end
+	local function styled(object: Instance, property: string): unknown
+		local _, value = underlying(object, property)
+		return if object:IsPropertyModified(property) then env.propertyOf(object, property) else value
+	end
+	local function step()
+		for object, entries in watches do
+			if not env.isAlive(object) then
+				for _, watch in entries do
+					watch.signal:DisconnectAll()
+				end
+				watches[object] = nil
+			else
+				for property, watch in entries do
+					local sheet, value = underlying(object, property)
+					if sheet ~= watch.sheet or value ~= watch.value then
+						watch.sheet, watch.value = sheet, value
+						watch.signal:Fire()
+					end
+				end
+			end
+		end
+	end
+	env.fake("Instance.GetStyled", function(object: Instance, property: string, selector: unknown): unknown
+		if selector ~= nil then
+			unsupported "GetStyled selector argument"
+		end
+		return styled(object, property)
 	end)
 	env.fake("Instance.GetStyledPropertyChangedSignal", function(object: Instance, property: string): unknown
-		return object:GetPropertyChangedSignal(property)
+		local entries = watches[object] or {}
+		watches[object] = entries
+		if entries[property] == nil then
+			local sheet, value = underlying(object, property)
+			entries[property] = { signal = env.newSignal(), sheet = sheet, value = value }
+		end
+		return entries[property].signal
 	end)
 	local methods: { [string]: Environment.Method } = settings.methods or {}
 	for member, handler in methods do
 		env.fake(member, handler)
 	end
 	return {
+		styled = styled,
+		step = step,
 		focused = function(): Instance?
 			return focused
 		end,
@@ -332,6 +468,12 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		end,
 		close = function()
 			release(false)
+			for _, entries in watches do
+				for _, watch in entries do
+					watch.signal:DisconnectAll()
+				end
+			end
+			table.clear(watches)
 		end,
 	}
 end

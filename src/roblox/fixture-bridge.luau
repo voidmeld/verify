@@ -5,6 +5,7 @@ local Adapter = require "./environment-engine"
 local InstanceHost = require "./instance-host"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
+local UiLayout = require "./ui-layout"
 
 type Vector2 = Adapter.Vector2
 type Vector3 = Adapter.Vector3
@@ -28,6 +29,7 @@ export type Options<V2 = Vector2, V3 = Vector3, C3 = Color3, U1 = UDim, U2 = UDi
 	undeclaredReads: ("raise" | "nil")?,
 	functionDoubles: boolean?,
 	ui: (UiFakes.Options | false)?,
+	layout: UiLayout.Options?,
 }
 
 export type Accounting = {
@@ -44,7 +46,7 @@ export type Faults = {
 }
 
 export type Tracking = {
-	created: { Environment.Instance },
+	created: { Environment.Object },
 	cloned: { { source: Environment.Instance, copy: Environment.Instance } },
 	stop: () -> (),
 }
@@ -53,6 +55,7 @@ export type Bridge = {
 	environment: Environment.Environment,
 	engine: Adapter.Engine,
 	ui: UiFakes.Controller?,
+	layout: UiLayout.Controller?,
 	unavailable: { string },
 	faults: Faults,
 	hasClass: (className: string) -> boolean,
@@ -137,6 +140,19 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		else nil
 	local library = (settings.library :: unknown) :: Adapter.Library<V2, V3, C3, U1, U2, CF>?
 	local engine = Adapter.create(environment, library)
+	local layoutOptions = if settings.layout then table.clone(settings.layout) else nil
+	if layoutOptions and controller and layoutOptions.read == nil then
+		layoutOptions.read = controller.styled
+	end
+	local layout = if layoutOptions then UiLayout.attach(environment, layoutOptions) else nil
+	if layout and controller then
+		local step = layout.step
+		local stepStyles = controller.step
+		layout.step = function()
+			stepStyles()
+			step()
+		end
+	end
 
 	local function accounting(): Accounting
 		return {
@@ -170,9 +186,9 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 	end
 
 	local function track(): Tracking
-		local created: { Environment.Instance } = {}
+		local created: { Environment.Object } = {}
 		local cloned: { { source: Environment.Instance, copy: Environment.Instance } } = {}
-		local creating = environment.onCreate(function(object: Environment.Instance)
+		local creating = environment.onCreate(function(object: Environment.Object)
 			table.insert(created, object)
 		end)
 		local cloning = environment.onClone(function(source: Environment.Instance, copy: Environment.Instance)
@@ -192,6 +208,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		environment = environment,
 		engine = engine,
 		ui = controller,
+		layout = layout,
 		unavailable = unavailable,
 		faults = faults,
 		hasClass = function(className: string): boolean
