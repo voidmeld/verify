@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rokit
+        run: |
+          curl --fail --location --silent --show-error https://github.com/rojo-rbx/rokit/releases/download/v1.2.0/rokit-1.2.0-linux-x86_64.zip --output "$RUNNER_TEMP/rokit.zip"
+          echo "951a7f3ec3d2a5e021fd1867d32f69f010ee4c2927f644b759578afc59c65fc0  $RUNNER_TEMP/rokit.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/rokit.zip" -d "$RUNNER_TEMP/rokit"
+          "$RUNNER_TEMP/rokit/rokit" self-install
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+      - name: Install pinned tools and SDK types
+        run: |
+          rokit install --no-trust-check
+          lute setup
+      - name: Run repository gate
+        run: lute run tools/gate.luau
+      - name: Retain gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate-evidence
+          path: .lute/tmp/verify-gate/
+          if-no-files-found: ignore
+          retention-days: 7
