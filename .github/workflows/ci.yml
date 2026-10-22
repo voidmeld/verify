@@ -30,7 +30,7 @@ jobs:
           unzip -q "$RUNNER_TEMP/rokit.zip" -d "$RUNNER_TEMP/rokit"
           "$RUNNER_TEMP/rokit/rokit" self-install
           echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
-      - name: Install pinned tools and SDK types
+      - name: Install pinned tools
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -39,7 +39,9 @@ jobs:
           rokit install --no-trust-check
           rokit authenticate github --remove
           trap - EXIT
-          lute setup
+          unset GH_TOKEN
+      - name: Install SDK types
+        run: lute setup
       - name: Run repository gate
         run: lute run tools/gate.luau
       - name: Retain gate evidence
