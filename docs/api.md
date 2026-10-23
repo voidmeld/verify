@@ -404,6 +404,8 @@ when its orientation matters; an unset pivot uses the largest descendant part as
 
 Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
 
+Runtime defaults preserve methods configured before runtime creation. `environment.hasFake(instance, member)` detects object overrides, inherited class fakes and class-defined handlers. Closing removes only the runtime's own overrides and listeners; caller-owned behavior remains installed.
+
 `Workspace:GetServerTimeNow()` follows the virtual scheduler clock, starting at simulated epoch zero.
 `UserInputService:GetLastInputType()` starts at `None` and follows dispatched input events;
 close handlers disconnect its listeners. These are controlled simulation inputs, not OS input or

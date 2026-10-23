@@ -126,6 +126,42 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("place defaults preserve configured service behavior and release their own overrides", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local refuse = false
+		binding.environment.fake("DataStoreService.GetDataStore", function()
+			assert(not refuse, "configured store unavailable")
+			return "configured store"
+		end)
+		local run = binding.service "RunService"
+		local release = binding.environment.fakeOn(run, "IsStudio", function()
+			return true
+		end)
+		local fixture = sourceFixture({
+			["services.luau"] = "return function() return {game:GetService('DataStoreService'):GetDataStore('isolated'), game:GetService('RunService'):IsStudio(), workspace:GetServerTimeNow()} end",
+		}, { "DataModel", "DataStoreService", "RunService", "Workspace" }, { engine = binding })
+		local read = fixture.runtime.requireInstance(fixture.module("Services", "services.luau")) :: () -> unknown
+		local expected: { unknown } = { "configured store", true, 0 }
+		check:expect(read()):toEqual(expected)
+		refuse = true
+		local ok, failure = pcall(read)
+		check:expect(ok):toBe(false)
+		check:expect(tostring(failure)):toContain "configured store unavailable"
+		refuse = false
+		for _, close in fixture.runtime.closeHandlers do
+			close()
+		end
+		check:expect((run.IsStudio :: (Instance) -> boolean)(run)):toBe(true)
+		local store = binding.service "DataStoreService"
+		check:expect((store.GetDataStore :: (Instance, string) -> string)(store, "isolated")):toBe "configured store"
+		check
+			:expect((pcall(function()
+				return binding.service("Workspace").GetServerTimeNow
+			end)))
+			:toBe(false)
+		release()
+	end)
+
 	suite:case("place services follow virtual time and input while retaining content URIs", function(check)
 		local binding = Lute.fixture.bridge().placeEngine()
 		local fixture = sourceFixture({

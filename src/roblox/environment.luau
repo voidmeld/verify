@@ -1185,6 +1185,20 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	environment.fake = function<A..., R...>(member: string, handler: (Instance, A...) -> R...)
 		fakes[member] = handler
 	end
+	environment.hasFake = function(object: Instance, member: string): boolean
+		local state = stateOf(object)
+		if doubleHandler(state.doubles[member]) ~= nil or type(state.class.methods[member]) == "function" then
+			return true
+		end
+		local className: string? = state.className
+		while className do
+			if fakes[className .. "." .. member] ~= nil then
+				return true
+			end
+			className = specs[className].super
+		end
+		return false
+	end
 	environment.createInstance = function(className: string, props: { [unknown]: unknown }?): Instance
 		return newObject(className, props, false)
 	end
