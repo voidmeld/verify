@@ -114,6 +114,7 @@ local function sourceFixture(
 			return compilations
 		end,
 		engine = binding,
+		host = host,
 		mounted = mounted,
 		runtime = Roblox.createPlaceRuntime(binding, mounted, {
 			aliases = { fixture = "fixture" },
@@ -134,6 +135,35 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("project paths resolve beside the project and retain absolute source paths", function(check)
+		for _, target in { "../modules/value.luau", "/modules/value.luau", "C:/modules/value.luau" } do
+			local expected = if target == "../modules/value.luau" then "modules/value.luau" else target
+			local fixture = sourceFixture {
+				["config/fixture.json"] = json.serialize {
+					tree = { ReplicatedStorage = { Value = { ["$path"] = target } } },
+				},
+				[expected] = "return 42",
+			}
+			local mounted = Roblox.buildPlaceTree(fixture.engine, "config/fixture.json", {
+				cache = Roblox.createPlaceCache(fixture.host),
+				host = fixture.host,
+				files = {
+					exists = function(path: string): boolean
+						return path == expected
+					end,
+					fileType = function(): string
+						return "file"
+					end,
+					listDirectory = function()
+						return {}
+					end,
+				},
+			})
+			local value = assert(fixture.engine.service("ReplicatedStorage"):FindFirstChild "Value")
+			check:expect(value.ClassName):toBe "ModuleScript"
+			check:expect(mounted.sources[value]):toBe(expected)
+		end
+	end)
 	suite:case("bundled place clients run requested source with bounded frame stepping", function(check)
 		local bridge = Lute.fixture.bridge(nil, { handlerErrors = "raise" })
 		local order: { string } = {}

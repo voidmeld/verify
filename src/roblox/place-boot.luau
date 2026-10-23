@@ -1,6 +1,7 @@
 --!strict
 
 local PlaceRuntime = require "./place-runtime"
+local Paths = require "../codec/path"
 type Instance = PlaceRuntime.Instance
 export type Engine = PlaceRuntime.Engine & {
 	outstandingWaits: () -> { { target: string, name: string, source: string } },
@@ -254,6 +255,9 @@ local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, de
 	local function mountNode(node: ProjectNode, name: string, parent: Instance?): Instance
 		local object: Instance
 		local path = node["$path"] :: string?
+		if path then
+			path = Paths.collapse(Paths.join(Paths.parent(projectPath), Paths.normalize(path)))
+		end
 		if parent == nil then
 			object = engine.game
 		elseif path ~= nil then
