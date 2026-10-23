@@ -436,6 +436,8 @@ Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRend
 
 Runtime defaults preserve methods configured before runtime creation. `environment.hasFake(instance, member)` detects object overrides, inherited class fakes and class-defined handlers. Closing removes only the runtime's own overrides and listeners; caller-owned behavior remains installed.
 
+`MemoryStoreService:GetHashMap()` supplies cached native-shaped handles when the place has a positive game ID. Backend reads, writes, expiry, contention and cross-server sharing remain unsupported unless explicitly injected; handle creation proves none of them.
+
 `Workspace:GetServerTimeNow()` follows the virtual scheduler clock, starting at simulated epoch zero.
 `UserInputService:GetLastInputType()` starts at `None` and follows dispatched input events;
 close handlers disconnect its listeners. These are controlled simulation inputs, not OS input or

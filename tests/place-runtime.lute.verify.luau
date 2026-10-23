@@ -126,6 +126,38 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("MemoryStore handles preserve names without simulating backend operations", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local fixture = sourceFixture({
+			["handles.luau"] = [[
+local service = game:GetService("MemoryStoreService")
+local first = service:GetHashMap("first")
+assert(first:IsA("MemoryStoreHashMap"))
+assert(first.Name == "Instance" and first.Parent == service)
+assert(service:GetHashMap("first") == first)
+assert(service:GetHashMap("second") ~= first)
+assert(service:GetHashMap(""):IsA("MemoryStoreHashMap"))
+assert(service:GetHashMap(1) == service:GetHashMap("1"))
+local ok, failure = pcall(function() return first:GetAsync("key") end)
+assert(not ok and string.find(tostring(failure), "unsupported_method: MemoryStoreHashMap.GetAsync", 1, true))
+return true
+]],
+		}, { "DataModel", "MemoryStoreService" }, { engine = binding })
+		binding.environment.poke(binding.game, "GameId", 1)
+		check:expect(fixture.runtime.requireInstance(fixture.module("Handles", "handles.luau"))):toBe(true)
+	end)
+	suite:case("MemoryStore handle acquisition refuses an unpublished place", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local fixture = sourceFixture({
+			["unpublished.luau"] = [[
+local ok, failure = pcall(function() return game:GetService("MemoryStoreService"):GetHashMap("first") end)
+assert(not ok)
+return tostring(failure)
+]],
+		}, { "DataModel", "MemoryStoreService" }, { engine = binding })
+		local failure = fixture.runtime.requireInstance(fixture.module("Unpublished", "unpublished.luau"))
+		check:expect(failure):toContain "You must publish this place"
+	end)
 	suite:case("explicit humanoid transitions require a parented model and scheduled work", function(check)
 		local binding = Lute.fixture.bridge().placeEngine()
 		local fixture = sourceFixture({

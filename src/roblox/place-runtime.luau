@@ -732,6 +732,26 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return nil
 			end,
 		}
+		local hashMaps: { [string]: Instance } = {}
+		overrides.MemoryStoreService = {
+			GetHashMap = function(service: Instance, value: unknown): Instance
+				local gameId = engine.game.GameId
+				assert(
+					type(gameId) == "number" and gameId > 0,
+					"You must publish this place to use MemoryStoreService."
+				)
+				local name = if type(value) == "number" then tostring(value) else value
+				assert(type(name) == "string", "MemoryStoreService.GetHashMap requires a string name")
+				local map = hashMaps[name]
+				if map == nil then
+					map = engine.newInstance("MemoryStoreHashMap", true)
+					map.Name = "Instance"
+					map.Parent = service
+					hashMaps[name] = map
+				end
+				return map
+			end,
+		}
 		overrides.DataStoreService = {
 			GetDataStore = function(): unknown
 				return runtime.dataStore
