@@ -2,7 +2,11 @@
 
 local PlaceRuntime = require "./place-runtime"
 type Instance = PlaceRuntime.Instance
-export type Engine = PlaceRuntime.Engine
+export type Engine = PlaceRuntime.Engine & {
+	outstandingWaits: () -> { { target: string, name: string, source: string } },
+	frames: () -> number,
+	blocked: () -> number,
+}
 type Runtime = PlaceRuntime.Runtime
 type ProjectNode = { [string]: unknown }
 type Project = { globIgnorePaths: { string }?, tree: { [string]: ProjectNode } }
@@ -19,7 +23,7 @@ export type Files = {
 
 export type Opaque = {
 	attribute: string?,
-	fill: ((engine: Engine, object: Instance, path: string) -> ())?,
+	fill: ((engine: PlaceRuntime.Engine, object: Instance, path: string) -> ())?,
 }
 
 export type TreeDeps<B = unknown> = {
@@ -165,7 +169,7 @@ local function scriptClass(fileName: string): (string?, string?)
 	return nil
 end
 
-local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<B>): Mounted
+local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, deps: TreeDeps<B>): Mounted
 	local cache = deps.cache
 	local files = deps.files
 	local opaque = deps.opaque
@@ -341,23 +345,6 @@ local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<
 	return { root = engine.game, scripts = scripts, sources = sources }
 end
 
-local function frameOnce(engine: Engine, runtime: Runtime)
-	local run = engine.service "RunService"
-	local scheduler = engine.environment.scheduler
-	scheduler.advance(FRAME_SECONDS)
-	scheduler.drain(64)
-	engine.environment.fire(run, "PreRender", FRAME_SECONDS)
-	engine.environment.fire(run, "Stepped", scheduler.clock(), FRAME_SECONDS)
-	engine.environment.fire(run, "PreSimulation", FRAME_SECONDS)
-	engine.environment.fire(run, "PostSimulation", FRAME_SECONDS)
-	engine.environment.fire(run, "RenderStepped", FRAME_SECONDS)
-	engine.environment.fire(run, "Heartbeat", FRAME_SECONDS)
-	for _, callback in runtime.renderSteps do
-		engine.environment.scheduler.spawn(callback, FRAME_SECONDS)
-	end
-	scheduler.drain(64)
-end
-
 local function scriptsUnder(container: Instance, className: string, out: { Instance })
 	for _, child in container:GetChildren() do
 		if child.ClassName == className then
@@ -483,7 +470,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		runtime.runScript(entry, "server")
 	end
 	for _ = 1, 4 do
-		frameOnce(engine, runtime)
+		runtime.step(FRAME_SECONDS)
 	end
 	reachedStage "server"
 
@@ -512,7 +499,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	engine.environment.fire(players, "PlayerAdded", player)
 
 	for _ = 1, 2 do
-		frameOnce(engine, runtime)
+		runtime.step(FRAME_SECONDS)
 	end
 	identified = player
 	identifiedGui = playerGui
@@ -539,7 +526,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		runtime.runScript(entry, "client")
 	end
 
-	frameOnce(engine, runtime)
+	runtime.step(FRAME_SECONDS)
 	reachedStage "client"
 
 	engine.environment.poke(
@@ -548,7 +535,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		engine.datatypes.Vector2.new(config.finalViewport.x, config.finalViewport.y)
 	)
 
-	frameOnce(engine, runtime)
+	runtime.step(FRAME_SECONDS)
 	reachedStage "viewport"
 
 	local character = makeCharacter(engine, tostring(player.Name))
@@ -556,7 +543,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	engine.environment.poke(player, "Character", character)
 	engine.environment.fire(player, "CharacterAdded", character)
 
-	frameOnce(engine, runtime)
+	runtime.step(FRAME_SECONDS)
 	reachedStage "character"
 
 	local attributes = config.attributes
@@ -571,7 +558,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 
 	local budget = config.frames or DEFAULT_FRAME_BUDGET
 	for _ = 1, budget do
-		frameOnce(engine, runtime)
+		runtime.step(FRAME_SECONDS)
 	end
 
 	reachedStage "settled"
@@ -614,7 +601,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		frames = engine.frames(),
 		blocked = engine.blocked(),
 		step = function()
-			frameOnce(engine, runtime)
+			runtime.step(FRAME_SECONDS)
 		end,
 	}
 end

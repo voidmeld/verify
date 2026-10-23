@@ -6,8 +6,9 @@ local PlaceRuntime = require "../src/roblox/place-runtime"
 local Environment = require "../src/roblox/environment"
 local luau = require "@std/luau"
 local json = require "@std/json"
+local Lute = require "../src/lute"
 type Instance = PlaceRuntime.Instance
-local function engine(): PlaceRuntime.Engine
+local function engine(): Roblox.PlaceBootEngine
 	local environment = Roblox.testEnvironment { undeclaredWrites = true, undeclaredReads = "nil" }
 	local declared: { [string]: boolean } = { Animator = true, Animation = true, AnimationTrack = true }
 	local events = {
@@ -74,8 +75,22 @@ local function engine(): PlaceRuntime.Engine
 		},
 	}
 end
-local function sourceFixture(sources: { [string]: string }, methodDoubles: { string }?)
-	local binding = engine()
+local function sourceFixture(
+	sources: { [string]: string },
+	methodDoubles: { string }?,
+	options: {
+		engine: PlaceRuntime.Engine?,
+		client: PlaceRuntime.Client?,
+		beforeRender: (() -> ())?,
+	}?
+)
+	local settings: {
+		engine: PlaceRuntime.Engine?,
+		client: PlaceRuntime.Client?,
+		beforeRender: (() -> ())?,
+	} = options
+		or {}
+	local binding = settings.engine or engine()
 	local compilations = 0
 	local host: Roblox.PlaceBootHost<luau.Bytecode> = {
 		readFile = function(path: string): string
@@ -105,6 +120,8 @@ local function sourceFixture(sources: { [string]: string }, methodDoubles: { str
 			cache = Roblox.createPlaceCache(host),
 			host = host,
 			methodDoubles = methodDoubles or { "DataModel", "RunService", "HttpService" },
+			client = settings.client,
+			beforeRender = settings.beforeRender,
 		}),
 		module = function(name: string, path: string, parent: Instance?): Instance
 			local object = binding.newInstance "ModuleScript"
@@ -117,6 +134,70 @@ local function sourceFixture(sources: { [string]: string }, methodDoubles: { str
 end
 
 return function(suite: Core.Harness)
+	suite:case("bundled place clients run requested source with bounded frame stepping", function(check)
+		local bridge = Lute.fixture.bridge(nil, { handlerErrors = "raise" })
+		local order: { string } = {}
+		local fixture = sourceFixture({
+			["fixture/client.luau"] = [[
+local players = game:GetService("Players")
+local player = players.LocalPlayer
+assert(player.Name == "Fixture" and player.UserId == 7)
+assert(player.PlayerGui.Parent == player)
+assert(workspace.CurrentCamera.ViewportSize == Vector2.new(640, 480))
+local run = game:GetService("RunService")
+run.RenderStepped:Wait()
+return "client-ready"
+]],
+		}, { "DataModel", "RunService", "Players", "HttpService" }, {
+			engine = bridge.placeEngine(),
+			client = { name = "Fixture", userId = 7, viewport = { x = 640, y = 480 } },
+			beforeRender = function()
+				table.insert(order, "layout")
+			end,
+		})
+		local module = fixture.module("Client", "fixture/client.luau")
+		local result: unknown = nil
+		local env = bridge.environment
+		local render = fixture.engine.service("RunService").RenderStepped :: Environment.Signal
+		render:Connect(function()
+			table.insert(order, "render")
+		end)
+		env.scheduler.spawnTagged({ context = "client", source = "fixture/client.luau" }, function()
+			result = fixture.runtime.requireInstance(module)
+		end)
+		check:expect(result):toBe(nil)
+		fixture.runtime.step(1 / 60)
+		check:expect(result):toBe "client-ready"
+		check:expect(order):toEqual { "layout", "render" }
+		check:expect(#env.errors):toBe(0)
+		check:expect(#fixture.engine.diagnostics):toBe(0)
+		for _, close in fixture.runtime.closeHandlers do
+			close()
+		end
+		bridge.close()
+	end)
+	suite:case("place frame readers fail closed before publishing render events", function(check)
+		local frames = 0
+		local fixture = sourceFixture({}, nil, {
+			beforeRender = function()
+				error "layout reader failure"
+			end,
+		})
+		local render = fixture.engine.service("RunService").RenderStepped :: Environment.Signal
+		render:Connect(function()
+			frames += 1
+		end)
+		local ok, failure = pcall(function(): unknown
+			fixture.runtime.step(1 / 60)
+			return nil
+		end)
+		check:expect(ok):toBe(false)
+		check:expect(tostring(failure)):toContain "layout reader failure"
+		check:expect(frames):toBe(0)
+		for _, duration in { -1, math.huge, math.nan } do
+			check:expect((pcall(fixture.runtime.step, duration))):toBe(false)
+		end
+	end)
 	suite:case(
 		"modeled preload accepts an empty request and refuses unresolved assets without callbacks",
 		function(check)

@@ -6,6 +6,8 @@ local InstanceHost = require "./instance-host"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
 local UiLayout = require "./ui-layout"
+local PlaceRuntime = require "./place-runtime"
+local Datatypes = require "./datatypes"
 
 type Vector2 = Adapter.Vector2
 type Vector3 = Adapter.Vector3
@@ -63,6 +65,7 @@ export type Bridge = {
 	track: () -> Tracking,
 	record: () -> { events: { Environment.Event }, stop: () -> () },
 	instanceHost: (actor: string) -> InstanceHost.Simulated,
+	placeEngine: () -> PlaceRuntime.Engine,
 	accounting: () -> Accounting,
 	close: () -> Accounting,
 }
@@ -155,6 +158,88 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 			step()
 		end
 	end
+	local place: PlaceRuntime.Engine? = nil
+	local function placeEngine(): PlaceRuntime.Engine
+		if place then
+			return place
+		end
+		local services: { [string]: Environment.Instance } = {}
+		local serviceClasses: { [string]: boolean } = {}
+		for _, name in settings.database:GetClassNames() do
+			local class = settings.database:GetClass(name)
+			if class and table.find(class.Tags, "Service") then
+				serviceClasses[name] = true
+			end
+		end
+		local diagnostics: { PlaceRuntime.Diagnostic } = {}
+		local source = function(): string
+			return "fixture"
+		end
+		local game = environment.createEngineInstance "DataModel"
+		local function member(className: string, property: string): (string?, string?)
+			local class = settings.database:GetClass(className)
+			while class do
+				local entry = class.Properties[property]
+				if entry then
+					return "property", entry.Datatype
+				end
+				if table.find(class.Events or {}, property) then
+					return "event", nil
+				end
+				if table.find(class.Methods or {}, property) then
+					return "method", nil
+				end
+				class = if class.Superclass then settings.database:GetClass(class.Superclass) else nil
+			end
+			return nil, nil
+		end
+		local value: PlaceRuntime.Engine = {
+			environment = environment,
+			game = game,
+			newInstance = function(name: string, engineOwned: boolean?): Environment.Instance
+				return if engineOwned then environment.createEngineInstance(name) else environment.createInstance(name)
+			end,
+			service = function(name: string): Environment.Instance
+				assert(serviceClasses[name], "not a reflected service: " .. name)
+				local existing = services[name]
+				if existing then
+					return existing
+				end
+				local object = environment.createEngineInstance(name)
+				object.Parent = game
+				services[name] = object
+				return object
+			end,
+			setSourceResolver = function(resolve: () -> string)
+				source = resolve
+			end,
+			currentSource = function(): string
+				return source()
+			end,
+			record = function(kind: string, text: string, origin: string)
+				table.insert(diagnostics, { kind = kind, text = text, source = origin })
+			end,
+			isInstance = Environment.isInstance,
+			datatypes = if settings.library
+				then (settings.library.datatypes :: unknown) :: typeof(Datatypes)
+				else Datatypes,
+			typeName = settings.typeName,
+			diagnostics = diagnostics,
+			surface = {
+				services = serviceClasses,
+				memberKind = function(className: string, property: string): string?
+					local kind = member(className, property)
+					return kind
+				end,
+				memberType = function(className: string, property: string): string?
+					local _, datatype = member(className, property)
+					return datatype
+				end,
+			},
+		}
+		place = value
+		return value
+	end
 
 	local function accounting(): Accounting
 		return {
@@ -222,6 +307,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		instanceHost = function(actor: string): InstanceHost.Simulated
 			return InstanceHost.simulated(actor, environment)
 		end,
+		placeEngine = placeEngine,
 		accounting = accounting,
 		close = function(): Accounting
 			if controller ~= nil then
