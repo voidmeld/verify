@@ -118,6 +118,30 @@ end
 
 return function(suite: Core.Harness)
 	suite:case(
+		"modeled preload accepts an empty request and refuses unresolved assets without callbacks",
+		function(check)
+			local fixture = sourceFixture({}, { "DataModel", "ContentProvider" })
+			local service = fixture.engine.service "ContentProvider"
+			local preload = service.PreloadAsync :: (Instance, { unknown }, (string, unknown) -> ()) -> ()
+			local calls = 0
+			local function callback(_asset: string, _status: unknown)
+				calls += 1
+			end
+			preload(service, {}, callback)
+			check:expect(calls):toBe(0)
+			local requests: { { unknown } } = { { "rbxassetid://1" }, { fixture.engine.newInstance "ImageLabel" } }
+			for _, assets in requests do
+				local ok, failure = pcall(function()
+					preload(service, assets, callback)
+					return "returned without resolving assets"
+				end)
+				check:expect(ok):toBe(false)
+				check:expect(tostring(failure)):toContain "unsupported_place_asset: ContentProvider.PreloadAsync"
+				check:expect(calls):toBe(0)
+			end
+		end
+	)
+	suite:case(
 		"CollectionService shares Instance tags and matches native DataModel entry and pending removal",
 		function(check)
 			local fixture = sourceFixture({}, { "DataModel", "RunService", "HttpService", "CollectionService" })

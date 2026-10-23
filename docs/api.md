@@ -387,6 +387,8 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
+The modeled `ContentProvider.PreloadAsync` accepts an empty request without callbacks. It rejects nonempty requests as `unsupported_place_asset`; it does not fetch assets or report a fabricated asset status.
+
 `PlaceRuntimeEngine.environment` is the authoritative simulated environment. The binding supplies its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment property, event and method-double operations; the engine contract has no mutable `stateOf` or `serviceMethods` table.
 
 Runtime options are `{ aliases, cache, host, methodDoubles? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
