@@ -405,9 +405,11 @@ AudioEmitter distance curves copy their inputs, outputs and cloned state. Negati
 The supported geometric properties are part sizes/pivot offsets, attachment frames, joint C0/C1,
 mesh offsets and file-mesh scale, sound rolloff distances, particle size/speed/acceleration,
 beam widths/curves, trail min/max length, Humanoid hip height/speed/jump height/power and rope
-length/thickness. Animated transforms and light range remain unchanged. Edited properties become
+length/thickness. AnimationConstraint translation scales linearly and its maximum force and torque
+scale cubically; strength and damping remain unchanged. Motor6D/Bone animated transforms and light
+range remain unchanged. Edited properties become
 the new basis for later scaling; unchanged property sizes retain their original basis. Part positions
-use floating-point transformations. Constraints other than ropes refuse before geometry changes;
+use floating-point transformations. Constraints other than ropes and animation constraints refuse before geometry changes;
 constraint dynamics and other geometric properties require an explicit host or native execution.
 
 Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading

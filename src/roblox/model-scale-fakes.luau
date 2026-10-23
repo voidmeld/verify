@@ -24,6 +24,7 @@ local fields: { [string]: { string } } = {
 	Trail = { "MinLength", "MaxLength" },
 	Humanoid = { "HipHeight", "WalkSpeed", "JumpHeight" },
 	RopeConstraint = { "Length", "Thickness" },
+	AnimationConstraint = { "Transform" },
 }
 
 local function scaled(value: unknown, ratio: number): unknown
@@ -87,7 +88,7 @@ local function attach(environment: Environment.Environment, pivot: (Instance) ->
 			enqueue(object, property, scaled(original, scale ^ power), original)
 		end
 		for _, object in model:GetDescendants() do
-			if object:IsA "Constraint" and not object:IsA "RopeConstraint" then
+			if object:IsA "Constraint" and not object:IsA "RopeConstraint" and not object:IsA "AnimationConstraint" then
 				error("unsupported_model_scale_constraint: " .. object.ClassName)
 			end
 			if object:IsA "BasePart" then
@@ -115,6 +116,9 @@ local function attach(environment: Environment.Environment, pivot: (Instance) ->
 			end
 			if object:IsA "Humanoid" then
 				resize(object, "JumpPower", 0.5)
+			elseif object:IsA "AnimationConstraint" then
+				resize(object, "MaxForce", 3)
+				resize(object, "MaxTorque", 3)
 			elseif object:IsA "SpecialMesh" then
 				local meshType = environment.propertyOf(object, "MeshType") :: Types.EnumMember
 				if meshType.Name == "FileMesh" then

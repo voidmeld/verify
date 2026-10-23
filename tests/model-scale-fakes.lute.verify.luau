@@ -44,44 +44,49 @@ return function(suite: Core.Harness)
 		scale(nested, 1)
 		check:expect(child.Size):toBe(types.Vector3.new(2, 2, 2))
 	end)
-	suite:case(
-		"model scaling applies geometric properties without scaling animation transforms or light range",
-		function(check)
-			local engine = Lute.fixture.bridge().placeEngine()
-			local types = engine.datatypes
-			local model = engine.newInstance "Model"
-			local attachment = engine.newInstance "Attachment"
-			attachment.CFrame, attachment.Parent = types.CFrame.new(1, 2, 3), model
-			local motor = engine.newInstance "Motor6D"
-			motor.C0, motor.Transform, motor.Parent = types.CFrame.new(1, 2, 3), types.CFrame.new(3, 4, 5), model
-			local light = engine.newInstance "PointLight"
-			light.Range, light.Parent = 7, model
-			local mesh = engine.newInstance "SpecialMesh"
-			mesh.MeshType, mesh.Scale, mesh.Parent = types.Enum.MeshType.FileMesh, types.Vector3.new(2, 3, 4), model
-			local humanoid = engine.newInstance "Humanoid"
-			humanoid.WalkSpeed, humanoid.JumpPower, humanoid.Parent = 16, 50, model
-			local emitter = engine.newInstance "ParticleEmitter"
-			emitter.Size, emitter.Speed, emitter.Parent =
-				types.NumberSequence.new(2), types.NumberRange.new(2, 4), model
-			scale(model, 2)
-			check:expect(attachment.CFrame):toBe(types.CFrame.new(2, 4, 6))
-			check:expect(motor.C0):toBe(types.CFrame.new(2, 4, 6))
-			check:expect(motor.Transform):toBe(types.CFrame.new(3, 4, 5))
-			check:expect(light.Range):toBe(7)
-			check:expect(mesh.Scale):toBe(types.Vector3.new(4, 6, 8))
-			check:expect(humanoid.WalkSpeed):toBe(32)
-			check:expect(math.abs((humanoid.JumpPower :: number) - 70.71067810058594) < 0.00001):toBe(true)
-			check:expect(emitter.Size):toBe(types.NumberSequence.new(4))
-			check:expect(emitter.Speed):toBe(types.NumberRange.new(4, 8))
-			local constraint = engine.newInstance "HingeConstraint"
-			constraint.Parent = model
-			check
-				:expect((pcall(function()
-					scale(model, 4)
-				end)))
-				:toBe(false)
-			check:expect(factor(model)):toBe(2)
-			check:expect(attachment.CFrame):toBe(types.CFrame.new(2, 4, 6))
-		end
-	)
+	suite:case("model scaling distinguishes constraint geometry from motor transforms and light range", function(check)
+		local engine = Lute.fixture.bridge().placeEngine()
+		local types = engine.datatypes
+		local model = engine.newInstance "Model"
+		local attachment = engine.newInstance "Attachment"
+		attachment.CFrame, attachment.Parent = types.CFrame.new(1, 2, 3), model
+		local motor = engine.newInstance "Motor6D"
+		motor.C0, motor.Transform, motor.Parent = types.CFrame.new(1, 2, 3), types.CFrame.new(3, 4, 5), model
+		local light = engine.newInstance "PointLight"
+		light.Range, light.Parent = 7, model
+		local animation = engine.newInstance "AnimationConstraint"
+		animation.Transform, animation.Parent = types.CFrame.new(1, 2, 3), model
+		animation.MaxForce, animation.MaxTorque = 6, 7
+		animation.LinearStrength, animation.AngularDamping = 5, 2
+		local mesh = engine.newInstance "SpecialMesh"
+		mesh.MeshType, mesh.Scale, mesh.Parent = types.Enum.MeshType.FileMesh, types.Vector3.new(2, 3, 4), model
+		local humanoid = engine.newInstance "Humanoid"
+		humanoid.WalkSpeed, humanoid.JumpPower, humanoid.Parent = 16, 50, model
+		local emitter = engine.newInstance "ParticleEmitter"
+		emitter.Size, emitter.Speed, emitter.Parent = types.NumberSequence.new(2), types.NumberRange.new(2, 4), model
+		scale(model, 2)
+		check:expect(attachment.CFrame):toBe(types.CFrame.new(2, 4, 6))
+		check:expect(motor.C0):toBe(types.CFrame.new(2, 4, 6))
+		check:expect(motor.Transform):toBe(types.CFrame.new(3, 4, 5))
+		check:expect(light.Range):toBe(7)
+		check:expect(animation.Transform):toBe(types.CFrame.new(2, 4, 6))
+		check:expect(animation.MaxForce):toBe(48)
+		check:expect(animation.MaxTorque):toBe(56)
+		check:expect(animation.LinearStrength):toBe(5)
+		check:expect(animation.AngularDamping):toBe(2)
+		check:expect(mesh.Scale):toBe(types.Vector3.new(4, 6, 8))
+		check:expect(humanoid.WalkSpeed):toBe(32)
+		check:expect(math.abs((humanoid.JumpPower :: number) - 70.71067810058594) < 0.00001):toBe(true)
+		check:expect(emitter.Size):toBe(types.NumberSequence.new(4))
+		check:expect(emitter.Speed):toBe(types.NumberRange.new(4, 8))
+		local constraint = engine.newInstance "HingeConstraint"
+		constraint.Parent = model
+		check
+			:expect((pcall(function()
+				scale(model, 4)
+			end)))
+			:toBe(false)
+		check:expect(factor(model)):toBe(2)
+		check:expect(attachment.CFrame):toBe(types.CFrame.new(2, 4, 6))
+	end)
 end
