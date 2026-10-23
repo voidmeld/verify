@@ -513,7 +513,9 @@ return "client-ready"
 		check:expect((pcall(report.runtime.requireInstance, report.player))):toBe(false)
 		check:expect((pcall(report.runtime.requireInstance, "@missing/module"))):toBe(false)
 		files["fixture.json"] = json.serialize {
-			tree = { Lighting = { ["$properties"] = { Ambient = { Color3 = { 0.2, "invalid", 0.4 } } } } },
+			tree = {
+				Lighting = { ["$properties"] = { Ambient = { Color3 = { 0.2, "invalid", 0.4 } :: { unknown } } } },
+			},
 		}
 		check
 			:expect((pcall(Roblox.buildPlaceTree, report.engine, "fixture.json", {

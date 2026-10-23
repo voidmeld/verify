@@ -184,6 +184,7 @@ export type Resolved = {
 }
 
 export type State = {
+	worldPivotSet: boolean?,
 	className: string,
 	class: Resolved,
 	values: { [string]: unknown },
