@@ -55,15 +55,6 @@ local function engine(): Roblox.PlaceBootEngine
 			return source()
 		end,
 		typeName = Roblox.typeName,
-		outstandingWaits = function()
-			return {}
-		end,
-		frames = function(): number
-			return 0
-		end,
-		blocked = function(): number
-			return 0
-		end,
 		surface = {
 			services = {},
 			memberKind = function(): string?
@@ -473,7 +464,9 @@ return "client-ready"
 			frames = 1,
 			engineProvidedInput = false,
 		}, {
-			newEngine = engine,
+			newEngine = function()
+				return Lute.fixture.bridge().placeEngine()
+			end,
 			host = host,
 			cache = Roblox.createPlaceCache(host),
 			files = {

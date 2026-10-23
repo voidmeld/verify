@@ -3,11 +3,7 @@
 local PlaceRuntime = require "./place-runtime"
 local Paths = require "../core/path"
 type Instance = PlaceRuntime.Instance
-export type Engine = PlaceRuntime.Engine & {
-	outstandingWaits: () -> { { target: string, name: string, source: string } },
-	frames: () -> number,
-	blocked: () -> number,
-}
+export type Engine = PlaceRuntime.Engine
 type Runtime = PlaceRuntime.Runtime
 type ProjectNode = { [string]: unknown }
 type Project = { globIgnorePaths: { string }?, tree: { [string]: ProjectNode } }
@@ -99,9 +95,6 @@ export type Report = {
 	roots: { string },
 	mountedRoots: { string },
 	lines: { string },
-	waits: { { target: string, name: string, source: string } },
-	frames: number,
-	blocked: number,
 	step: () -> (),
 }
 
@@ -601,9 +594,6 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		roots = roots,
 		mountedRoots = mountedRoots,
 		lines = lines,
-		waits = engine.outstandingWaits(),
-		frames = engine.frames(),
-		blocked = engine.blocked(),
 		step = function()
 			runtime.step(FRAME_SECONDS)
 		end,
