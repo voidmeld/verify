@@ -17,6 +17,24 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
+		suite:case("bundled singleton services restore captured capacity and lighting values", function(check)
+			local engine = Lute.fixture.bridge().placeEngine()
+			local players = engine.service "Players"
+			local lighting = engine.service "Lighting"
+			check:expect(players.MaxPlayers):toBe(12)
+			check:expect(lighting.FogColor):toBe(Datatypes.Color3.new(0.75, 0.75, 0.75))
+			check:expect(lighting.FogEnd):toBe(100000)
+			local original = lighting.Ambient
+			lighting.Ambient = Datatypes.Color3.new(0, 0, 0)
+			lighting.Ambient = original
+			check:expect(lighting.Ambient):toBe(Datatypes.Color3.new(0.5, 0.5, 0.5))
+			check
+				:expect(accepts(function(): unknown
+					players.MaxPlayers = 50
+					return nil
+				end))
+				:toBe(false)
+		end)
 		suite:case("bundled TextChannel preserves write-only delivery callbacks", function(check)
 			local environment = Lute.fixture.bridge().environment
 			local channel = environment.createInstance "TextChannel"
