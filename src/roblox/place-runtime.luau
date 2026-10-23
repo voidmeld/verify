@@ -420,6 +420,17 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				runtime.renderSteps[name] = nil
 			end,
 		}
+		overrides.Workspace = {
+			GetServerTimeNow = function(): number
+				return scheduler.clock()
+			end,
+		}
+		local lastInput = engine.datatypes.Enum.UserInputType.None
+		overrides.UserInputService = {
+			GetLastInputType = function(): Datatypes.EnumMember
+				return lastInput
+			end,
+		}
 		overrides.Players = {
 			GetPlayers = function(service: Instance): { Instance }
 				local out: { Instance } = {}
@@ -644,12 +655,12 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		}
 		overrides.AssetService = {
 			CreateMeshPartAsync = function(_service: Instance, content: unknown): unknown
+				local uri = if engine.datatypes.typeName(content) == "Content"
+					then (content :: Datatypes.ContentValue).Uri
+					else content
+				assert(type(uri) == "string" and uri ~= "", "mesh content must have a non-empty URI")
 				local part = engine.newInstance("MeshPart", true)
-				environment.poke(
-					part,
-					"MeshId",
-					if type(content) == "table" then (content :: { Uri: unknown }).Uri else tostring(content)
-				)
+				environment.poke(part, "MeshId", uri)
 				return part
 			end,
 		}
@@ -693,6 +704,23 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			if methods and (allowed == nil or allowed[object.ClassName]) then
 				for name, method in methods do
 					environment.fakeOn(object, name, method :: Environment.Method)
+				end
+				if object.ClassName == "UserInputService" then
+					local service = object :: Instance
+					for _, event in { "InputBegan", "InputChanged", "InputEnded" } do
+						local connection = (service[event] :: Environment.Signal):Connect(function(input: unknown)
+							assert(engine.isInstance(input), "input event requires an InputObject")
+							local inputType =
+								environment.propertyOf(input :: Instance, "UserInputType") :: Datatypes.EnumMember
+							if inputType ~= lastInput then
+								lastInput = inputType
+								environment.fire(service, "LastInputTypeChanged", inputType)
+							end
+						end)
+						table.insert(runtime.closeHandlers, function()
+							connection:Disconnect()
+						end)
+					end
 				end
 			end
 		end
