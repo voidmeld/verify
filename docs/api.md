@@ -391,6 +391,12 @@ The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.se
 
 `ReplicatedFirst:RemoveDefaultLoadingScreen()` is accepted without rendering a loading screen. Arrival logic can continue, but native loading-screen visibility requires a Studio or Player observation.
 
+The place runtime queues explicit Humanoid state changes through its scheduler and emits `StateChanged` after applying them. Detached Humanoids report `None`; a model in Workspace begins in `Running`. This does not simulate automatic locomotion, state-machine physics or network ownership.
+
+The reflected environment raycasts oriented block Parts, honoring direction length, descendant include/exclude filters, `CanQuery`, `CanCollide` and `RespectCanCollide`. An origin inside a block does not hit that block. Non-block collision geometry and custom collision-group rules require an explicit host. Terrain has no voxel simulation; terrain geometry needs a configured query host or native execution.
+
+AudioEmitter distance curves copy their inputs, outputs and cloned state. Negative finite distances clamp to zero and finite volumes clamp to `[0, 1]`, matching the native setters. Invalid key/value types refuse before replacing the curve. The simulator accepts up to 400 points and does not simulate audibility or audio output.
+
 Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
 and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
 injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths

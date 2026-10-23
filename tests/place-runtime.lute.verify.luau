@@ -126,6 +126,50 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("explicit humanoid transitions require a parented model and scheduled work", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local fixture = sourceFixture({
+			["state.luau"] = [[
+local rig = Instance.new("Model")
+local root = Instance.new("Part")
+root.Name = "HumanoidRootPart"
+root.Parent = rig
+local humanoid = Instance.new("Humanoid")
+humanoid.Parent = rig
+local changes = {}
+humanoid.StateChanged:Connect(function(old, new) table.insert(changes, {old.Name, new.Name}) end)
+return {
+    state = function() return humanoid:GetState().Name end,
+    parent = function() rig.Parent = workspace end,
+    change = function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end,
+    detach = function() rig.Parent = nil end,
+    changes = changes,
+}
+]],
+		}, { "DataModel", "Humanoid", "RunService" }, { engine = binding })
+		local subject = fixture.runtime.requireInstance(fixture.module("State", "state.luau")) :: {
+			state: () -> string,
+			parent: () -> (),
+			change: () -> (),
+			detach: () -> (),
+			changes: { { string } },
+		}
+		check:expect(subject.state()):toBe "None"
+		subject.change()
+		fixture.runtime.step(0.1)
+		check:expect(subject.state()):toBe "None"
+		subject.parent()
+		check:expect(subject.state()):toBe "Running"
+		subject.change()
+		check:expect(subject.state()):toBe "Running"
+		fixture.runtime.step(0.1)
+		check:expect(subject.state()):toBe "Physics"
+		check:expect(subject.changes):toEqual { { "Running", "Physics" } }
+		subject.detach()
+		check:expect(subject.state()):toBe "None"
+		check:expect(binding.environment.scheduler.failures):toEqual {}
+	end)
+
 	suite:case("loading-screen removal allows asynchronous arrival logic to continue", function(check)
 		local binding = Lute.fixture.bridge().placeEngine()
 		local fixture = sourceFixture({
