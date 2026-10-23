@@ -4,7 +4,7 @@ local Text = require "../core/format"
 
 local Core = require "../core"
 local Judge = require "./judge"
-local Random = require "../random"
+local Random = require "../core/random"
 local Result = require "./result"
 local Schema = require "./schema"
 local Stats = require "./stats"

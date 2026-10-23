@@ -1,6 +1,6 @@
 --!strict
 
-local Generator = require "../../random"
+local Generator = require "../../core/random"
 local Names = require "./names"
 local Vector = require "./vector"
 
