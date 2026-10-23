@@ -4,7 +4,8 @@ local Datatypes = require "./datatypes"
 local Types = require "./environment-types"
 
 return table.freeze(({
-	Instance = { creatable = false },
+	Object = { creatable = false },
+	Instance = { super = "Object", creatable = false },
 	Folder = { super = "Instance" },
 	BindableFunction = { super = "Instance", access = { OnInvoke = "callback" }, methods = { Invoke = true } },
 	RemoteFunction = {

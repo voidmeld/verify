@@ -9,11 +9,18 @@ export type Connection = {
 
 export type Signal<A... = ...unknown> = {
 	Connect: (self: Signal<A...>, handler: (A...) -> ()) -> Connection,
+	Wait: (self: Signal<A...>) -> A...,
 	Fire: (self: Signal<A...>, A...) -> (),
 	DisconnectAll: (self: Signal<A...>) -> (),
 }
 
 export type Method<A... = ...unknown, R... = ...unknown> = (A...) -> R...
+export type Object = {
+	ClassName: string,
+	IsA: (Object, string) -> boolean,
+	GetPropertyChangedSignal: (Object, string) -> Signal<()>,
+	Changed: Signal<string>,
+}
 export type Instance = {
 	[string]: unknown,
 	ClassName: string,
@@ -29,21 +36,23 @@ export type Instance = {
 	GetChildren: (Instance) -> { Instance },
 	GetDescendants: (Instance) -> { Instance },
 	FindFirstChild: (Instance, string, boolean?) -> Instance?,
+	WaitForChild: (Instance, string, number?) -> Instance?,
 	FindFirstChildOfClass: (Instance, string) -> Instance?,
 	FindFirstChildWhichIsA: (Instance, string, boolean?) -> Instance?,
 	FindFirstAncestorOfClass: (Instance, string) -> Instance?,
 	FindFirstAncestorWhichIsA: (Instance, string) -> Instance?,
 	FindFirstAncestor: (Instance, string) -> Instance?,
 	GetFullName: (Instance) -> string,
-	IsA: (Instance, string) -> boolean,
+	IsA: (Object, string) -> boolean,
 	IsDescendantOf: (Instance, Instance) -> boolean,
 	IsAncestorOf: (Instance, Instance) -> boolean,
 	SetAttribute: (Instance, string, unknown) -> (),
 	GetAttribute: (Instance, string) -> unknown,
 	GetAttributes: (Instance) -> { [string]: unknown },
-	GetPropertyChangedSignal: (Instance, string) -> Signal<()>,
+	GetPropertyChangedSignal: (Object, string) -> Signal<()>,
 	GetAttributeChangedSignal: (Instance, string) -> Signal<()>,
 	ResetPropertyToDefault: (Instance, string) -> (),
+	IsPropertyModified: (Instance, string) -> boolean,
 	Changed: Signal<string>,
 	ChildAdded: Signal<Instance>,
 	ChildRemoved: Signal<Instance>,
@@ -109,7 +118,7 @@ export type Event = {
 }
 
 export type CloneHook = (source: Instance, copy: Instance, remap: (Instance) -> Instance) -> ()
-export type CreateHook = (object: Instance) -> ()
+export type CreateHook = (object: Object) -> ()
 
 export type SignalHandle = {
 	fire: (...unknown) -> (),
@@ -120,6 +129,7 @@ export type SignalHandle = {
 export type Environment = {
 	root: Instance,
 	heartbeat: Signal<number>,
+	tagChanged: Signal<Instance, string, boolean>,
 	scheduler: Scheduler.Scheduler,
 	task: {
 		spawn: <A..., R...>(callback: Scheduler.Task<A..., R...>, A...) -> thread,
@@ -131,17 +141,23 @@ export type Environment = {
 	errors: { string },
 	defineClass: <P, M>(className: string, spec: ClassSpec<P, M>, options: DefineOptions?) -> (),
 	fake: <A..., R...>(member: string, handler: (Instance, A...) -> R...) -> (),
-	fakeOn: <A..., R...>(object: Instance, name: string, handler: (Instance, A...) -> R...) -> (),
+	fakeOn: <O, A..., R...>(object: O, name: string, handler: (O, A...) -> R...) -> () -> (),
 	createInstance: (className: string, props: { [unknown]: unknown }?) -> Instance,
+	createEngineInstance: (className: string, props: { [unknown]: unknown }?) -> Instance,
+	createEngineObject: (className: string, props: { [unknown]: unknown }?) -> Object,
+	releaseObject: (object: Object) -> (),
 	snapshot: (object: Instance) -> Snapshot,
 	newSignal: <A...>() -> Signal<A...>,
 	step: (seconds: number) -> (),
 	now: () -> number,
 	childrenOf: (object: Instance) -> { Instance },
 	parentOf: (object: Instance) -> Instance?,
-	propertyOf: (object: Instance, key: string) -> unknown,
+	propertyOf: (object: Object, key: string) -> unknown,
+	defaultPropertyOf: (object: Instance, key: string) -> unknown,
+	tagsOf: (object: Instance) -> { string },
+	setTag: (object: Instance, tag: string, present: boolean) -> (),
 	attributeOf: (object: Instance, name: string) -> unknown,
-	isAlive: (object: Instance) -> boolean,
+	isAlive: (object: Object) -> boolean,
 	liveObjects: () -> number,
 	liveConnections: () -> number,
 	poke: (object: Instance, key: string, value: unknown) -> (),
@@ -159,6 +175,7 @@ export type Environment = {
 }
 
 export type Resolved = {
+	instance: boolean,
 	creatable: boolean,
 	access: { [string]: "read" | "write" | "none" | "callback" },
 	properties: { [string]: unknown },

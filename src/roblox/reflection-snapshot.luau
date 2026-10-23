@@ -6,6 +6,7 @@ local Adapter = require "./environment-engine"
 local FixtureBridge = require "./fixture-bridge"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
+local UiLayout = require "./ui-layout"
 
 export type Property = { datatype: string, scriptability: string, tags: { string } }
 export type ClassEntry = {
@@ -25,6 +26,7 @@ export type Snapshot = {
 }
 export type Options = {
 	ui: (UiFakes.Options | false)?,
+	layout: UiLayout.Options?,
 	classes: { [string]: Environment.ClassSpec }?,
 	referenceClass: ((className: string, property: string) -> string?)?,
 	validateProperty: ((className: string, property: string, value: unknown, operation: "set" | "poke") -> ...unknown)?,
@@ -278,6 +280,7 @@ local function bridge(snapshot: Snapshot, options: Options?): FixtureBridge.Brid
 		undeclaredReads = settings.undeclaredReads,
 		functionDoubles = settings.functionDoubles,
 		ui = settings.ui,
+		layout = settings.layout,
 	}
 end
 

@@ -249,7 +249,44 @@ Use a durable capture callback to retain per-client images.
 - Pointer coordinates are screen pixels.
 - Roblox still rejects reserved keys and interactions with protected CoreGui.
 
-This is real virtual input. It is distinct from the character motion operations in `playerHost`.
+The native backend uses real virtual input. It is distinct from the character motion operations in `playerHost`.
+
+`simulated(environment, { playerGui, inputService, layout, inset, library, read? })`
+returns the same backend interface over the existing simulated environment.
+It also binds `GetGuiObjectsAtPosition`, `CreateVirtualInput`,
+`GetMouseLocation` and `GetLastInputType` on the supplied instances.
+`layout` is the fixture's layout controller. `inset()` supplies the current
+captured profile inset; there is no built-in top-bar constant. `library` supplies
+the reflection-bound datatypes. `activationWindowSeconds` is a finite positive
+interval supplied by the caller. Repeated activation counts use release-to-release
+time and separate history for each target. A Windows Studio Client capture on
+2026-10-22, version `0.744.0.7441077`, counted releases 0.495 seconds apart together
+and reset after 0.518 seconds. Its tests use a 0.5-second modeled interval. This
+capture does not establish a universal platform interval. Styled scenes require the same effective-property
+reader for layout and input.
+
+The current modeled subset is rectangular ScreenGui geometry, left-button
+press/release, hover events and repeated activation. Global and Sibling
+ordering, clipping, hidden ancestry and non-interactable ancestry are modeled.
+InputObject and VirtualInput use engine-owned objects in the same environment.
+InputObject positions exclude the GUI inset; mouse event coordinates include it.
+Virtual mouse movement has zero Delta, including explicit moves to the same
+coordinates. Button Delta is the screen displacement since the previous button
+event. Held button objects keep their position until the next button event.
+This subset starts with a warmed MouseMovement Change state. It does not model
+the initial Begin state observed in a fresh Studio process.
+Closing cancels retained input without activating a target and releases owned
+input Objects. It also disconnects heartbeat reconciliation and disposes its
+scoped method overrides. Later method owners remain installed. This is modeled
+cleanup, not a native input cancellation claim.
+
+Explicit activation counts, cross-target releases, equal DisplayOrder across
+ScreenGuis, keyboard, text, touch, gamepad, drag detectors, input contexts and
+unsupported layout mechanisms raise. GuiState-driven visual feedback and native
+rendering are not established. Scene changes update hit testing and silently
+invalidate retained hover on a modeled frame. They do not emit hover or input
+events without explicit pointer input. Record these limitations; do not register
+a native input capability.
 
 ## Benchmarks
 

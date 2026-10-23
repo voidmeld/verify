@@ -553,7 +553,7 @@ return function(suite: Verify.Harness)
 			check:expect(fired):toBe(1)
 		end)
 
-		suite:case("GetStyled reads the plain property and its changed signal", function(check)
+		suite:case("GetStyled raw writes do not fire style notifications", function(check)
 			local built = bridge()
 			local label = built.environment.createInstance "TextLabel"
 			local styled = label.GetStyled :: (Environment.Instance, string) -> unknown
@@ -567,7 +567,7 @@ return function(suite: Verify.Harness)
 			check:expect(styled(label, "Text")):toBe "Label"
 			label.Text = "changed"
 			check:expect(styled(label, "Text")):toBe "changed"
-			check:expect(fired):toBe(1)
+			check:expect(fired):toBe(0)
 			check
 				:expect(thrown(function()
 					return styled(label, "Nope")

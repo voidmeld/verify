@@ -28,6 +28,7 @@ local function database(withMedia: boolean): Reflection.Database
 		GuiService = class("GuiService", "Instance", { property("SelectedObject", "Ref") }, { "Service" }),
 		TextService = class("TextService", "Instance", nil, { "Service" }),
 		StyleSheet = class("StyleSheet", "Instance"),
+		StyleLink = class("StyleLink", "Instance", { property("StyleSheet", "Ref") }),
 		StyleRule = class("StyleRule", "Instance", { property("Selector", "String") }),
 	}
 	if withMedia then

@@ -3,140 +3,305 @@
 local Roblox = require "../src/roblox"
 local Core = require "../src/core"
 local PlaceRuntime = require "../src/roblox/place-runtime"
-local Scheduler = require "../src/roblox/scheduler"
+local Environment = require "../src/roblox/environment"
 local luau = require "@std/luau"
 local json = require "@std/json"
 type Instance = PlaceRuntime.Instance
-type Node = PlaceRuntime.State & { parent: Instance?, children: { Instance } }
-
 local function engine(): PlaceRuntime.Engine
-	local result = {} :: PlaceRuntime.Engine
-	local nodes: { [Instance]: Node } = {}
-	local services: { [string]: Instance } = {}
+	local environment = Roblox.testEnvironment { undeclaredWrites = true, undeclaredReads = "nil" }
+	local declared: { [string]: boolean } = { Animator = true, Animation = true, AnimationTrack = true }
+	local events = {
+		RunService = { "PreRender", "RenderStepped", "Heartbeat", "Stepped", "PreSimulation", "PostSimulation" },
+		Players = { "PlayerAdded" },
+		Player = { "CharacterAdded" },
+	}
 	local function make(kind: string): Instance
-		local node: Node = {
-			className = kind,
-			name = kind,
-			parent = nil,
-			children = {},
-			values = {},
-			signals = {},
-			propertySignals = {},
-		}
-		local object = {} :: Instance
-		nodes[object] = node
-		setmetatable(object, {
-			__index = function(_: Instance, key: string): unknown
-				if key == "Name" then
-					return node.values.Name or node.name
-				end
-				if key == "ClassName" then
-					return node.className
-				end
-				if key == "Parent" then
-					return node.parent
-				end
-				if key == "GetChildren" then
-					return function()
-						return table.clone(node.children)
-					end
-				end
-				if key == "GetFullName" then
-					return function()
-						return node.name
-					end
-				end
-				if key == "FindFirstChild" then
-					return function(_: Instance, name: string): Instance?
-						for _, child in node.children do
-							if child.Name == name then
-								return child
-							end
-						end
-						return nil
-					end
-				end
-				return node.values[key]
-			end,
-			__newindex = function(_: Instance, key: string, value: unknown)
-				if key ~= "Parent" then
-					node.values[key] = value
-					return
-				end
-				if node.parent then
-					local siblings = nodes[node.parent].children
-					local index = table.find(siblings, object)
-					if index then
-						table.remove(siblings, index)
-					end
-				end
-				node.parent = value :: Instance?
-				if node.parent then
-					table.insert(nodes[node.parent].children, object)
-				end
-			end,
-		})
-		return (object :: unknown) :: Instance
-	end
-	local signals = Roblox.testEnvironment()
-	result.signal = signals.newSignal
-	result.fire = function(signal: Roblox.Signal, ...: unknown)
-		signal:Fire(...)
-	end
-	result.game = make "DataModel"
-	result.newInstance = make
-	result.stateOf = function(object: Instance): Node
-		return nodes[object]
-	end
-	result.isInstance = function(object: unknown): boolean
-		return nodes[object :: Instance] ~= nil
-	end
-	result.service = function(name: string): Instance
-		if services[name] == nil then
-			services[name] = make(name)
-			services[name].Parent = result.game
+		if not declared[kind] then
+			if Environment.BASIC_CLASSES[kind] == nil then
+				environment.defineClass(kind, { super = "Instance", events = events[kind] })
+			end
+			declared[kind] = true
 		end
-		return services[name]
+		return (environment.createInstance(kind) :: unknown) :: Instance
 	end
-	result.scheduler = Scheduler.create()
-	result.datatypes = Roblox.datatypes
-	result.serviceMethods = {}
-	result.diagnostics = {}
-	result.record = function(kind: string, text: string, source: string)
-		table.insert(result.diagnostics, { kind = kind, text = text, source = source })
-	end
+	local game = make "DataModel"
+	local services: { [string]: Instance } = {}
+	local diagnostics: { PlaceRuntime.Diagnostic } = {}
 	local source = function(): string
 		return "fixture"
 	end
-	result.setSourceResolver = function(nextSource: () -> string)
-		source = nextSource
-	end
-	result.currentSource = function(): string
-		return source()
-	end
-	result.typeName = Roblox.typeName
-	result.outstandingWaits = function()
-		return {}
-	end
-	result.frames = function(): number
-		return 0
-	end
-	result.blocked = function(): number
-		return 0
-	end
-	result.surface = {
-		services = {},
-		memberKind = function(): string?
-			return nil
+	return {
+		environment = environment,
+		game = game,
+		newInstance = make,
+		isInstance = Roblox.isInstance,
+		service = function(name: string): Instance
+			if services[name] == nil then
+				services[name] = make(name)
+				services[name].Parent = game
+			end
+			return services[name]
 		end,
-		memberType = function(): string?
-			return nil
+		datatypes = Roblox.datatypes,
+		diagnostics = diagnostics,
+		record = function(kind: string, text: string, origin: string)
+			table.insert(diagnostics, { kind = kind, text = text, source = origin })
+		end,
+		setSourceResolver = function(nextSource: () -> string)
+			source = nextSource
+		end,
+		currentSource = function(): string
+			return source()
+		end,
+		typeName = Roblox.typeName,
+		outstandingWaits = function()
+			return {}
+		end,
+		frames = function(): number
+			return 0
+		end,
+		blocked = function(): number
+			return 0
+		end,
+		surface = {
+			services = {},
+			memberKind = function(): string?
+				return nil
+			end,
+			memberType = function(): string?
+				return nil
+			end,
+		},
+	}
+end
+local function sourceFixture(sources: { [string]: string }, methodDoubles: { string }?)
+	local binding = engine()
+	local compilations = 0
+	local host: Roblox.PlaceBootHost<luau.Bytecode> = {
+		readFile = function(path: string): string
+			return assert(sources[path], path)
+		end,
+		compile = function(source: string): luau.Bytecode
+			compilations += 1
+			return luau.compile(source)
+		end,
+		load = function(code: luau.Bytecode, name: string, globals: { [string]: unknown }): () -> unknown
+			return luau.load(code, name, globals)
+		end,
+		encodeJson = function(value: unknown): string
+			return json.serialize(value :: json.Value)
+		end,
+		decodeJson = json.deserialize,
+	}
+	local mounted: PlaceRuntime.Mounted = { root = binding.game, scripts = {}, sources = {} }
+	return {
+		compilations = function(): number
+			return compilations
+		end,
+		engine = binding,
+		mounted = mounted,
+		runtime = Roblox.createPlaceRuntime(binding, mounted, {
+			aliases = { fixture = "fixture" },
+			cache = Roblox.createPlaceCache(host),
+			host = host,
+			methodDoubles = methodDoubles or { "DataModel", "RunService", "HttpService" },
+		}),
+		module = function(name: string, path: string, parent: Instance?): Instance
+			local object = binding.newInstance "ModuleScript"
+			object.Name = name
+			object.Parent = parent or binding.game
+			mounted.sources[object] = path
+			return object
 		end,
 	}
-	return result
 end
 
 return function(suite: Core.Harness)
+	suite:case(
+		"CollectionService shares Instance tags and matches native DataModel entry and pending removal",
+		function(check)
+			local fixture = sourceFixture({}, { "DataModel", "RunService", "HttpService", "CollectionService" })
+			local env, game = fixture.engine.environment, fixture.engine.game
+			local service = fixture.engine.service "CollectionService"
+			local get = service.GetTagged :: (Instance, string) -> { Instance }
+			local added = (service.GetInstanceAddedSignal :: (Instance, string) -> Environment.Signal<Instance>)(
+				service,
+				"Hot"
+			)
+			local removed = (service.GetInstanceRemovedSignal :: (Instance, string) -> Environment.Signal<Instance>)(
+				service,
+				"Hot"
+			)
+			local events: { string } = {}
+			local function subscribe(signal: Environment.Signal<Instance>, name: string)
+				signal:Connect(function(object)
+					table.insert(
+						events,
+						name
+							.. ":"
+							.. tostring(object:HasTag "Hot")
+							.. ":"
+							.. tostring(object:IsDescendantOf(game))
+							.. ":"
+							.. #get(service, "Hot")
+					)
+				end)
+			end
+			subscribe(added, "added")
+			subscribe(removed, "removed")
+			local object = fixture.engine.newInstance "Folder"
+			object:AddTag "Hot"
+			check:expect(get(service, "Hot")):toEqual {}
+			object.Parent = game
+			object:AddTag "Hot"
+			local addTag = (service.AddTag :: unknown) :: (Instance, Instance, string) -> ()
+			local removeTag = (service.RemoveTag :: unknown) :: (Instance, Instance, string) -> ()
+			removeTag(service, object, "Hot")
+			addTag(service, object, "Hot")
+			addTag(service, object, "Hot")
+			object.Parent = nil
+			object.Parent = game
+			object:RemoveTag "Hot"
+			object:AddTag "Hot"
+			object:Destroy()
+			check:expect(events):toEqual {
+				"added:true:true:1",
+				"removed:false:true:0",
+				"added:true:true:1",
+				"removed:true:true:0",
+				"added:true:true:1",
+				"removed:false:true:0",
+				"added:true:true:1",
+				"removed:true:true:0",
+			}
+			check:expect(object:HasTag "Hot"):toBe(true)
+			check:expect(get(service, "Hot")):toEqual {}
+			table.clear(events)
+			local parent = fixture.engine.newInstance "Folder"
+			local child = fixture.engine.newInstance "Folder"
+			parent:AddTag "Hot"
+			child:AddTag "Hot"
+			child.Parent = parent
+			parent.Parent = game
+			check:expect(events):toEqual { "added:true:true:2", "added:true:true:2" }
+			table.clear(events)
+			local container = fixture.engine.newInstance "Folder"
+			container.Parent = game
+			parent.Parent = container
+			check:expect(events):toEqual {}
+			parent.Parent = nil
+			check:expect(events):toEqual { "removed:true:true:1", "removed:true:true:0" }
+			game:AddTag "Hot"
+			check:expect(get(service, "Hot")):toEqual { game }
+			game:RemoveTag "Hot"
+			for _, close in fixture.runtime.closeHandlers do
+				close()
+			end
+			check:expect(env.liveConnections()):toBe(0)
+		end
+	)
+	suite:case(
+		"ModuleScript type and typeof preserve native identities without classifying spoofed tables",
+		function(check)
+			local fixture = sourceFixture {
+				["fixture/Kinds.luau"] = "return {type(script),typeof(script),type(shared.object),typeof(shared.object),type(shared.signal),typeof(shared.signal),type(shared.connection),typeof(shared.connection),type({__state={class={instance=true}}}),typeof({__state={class={instance=true}}})}",
+			}
+			local env = fixture.engine.environment
+			env.defineClass("VirtualInput", { super = "Object", creatable = false })
+			local object = env.createEngineObject "VirtualInput"
+			local signal = env.newSignal()
+			local connection = signal:Connect(function() end)
+			local shared = fixture.runtime.globals.shared :: { [string]: unknown }
+			shared.object, shared.signal, shared.connection = object, signal, connection
+			local module = fixture.module("Kinds", "fixture/Kinds.luau")
+			check:expect(fixture.runtime.requireInstance(module)):toEqual {
+				"userdata",
+				"Instance",
+				"userdata",
+				"Object",
+				"userdata",
+				"RBXScriptSignal",
+				"userdata",
+				"RBXScriptConnection",
+				"table",
+				"table",
+			}
+			connection:Disconnect()
+			env.releaseObject(object)
+		end
+	)
+	suite:case("ModuleScript caches by instance identity while sharing source bytecode", function(check)
+		local fixture = sourceFixture {
+			["value.luau"] = "shared.executions = (shared.executions or 0) + 1; return { execution = shared.executions }",
+		}
+		local first = fixture.module("First", "value.luau")
+		local second = fixture.module("Second", "value.luau")
+		local firstValue = fixture.runtime.requireInstance(first)
+		check:expect(fixture.runtime.requireInstance(first) == firstValue):toBe(true)
+		check:expect(firstValue == fixture.runtime.requireInstance(second)):toBe(false)
+		check:expect((fixture.runtime.globals.shared :: { executions: number }).executions):toBe(2)
+		check:expect(fixture.compilations()):toBe(1)
+	end)
+
+	suite:case("ModuleScript resolves init children sibling paths and parent paths on the mounted tree", function(check)
+		local fixture = sourceFixture {
+			["package/init.luau"] = 'return { relative = require("./Shared"), own = require("@self/Value") }',
+			["package/value.luau"] = "return 42",
+			["package/main.luau"] = 'return { sibling = require("./Value"), parent = require("../Shared") }',
+			["shared.luau"] = "return 7",
+		}
+		local package = fixture.module("Package", "package/init.luau")
+		fixture.module("Value", "package/value.luau", package)
+		local main = fixture.module("Main", "package/main.luau", package)
+		fixture.module("Shared", "shared.luau")
+		local packageValue = fixture.runtime.requireInstance(package) :: { relative: number, own: number }
+		check:expect(packageValue.relative):toBe(7)
+		check:expect(packageValue.own):toBe(42)
+		local mainValue = fixture.runtime.requireInstance(main) :: { sibling: number, parent: number }
+		check:expect(mainValue.sibling):toBe(42)
+		check:expect(mainValue.parent):toBe(7)
+	end)
+
+	suite:case("ModuleScript repeats runtime and compile errors without leaving a loading cache entry", function(check)
+		local fixture = sourceFixture {
+			["failure.luau"] = 'error("module fixture failure")',
+			["syntax.luau"] = "return (",
+		}
+		for _, name in { "failure", "syntax" } do
+			local object = fixture.module(name, name .. ".luau")
+			local errors: { string } = {}
+			for _ = 1, 2 do
+				local ok, failure = pcall(fixture.runtime.requireInstance, object)
+				check:expect(ok):toBe(false)
+				table.insert(errors, tostring(failure))
+			end
+			check:expect(errors[1]):toBe(errors[2])
+			check:expect(errors[1]):toContain "Requested module experienced an error while loading"
+		end
+		check:expect(#fixture.engine.diagnostics):toBe(2)
+		check:expect(fixture.engine.diagnostics[1].source):toBe "failure.luau"
+		check:expect(fixture.engine.diagnostics[1].text):toContain "module fixture failure"
+		check:expect(fixture.engine.diagnostics[2].source):toBe "syntax.luau"
+		local missing = fixture.module("Missing", "absent.luau")
+		fixture.mounted.sources[missing] = nil
+		check:expect((pcall(fixture.runtime.requireInstance, missing))):toBe(false)
+		check:expect((pcall(fixture.runtime.requireInstance, fixture.engine.game))):toBe(false)
+	end)
+
+	suite:case(
+		"place runtime installs only selected method doubles on existing and new service instances",
+		function(check)
+			local fixture = sourceFixture {}
+			local get = fixture.engine.game.GetService :: (Instance, string) -> Instance
+			check:expect(get(fixture.engine.game, "RunService") == fixture.engine.service "RunService"):toBe(true)
+			check:expect(fixture.engine.service("ContentProvider").PreloadAsync):toBe(nil)
+			for _, close in fixture.runtime.closeHandlers do
+				close()
+			end
+			check:expect(fixture.engine.service("HttpService").JSONEncode):toBe(nil)
+		end
+	)
+
 	suite:case("boots mounted scripts and requires modules without accepting invalid targets", function(check)
 		local files = {
 			["fixture.json"] = json.serialize {
