@@ -15,6 +15,7 @@ local property, class = Fixture.property, Fixture.class
 local function database(withMedia: boolean): Reflection.Database
 	local classes: ClassTable = {
 		Instance = class("Instance", nil, { property("Name", "String") }, { "NotCreatable" }),
+		DataModel = class("DataModel", "Instance", nil, { "NotCreatable" }),
 		Folder = class("Folder", "Instance"),
 		GuiObject = class(
 			"GuiObject",
@@ -62,6 +63,27 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("generic fixture bridge", function()
+		suite:case("place engines reuse one environment and validate reflected services", function(check)
+			local bridge = create(false, nil)
+			local engine = bridge.placeEngine()
+			check:expect(bridge.placeEngine()):toBe(engine)
+			check:expect(engine.environment):toBe(bridge.environment)
+			local gui = engine.service "GuiService"
+			check:expect(engine.service "GuiService"):toBe(gui)
+			check:expect(gui.Parent):toBe(engine.game)
+			check:expect(engine.surface.memberKind("TextButton", "Name")):toBe "property"
+			check:expect(engine.surface.memberType("TextButton", "Name")):toBe "String"
+			check:expect((pcall(engine.service, "Folder"))):toBe(false)
+			check:expect((pcall(engine.service, "Missing"))):toBe(false)
+			check:expect((pcall(engine.newInstance, "GuiService"))):toBe(false)
+			check:expect(engine.newInstance("GuiService", true).ClassName):toBe "GuiService"
+			engine.setSourceResolver(function(): string
+				return "module"
+			end)
+			engine.record("error", "failure", engine.currentSource())
+			check:expect(engine.diagnostics[1]):toEqual { kind = "error", text = "failure", source = "module" }
+			bridge.close()
+		end)
 		suite:case("internal UI fakes preserve creation restrictions and explicit overrides", function(check)
 			local bridge = create(false, nil)
 			for _, name in { "GuiService", "TextService", "UserInputService" } do

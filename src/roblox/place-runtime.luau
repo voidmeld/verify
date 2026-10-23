@@ -24,9 +24,6 @@ export type Engine = {
 		memberKind: (string, string) -> string?,
 		memberType: (string, string) -> string?,
 	},
-	outstandingWaits: () -> { { target: string, name: string, source: string } },
-	frames: () -> number,
-	blocked: () -> number,
 }
 type Entry = { status: string, waiters: { thread }, value: unknown, failure: unknown }
 export type Runtime = {
@@ -46,6 +43,7 @@ export type Runtime = {
 	globals: { [string]: unknown },
 	requireInstance: (unknown) -> unknown,
 	runScript: (Instance, string) -> thread?,
+	step: (seconds: number) -> (),
 }
 
 export type Host<B = unknown, C = Chunk> = {
@@ -68,11 +66,15 @@ export type Mounted = {
 	sources: { [Instance]: string },
 }
 
+export type Client = { name: string, userId: number, viewport: { x: number, y: number } }
+
 export type Options<B = unknown> = {
 	aliases: { [string]: string },
 	cache: Cache<B>,
 	host: Host<B>,
 	methodDoubles: { string }?,
+	client: Client?,
+	beforeRender: (() -> ())?,
 }
 
 local function createCache<B, C>(host: Host<B, C>): Cache<B, C>
@@ -847,6 +849,50 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		scheduler.tag(thread, { context = scriptContext, source = name })
 		scheduler.spawn(thread)
 		return thread
+	end
+	function runtime.step(seconds: number)
+		assert(seconds >= 0 and seconds < math.huge, "frame duration must be finite and nonnegative")
+		local run = engine.service "RunService"
+		scheduler.advance(seconds)
+		scheduler.drain(64)
+		if options.beforeRender then
+			options.beforeRender()
+		end
+		environment.fire(run, "PreRender", seconds)
+		environment.fire(run, "Stepped", scheduler.clock(), seconds)
+		environment.fire(run, "PreSimulation", seconds)
+		environment.fire(run, "PostSimulation", seconds)
+		environment.fire(run, "RenderStepped", seconds)
+		environment.fire(run, "Heartbeat", seconds)
+		for _, callback in runtime.renderSteps do
+			scheduler.spawn(callback, seconds)
+		end
+		scheduler.drain(64)
+	end
+	local client = options.client
+	if client then
+		assert(
+			client.viewport.x > 0 and client.viewport.x < math.huge,
+			"client viewport width must be positive and finite"
+		)
+		assert(
+			client.viewport.y > 0 and client.viewport.y < math.huge,
+			"client viewport height must be positive and finite"
+		)
+		local players = engine.service "Players"
+		local player = engine.newInstance("Player", true)
+		environment.poke(player, "Name", client.name)
+		environment.poke(player, "UserId", client.userId)
+		player.Parent = players
+		local playerGui = engine.newInstance("PlayerGui", true)
+		playerGui.Parent = player
+		runtime.localPlayer = player
+		environment.poke(players, "LocalPlayer", player)
+		local workspace = engine.service "Workspace"
+		local camera = engine.newInstance("Camera", true)
+		environment.poke(camera, "ViewportSize", engine.datatypes.Vector2.new(client.viewport.x, client.viewport.y))
+		camera.Parent = workspace
+		environment.poke(workspace, "CurrentCamera", camera)
 	end
 
 	return runtime

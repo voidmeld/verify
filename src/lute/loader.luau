@@ -2,7 +2,7 @@
 
 local fs = require "@std/fs"
 
-local Paths = require "../codec/path"
+local Paths = require "../core/path"
 local Chunk = require "./chunk"
 local Datatypes = require "../roblox/datatypes"
 

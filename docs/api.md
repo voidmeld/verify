@@ -387,11 +387,17 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
+Project `$path` values resolve relative to the project file's directory. Absolute paths remain absolute.
+
 The modeled `ContentProvider.PreloadAsync` accepts an empty request without callbacks. It rejects nonempty requests as `unsupported_place_asset`; it does not fetch assets or report a fabricated asset status.
 
 `PlaceRuntimeEngine.environment` is the authoritative simulated environment. The binding supplies its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment property, event and method-double operations; the engine contract has no mutable `stateOf` or `serviceMethods` table.
 
-Runtime options are `{ aliases, cache, host, methodDoubles? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
+Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
+
+`bridge.placeEngine()` returns one cached `PlaceRuntimeEngine` for the bridge's environment and reflection metadata. It owns a DataModel and creates only reflected services through its service lookup. Script construction restrictions remain intact. Boot-only wait and frame diagnostics belong to `PlaceBootEngine`.
+
+The optional `client = { name, userId, viewport = { x, y } }` creates a Player, PlayerGui and camera with that positive finite viewport. It sets `runtime.localPlayer` and `Players.LocalPlayer`; it does not start scripts or create a character. `runtime.step(seconds)` advances the existing scheduler and modeled RunService frame events. It calls `beforeRender()` before render events, so hosts can use `bridge.layout.step`. Reader errors propagate before render publication. These are modeled frames, not native rendering or physics.
 
 ModuleScript results are cached by instance and execution context. Relative requires resolve against the mounted source tree. Runtime and compile failures remain failed cache entries and raise again on a repeated require.
 
