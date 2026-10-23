@@ -411,6 +411,7 @@ return function(suite: Verify.Harness)
 			local outcome = runIn("source-deadline", {
 				specs({ hung, good }, { isolate = true, workers = 1, sourceDeadlineSeconds = 1, deadlineSeconds = 60 }),
 			})
+			check:attach("source-deadline-outcome.json", "application/json", Lute.encode(outcome))
 			check:expect(os.clock() - began < 20):toEqual(true)
 			local cases = Gate.testCases(outcome)
 			check:expect(cases.passed):toEqual(1)
