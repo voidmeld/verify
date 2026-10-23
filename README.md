@@ -86,6 +86,8 @@ To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/runn
 
 ## Validate
 
+GitHub Actions runs the repository gate as the `Gate` check using the pinned tools and SDK types. Follow the [contribution rules](AGENTS.md).
+
 Run `lute run tools/gate.luau`. The [run guide](docs/running.md#repository-gate) lists the options that narrow it.
 
 ## License
