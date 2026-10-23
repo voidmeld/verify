@@ -141,7 +141,8 @@ return function(suite: Core.Harness)
 			["services.luau"] = "return function() return {game:GetService('DataStoreService'):GetDataStore('isolated'), game:GetService('RunService'):IsStudio(), workspace:GetServerTimeNow()} end",
 		}, { "DataModel", "DataStoreService", "RunService", "Workspace" }, { engine = binding })
 		local read = fixture.runtime.requireInstance(fixture.module("Services", "services.luau")) :: () -> unknown
-		check:expect(read()):toEqual { "configured store", true, 0 }
+		local expected: { unknown } = { "configured store", true, 0 }
+		check:expect(read()):toEqual(expected)
 		refuse = true
 		local ok, failure = pcall(read)
 		check:expect(ok):toBe(false)
