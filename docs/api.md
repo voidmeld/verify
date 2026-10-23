@@ -387,6 +387,8 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
+The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.setmemorycategory` instrumentation without collecting performance or memory measurements. Its debug table retains the host's inspection functions without modifying the host table.
+
 Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
 and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
 injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths
