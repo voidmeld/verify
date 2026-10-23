@@ -397,6 +397,34 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		overrides.ReplicatedFirst = {
 			RemoveDefaultLoadingScreen = function() end,
 		}
+		local humanoidStates = setmetatable({} :: { [Instance]: Datatypes.EnumMember }, { __mode = "k" })
+		local function humanoidState(object: Instance): Datatypes.EnumMember
+			local parent = object.Parent
+			if parent == nil or not parent:IsA "Model" or not object:IsDescendantOf(engine.service "Workspace") then
+				humanoidStates[object] = nil
+				return engine.datatypes.Enum.HumanoidStateType.None
+			end
+			return humanoidStates[object] or engine.datatypes.Enum.HumanoidStateType.Running
+		end
+		overrides.Humanoid = {
+			GetState = humanoidState,
+			ChangeState = function(object: Instance, state: Datatypes.EnumMember)
+				assert(
+					Datatypes.typeName(state) == "EnumItem" and Datatypes.enumType(state) == "HumanoidStateType",
+					"ChangeState requires HumanoidStateType"
+				)
+				if humanoidState(object) == engine.datatypes.Enum.HumanoidStateType.None then
+					return
+				end
+				scheduler.defer(function()
+					local previous = humanoidState(object)
+					if previous ~= engine.datatypes.Enum.HumanoidStateType.None and previous ~= state then
+						humanoidStates[object] = state
+						environment.fire(object, "StateChanged", previous, state)
+					end
+				end)
+			end,
+		}
 		overrides.RunService = {
 			IsServer = function(): boolean
 				return context() == "server"

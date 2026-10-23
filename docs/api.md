@@ -391,6 +391,21 @@ The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.se
 
 `ReplicatedFirst:RemoveDefaultLoadingScreen()` is accepted without rendering a loading screen. Arrival logic can continue, but native loading-screen visibility requires a Studio or Player observation.
 
+The place runtime queues explicit Humanoid state changes through its scheduler and emits `StateChanged` after applying them. Detached Humanoids report `None`; a model in Workspace begins in `Running`. This does not simulate automatic locomotion, state-machine physics or network ownership.
+
+The reflected environment raycasts oriented block Parts, honoring direction length, descendant include/exclude filters, `CanQuery`, `CanCollide` and `RespectCanCollide`. An origin inside a block does not hit that block. Non-block collision geometry and custom collision-group rules require an explicit host. Terrain has no voxel simulation; terrain geometry needs a configured query host or native execution.
+
+AudioEmitter distance curves copy their inputs, outputs and cloned state. Negative finite distances clamp to zero and finite volumes clamp to `[0, 1]`, matching the native setters. Invalid key/value types refuse before replacing the curve. The simulator accepts up to 400 points and does not simulate audibility or audio output.
+
+`Model:ScaleTo` scales about the current pivot and preserves nested model factors and cloned scale state.
+The supported geometric properties are part sizes/pivot offsets, attachment frames, joint C0/C1,
+mesh offsets and file-mesh scale, sound rolloff distances, particle size/speed/acceleration,
+beam widths/curves, trail min/max length, Humanoid hip height/speed/jump height/power and rope
+length/thickness. Animated transforms and light range remain unchanged. Edited properties become
+the new basis for later scaling; unchanged property sizes retain their original basis. Part positions
+use floating-point transformations. Constraints other than ropes refuse before geometry changes;
+constraint dynamics and other geometric properties require an explicit host or native execution.
+
 Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
 and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
 injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths
@@ -636,6 +651,7 @@ Arithmetic and member errors use the engine messages.
 | `UDim`, `UDim2` | `new`, `fromScale`, `fromOffset`, `Scale`, `Offset`, `X`, `Y`, `Width`, `Height`, `UDim2:Lerp`, `+`, `-` and unary `-`. |
 | `Rect` | `new` with four numbers or two `Vector2` values, `Min`, `Max`, `Width` and `Height`. |
 | `Ray`, `Region3` | Ray origin, direction, unit ray, closest point and distance; region center, size and grid expansion. |
+| `Random` | `new`, `NextNumber`, `NextInteger`, `NextUnitVector`, `Shuffle` and `Clone`. Seeded streams are reproducible and clones advance independently. The generator reuses Verify's agent-evaluation stream; sequences do not match Roblox's generator. `Shuffle` operates on a dense array without invoking metamethods and preserves hash entries. |
 | `RaycastParams`, `OverlapParams` | Mutable filters, include/exclude arrays, collision group and collision flags; ray water filtering; overlap limit and tolerance. Filter arrays copy on assignment and read. These values configure explicit query doubles; they do not supply a physics engine. |
 | `NumberRange`, `NumberSequence`, `ColorSequence` and their keypoints | `new` in each engine form, `Min`, `Max`, `Keypoints`, `Time`, `Value` and `Envelope`. The engine rules for keypoints apply. |
 | `BrickColor` | `new` with a number, a name, a `Color3` or three numbers, `palette` (0 to 127), `random`, the named constructors, `Number`, `Name`, `Color`, `r`, `g` and `b`. |

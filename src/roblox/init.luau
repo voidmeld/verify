@@ -113,6 +113,7 @@ export type DatatypeEnumItem = Datatypes.EnumMember
 export type DatatypeVector2int16 = Datatypes.Vector2int16Value
 export type DatatypeVector3int16 = Datatypes.Vector3int16Value
 export type DatatypeRect = Datatypes.RectValue
+export type DatatypeRandom = Datatypes.RandomValue
 export type DatatypeNumberRange = Datatypes.NumberRangeValue
 export type DatatypeNumberSequence = Datatypes.NumberSequenceValue
 export type DatatypeColorSequence = Datatypes.ColorSequenceValue

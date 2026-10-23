@@ -2,6 +2,7 @@
 
 local Datatypes = require "./datatypes"
 local Environment = require "./environment-types"
+local ModelScale = require "./model-scale-fakes"
 
 type Instance = Environment.Instance
 type CFrame = Datatypes.CFrameValue
@@ -88,6 +89,7 @@ local function attach(environment: Environment.Environment, hasPivot: (Instance)
 		local _, size = bounds(object, pivot(object).Rotation)
 		return size
 	end)
+	ModelScale.attach(environment, pivot)
 end
 
 return { attach = attach }

@@ -1,6 +1,6 @@
 --!strict
 
-local Random = require "./random"
+local Random = require "../core/random"
 
 export type Interval = {
 	estimate: number?,
