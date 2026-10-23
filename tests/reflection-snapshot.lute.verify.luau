@@ -1,7 +1,6 @@
 --!strict
 
 local Datatypes = require "../src/roblox/datatypes"
-local fs = require "@std/fs"
 local path = require "@std/path"
 local process = require "@std/process"
 local temporary = require "./temporary"
@@ -20,22 +19,7 @@ return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
 		suite:case("loads the bundled capture from a consumer working directory", function(check)
 			local directory = temporary(check, "bundled-reflection")
-			local source = directory .. "/consumer.luau"
-			local module = path.format(path.relative(directory, path.resolve "src/lute")):gsub("\\", "/")
-			fs.writeStringToFile(
-				source,
-				("local Lute = require(%q)\n"):format(module)
-					.. "local snapshot = Lute.fixture.load()\n"
-					.. "assert(snapshot.engineVersion == '0.744.0.7441077')\n"
-					.. "local bridge = Lute.fixture.bridge()\n"
-					.. "local frame = bridge.engine.new('Frame')\n"
-					.. "assert(frame.Name == 'Frame')\n"
-					.. "assert(not pcall(function() frame.AbsoluteSize = bridge.engine.Vector2.new(1,2) end))\n"
-					.. "assert(not pcall(function() bridge.engine.new('Player') end))\n"
-					.. "local value = bridge.environment.createInstance('StringValue')\n"
-					.. "assert(value.Name == 'Value')\n"
-					.. "print('bundled-reflection-ready')\n"
-			)
+			local source = path.format(path.resolve "tests/programs/bundled-reflection.luau")
 			local result = process.run({ tostring(process.execPath()), "run", source }, { cwd = directory })
 			assert(result.exitcode == 0, result.stderr)
 			check:expect(result.exitcode):toBe(0)
