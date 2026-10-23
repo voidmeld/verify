@@ -397,6 +397,15 @@ The reflected environment raycasts oriented block Parts, honoring direction leng
 
 AudioEmitter distance curves copy their inputs, outputs and cloned state. Negative finite distances clamp to zero and finite volumes clamp to `[0, 1]`, matching the native setters. Invalid key/value types refuse before replacing the curve. The simulator accepts up to 400 points and does not simulate audibility or audio output.
 
+`Model:ScaleTo` scales about the current pivot and preserves nested model factors and cloned scale state.
+The supported geometric properties are part sizes/pivot offsets, attachment frames, joint C0/C1,
+mesh offsets and file-mesh scale, sound rolloff distances, particle size/speed/acceleration,
+beam widths/curves, trail min/max length, Humanoid hip height/speed/jump height/power and rope
+length/thickness. Animated transforms and light range remain unchanged. Edited properties become
+the new basis for later scaling; unchanged property sizes retain their original basis. Part positions
+use floating-point transformations. Constraints other than ropes refuse before geometry changes;
+constraint dynamics and other geometric properties require an explicit host or native execution.
+
 Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
 and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
 injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths
