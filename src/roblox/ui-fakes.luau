@@ -385,14 +385,22 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 				end
 				local selector = env.propertyOf(candidate, "Selector")
 				assert(type(selector) == "string", "StyleRule.Selector requires a string")
-				local className = selector:match "^([%a_][%w_]*)$"
-				local tag = selector:match "^%.([%a_][%w_%-]*)$"
-				if className == nil and tag == nil then
-					unsupported("selector " .. selector)
+				local matches = false
+				for _, branch in string.split(selector, ",") do
+					local trimmed = branch:match "^%s*(.-)%s*$" :: string
+					local className = trimmed:match "^([%a_][%w_]*)$"
+					local tag = trimmed:match "^%.([%a_][%w_%-]*)$"
+					if className == nil and tag == nil then
+						unsupported("selector " .. selector)
+					end
+					if
+						if className
+							then object:IsA(className)
+							else table.find(env.tagsOf(object), tag :: string) ~= nil
+					then
+						matches = true
+					end
 				end
-				local matches = if className
-					then object:IsA(className)
-					else table.find(env.tagsOf(object), tag :: string) ~= nil
 				local value = (properties[candidate] or {})[property]
 				if matches and value ~= nil then
 					local priority = env.propertyOf(candidate, "Priority")

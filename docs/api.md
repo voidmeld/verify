@@ -938,7 +938,7 @@ A probe proves only the expression that it runs.
 `Roblox.uiFakes.classes` declares optional UI methods.
 Supply it as a class overlay.
 Pass `uiFakes.validateProperty` as the property validator to reject the selection of hidden or unselectable controls.
-`Instance:GetStyled(property)` resolves the nearest linked StyleSheet with flat class or tag selectors, rule priorities, and attribute tokens. A nondefault raw property overrides the style. Writing the default or resetting the property exposes the style again. Empty links do not replace an ancestor scope.
+`Instance:GetStyled(property)` resolves the nearest linked StyleSheet with flat class or tag selectors, comma-separated selector lists, rule priorities, and attribute tokens. Every list branch must use supported syntax. A nondefault raw property overrides the style. Writing the default or resetting the property exposes the style again. Empty links do not replace an ancestor scope.
 
 `Instance:GetStyledPropertyChangedSignal(property)` observes the underlying style value and linked scope. Raw writes do not fire this signal. Style changes can fire it while a raw override masks the returned value. Call `controller.step()` to refresh observations; the fixture layout controller does this before layout. `controller.styled(object, property)` exposes the same effective read to host adapters. Closing the controller disconnects its observations.
 

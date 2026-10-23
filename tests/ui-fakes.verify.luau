@@ -153,6 +153,36 @@ return function(suite: Core.Harness)
 			ui.close()
 			check:expect(env.liveConnections()):toEqual(0)
 		end)
+		suite:case("native selector lists match independently and validate every branch", function(check)
+			local env = create()
+			local ui = UI.attach(env)
+			local root = env.createInstance "Folder"
+			local frame = env.createInstance("Frame", { Parent = root })
+			frame:AddTag "Hot"
+			local other = env.createInstance("TextLabel", { Parent = root })
+			local sheet = env.createInstance "StyleSheet"
+			env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
+			local rule =
+				env.createInstance("StyleRule", { Selector = "Frame, TextLabel", Priority = 10, Parent = sheet })
+			invoke(rule, "SetProperty", "BackgroundTransparency", 0.6)
+			local higher = env.createInstance("StyleRule", { Selector = ".Hot", Priority = 20, Parent = sheet })
+			invoke(higher, "SetProperty", "BackgroundTransparency", 0.8)
+			check:expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.8)
+			check:expect(ui.styled(other, "BackgroundTransparency")):toEqual(0.6)
+			rule.Selector = "  .Missing , .Hot  "
+			check:expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.8)
+			check:expect(ui.styled(other, "BackgroundTransparency")):toEqual(0)
+			higher:Destroy()
+			rule.Selector = "Frame, .Hot, Frame"
+			check:expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.6)
+			rule.Selector = ".Missing, TextLabel"
+			check:expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0)
+			check:expect(ui.styled(other, "BackgroundTransparency")):toEqual(0.6)
+			for _, selector in { "Frame,", ",Frame", "Frame,,TextLabel", "Frame, .Hot > Frame", "Frame, .Hot:Hover" } do
+				rule.Selector = selector
+				check:expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
+			end
+		end)
 		suite:case("unsupported styling fails before exposing raw fallback", function(check)
 			local env = create()
 			local ui = UI.attach(env)
