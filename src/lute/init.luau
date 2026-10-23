@@ -64,6 +64,7 @@ export type OpenCloudHandle = OpenCloud.Handle
 export type OpenCloudOutcome = OpenCloud.Outcome
 export type OpenCloudSession = OpenCloud.Session
 export type FixtureOptions = Fixture.Options
+export type FixturePlaceHost = Fixture.PlaceHost
 export type ChunkOptions = Chunk.Options
 export type LoaderOptions = Loader.Options
 export type Loader = Loader.Loader
