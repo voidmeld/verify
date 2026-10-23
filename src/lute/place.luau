@@ -2,7 +2,7 @@
 
 local fs = require "@std/fs"
 
-local Paths = require "../codec/path"
+local Paths = require "../core/path"
 local Xml = require "../codec/xml"
 
 export type BundleOptions = {

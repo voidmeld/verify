@@ -1,7 +1,7 @@
 --!strict
 
 local PlaceRuntime = require "./place-runtime"
-local Paths = require "../codec/path"
+local Paths = require "../core/path"
 type Instance = PlaceRuntime.Instance
 export type Engine = PlaceRuntime.Engine & {
 	outstandingWaits: () -> { { target: string, name: string, source: string } },

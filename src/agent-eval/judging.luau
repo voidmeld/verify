@@ -2,7 +2,7 @@
 
 local Judge = require "./judge"
 local Model = require "./model"
-local Paths = require "../codec/path"
+local Paths = require "../core/path"
 local Result = require "./result"
 local Schema = require "./schema"
 local Services = require "./services"
