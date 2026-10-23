@@ -703,7 +703,12 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			local methods = overrides[object.ClassName]
 			if methods and (allowed == nil or allowed[object.ClassName]) then
 				for name, method in methods do
-					environment.fakeOn(object, name, method :: Environment.Method)
+					if not environment.hasFake(object :: Instance, name) then
+						table.insert(
+							runtime.closeHandlers,
+							environment.fakeOn(object, name, method :: Environment.Method)
+						)
+					end
 				end
 				if object.ClassName == "UserInputService" then
 					local service = object :: Instance

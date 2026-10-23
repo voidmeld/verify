@@ -141,6 +141,7 @@ export type Environment = {
 	errors: { string },
 	defineClass: <P, M>(className: string, spec: ClassSpec<P, M>, options: DefineOptions?) -> (),
 	fake: <A..., R...>(member: string, handler: (Instance, A...) -> R...) -> (),
+	hasFake: (object: Instance, member: string) -> boolean,
 	fakeOn: <O, A..., R...>(object: O, name: string, handler: (O, A...) -> R...) -> () -> (),
 	createInstance: (className: string, props: { [unknown]: unknown }?) -> Instance,
 	createEngineInstance: (className: string, props: { [unknown]: unknown }?) -> Instance,
