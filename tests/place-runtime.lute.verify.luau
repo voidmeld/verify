@@ -126,6 +126,24 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("loading-screen removal allows asynchronous arrival logic to continue", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local fixture = sourceFixture({
+			["arrival.luau"] = [[
+local ready = false
+task.spawn(function()
+    game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
+    ready = true
+end)
+return function() return ready end
+]],
+		}, { "DataModel", "ReplicatedFirst" }, { engine = binding })
+		local ready = fixture.runtime.requireInstance(fixture.module("Arrival", "arrival.luau")) :: () -> boolean
+		binding.environment.scheduler.drain(64)
+		check:expect(binding.environment.scheduler.failures):toEqual {}
+		check:expect(ready()):toBe(true)
+	end)
+
 	suite:case("instrumented modules execute without changing host debug functions", function(check)
 		local before = table.clone(debug)
 		local fixture = sourceFixture {

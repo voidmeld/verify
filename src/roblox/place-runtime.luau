@@ -394,6 +394,9 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return ""
 			end,
 		}
+		overrides.ReplicatedFirst = {
+			RemoveDefaultLoadingScreen = function() end,
+		}
 		overrides.RunService = {
 			IsServer = function(): boolean
 				return context() == "server"
