@@ -131,7 +131,8 @@ return function(suite: Verify.Harness)
 								object[member] = nil
 							end))
 							:toBe(true)
-						for _, value in { true, 1, "value", {} } do
+						local assignedValues: { unknown } = { true, 1, "value", {} }
+						for _, value in assignedValues do
 							object[member] = value
 							check:expect(env.propertyOf(object, member) == value):toBe(true)
 							check
