@@ -388,14 +388,23 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
 Project `$path` values resolve relative to the project file's directory. Absolute paths remain absolute.
+Project properties decode Rojo's tagged Color3, Vector3, CFrame and enum values through the engine's
+datatype library. Malformed components and unknown enum values fail before assignment.
 
 The modeled `ContentProvider.PreloadAsync` accepts an empty request without callbacks. It rejects nonempty requests as `unsupported_place_asset`; it does not fetch assets or report a fabricated asset status.
 
 `PlaceRuntimeEngine.environment` is the authoritative simulated environment. The binding supplies its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment property, event and method-double operations; the engine contract has no mutable `stateOf` or `serviceMethods` table.
 
+Construct it with `Lute.fixture.bridge().placeEngine()`. Use `engine.environment.scheduler`
+for time, `environment.fire(instance, event, ...)` for events and `environment.fake` or
+`fakeOn` for explicit method doubles. BasePart position/CFrame writes remain coupled.
+The reflected environment models pivots, descendant placement and oriented model bounds;
+it does not simulate joints, collisions or physics. Set a model's primary part or world pivot
+when its orientation matters; an unset pivot uses the largest descendant part as its basis.
+
 Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
 
-`bridge.placeEngine()` returns one cached `PlaceRuntimeEngine` for the bridge's environment and reflection metadata. It owns a DataModel and creates only reflected services through its service lookup. Script construction restrictions remain intact. Boot-only wait and frame diagnostics belong to `PlaceBootEngine`.
+`bridge.placeEngine()` returns one cached engine for both mounted runtime and boot over the bridge's environment and reflection metadata. It owns a DataModel and creates only reflected services through its service lookup. Script construction restrictions remain intact. The boot report retains source diagnostics and observed roots; the engine needs no separate diagnostic adapter.
 
 The optional `client = { name, userId, viewport = { x, y } }` creates a Player, PlayerGui and camera with that positive finite viewport. It sets `runtime.localPlayer` and `Players.LocalPlayer`; it does not start scripts or create a character. `runtime.step(seconds)` advances the existing scheduler and modeled RunService frame events. It calls `beforeRender()` before render events, so hosts can use `bridge.layout.step`. Reader errors propagate before render publication. These are modeled frames, not native rendering or physics.
 
@@ -609,6 +618,8 @@ Arithmetic and member errors use the engine messages.
 | `Color3` | `new`, `fromRGB`, `fromHSV`, `fromHex`, `toHSV`, `R`, `G`, `B`, `Lerp`, `ToHSV` and `ToHex`. |
 | `UDim`, `UDim2` | `new`, `fromScale`, `fromOffset`, `Scale`, `Offset`, `X`, `Y`, `Width`, `Height`, `UDim2:Lerp`, `+`, `-` and unary `-`. |
 | `Rect` | `new` with four numbers or two `Vector2` values, `Min`, `Max`, `Width` and `Height`. |
+| `Ray`, `Region3` | Ray origin, direction, unit ray, closest point and distance; region center, size and grid expansion. |
+| `RaycastParams`, `OverlapParams` | Mutable filters, include/exclude arrays, collision group and collision flags; ray water filtering; overlap limit and tolerance. Filter arrays copy on assignment and read. These values configure explicit query doubles; they do not supply a physics engine. |
 | `NumberRange`, `NumberSequence`, `ColorSequence` and their keypoints | `new` in each engine form, `Min`, `Max`, `Keypoints`, `Time`, `Value` and `Envelope`. The engine rules for keypoints apply. |
 | `BrickColor` | `new` with a number, a name, a `Color3` or three numbers, `palette` (0 to 127), `random`, the named constructors, `Number`, `Name`, `Color`, `r`, `g` and `b`. |
 | `Font` | `new`, `fromName`, `fromId`, `fromEnum`, `Family`, `Weight`, `Style` and `Bold`. `Family`, `Weight`, `Style` and `Bold` are writable, as in the engine. |
@@ -636,7 +647,7 @@ Values from different libraries interoperate. Enum items of the same family and 
 
 `tests/datatypes.lute.verify.luau` compares more than 100 probes with results that Studio recorded.
 A probe that declares a tolerance compares its numbers with that relative tolerance.
-These probes need a tolerance: `CFrame:Lerp` and `CFrame:ToAxisAngle`. All other probes match exactly.
+Floating-point geometry probes declare their tolerances; other probes match exactly.
 
 `Animator:LoadAnimation` returns a track.
 `Play`, `Stop` and `AdjustSpeed` change `IsPlaying` and `Speed` and fire `Stopped` and `Ended`. The simulator blends no frames.
@@ -850,7 +861,7 @@ It does not change, save or publish the place. The default transport of `Lute.st
 - Without `--classes`, the command exports every class. With `--classes`, it exports the named classes and their superclasses.
 - Without `--classes` and `--enums`, it exports every enum.
   Otherwise it exports the enums that the exported properties and defaults name, the enums in `--enums`, and the enums that the datatypes need.
-  The datatypes need ContentSourceType, EasingDirection, EasingStyle, Font, FontStyle, FontWeight and KeyInterpolationMode.
+  The datatypes need ContentSourceType, EasingDirection, EasingStyle, Font, FontStyle, FontWeight, KeyInterpolationMode and RaycastFilterType.
 - Datatypes use the database names `Bool`, `Float32`, `Float64`, `Int32`, `Int64`, `String`, `CFrame`, `OptionalCFrame`, `Rect`, `Ref` and `Enum.<family>`. Other types keep the engine name.
 - Scriptability comes from the read and write permits. A property that scripts can read but not write has the tag `ReadOnly`.
   A property with no permit has the scriptability `None` and the tag `NotScriptable`. A deprecated member has the tag `Deprecated`.

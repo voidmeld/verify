@@ -1,9 +1,11 @@
 --!strict
 
 local Datatypes = require "./datatypes"
+local Names = require "./datatypes/names"
 local Classes = require "./environment-classes"
 local Scheduler = require "./scheduler"
 local Types = require "./environment-types"
+local SpatialFakes = require "./spatial-fakes"
 
 export type Connection = Types.Connection
 export type Signal<A... = ...unknown> = Types.Signal<A...>
@@ -31,7 +33,6 @@ type Resolved = Types.Resolved
 type State = Types.State
 local ATTRIBUTE_NAME_LIMIT = 100
 local metatableOf = (getmetatable :: unknown) :: (unknown) -> unknown
-local NATIVE_TYPES = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [unknown]: string }
 
 local UNIVERSAL_EVENTS: { string } = {
 	"Changed",
@@ -229,10 +230,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		local live: { { handler: (A...) -> (), connected: boolean, connection: Connection } } = {}
 		local fired = initialFires or 0
 		local signal = {} :: Signal<A...>
-		NATIVE_TYPES[signal] = "RBXScriptSignal"
+		Names.register(signal, "RBXScriptSignal")
 		function signal:Connect(handler: (A...) -> ()): Connection
 			local connection = { Connected = true } :: Connection
-			NATIVE_TYPES[connection] = "RBXScriptConnection"
+			Names.register(connection, "RBXScriptConnection")
 			local record = { handler = handler, connected = true, connection = connection }
 			table.insert(live, record)
 			connections += 1
@@ -374,6 +375,28 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local function changed(object: Instance, state: State, property: string)
 		fireSignal(state, "prop:" .. property)
 		fireSignal(state, "Changed", property)
+	end
+
+	local function assign(object: Instance, state: State, key: string, value: unknown)
+		local coupled: string? = nil
+		if isA(state.className, "BasePart") then
+			if key == "CFrame" and Names.of(value) == "CFrame" and state.class.properties.Position ~= nil then
+				local position = (value :: Datatypes.CFrameValue).Position
+				if (state.values.Position :: Datatypes.Vector3Value?) ~= position then
+					state.values.Position = position
+					coupled = "Position"
+				end
+			elseif key == "Position" and Names.of(value) == "Vector3" and Names.of(state.values.CFrame) == "CFrame" then
+				local frame = state.values.CFrame :: Datatypes.CFrameValue
+				state.values.CFrame = frame + ((value :: Datatypes.Vector3Value) - frame.Position)
+				coupled = "CFrame"
+			end
+		end
+		state.values[key] = value
+		changed(object, state, key)
+		if coupled then
+			changed(object, state, coupled)
+		end
 	end
 
 	local function subtree(object: Instance): { Instance }
@@ -749,6 +772,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 					local rootCopy = copyTree(object)
 					for original, copy in copies do
 						local source, target = stateOf(original), stateOf(copy)
+						target.worldPivotSet = source.worldPivotSet
 						for property, value in source.values do
 							if
 								computedFor(source.className, property) == nil
@@ -1011,14 +1035,16 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		then
 			return
 		end
+		if key == "WorldPivot" and isA(state.className, "Model") then
+			state.worldPivotSet = true
+		end
 		if state.values[key] == value then
 			return
 		end
-		state.values[key] = value
 		if not declared then
 			state.extras[key] = true
 		end
-		changed(object, state, key)
+		assign(object, state, key, value)
 	end
 
 	local objectMetatable = {
@@ -1044,7 +1070,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			values[key] = defaultOf(className, class, key)
 		end
 		local object = (setmetatable({} :: { [string]: unknown }, objectMetatable) :: unknown) :: Instance
-		NATIVE_TYPES[object] = if class.instance then "Instance" else "Object"
+		Names.register(object, if class.instance then "Instance" else "Object")
 		rawset(
 			object,
 			"__state",
@@ -1258,14 +1284,16 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			then
 				return
 			end
+			if key == "WorldPivot" and isA(state.className, "Model") then
+				state.worldPivotSet = true
+			end
 			if state.values[key] == value then
 				return
 			end
-			state.values[key] = value
 			if not declared then
 				state.extras[key] = true
 			end
-			changed(object, state, key)
+			assign(object, state, key, value)
 		end) :: unknown
 	) :: (object: Instance, key: string, value: unknown) -> ()
 	environment.fire = (
@@ -1420,19 +1448,21 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		return total
 	end
+	SpatialFakes.attach(environment, function(object: Instance): boolean
+		return stateOf(object).worldPivotSet == true
+	end)
+	for member, handler in initialFakes do
+		fakes[member] = handler
+	end
 	return environment :: Environment
 end
 
 local function isInstance(value: unknown): boolean
-	return NATIVE_TYPES[value] == "Instance"
+	return Names.registered(value) == "Instance"
 end
 
 local function typeName(value: unknown): string
-	local native = NATIVE_TYPES[value]
-	if native ~= nil then
-		return native
-	end
-	return Datatypes.typeName(value) or typeof(value)
+	return Names.kind(value)
 end
 
 return {
