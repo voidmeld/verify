@@ -170,6 +170,31 @@ return {
 		check:expect(binding.environment.scheduler.failures):toEqual {}
 	end)
 
+	suite:case("humanoid state flags notify on repeated writes but are not cloned", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local fixture = sourceFixture({
+			["flags.luau"] = [[
+local h = Instance.new("Humanoid")
+local state = Enum.HumanoidStateType.Ragdoll
+local events = {}
+h.StateEnabledChanged:Connect(function(state, enabled) table.insert(events, {state.Name, enabled}) end)
+local initial = h:GetStateEnabled(state)
+h:SetStateEnabled(state, false)
+h:SetStateEnabled(state, false)
+h:SetStateEnabled(Enum.HumanoidStateType.None, false)
+return {initial=initial, disabled=h:GetStateEnabled(state), copy=h:Clone():GetStateEnabled(state), none=h:GetStateEnabled(Enum.HumanoidStateType.None), events=events}
+]],
+		}, { "DataModel", "Humanoid", "RunService" }, { engine = binding })
+		local actual = fixture.runtime.requireInstance(fixture.module("Flags", "flags.luau"))
+		local events: { { unknown } } = { { "Ragdoll", false }, { "Ragdoll", false } }
+		check:expect(actual):toEqual {
+			initial = true,
+			disabled = false,
+			copy = true,
+			none = true,
+			events = events,
+		}
+	end)
 	suite:case("loading-screen removal allows asynchronous arrival logic to continue", function(check)
 		local binding = Lute.fixture.bridge().placeEngine()
 		local fixture = sourceFixture({

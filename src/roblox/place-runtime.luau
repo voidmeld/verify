@@ -398,6 +398,13 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			RemoveDefaultLoadingScreen = function() end,
 		}
 		local humanoidStates = setmetatable({} :: { [Instance]: Datatypes.EnumMember }, { __mode = "k" })
+		local disabledStates = setmetatable({} :: { [Instance]: { [string]: boolean } }, { __mode = "k" })
+		local function validateHumanoidState(state: Datatypes.EnumMember)
+			assert(
+				Datatypes.typeName(state) == "EnumItem" and Datatypes.enumType(state) == "HumanoidStateType",
+				"HumanoidStateType required"
+			)
+		end
 		local function humanoidState(object: Instance): Datatypes.EnumMember
 			local parent = object.Parent
 			if parent == nil or not parent:IsA "Model" or not object:IsDescendantOf(engine.service "Workspace") then
@@ -408,11 +415,24 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		end
 		overrides.Humanoid = {
 			GetState = humanoidState,
+			GetStateEnabled = function(object: Instance, state: Datatypes.EnumMember): boolean
+				validateHumanoidState(state)
+				local disabled = disabledStates[object]
+				return disabled == nil or disabled[state.Name] ~= true
+			end,
+			SetStateEnabled = function(object: Instance, state: Datatypes.EnumMember, enabled: boolean)
+				validateHumanoidState(state)
+				assert(type(enabled) == "boolean", "state enabled flag must be boolean")
+				if state.Name == "None" then
+					return
+				end
+				local disabled = disabledStates[object] or {}
+				disabledStates[object] = disabled
+				disabled[state.Name] = not enabled
+				environment.fire(object, "StateEnabledChanged", state, enabled)
+			end,
 			ChangeState = function(object: Instance, state: Datatypes.EnumMember)
-				assert(
-					Datatypes.typeName(state) == "EnumItem" and Datatypes.enumType(state) == "HumanoidStateType",
-					"ChangeState requires HumanoidStateType"
-				)
+				validateHumanoidState(state)
 				if humanoidState(object) == engine.datatypes.Enum.HumanoidStateType.None then
 					return
 				end

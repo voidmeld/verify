@@ -393,6 +393,10 @@ The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.se
 
 The place runtime queues explicit Humanoid state changes through its scheduler and emits `StateChanged` after applying them. Detached Humanoids report `None`; a model in Workspace begins in `Running`. This does not simulate automatic locomotion, state-machine physics or network ownership.
 
+Humanoid state-enable flags default to true and reset on cloning. `SetStateEnabled` emits
+`StateEnabledChanged` even for repeated writes; `None` remains enabled and ignores writes.
+Flags describe configured state-machine policy; the simulator has no automatic state machine.
+
 The reflected environment raycasts oriented block Parts, honoring direction length, descendant include/exclude filters, `CanQuery`, `CanCollide` and `RespectCanCollide`. An origin inside a block does not hit that block. Non-block collision geometry and custom collision-group rules require an explicit host. Terrain has no voxel simulation; terrain geometry needs a configured query host or native execution.
 
 AudioEmitter distance curves copy their inputs, outputs and cloned state. Negative finite distances clamp to zero and finite volumes clamp to `[0, 1]`, matching the native setters. Invalid key/value types refuse before replacing the curve. The simulator accepts up to 400 points and does not simulate audibility or audio output.
@@ -693,7 +697,7 @@ These types describe the values for the type checker. At run time each value is 
 - `WaitForChild(name, timeout?)` returns an existing direct child without yielding. Otherwise it waits on the virtual scheduler until a child is added or renamed to `name`. A positive timeout returns nil when it expires; nil waits indefinitely. Nonpositive timeouts raise before the existing-child lookup. The simulator does not print the engine's infinite-yield warning.
 - `Destroy` locks the parent, destroys the descendants and disconnects the signals of the instance.
 - Attributes have change signals. Property change signals fire only on change.
-- Signals fire in connect order. A connection that disconnects during a fire is skipped.
+- Signals start listeners in connect order on separate scheduler coroutines. A yielding listener does not suspend the emitter or other listeners. A connection that disconnects before its listener starts is skipped; a started listener may finish after disconnection.
 - `signal:Wait()` yields through the existing scheduler until the next fire and returns its complete argument tuple. It ignores previous fires. Resumption and task cancellation release the wait listener.
 - `signalOf(object, event)` returns `{ fire, connections, fires }` for one event.
   A test can fire the event and count its live connections and fires.

@@ -280,10 +280,12 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			end
 			for _, record in table.clone(live) do
 				if record.connected then
-					local ok, thrown: unknown = pcall(record.handler, ...)
-					if not ok then
-						table.insert(errors, tostring(thrown))
-					end
+					scheduler.spawn(function(...: A...)
+						local ok, thrown: unknown = pcall(record.handler, ...)
+						if not ok then
+							table.insert(errors, tostring(thrown))
+						end
+					end, ...)
 				end
 			end
 		end
