@@ -188,6 +188,8 @@ local function create(options: Options): Environment.Environment
 				valid = actual == "string" or actual == expected
 			elseif expected == "Ref" then
 				valid = value == nil or Environment.isInstance(value)
+			elseif expected == "PhysicalProperties" then
+				valid = value == nil or actual == "PhysicalProperties"
 			elseif expected == "OptionalCFrame" then
 				valid = value == nil or actual == "CFrame"
 			elseif expected:sub(1, 5) == "Enum." then

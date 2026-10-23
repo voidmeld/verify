@@ -374,6 +374,26 @@ return function(suite: Verify.Harness)
 			end
 		)
 
+		suite:case("accepts unset custom physical properties without loosening other property types", function(check)
+			local bridge = Lute.fixture.bridge()
+			local part = bridge.environment.createInstance "Part"
+			check:expect(part.CustomPhysicalProperties):toBe(nil)
+			part.CustomPhysicalProperties = nil
+			check:expect(part.CustomPhysicalProperties):toBe(nil)
+			check
+				:expect(accepts(function(): unknown
+					part.CustomPhysicalProperties = {}
+					return nil
+				end))
+				:toBe(false)
+			check
+				:expect(accepts(function(): unknown
+					part.Size = nil
+					return nil
+				end))
+				:toBe(false)
+		end)
+
 		suite:case("accepts nil or a CFrame for an optional CFrame property", function(check)
 			local bridge = Roblox.reflectionSnapshot.bridge {
 				schemaVersion = 2,
