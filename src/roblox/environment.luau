@@ -999,8 +999,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		local access = state.class.access[key]
 		if access == "callback" then
-			assert(value == nil or type(value) == "function", key .. " must be a function or nil")
-			state.doubles[key] = value
+			state.doubles[key] = if value == nil then nil else { handler = value, previous = nil, active = true }
 			return
 		elseif access == "read" or access == "none" then
 			error("read-only property: " .. key, 3)

@@ -7,6 +7,7 @@ return table.freeze(({
 	Object = { creatable = false },
 	Instance = { super = "Object", creatable = false },
 	Folder = { super = "Instance" },
+	TextChannel = { super = "Instance", access = { ShouldDeliverCallback = "callback" } },
 	BindableFunction = { super = "Instance", access = { OnInvoke = "callback" }, methods = { Invoke = true } },
 	RemoteFunction = {
 		super = "Instance",

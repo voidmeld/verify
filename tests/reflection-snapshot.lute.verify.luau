@@ -17,6 +17,28 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
+		suite:case("bundled TextChannel preserves write-only delivery callbacks", function(check)
+			local environment = Lute.fixture.bridge().environment
+			local channel = environment.createInstance "TextChannel"
+			local deliver = function(): boolean
+				return false
+			end
+			channel.ShouldDeliverCallback = deliver
+			check:expect(environment.propertyOf(channel, "ShouldDeliverCallback") == deliver):toBe(true)
+			check
+				:expect(accepts(function(): unknown
+					return channel.ShouldDeliverCallback
+				end))
+				:toBe(false)
+			check
+				:expect(accepts(function(): unknown
+					channel.ShouldDeliverCallback = true
+					return nil
+				end))
+				:toBe(true)
+			channel.ShouldDeliverCallback = nil
+			check:expect(environment.propertyOf(channel, "ShouldDeliverCallback")):toBe(nil)
+		end)
 		suite:case("loads the bundled capture from a consumer working directory", function(check)
 			local directory = temporary(check, "bundled-reflection")
 			local source = path.format(path.resolve "tests/programs/bundled-reflection.luau")

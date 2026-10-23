@@ -102,6 +102,7 @@ return function(suite: Verify.Harness)
 				local callbacks: { [string]: { string } } = {
 					RemoteFunction = { "OnServerInvoke", "OnClientInvoke" },
 					BindableFunction = { "OnInvoke" },
+					TextChannel = { "ShouldDeliverCallback" },
 				}
 				for className, members in callbacks do
 					local object = env.createInstance(className)
@@ -130,11 +131,16 @@ return function(suite: Verify.Harness)
 								object[member] = nil
 							end))
 							:toBe(true)
-						check
-							:expect(succeeds(function()
-								object[member] = 1
-							end))
-							:toBe(false)
+						local assignedValues: { unknown } = { true, 1, "value", {} }
+						for _, value in assignedValues do
+							object[member] = value
+							check:expect(env.propertyOf(object, member) == value):toBe(true)
+							check
+								:expect(succeeds(function()
+									return object[member]
+								end))
+								:toBe(false)
+						end
 					end
 				end
 			end
