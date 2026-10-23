@@ -126,6 +126,23 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("instrumented modules execute without changing host debug functions", function(check)
+		local before = table.clone(debug)
+		local fixture = sourceFixture {
+			["instrumented.luau"] = [[
+debug.setmemorycategory("fixture")
+debug.profilebegin("work")
+local result = 6 * 7
+debug.profileend()
+return {result, type(debug.traceback), (pcall(debug.profilebegin, {}))}
+]],
+		}
+		local result = fixture.runtime.requireInstance(fixture.module("Instrumented", "instrumented.luau"))
+		local expected: { unknown } = { 42, "function", false }
+		check:expect(result):toEqual(expected)
+		check:expect(debug):toEqual(before)
+	end)
+
 	suite:case("place defaults preserve configured service behavior and release their own overrides", function(check)
 		local binding = Lute.fixture.bridge().placeEngine()
 		local refuse = false

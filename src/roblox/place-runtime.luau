@@ -831,7 +831,19 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	globals.bit32 = bit32
 	globals.utf8 = utf8
 	globals.buffer = buffer
-	globals.debug = debug
+	local runtimeDebug: { [string]: unknown } = {}
+	for name, value in debug do
+		assert(type(name) == "string")
+		runtimeDebug[name] = value
+	end
+	runtimeDebug.profilebegin = function(label: string)
+		assert(type(label) == "string", "profile label must be a string")
+	end
+	runtimeDebug.profileend = function() end
+	runtimeDebug.setmemorycategory = function(category: string)
+		assert(type(category) == "string", "memory category must be a string")
+	end
+	globals.debug = table.freeze(runtimeDebug)
 	globals.select = select
 	globals.pcall = pcall
 	globals.xpcall = xpcall
