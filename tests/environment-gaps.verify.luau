@@ -448,7 +448,7 @@ return function(suite: Verify.Harness)
 			local built = ui(nil)
 			local env = built.environment
 			local frame = env.createInstance("Frame", { Visible = false })
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			check
 				:expect(thrown(function()
 					service.SelectedObject = frame
@@ -466,7 +466,7 @@ return function(suite: Verify.Harness)
 			local shown = env.createInstance("Frame", { Parent = hidden })
 			local locked = env.createInstance("Frame", { Selectable = false })
 			local open = env.createInstance "Frame"
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			local fired = 0
 			service:GetPropertyChangedSignal("SelectedObject"):Connect(function()
 				fired += 1
@@ -490,7 +490,7 @@ return function(suite: Verify.Harness)
 		suite:case("ignore keeps raising for a value that is not a GuiObject", function(check)
 			local built = ui "ignore"
 			local env = built.environment
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			check
 				:expect(thrown(function()
 					service.SelectedObject = env.createInstance "Folder"
@@ -507,7 +507,7 @@ return function(suite: Verify.Harness)
 			for _, mode in { "raise", "ignore" } do
 				local built = ui(mode, true)
 				local env = built.environment
-				local service = env.createInstance "GuiService"
+				local service = env.createEngineInstance "GuiService"
 				local loose = env.createInstance "Frame"
 				check
 					:expect(thrown(function()

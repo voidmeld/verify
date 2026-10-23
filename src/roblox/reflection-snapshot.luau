@@ -15,6 +15,7 @@ export type ClassEntry = {
 	properties: { [string]: Property },
 	defaults: { [string]: unknown },
 	events: { string }?,
+	methods: { string }?,
 }
 export type Snapshot = {
 	schemaVersion: number,
@@ -237,6 +238,7 @@ local function database(snapshot: Snapshot): Reflection.Database
 			DefaultProperties = defaults,
 			Tags = checkStrings(entry.tags, name .. " tags"),
 			Events = if entry.events ~= nil then checkStrings(entry.events, name .. " events") else nil,
+			Methods = if entry.methods ~= nil then checkStrings(entry.methods, name .. " methods") else nil,
 		}
 	end
 	local self: Reflection.Database

@@ -1,6 +1,9 @@
 --!strict
 
 local Datatypes = require "../src/roblox/datatypes"
+local path = require "@std/path"
+local process = require "@std/process"
+local temporary = require "./temporary"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 local Verify = require "../src/core"
@@ -14,6 +17,14 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
+		suite:case("loads the bundled capture from a consumer working directory", function(check)
+			local directory = temporary(check, "bundled-reflection")
+			local source = path.format(path.resolve "tests/programs/bundled-reflection.luau")
+			local result = process.run({ tostring(process.execPath()), "run", source }, { cwd = directory })
+			assert(result.exitcode == 0, result.stderr)
+			check:expect(result.exitcode):toBe(0)
+			check:expect(result.stdout):toContain "bundled-reflection-ready"
+		end)
 		suite:case(
 			"engine-created InputObject retains metadata validation while script construction stays forbidden",
 			function(check)
@@ -83,6 +94,64 @@ return function(suite: Verify.Harness)
 			check:expect(bridge.hasClass "TextLabel"):toBe(true)
 			check:expect(bridge.hasClass "Camera"):toBe(false)
 			check:expect(bridge.layout):toBe(nil)
+		end)
+
+		suite:case("preserves declared methods and requires an explicit implementation", function(check)
+			local snapshot = Lute.fixture.load(FIXTURE)
+			snapshot.classes.Part.methods = { "NativeOnly", "Configured" }
+			snapshot.classes.Instance.methods = { "InheritedOnly" }
+			local methods: { [string]: unknown } = {
+				Configured = function(): number
+					return 42
+				end,
+			}
+			local options: Lute.FixtureOptions = {
+				classes = { Part = { methods = methods } },
+			}
+			local bridge = Lute.fixture.bridge(snapshot, options)
+			local env = bridge.environment
+			local part = env.createInstance "Part"
+			check:expect((part.Configured :: (unknown) -> number)(part)):toBe(42)
+			for _, name in { "NativeOnly", "InheritedOnly" } do
+				local ok, problem = pcall(function()
+					return part[name]
+				end)
+				check:expect(ok):toBe(false)
+				check:expect(tostring(problem)):toContain "unsupported_method"
+			end
+			local close = env.fakeOn(part, "NativeOnly", function(): string
+				return "configured"
+			end)
+			check:expect((part.NativeOnly :: (unknown) -> string)(part)):toBe "configured"
+			close()
+			check
+				:expect(accepts(function()
+					return part.NativeOnly
+				end))
+				:toBe(false)
+			local folder = env.createInstance "Folder"
+			local ok, problem = pcall(function()
+				return folder.NativeOnly
+			end)
+			check:expect(ok):toBe(false)
+			check:expect(tostring(problem)):toContain "not a valid member"
+		end)
+
+		suite:case("preserves captured class names when resetting Name", function(check)
+			local snapshot = Lute.fixture.load(FIXTURE)
+			snapshot.classes.StringValue = {
+				superclass = "Instance",
+				tags = {},
+				properties = {},
+				defaults = { Name = "Value" },
+			}
+			local bridge = Lute.fixture.bridge(snapshot)
+			local object = bridge.environment.createInstance "StringValue"
+			check:expect(object.Name):toBe "Value"
+			object.Name = "Renamed"
+			object:ResetPropertyToDefault "Name"
+			check:expect(object.Name):toBe "Value"
+			check:expect(object:IsPropertyModified "Name"):toBe(false)
 		end)
 
 		suite:case("steps layout over mounted snapshot instances and updates after resize", function(check)

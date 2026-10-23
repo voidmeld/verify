@@ -82,7 +82,9 @@ local function overlays(options: Options, unavailable: { string }): { [string]: 
 		table.sort(names)
 		for _, name in names do
 			if options.database:GetClass(name) ~= nil then
-				result[name] = UiFakes.classes[name]
+				local spec = table.clone(UiFakes.classes[name])
+				spec.creatable = nil
+				result[name] = spec
 			else
 				table.insert(unavailable, name)
 			end

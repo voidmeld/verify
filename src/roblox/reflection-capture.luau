@@ -12,6 +12,7 @@ type Globals = {
 	typeof: (unknown) -> string,
 	version: (() -> string)?,
 	security: unknown,
+	classSecurity: unknown,
 }
 type Request = {
 	part: string,
@@ -45,7 +46,7 @@ local RENAMES: { [string]: string } = {
 	RefType = "Ref",
 }
 
-local SKIPPED: { [string]: boolean } = { Name = true, Parent = true, ClassName = true }
+local SKIPPED: { [string]: boolean } = { Parent = true, ClassName = true }
 
 local function call(target: unknown, method: string, ...: unknown): unknown
 	local fields = target :: Fields
@@ -121,11 +122,20 @@ end
 
 local function class(globals: Globals, encode: Encode, name: string, services: boolean): Fields
 	local service = reflection(globals)
-	local scope = if call(service, "GetClass", name) == nil then filter(globals) else nil
-	local reflected = call(service, "GetClass", name, scope) :: ReflectedMember
+	local current = call(service, "GetClass", name) :: ReflectedMember?
+	local plugin = if current == nil then call(service, "GetClass", name, filter(globals)) :: ReflectedMember? else nil
+	local permitted = current or plugin
+	local scope = if current == nil and plugin ~= nil then filter(globals) else nil
+	local reflected = permitted
+		or call(service, "GetClass", name, { Security = globals.classSecurity }) :: ReflectedMember?
 	assert(reflected ~= nil, "Studio reflection has no class " .. name)
-	local members = call(service, "GetPropertiesOfClass", name, scope) :: { ReflectedMember }
-	local permits: { [string]: unknown } = reflected.Permits or {}
+	local function membersOf(method: string): { ReflectedMember }
+		local members = call(service, method, name, scope) :: { ReflectedMember }?
+		assert(members ~= nil or permitted == nil, "Studio reflection returned no " .. method .. " for " .. name)
+		return members or {}
+	end
+	local members = membersOf "GetPropertiesOfClass"
+	local permits: { [string]: unknown } = if permitted then permitted.Permits or {} else {}
 	local tags: { string } = {}
 	if permits.New == nil then
 		table.insert(tags, "NotCreatable")
@@ -143,9 +153,15 @@ local function class(globals: Globals, encode: Encode, name: string, services: b
 		end
 	end
 	local events: { string } = {}
-	for _, member in call(service, "GetEventsOfClass", name, scope) :: { ReflectedMember } do
-		if member.Owner == name then
+	for _, member in membersOf "GetEventsOfClass" do
+		if member.Owner == name and member.Permits ~= nil and member.Permits.Listen ~= nil then
 			table.insert(events, member.Name)
+		end
+	end
+	local methods: { string } = {}
+	for _, member in membersOf "GetMethodsOfClass" do
+		if member.Owner == name and member.Permits ~= nil and member.Permits.Call ~= nil then
+			table.insert(methods, member.Name)
 		end
 	end
 	local defaults: Fields = {}
@@ -167,12 +183,15 @@ local function class(globals: Globals, encode: Encode, name: string, services: b
 		properties = properties,
 		defaults = defaults,
 		events = sorted(events),
+		methods = sorted(methods),
 	}
 end
 
 local function index(globals: Globals): Fields
 	local classes: { Fields } = {}
-	for _, reflected in call(reflection(globals), "GetClasses", filter(globals)) :: { ReflectedMember } do
+	for _, reflected in
+		call(reflection(globals), "GetClasses", { Security = globals.classSecurity }) :: { ReflectedMember }
+	do
 		local entry: Fields = {}
 		entry.name, entry.superclass = reflected.Name, reflected.Superclass
 		table.insert(classes, entry)
