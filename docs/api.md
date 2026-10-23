@@ -404,6 +404,12 @@ when its orientation matters; an unset pivot uses the largest descendant part as
 
 Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
 
+`Workspace:GetServerTimeNow()` follows the virtual scheduler clock, starting at simulated epoch zero.
+`UserInputService:GetLastInputType()` starts at `None` and follows dispatched input events;
+close handlers disconnect its listeners. These are controlled simulation inputs, not OS input or
+wall-clock synchronization. The mesh-part double retains URI-backed `Content` and refuses empty or
+object-backed content; it performs no asset load and proves no asset access or appearance.
+
 `bridge.placeEngine()` returns one cached engine for both mounted runtime and boot over the bridge's environment and reflection metadata. It owns a DataModel and creates only reflected services through its service lookup. Script construction restrictions remain intact. The boot report retains source diagnostics and observed roots; the engine needs no separate diagnostic adapter.
 
 The optional `client = { name, userId, viewport = { x, y } }` creates a Player, PlayerGui and camera with that positive finite viewport. It sets `runtime.localPlayer` and `Players.LocalPlayer`; it does not start scripts or create a character. `runtime.step(seconds)` advances the existing scheduler and modeled RunService frame events. It calls `beforeRender()` before render events, so hosts can use `bridge.layout.step`. Reader errors propagate before render publication. These are modeled frames, not native rendering or physics.

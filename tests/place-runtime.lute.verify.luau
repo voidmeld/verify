@@ -126,6 +126,35 @@ local function sourceFixture(
 end
 
 return function(suite: Core.Harness)
+	suite:case("place services follow virtual time and input while retaining content URIs", function(check)
+		local binding = Lute.fixture.bridge().placeEngine()
+		local fixture = sourceFixture({
+			["clock.luau"] = "return function() return workspace:GetServerTimeNow() end",
+			["input.luau"] = "return function() return game:GetService('UserInputService'):GetLastInputType() end",
+			["mesh.luau"] = "return game:GetService('AssetService'):CreateMeshPartAsync(Content.fromUri('rbxassetid://123')).MeshId",
+			["empty.luau"] = "return game:GetService('AssetService'):CreateMeshPartAsync(Content.none)",
+		}, { "DataModel", "RunService", "Workspace", "UserInputService", "AssetService" }, { engine = binding })
+		local clock = fixture.runtime.requireInstance(fixture.module("Clock", "clock.luau")) :: () -> number
+		local input = fixture.runtime.requireInstance(fixture.module("Input", "input.luau")) :: () -> unknown
+		local start = clock()
+		fixture.runtime.step(0.25)
+		check:expect(clock() - start):toBe(0.25)
+		check:expect(input()):toBe(binding.datatypes.Enum.UserInputType.None)
+		local service = binding.service "UserInputService"
+		local event = binding.newInstance("InputObject", true)
+		binding.environment.poke(event, "UserInputType", binding.datatypes.Enum.UserInputType.Touch)
+		binding.environment.fire(service, "InputBegan", event, false)
+		binding.environment.scheduler.drain(64)
+		check:expect(input()):toBe(binding.datatypes.Enum.UserInputType.Touch)
+		check:expect(binding.environment.connectionsOfInstance(service)):toBe(3)
+		check:expect(fixture.runtime.requireInstance(fixture.module("Mesh", "mesh.luau"))):toBe "rbxassetid://123"
+		check:expect((pcall(fixture.runtime.requireInstance, fixture.module("Empty", "empty.luau")))):toBe(false)
+		for _, close in fixture.runtime.closeHandlers do
+			close()
+		end
+		check:expect(binding.environment.connectionsOfInstance(service)):toBe(0)
+	end)
+
 	suite:case("project paths resolve beside the project and retain absolute source paths", function(check)
 		for _, target in { "../modules/value.luau", "/modules/value.luau", "C:/modules/value.luau" } do
 			local expected = if target == "../modules/value.luau" then "modules/value.luau" else target
