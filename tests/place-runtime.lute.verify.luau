@@ -505,6 +505,7 @@ return "client-ready"
 		local types = report.engine.datatypes
 		check:expect(report.engine.service("Lighting").Ambient):toBe(types.Color3.new(0.2, 0.3, 0.4))
 		check:expect(report.engine.service("Lighting").LightingStyle):toBe(types.Enum.LightingStyle.Realistic)
+		check:expect(report.engine.game.RunService):toBe(report.engine.service "RunService")
 		local stand = assert(report.engine.service("Workspace"):FindFirstChild "Stand")
 		check:expect(stand.Size):toBe(types.Vector3.new(4, 2, 6))
 		check:expect(stand.Shape):toBe(types.Enum.PartType.Block)

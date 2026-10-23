@@ -102,6 +102,21 @@ end
 
 local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U2, CF>): Bridge
 	local settings = (options :: unknown) :: Options
+	local serviceClasses: { [string]: boolean } = {}
+	local resolveService: ((string) -> Environment.Instance)? = nil
+	local computed: { [string]: Environment.Computed } = table.clone(settings.computed or {})
+	for _, name in settings.database:GetClassNames() do
+		local class = settings.database:GetClass(name)
+		if class and table.find(class.Tags, "Service") then
+			serviceClasses[name] = true
+			local key = "DataModel." .. name
+			if computed[key] == nil then
+				computed[key] = function(): Environment.Instance?
+					return if resolveService then resolveService(name) else nil
+				end
+			end
+		end
+	end
 	local unavailable: { string } = {}
 	local ui = settings.ui
 	local validate = if type(ui) == "table" then ui.validate else nil
@@ -135,7 +150,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		validateProperty = validator,
 		defaultProperty = settings.defaultProperty,
 		handlerErrors = settings.handlerErrors,
-		computed = settings.computed,
+		computed = computed,
 		undeclaredWrites = settings.undeclaredWrites,
 		undeclaredReads = settings.undeclaredReads,
 		functionDoubles = settings.functionDoubles,
@@ -164,13 +179,6 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 			return place
 		end
 		local services: { [string]: Environment.Instance } = {}
-		local serviceClasses: { [string]: boolean } = {}
-		for _, name in settings.database:GetClassNames() do
-			local class = settings.database:GetClass(name)
-			if class and table.find(class.Tags, "Service") then
-				serviceClasses[name] = true
-			end
-		end
 		local diagnostics: { PlaceRuntime.Diagnostic } = {}
 		local source = function(): string
 			return "fixture"
@@ -238,6 +246,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 			},
 		}
 		place = value
+		resolveService = value.service
 		return value
 	end
 
