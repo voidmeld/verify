@@ -119,12 +119,20 @@ local PROPERTIES: { [string]: { Member } } = {
 }
 
 local PLUGIN_SECURITY = table.freeze { capability = "Plugin" }
+local ALL_SECURITY = table.freeze { capability = "All" }
 local PLUGIN_CLASS: Member = { Name = "PluginGui", Superclass = "Instance", Permits = {}, Display = {} }
+local HIDDEN_CLASS: Member = { Name = "Player", Superclass = "Instance", Permits = permits "New", Display = {} }
 
 local function visible(filter: unknown): { Member }
 	local classes = table.clone(CLASSES)
-	if type(filter) == "table" and (filter :: Fields).Security == PLUGIN_SECURITY then
+	if
+		type(filter) == "table"
+		and ((filter :: Fields).Security == PLUGIN_SECURITY or (filter :: Fields).Security == ALL_SECURITY)
+	then
 		table.insert(classes, PLUGIN_CLASS)
+	end
+	if type(filter) == "table" and (filter :: Fields).Security == ALL_SECURITY then
+		table.insert(classes, HIDDEN_CLASS)
 	end
 	return classes
 end
@@ -182,14 +190,37 @@ local function studio(log: { string }?): Fields
 			end
 			return nil
 		end,
-		GetEventsOfClass = function(_: unknown, name: string, _filter: unknown): { Member }
+		GetEventsOfClass = function(_: unknown, name: string, _filter: unknown): { Member }?
+			if name == "Player" then
+				return nil
+			end
 			return if name == "GuiObject" or name == "TextLabel"
-				then { { Name = "InputBegan", Owner = "GuiObject", Permits = {}, Display = {} } }
+				then {
+					{ Name = "InputBegan", Owner = "GuiObject", Permits = permits "Listen", Display = {} },
+					{ Name = "PrivateEvent", Owner = "GuiObject", Permits = {}, Display = {} },
+				}
+				else {}
+		end,
+		GetMethodsOfClass = function(_: unknown, name: string, _filter: unknown): { Member }?
+			if name == "Player" then
+				return nil
+			end
+			return if name == "GuiObject" or name == "TextLabel"
+				then {
+					{ Name = "NativeMethod", Owner = "GuiObject", Permits = permits "Call", Display = {} },
+					{ Name = "PrivateMethod", Owner = "GuiObject", Permits = {}, Display = {} },
+				}
 				else {}
 		end,
 		GetPropertiesOfClass = function(_: unknown, name: string, filter: unknown): { Member }
 			if log ~= nil then
 				table.insert(log, name)
+			end
+			if name == "Player" then
+				return {
+					property("Player", "UserId", "int64", permits "Read"),
+					property("Player", "PrivateValue", "string", {}),
+				}
 			end
 			for _, class in visible(filter) do
 				if class.Name == name then
@@ -228,6 +259,9 @@ local function studio(log: { string }?): Fields
 			return "0.0.test"
 		end,
 		SecurityCapabilities = {
+			new = function(...: unknown): unknown
+				return ALL_SECURITY
+			end,
 			fromCurrent = function(): Fields
 				return {
 					Add = function(_: unknown, capability: unknown): unknown
@@ -280,6 +314,34 @@ return function(suite: Verify.Harness)
 			check:expect(snapshot.classes.Instance.properties.PluginOnly):toBe(nil)
 		end)
 
+		suite:case("uses all capabilities only for hidden class metadata", function(check)
+			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "Player" } })
+			check:expect(snapshot.classes.Player.superclass):toBe "Instance"
+			check:expect(snapshot.classes.Player.tags):toEqual { "NotCreatable" }
+			check:expect(snapshot.classes.Player.properties.UserId.scriptability):toBe "Read"
+			check:expect(snapshot.classes.Player.properties.PrivateValue.scriptability):toBe "None"
+			check:expect(snapshot.classes.Player.defaults):toEqual {}
+			local bridge = Lute.fixture.bridge(snapshot)
+			check
+				:expect(pcall(function()
+					bridge.engine.new "Player"
+				end))
+				:toBe(false)
+			local player = bridge.environment.createEngineInstance "Player"
+			check
+				:expect(pcall(function()
+					player.UserId = 7
+				end))
+				:toBe(false)
+			check
+				:expect(pcall(function()
+					local _value = player.PrivateValue
+				end))
+				:toBe(false)
+			bridge.environment.poke(player, "UserId", 7)
+			check:expect(player.UserId):toBe(7)
+		end)
+
 		suite:case("names datatypes, scriptability and tags the way the reflection database does", function(check)
 			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "GuiService" } })
 			local gui = snapshot.classes.GuiObject.properties
@@ -306,6 +368,8 @@ return function(suite: Verify.Harness)
 			check:expect(snapshot.classes.GuiService.tags):toEqual { "NotCreatable", "Service" }
 			check:expect(snapshot.classes.GuiObject.events):toEqual { "InputBegan" }
 			check:expect(snapshot.classes.TextLabel.events):toEqual {}
+			check:expect(snapshot.classes.GuiObject.methods):toEqual { "NativeMethod" }
+			check:expect(snapshot.classes.TextLabel.methods):toEqual {}
 		end)
 
 		suite:case("reads defaults from a new instance and encodes engine values", function(check)
@@ -323,7 +387,7 @@ return function(suite: Verify.Harness)
 				style = "Normal",
 			}
 			check:expect(defaults.Pivot):toEqual { ["$"] = "CFrame", v = { 1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }
-			check:expect(defaults.Name):toBe(nil)
+			check:expect(defaults.Name):toBe "TextLabel"
 			check:expect(defaults.UniqueId):toBe(nil)
 			check:expect(snapshot.classes.GuiObject.defaults):toEqual {}
 			check:expect(snapshot.classes.GuiService.defaults):toEqual {}
@@ -375,7 +439,7 @@ return function(suite: Verify.Harness)
 			for _ in snapshot.classes do
 				count += 1
 			end
-			check:expect(count):toBe(#CLASSES + 1)
+			check:expect(count):toBe(#CLASSES + 2)
 			check:expect(snapshot.classes.Hint.tags):toEqual { "Deprecated" }
 			check:expect(assert(snapshot.enums).Material ~= nil):toBe(true)
 		end)
@@ -387,7 +451,7 @@ return function(suite: Verify.Harness)
 			table.sort(requested)
 			check
 				:expect(requested)
-				:toEqual { "Folder", "GuiObject", "GuiService", "Hint", "Instance", "PluginGui", "TextLabel" }
+				:toEqual { "Folder", "GuiObject", "GuiService", "Hint", "Instance", "Player", "PluginGui", "TextLabel" }
 			check:expect(#calls):toBe(1 + 4 + 2 + 1)
 		end)
 

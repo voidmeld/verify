@@ -863,21 +863,18 @@ From code, `Lute.fixture.exportStudio(execute, options?)` returns the snapshot.
 
 #### Use a snapshot
 
-- `Lute.fixture.load(path)` reads a snapshot file.
+- `Lute.fixture.load(path?)` reads a snapshot file. Without a path, it loads the bundled Studio 0.744.0.7441077 capture from 2026-10-22. This capture contains 933 classes and 652 enums from ReflectionService, with instance defaults and no place-specific service values.
 - `Roblox.reflectionSnapshot.library(snapshot)` returns the [datatype library](#datatypes) bound to the enums, brick colors and fonts of the snapshot. It returns the same library for the same snapshot table.
 - `Roblox.reflectionSnapshot.database(snapshot)` returns `{ GetClassNames, GetClass }`, the database shape that `Roblox.fixtureBridge` and `Roblox.reflection.create` take. Its defaults are values of the bound library.
 - `Roblox.reflectionSnapshot.engineLibrary(library)` returns the `library` option of `Roblox.fixtureBridge`, so the engine seam constructs values of that library.
-- `Roblox.reflectionSnapshot.bridge(snapshot, options?)` and `Lute.fixture.bridge(path | snapshot, options?)` compose these parts.
+- `Roblox.reflectionSnapshot.bridge(snapshot, options?)` and `Lute.fixture.bridge(path | snapshot | nil, options?)` compose these parts. `Lute.fixture.bridge()` uses the bundled capture. Its resource path is relative to the installed Verify package, independent of the working directory.
+
+Captured methods declare members; they do not provide implementations. Calls without a simulation or explicit fake fail as unsupported. Class metadata uses all capabilities to retain the hierarchy; creation permits and member access retain the current or Plugin scope. Captured events require a Listen permit and methods require a Call permit.
 
 ```luau
-local snapshot = Lute.fixture.load "tests/fixtures/roblox-reflection.json"
+local snapshot = Lute.fixture.load()
 local types = Roblox.reflectionSnapshot.library(snapshot)
-local bridge = Roblox.fixtureBridge {
-	database = Roblox.reflectionSnapshot.database(snapshot),
-	typeName = Roblox.typeName,
-	enumType = types.enumType,
-	library = Roblox.reflectionSnapshot.engineLibrary(types),
-}
+local bridge = Lute.fixture.bridge(snapshot)
 local label = bridge.environment.createInstance "TextLabel"
 label.Size = types.UDim2.fromOffset(10, 20) + types.UDim2.fromScale(0.5, 0)
 label.TextXAlignment = types.Enum.TextXAlignment.Left
