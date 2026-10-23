@@ -387,6 +387,11 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
+Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
+and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
+injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths
+and game-specific setup rather than copying this platform wiring.
+
 Project `$path` values resolve relative to the project file's directory. Absolute paths remain absolute.
 Project properties decode Rojo's tagged Color3, Vector3, CFrame and enum values through the engine's
 datatype library. Malformed components and unknown enum values fail before assignment.
