@@ -389,6 +389,8 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.setmemorycategory` instrumentation without collecting performance or memory measurements. Its debug table retains the host's inspection functions without modifying the host table.
 
+`ReplicatedFirst:RemoveDefaultLoadingScreen()` is accepted without rendering a loading screen. Arrival logic can continue, but native loading-screen visibility requires a Studio or Player observation.
+
 Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
 and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
 injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths
