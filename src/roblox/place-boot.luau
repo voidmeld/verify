@@ -163,6 +163,53 @@ local function scriptClass(fileName: string): (string?, string?)
 	return nil
 end
 
+local function numbers(value: unknown, count: number): { number }
+	assert(type(value) == "table" and #(value :: { unknown }) == count, "invalid project datatype component count")
+	for _, component in value :: { unknown } do
+		assert(type(component) == "number", "project datatype requires numeric components")
+	end
+	return value :: { number }
+end
+
+local function projectValue(engine: PlaceRuntime.Engine, declared: string?, value: unknown): unknown
+	local category = if declared then string.match(declared, "^Enum%.(.+)$") else nil
+	if category then
+		local family = engine.datatypes.Enum[category]
+		if type(value) == "string" then
+			return family[value]
+		end
+		if type(value) == "table" then
+			local ordinal = (value :: { Enum: unknown }).Enum
+			for _, item in family:GetEnumItems() do
+				if item.Value == ordinal then
+					return item
+				end
+			end
+		end
+		error("project property requires a declared Enum." .. category)
+	end
+	if type(value) ~= "table" or declared == nil then
+		return value
+	end
+	local encoded = (value :: { [string]: unknown })[declared]
+	if declared == "Color3" then
+		local v = numbers(encoded, 3)
+		return engine.datatypes.Color3.new(v[1], v[2], v[3])
+	elseif declared == "Vector3" then
+		local v = numbers(encoded, 3)
+		return engine.datatypes.Vector3.new(v[1], v[2], v[3])
+	elseif declared == "CFrame" then
+		assert(type(encoded) == "table", "project CFrame requires position and orientation")
+		local frame = encoded :: { position: unknown, orientation: { unknown } }
+		local p = numbers(frame.position, 3)
+		assert(type(frame.orientation) == "table" and #frame.orientation == 3, "project CFrame requires three rows")
+		local x, y, z =
+			numbers(frame.orientation[1], 3), numbers(frame.orientation[2], 3), numbers(frame.orientation[3], 3)
+		return engine.datatypes.CFrame.new(p[1], p[2], p[3], x[1], x[2], x[3], y[1], y[2], y[3], z[1], z[2], z[3])
+	end
+	return value
+end
+
 local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, deps: TreeDeps<B>): Mounted
 	local cache = deps.cache
 	local files = deps.files
@@ -292,16 +339,7 @@ local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, de
 				local kind = engine.surface.memberKind(object.ClassName, key)
 				if kind == "property" then
 					local declared = engine.surface.memberType(object.ClassName, key)
-					if type(value) == "string" and string.match(declared or "", "^Enum") ~= nil then
-						local category = string.match(declared :: string, "^Enum(%w+)$")
-						if category ~= nil then
-							local ok, item = pcall(function()
-								return engine.datatypes.Enum[category][value]
-							end)
-							value = if ok then item else value
-						end
-					end
-					engine.environment.poke(object, key, value)
+					engine.environment.poke(object, key, projectValue(engine, declared, value))
 				end
 			end
 		end
@@ -327,7 +365,11 @@ local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, de
 					continue
 				end
 				if engine.surface.memberKind(service.ClassName, key) == "property" then
-					engine.environment.poke(service, key, value)
+					engine.environment.poke(
+						service,
+						key,
+						projectValue(engine, engine.surface.memberType(service.ClassName, key), value)
+					)
 				end
 			end
 		end

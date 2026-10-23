@@ -432,6 +432,24 @@ return "client-ready"
 		local files = {
 			["fixture.json"] = json.serialize {
 				tree = {
+					Lighting = {
+						["$properties"] = { Ambient = { Color3 = { 0.2, 0.3, 0.4 } }, LightingStyle = "Realistic" },
+					},
+					Workspace = {
+						Stand = {
+							["$className"] = "Part",
+							["$properties"] = {
+								Size = { Vector3 = { 4, 2, 6 } },
+								Shape = { Enum = 1 },
+								CFrame = {
+									CFrame = {
+										position = { 1, 2, 3 },
+										orientation = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } },
+									},
+								},
+							},
+						},
+					},
 					ServerScriptService = {
 						Main = { ["$path"] = "main.server.luau" },
 						Value = { ["$path"] = "value.luau" },
@@ -484,8 +502,35 @@ return "client-ready"
 		check:expect(#report.diagnostics):toBe(0)
 		check:expect((report.runtime.globals.shared :: { answer: number }).answer):toBe(42)
 		check:expect(report.engine.game.PlaceId):toBe(2)
+		local types = report.engine.datatypes
+		check:expect(report.engine.service("Lighting").Ambient):toBe(types.Color3.new(0.2, 0.3, 0.4))
+		check:expect(report.engine.service("Lighting").LightingStyle):toBe(types.Enum.LightingStyle.Realistic)
+		local stand = assert(report.engine.service("Workspace"):FindFirstChild "Stand")
+		check:expect(stand.Size):toBe(types.Vector3.new(4, 2, 6))
+		check:expect(stand.Shape):toBe(types.Enum.PartType.Block)
+		check:expect(stand.CFrame):toBe(types.CFrame.new(1, 2, 3))
 		check:expect(report.player.Character ~= nil):toBe(true)
 		check:expect((pcall(report.runtime.requireInstance, report.player))):toBe(false)
 		check:expect((pcall(report.runtime.requireInstance, "@missing/module"))):toBe(false)
+		files["fixture.json"] = json.serialize {
+			tree = { Lighting = { ["$properties"] = { Ambient = { Color3 = { 0.2, "invalid", 0.4 } } } } },
+		}
+		check
+			:expect((pcall(Roblox.buildPlaceTree, report.engine, "fixture.json", {
+				host = host,
+				cache = Roblox.createPlaceCache(host),
+				files = {
+					exists = function()
+						return false
+					end,
+					fileType = function()
+						return "file"
+					end,
+					listDirectory = function()
+						return {}
+					end,
+				},
+			})))
+			:toBe(false)
 	end)
 end
