@@ -634,14 +634,10 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		overrides.ContentProvider = {
 			PreloadAsync = function(
 				_service: Instance,
-				instances: { Instance },
-				callback: ((Instance, Datatypes.EnumMember) -> ())?
+				instances: { Instance | string },
+				_callback: ((string, Datatypes.EnumMember) -> ())?
 			)
-				for _, object in instances do
-					if callback ~= nil then
-						callback(object, engine.datatypes.Enum.AssetFetchStatus.Success)
-					end
-				end
+				assert(next(instances) == nil, "unsupported_place_asset: ContentProvider.PreloadAsync")
 			end,
 		}
 		overrides.AssetService = {

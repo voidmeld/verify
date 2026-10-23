@@ -198,7 +198,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local movement: Instance? = nil
 	local buttonInput: Instance? = nil
 	local lastInput: unknown = inputTypes.MouseMovement
-	local function unsupported(reason: string)
+	local function unsupported(reason: string): never
 		error("unsupported_simulated_input: " .. reason, 0)
 	end
 	local function ensureOpen()
@@ -220,13 +220,75 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		return true
 	end
-	local function hits(at: Position): { Instance }
+	local function validateBindings(source: "movement" | "button"): ()
+		local root = gui:FindFirstAncestorWhichIsA "DataModel" or gui
+		for _, binding in root:GetDescendants() do
+			if not binding:IsA "InputBinding" then
+				continue
+			end
+			local bindingType = tostring(env.propertyOf(binding, "Type")):match "([^%.]+)$"
+			if bindingType == "Scriptable" then
+				continue
+			end
+			if bindingType ~= "Automatic" then
+				unsupported "InputBinding.Type metadata"
+			end
+			local action = binding.Parent
+			if action == nil or not action:IsA "InputAction" then
+				return unsupported "InputBinding without a direct InputAction"
+			end
+			local enabled = env.propertyOf(action, "Enabled")
+			if enabled == false then
+				continue
+			end
+			if enabled ~= true then
+				unsupported "InputAction.Enabled metadata"
+			end
+			local context = action:FindFirstAncestorWhichIsA "InputContext"
+			if context then
+				if context:FindFirstAncestorWhichIsA "InputContext" then
+					unsupported "nested InputContext"
+				end
+				local active = env.propertyOf(context, "Enabled")
+				if active == false then
+					continue
+				end
+				if active ~= true then
+					unsupported "InputContext.Enabled metadata"
+				end
+			end
+			if source == "button" and env.propertyOf(binding, "UIButton") ~= nil then
+				unsupported "InputBinding.UIButton"
+			end
+			if env.propertyOf(binding, "KeyCode") == nil then
+				unsupported "InputBinding.KeyCode metadata"
+			end
+			for _, property in { "KeyCode", "Up", "Down", "Left", "Right", "Forward", "Backward" } do
+				local code = tostring(env.propertyOf(binding, property)):match "([^%.]+)$"
+				if source == "button" and code == "MouseLeftButton" then
+					unsupported "InputBinding.MouseLeftButton"
+				elseif
+					source == "movement"
+					and (
+						code == "MousePosition"
+						or code == "MouseDelta"
+						or code == "MouseX"
+						or code == "MouseY"
+						or code == "MouseNoButton"
+					)
+				then
+					unsupported "InputBinding mouse movement"
+				end
+			end
+		end
+	end
+	local function hits(at: Position, source: "movement" | "button"): { Instance }
 		ensureOpen()
 		local function validate(object: Instance)
 			if object:IsA "StyleLink" and options.read == nil then
 				unsupported "StyleLink without effective input properties"
 			end
-			if object:IsA "UIDragDetector" or object:IsA "InputContext" then
+			if object:IsA "UIDragDetector" then
 				unsupported(object.ClassName)
 			end
 			for _, child in object:GetChildren() do
@@ -234,6 +296,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		end
 		validate(gui)
+		validateBindings(source)
 		layout.step()
 		local inset = options.inset()
 		local result: { Instance } = {}
@@ -304,7 +367,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		env.fire(service, "InputChanged", object, processed(objects, false))
 	end
 	local function send(at: Position, down: boolean, movePointer: boolean?)
-		local objects = hits(at)
+		local objects = hits(at, "button")
+		if movePointer then
+			validateBindings "movement"
+		end
 		local targets, targetButton = recipients(objects)
 		assert(down ~= held, "VirtualInput::SendMouseButton: duplicate button state.")
 		if not down and #targets > 0 then
@@ -386,7 +452,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local device = env.createEngineObject "VirtualInput"
 		table.insert(owned, device)
 		install(device, "SendMousePosition", function(_self: Environment.Object, at: Position)
-			move(at, hits(at))
+			move(at, hits(at, "movement"))
 		end)
 		install(
 			device,
@@ -431,7 +497,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end)
 	local frame = env.heartbeat:Connect(function()
 		if not closed then
-			local objects = hits(position)
+			local objects = hits(position, "movement")
 			local retained: { Instance } = {}
 			for _, object in hovered do
 				if table.find(objects, object) then

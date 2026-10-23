@@ -387,6 +387,8 @@ The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate
 
 `Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
 
+The modeled `ContentProvider.PreloadAsync` accepts an empty request without callbacks. It rejects nonempty requests as `unsupported_place_asset`; it does not fetch assets or report a fabricated asset status.
+
 `PlaceRuntimeEngine.environment` is the authoritative simulated environment. The binding supplies its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment property, event and method-double operations; the engine contract has no mutable `stateOf` or `serviceMethods` table.
 
 Runtime options are `{ aliases, cache, host, methodDoubles? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
@@ -936,7 +938,7 @@ A probe proves only the expression that it runs.
 `Roblox.uiFakes.classes` declares optional UI methods.
 Supply it as a class overlay.
 Pass `uiFakes.validateProperty` as the property validator to reject the selection of hidden or unselectable controls.
-`Instance:GetStyled(property)` resolves the nearest linked StyleSheet with flat class or tag selectors, rule priorities, and attribute tokens. A nondefault raw property overrides the style. Writing the default or resetting the property exposes the style again. Empty links do not replace an ancestor scope.
+`Instance:GetStyled(property)` resolves the nearest linked StyleSheet with flat class or tag selectors, comma-separated selector lists, rule priorities, and attribute tokens. Every list branch must use supported syntax. A nondefault raw property overrides the style. Writing the default or resetting the property exposes the style again. Empty links do not replace an ancestor scope.
 
 `Instance:GetStyledPropertyChangedSignal(property)` observes the underlying style value and linked scope. Raw writes do not fire this signal. Style changes can fire it while a raw override masks the returned value. Call `controller.step()` to refresh observations; the fixture layout controller does this before layout. `controller.styled(object, property)` exposes the same effective read to host adapters. Closing the controller disconnects its observations.
 

@@ -5,7 +5,7 @@ local Environment = require "../src/roblox/environment"
 local Layout = require "../src/roblox/ui-layout"
 local Datatypes = require "../src/roblox/datatypes"
 
-local function pointerFixture()
+local function pointerFixture(raiseErrors: boolean?)
 	local library = Datatypes.create {
 		enums = {
 			UserInputType = { { name = "MouseButton1", value = 0 }, { name = "MouseMovement", value = 4 } },
@@ -15,7 +15,16 @@ local function pointerFixture()
 				{ name = "End", value = 2 },
 				{ name = "Cancel", value = 3 },
 			},
-			KeyCode = { { name = "None", value = 0 } },
+			KeyCode = {
+				{ name = "None", value = 0 },
+				{ name = "Tab", value = 9 },
+				{ name = "Thumbstick1", value = 1016 },
+				{ name = "MouseLeftButton", value = 1026 },
+				{ name = "MousePosition", value = 1033 },
+				{ name = "MouseDelta", value = 1048 },
+			},
+			InputActionType = { { name = "Bool", value = 0 }, { name = "Direction2D", value = 2 } },
+			InputBindingType = { { name = "Automatic", value = 0 }, { name = "Scriptable", value = 1 } },
 			ZIndexBehavior = { { name = "Global", value = 0 }, { name = "Sibling", value = 1 } },
 		},
 	}
@@ -27,6 +36,7 @@ local function pointerFixture()
 	local instance = table.clone(Environment.BASIC_CLASSES.Instance)
 	instance.super = "Object"
 	local options: Environment.Options = {
+		handlerErrors = if raiseErrors then "raise" else nil,
 		undeclaredWrites = true,
 		undeclaredReads = "nil",
 		classes = ({
@@ -59,6 +69,26 @@ local function pointerFixture()
 				},
 			},
 			VirtualInput = { super = "Object", creatable = false },
+			InputContext = { super = "Instance", properties = { Enabled = true, Sink = false, Priority = 0 } },
+			InputAction = {
+				super = "Instance",
+				properties = { Enabled = true, Type = library.Enum.InputActionType.Bool },
+				events = { "Pressed", "Released", "StateChanged" },
+			},
+			InputBinding = {
+				super = "Instance",
+				properties = {
+					Type = library.Enum.InputBindingType.Automatic,
+					KeyCode = library.Enum.KeyCode.None,
+					UIButton = false,
+					Up = library.Enum.KeyCode.None,
+					Down = library.Enum.KeyCode.None,
+					Left = library.Enum.KeyCode.None,
+					Right = library.Enum.KeyCode.None,
+					Forward = library.Enum.KeyCode.None,
+					Backward = library.Enum.KeyCode.None,
+				},
+			},
 		} :: unknown) :: { [string]: Environment.ClassSpec },
 	}
 	local env = Environment.create(options)
@@ -130,6 +160,99 @@ end
 
 return function(suite: Core.Harness)
 	suite:suite("semantic input adapter", function()
+		suite:case("native nonmatching Tab and Thumbstick contexts preserve pointer routing", function(check)
+			local f = pointerFixture(true)
+			check:defer(f.cleanup)
+			local tab = f.env.createInstance("InputContext", { Parent = f.gui, Priority = 1500 })
+			local thumb = f.env.createInstance("InputContext", { Parent = f.gui, Priority = 30 })
+			local changes, clicks = 0, 0
+			for _, entry in
+				{
+					{ context = tab, key = "Tab", kind = "Bool" },
+					{ context = thumb, key = "Thumbstick1", kind = "Direction2D" },
+				}
+			do
+				local action = f.env.createInstance("InputAction", {
+					Parent = entry.context,
+					Type = f.library.Enum.InputActionType[entry.kind],
+				})
+				f.env.createInstance("InputBinding", { Parent = action, KeyCode = f.library.Enum.KeyCode[entry.key] })
+				for _, name in { "Pressed", "Released", "StateChanged" } do
+					(action[name] :: Environment.Signal):Connect(function()
+						changes += 1
+					end)
+				end
+			end
+			(f.base.Activated :: Environment.Signal):Connect(function()
+				clicks += 1
+			end)
+			for _, tabEnabled in { false, true } do
+				for _, thumbEnabled in { false, true } do
+					for _, sink in { false, true } do
+						tab.Enabled, thumb.Enabled, tab.Sink, thumb.Sink = tabEnabled, thumbEnabled, sink, sink
+						f.env.step(0.01)
+						f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+						f.backend.pointer { x = 200, y = 140, button = "left", down = false }
+					end
+				end
+			end
+			check:expect(changes):toBe(0)
+			check:expect(clicks):toBe(8)
+			check:expect(f.env.errors):toEqual {}
+		end)
+		suite:case("relevant automatic mouse and UIButton bindings still refuse input before dispatch", function(check)
+			for _, bindingKind in { "MouseLeftButton", "MousePosition", "UIButton" } do
+				local f = pointerFixture(true)
+				check:defer(f.cleanup)
+				local context = f.env.createInstance("InputContext", { Parent = f.gui })
+				local action = f.env.createInstance("InputAction", { Parent = context })
+				local binding = f.env.createInstance("InputBinding", { Parent = action })
+				if bindingKind == "UIButton" then
+					binding.UIButton = f.base
+				else
+					binding.KeyCode = f.library.Enum.KeyCode[bindingKind]
+				end
+				local events = 0
+				(f.service.InputBegan :: Environment.Signal):Connect(function()
+					events += 1
+				end)
+				check
+					:expect(function()
+						f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+					end)
+					:toThrow()
+				check:expect(events):toBe(0)
+			end
+		end)
+		suite:case("mouse binding validation follows source and enabled hardware participation", function(check)
+			local f = pointerFixture(true)
+			check:defer(f.cleanup)
+			local context = f.env.createInstance("InputContext", { Parent = f.gui })
+			local action = f.env.createInstance("InputAction", { Parent = context })
+			local binding = f.env.createInstance("InputBinding", {
+				Parent = action,
+				KeyCode = f.library.Enum.KeyCode.MouseLeftButton,
+			})
+			local virtual = (f.service.CreateVirtualInput :: Environment.Method)(f.service) :: Environment.Instance
+			local move = virtual.SendMousePosition :: Environment.Method
+			move(virtual, f.library.Vector2.new(200, 140))
+			f.env.step(0.01)
+			check
+				:expect(function()
+					f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+				end)
+				:toThrow()
+			for _, inactive in { "context", "action", "scriptable" } do
+				context.Enabled = inactive ~= "context"
+				action.Enabled = inactive ~= "action"
+				binding.Type = if inactive == "scriptable"
+					then f.library.Enum.InputBindingType.Scriptable
+					else f.library.Enum.InputBindingType.Automatic
+				f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+				f.backend.pointer { x = 200, y = 140, button = "left", down = false }
+			end
+			check:expect(f.env.errors):toEqual {}
+		end)
 		suite:case(
 			"captured release timing counts repeated activation per target and resets after a long hold",
 			function(check)
