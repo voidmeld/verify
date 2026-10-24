@@ -802,6 +802,19 @@ local function create(options: Options): () -> Summary
 									local failed = baseResult(spec, Paths.join(evidence, spec.path), services.clock())
 									failed.detail = tostring(value)
 									results[spec.id] = failed
+									local saved, saveProblem = pcall(function()
+										files.makeDirectory(failed.directory)
+										write(Paths.join(failed.directory, "result.json"), failed)
+									end)
+									if not saved then
+										log(
+											("run %s: result could not be kept: %s; %s"):format(
+												spec.id,
+												tostring(saveProblem),
+												failed.detail :: string
+											)
+										)
+									end
 								end
 								local finishedResult = results[spec.id]
 								log(
