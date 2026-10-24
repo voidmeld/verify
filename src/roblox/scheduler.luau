@@ -16,7 +16,7 @@ export type Scheduler = {
 	defer: <A..., R...>(callback: Task<A..., R...>, A...) -> thread,
 	delay: <A..., R...>(seconds: number, callback: Task<A..., R...>, A...) -> thread,
 	wait: (seconds: number?) -> number,
-	block: (resume: (thread) -> ()) -> ...unknown,
+	block: (register: (thread) -> ...unknown) -> ...unknown,
 	drain: (budget: number) -> (),
 	advance: (seconds: number) -> (),
 	resume: (thread: thread, ...unknown) -> (),
@@ -32,11 +32,28 @@ local function create(): Scheduler
 	local failures: { string } = {}
 	local tags: { [thread]: unknown } = {}
 	local owners: { [thread]: thread } = {}
+	local cleanups: { [thread]: () -> () } = {}
 	local active: unknown = nil
 	local scheduler = {} :: Scheduler
 	local onFailure: (string) -> () = function() end
+	local function release(thread: thread)
+		local cleanup = cleanups[thread]
+		if cleanup then
+			cleanups[thread] = nil
+			local ok, failure = pcall(function(): unknown
+				cleanup()
+				return nil
+			end)
+			if not ok then
+				local message = tostring(failure)
+				failures[#failures + 1] = message
+				onFailure(message)
+			end
+		end
+	end
 
 	local function withTag<A...>(thread: thread, ...: A...): ...unknown
+		release(thread)
 		local previous = active
 		active = tags[thread]
 		local results = table.pack(coroutine.resume(thread, ...))
@@ -79,6 +96,7 @@ local function create(): Scheduler
 	end
 
 	function scheduler.resume(thread: thread, ...: unknown)
+		release(thread)
 		push(thread, ...)
 	end
 
@@ -151,8 +169,12 @@ local function create(): Scheduler
 		return seconds or 0
 	end
 
-	function scheduler.block(register: (thread) -> ()): ...unknown
-		register(coroutine.running())
+	function scheduler.block(register: (thread) -> ...unknown): ...unknown
+		local thread = coroutine.running()
+		local cleanup = register(thread)
+		if type(cleanup) == "function" then
+			cleanups[thread] = cleanup :: () -> ()
+		end
 		return coroutine.yield()
 	end
 
@@ -188,6 +210,7 @@ local function create(): Scheduler
 	end
 
 	function scheduler.cancel(thread: thread)
+		release(thread)
 		local keptReady: { Ready } = {}
 		for _, entry in ready do
 			if entry.thread ~= thread then

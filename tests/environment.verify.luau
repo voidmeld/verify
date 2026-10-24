@@ -52,6 +52,294 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("roblox test environment", function()
+		suite:case("native signal and connection type identity belongs only to authoritative signals", function(check)
+			local env = environment()
+			local signal = env.newSignal()
+			local connection = signal:Connect(function() end)
+			check:expect(Environment.typeName(signal)):toBe "RBXScriptSignal"
+			check:expect(Environment.typeName(connection)):toBe "RBXScriptConnection"
+			check:expect(Environment.typeName(env.heartbeat)):toBe "RBXScriptSignal"
+			local widget = env.createInstance "Widget"
+			check:expect(Environment.typeName(widget.Pinged)):toBe "RBXScriptSignal"
+			check:expect(Environment.typeName { Connect = function() end, Wait = function() end }):toBe "table"
+			check:expect(Environment.typeName { Connect = signal.Connect, Wait = signal.Wait }):toBe "table"
+			check:expect(Environment.typeName { Connected = true, Disconnect = connection.Disconnect }):toBe "table"
+			connection:Disconnect()
+			check:expect(Environment.typeName(connection)):toBe "RBXScriptConnection"
+			check:expect(env.liveConnections()):toBe(0)
+			widget:Destroy()
+			check:expect(Environment.typeName(widget)):toBe "Instance"
+			check:expect(Environment.isInstance(widget)):toBe(true)
+		end)
+		suite:case("Studio 0.744 Objects inherit only Object members and use environment-owned cleanup", function(check)
+			local options: Environment.Options = {
+				classes = { VirtualInput = { super = "Object", creatable = false } },
+			}
+			local env = Environment.create(options)
+			local object = env.createEngineObject "VirtualInput"
+			check:expect(object.ClassName):toBe "VirtualInput"
+			check:expect(object:IsA "VirtualInput"):toBe(true)
+			check:expect(object:IsA "Object"):toBe(true)
+			check:expect(object:IsA "Instance"):toBe(false)
+			check:expect(Environment.isInstance(object)):toBe(false)
+			local members = (object :: unknown) :: { [string]: unknown }
+			for _, name in { "Name", "Archivable", "Parent", "Destroy", "GetChildren", "ChildAdded", "Destroying" } do
+				check
+					:expect(thrown(function(): unknown
+						return members[name]
+					end))
+					:toContain "not a valid member"
+			end
+			check
+				:expect(thrown(function()
+					members.Parent = env.root
+				end))
+				:toContain "not a valid member"
+			check
+				:expect(thrown(function()
+					env.createInstance "VirtualInput"
+				end))
+				:toContain "Unable to create"
+			check
+				:expect(thrown(function()
+					env.createEngineInstance "VirtualInput"
+				end))
+				:toContain "requires an Instance class"
+			check
+				:expect(thrown(function()
+					env.createEngineObject "Missing"
+				end))
+				:toContain "Unable to create"
+			check:expect(Environment.typeName(object)):toBe "Object"
+			local changed = object.Changed:Connect(function() end)
+			local signal = object:GetPropertyChangedSignal "ClassName"
+			check:expect(signal):toBe(object:GetPropertyChangedSignal "ClassName")
+			check:expect(env.liveConnections()):toBe(1)
+			check:expect(env.liveObjects()):toBe(1)
+			local other = Environment.create()
+			check
+				:expect(thrown(function()
+					other.releaseObject(object)
+				end))
+				:toContain "must belong to this environment"
+			env.releaseObject(object)
+			env.releaseObject(object)
+			check:expect(Environment.typeName(object)):toBe "Object"
+			check:expect(Environment.isInstance(object)):toBe(false)
+			check:expect(changed.Connected):toBe(false)
+			check:expect(env.liveConnections()):toBe(0)
+			check:expect(env.liveObjects()):toBe(0)
+		end)
+		suite:case(
+			"scoped method doubles restore active predecessors without resurrecting disposed layers",
+			function(check)
+				local env = environment()
+				local object = env.createInstance "Folder"
+				local baseline = env.fakeOn(object, "Read", function(): number
+					return 1
+				end)
+				local first = env.fakeOn(object, "Read", function(): number
+					return 2
+				end)
+				local second = env.fakeOn(object, "Read", function(): number
+					return 3
+				end)
+				local function read(): unknown
+					return (object.Read :: Environment.Method)(object)
+				end
+				check:expect(read()):toEqual(3)
+				first()
+				check:expect(read()):toEqual(3)
+				second()
+				check:expect(read()):toEqual(1)
+				second()
+				first()
+				check:expect(read()):toEqual(1)
+				baseline()
+				check:expect((pcall(read))):toEqual(false)
+			end
+		)
+		suite:case("scoped method cleanup preserves a later explicit method assignment", function(check)
+			local env = Environment.create { functionDoubles = true }
+			local object = env.createInstance "Folder"
+			object.Read = function(): number
+				return 7
+			end
+			local dispose = env.fakeOn(object, "Read", function(): number
+				return 9
+			end)
+			object.Read = function(): number
+				return 11
+			end
+			dispose()
+			check:expect((object.Read :: Environment.Method)(object)):toEqual(11)
+		end)
+		suite:case("yielding signal listeners do not suspend the emitter or other listeners", function(check)
+			local env = environment()
+			local signal: Environment.Signal<number> = env.newSignal()
+			local waiting: thread? = nil
+			local completed, observed = 0, 0
+			signal:Connect(function(value: number)
+				env.scheduler.block(function(thread: thread)
+					waiting = thread
+				end)
+				completed = value
+			end)
+			signal:Connect(function(value: number)
+				observed = value
+			end)
+			signal:Fire(7)
+			check:expect(observed):toBe(7)
+			check:expect(completed):toBe(0)
+			signal:DisconnectAll()
+			env.scheduler.resume(assert(waiting))
+			env.scheduler.drain(20)
+			check:expect(completed):toBe(7)
+			check:expect(env.scheduler.failures):toHaveLength(0)
+		end)
+		suite:case("Signal.Wait returns the next argument tuple once including nil values", function(check)
+			local env = environment()
+			local signal: Environment.Signal = env.newSignal()
+			signal:Fire "past"
+			local result: { [number]: unknown, n: number }? = nil
+			local waiter = env.task.spawn(function()
+				result = table.pack(signal:Wait())
+			end)
+			env.scheduler.drain(20)
+			check:expect(result):toEqual(nil)
+			check:expect(env.liveConnections()):toEqual(1)
+			signal:Fire("next", nil, 3, nil)
+			signal:Fire "later"
+			check:expect(env.liveConnections()):toEqual(0)
+			env.scheduler.drain(20)
+			local values = assert(result)
+			check:expect(values.n):toEqual(4)
+			check:expect(values[1]):toEqual "next"
+			check:expect(values[2]):toEqual(nil)
+			check:expect(values[3]):toEqual(3)
+			check:expect(values[4]):toEqual(nil)
+			check:expect(coroutine.status(waiter)):toEqual "dead"
+			check:expect(env.scheduler.failures):toHaveLength(0)
+		end)
+		suite:case("canceling Signal.Wait releases its listener before any future event", function(check)
+			local env = environment()
+			local signal: Environment.Signal = env.newSignal()
+			local resumed = false
+			local waiter = env.task.spawn(function()
+				signal:Wait()
+				resumed = true
+			end)
+			env.scheduler.drain(20)
+			check:expect(env.liveConnections()):toEqual(1)
+			env.task.cancel(waiter)
+			check:expect(env.liveConnections()):toEqual(0)
+			signal:Fire(1)
+			env.scheduler.drain(20)
+			check:expect(resumed):toEqual(false)
+			check:expect(env.scheduler.failures):toHaveLength(0)
+			check:expect(env.scheduler.pending()):toEqual(0)
+		end)
+		suite:case("Signal.Wait resumes all current waiters with their own scheduler context", function(check)
+			local env = environment()
+			local signal: Environment.Signal = env.newSignal()
+			local results: { string } = {}
+			for _, tag in { "first", "second" } do
+				env.scheduler.spawnTagged(tag, function()
+					local value = signal:Wait()
+					table.insert(results, tostring(env.scheduler.context()) .. ":" .. tostring(value))
+				end)
+			end
+			env.scheduler.drain(20)
+			signal:Fire(7)
+			env.scheduler.drain(20)
+			check:expect(results):toEqual { "first:7", "second:7" }
+			check:expect(env.liveConnections()):toEqual(0)
+		end)
+		suite:case("scheduler block cleanup runs once on resume and cancel", function(check)
+			local env = environment()
+			local cleanups, completed = 0, false
+			local waiter = env.task.spawn(function()
+				env.scheduler.block(function()
+					return function()
+						cleanups += 1
+					end
+				end)
+				completed = true
+			end)
+			env.scheduler.resume(waiter)
+			check:expect(cleanups):toBe(1)
+			env.step(0)
+			check:expect(completed):toBe(true)
+			env.task.cancel(waiter)
+			check:expect(cleanups):toBe(1)
+			local canceled = env.task.spawn(function()
+				env.scheduler.block(function()
+					return function()
+						cleanups += 1
+					end
+				end)
+			end)
+			env.task.cancel(canceled)
+			env.task.cancel(canceled)
+			check:expect(cleanups):toBe(2)
+			check:expect(#env.scheduler.failures):toBe(0)
+		end)
+
+		suite:case("scheduler block releases cleanup when registration synchronously queues its waiter", function(check)
+			local env = environment()
+			local cleanups, completed = 0, false
+			env.task.spawn(function()
+				env.scheduler.block(function(waiter: thread)
+					env.scheduler.resume(waiter)
+					return function()
+						cleanups += 1
+					end
+				end)
+				completed = true
+			end)
+			env.step(0)
+			check:expect(completed):toBe(true)
+			check:expect(cleanups):toBe(1)
+		end)
+
+		suite:case("scheduler cancellation still closes a waiter when its cleanup fails", function(check)
+			local env = environment()
+			local waiter = env.task.spawn(function()
+				env.scheduler.block(function()
+					return function()
+						error "cleanup fixture failure"
+					end
+				end)
+			end)
+			env.task.cancel(waiter)
+			check:expect(coroutine.status(waiter)):toBe "dead"
+			check:expect(#env.scheduler.failures):toBe(1)
+			check:expect(env.scheduler.failures[1]):toContain "cleanup fixture failure"
+		end)
+		suite:case("propertyOf inspects declared callbacks while instance reads remain forbidden", function(check)
+			local env = environment()
+			local callbackClass = (
+				{
+					super = "Instance",
+					properties = { OnInvoke = false },
+					access = { OnInvoke = "callback" },
+				} :: unknown
+			) :: Environment.ClassSpec
+			env.defineClass("CallbackFixture", callbackClass)
+			local object = env.createInstance "CallbackFixture"
+			local callback = function(): number
+				return 42
+			end
+			object.OnInvoke = callback
+			check:expect(env.propertyOf(object, "OnInvoke") == callback):toBe(true)
+			check
+				:expect(thrown(function()
+					return object.OnInvoke
+				end))
+				:toContain "you can only set the callback value"
+			env.fakeOn(object, "Handler", callback)
+			check:expect(env.propertyOf(object, "Handler")):toBe(nil)
+		end)
 		suite:case("computed lookup honors an empty table with a dynamic getter", function(check)
 			local computed = setmetatable({} :: { [string]: Environment.Computed }, {
 				__index = function(_: unknown, key: string): Environment.Computed?
@@ -270,14 +558,161 @@ return function(suite: Verify.Harness)
 					return parent.Absent
 				end))
 				:toContain 'Absent is not a valid member of Widget "Widget"'
+			check:expect(parent:WaitForChild "Slot" == first):toBe(true)
+		end)
+
+		suite:case("WaitForChild returns an existing direct child without yielding or scheduling", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local child = env.createInstance("Folder", { Name = "Ready", Parent = parent })
+			check:expect(parent:WaitForChild("Ready", 1) == child):toBe(true)
+			check:expect(env.scheduler.pending()):toBe(0)
+			check:expect(env.liveConnections()):toBe(0)
+		end)
+
+		suite:case("matches Studio 0.744 rejection of nonpositive WaitForChild timeouts", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			for _, timeout in { 0, -1 } do
+				check
+					:expect(thrown(function()
+						parent:WaitForChild("Ready", timeout)
+					end))
+					:toContain "illegal argument #2 (timeOut must be greater than 0)"
+			end
+			env.createInstance("Folder", { Name = "Ready", Parent = parent })
 			check
 				:expect(thrown(function()
-					return (parent.WaitForChild :: (Environment.Instance, string) -> Environment.Instance)(
-						parent,
-						"Slot"
-					)
+					parent:WaitForChild("Ready", 0)
 				end))
-				:toContain 'WaitForChild is not a valid member of Widget "Widget"'
+				:toContain "illegal argument #2 (timeOut must be greater than 0)"
+			check:expect(env.liveConnections()):toBe(0)
+		end)
+
+		suite:case("matches Studio 0.744 WaitForChild waking when an existing child is renamed", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local child = env.createInstance("Folder", { Name = "Other", Parent = parent })
+			local result: Environment.Instance?
+			env.task.spawn(function()
+				result = parent:WaitForChild("Ready", 2)
+			end)
+			child.Name = "Ready"
+			env.step(0)
+			check:expect(result == child):toBe(true)
+			check:expect(env.liveConnections()):toBe(0)
+			check:expect(env.scheduler.pending()):toBe(0)
+		end)
+
+		suite:case("WaitForChild observes newly added child renames and detaches removed children", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local result: Environment.Instance?
+			env.task.spawn(function()
+				result = parent:WaitForChild("Ready", 2)
+			end)
+			local removed = env.createInstance("Folder", { Name = "Other", Parent = parent })
+			removed.Parent = nil
+			removed.Name = "Ready"
+			env.step(0)
+			check:expect(result):toBe(nil)
+			local child = env.createInstance("Folder", { Name = "Other", Parent = parent })
+			child.Name = "Ready"
+			env.step(0)
+			check:expect(result == child):toBe(true)
+			check:expect(env.liveConnections()):toBe(0)
+		end)
+
+		suite:case("WaitForChild yields for its named direct child and cancels its timeout", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local result: Environment.Instance?
+			local completed = false
+			env.task.spawn(function()
+				result = parent:WaitForChild("Ready", 10)
+				completed = true
+			end)
+			local other = env.createInstance("Folder", { Name = "Other", Parent = parent })
+			env.createInstance("Folder", { Name = "Ready", Parent = other })
+			env.step(1)
+			check:expect(completed):toBe(false)
+			local child = env.createInstance("Folder", { Name = "Ready", Parent = parent })
+			env.step(0)
+			check:expect(result == child):toBe(true)
+			check:expect(completed):toBe(true)
+			check:expect(env.scheduler.pending()):toBe(0)
+			check:expect(env.liveConnections()):toBe(0)
+		end)
+
+		suite:case("WaitForChild timeout returns nil once and disconnects its listener", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local result: Environment.Instance? = parent
+			local completions = 0
+			env.task.spawn(function()
+				result = parent:WaitForChild("Ready", 2)
+				completions += 1
+			end)
+			env.step(1)
+			check:expect(completions):toBe(0)
+			env.step(1)
+			check:expect(result):toBe(nil)
+			check:expect(completions):toBe(1)
+			env.createInstance("Folder", { Name = "Ready", Parent = parent })
+			env.step(10)
+			check:expect(completions):toBe(1)
+			check:expect(env.liveConnections()):toBe(0)
+		end)
+
+		suite:case("WaitForChild with nil timeout stays suspended until the named child arrives", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local result: Environment.Instance?
+			env.task.spawn(function()
+				result = parent:WaitForChild("Ready", nil)
+			end)
+			env.step(20)
+			check:expect(result):toBe(nil)
+			local child = env.createInstance("Folder", { Name = "Ready", Parent = parent })
+			env.step(0)
+			check:expect(result == child):toBe(true)
+			check:expect(env.liveConnections()):toBe(0)
+		end)
+
+		suite:case("a canceled WaitForChild is not resumed when its child arrives", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local resumed = false
+			local waiter = env.task.spawn(function()
+				parent:WaitForChild "Ready"
+				resumed = true
+			end)
+			env.task.cancel(waiter)
+			check:expect(env.liveConnections()):toBe(0)
+			env.createInstance("Folder", { Name = "Ready", Parent = parent })
+			env.step(0)
+			check:expect(resumed):toBe(false)
+			check:expect(#env.scheduler.failures):toBe(0)
+			check:expect(env.liveConnections()):toBe(0)
+			check:expect(env.scheduler.pending()):toBe(0)
+		end)
+
+		suite:case("a canceled WaitForChild timeout releases its listeners without resuming the thread", function(check)
+			local env = environment()
+			local parent = env.createInstance "Folder"
+			local resumed = false
+			local waiter = env.task.spawn(function()
+				parent:WaitForChild("Ready", 1)
+				resumed = true
+			end)
+			env.task.cancel(waiter)
+			check:expect(env.liveConnections()):toBe(0)
+			check:expect(env.scheduler.pending()):toBe(0)
+			env.step(1)
+			check:expect(resumed):toBe(false)
+			check:expect(#env.scheduler.failures):toBe(0)
+			check:expect(env.liveConnections()):toBe(0)
+			check:expect(env.scheduler.pending()):toBe(0)
 		end)
 
 		suite:case("a property, event or method wins over a child of the same name", function(check)

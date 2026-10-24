@@ -6,6 +6,7 @@ local Adapter = require "./environment-engine"
 local FixtureBridge = require "./fixture-bridge"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
+local UiLayout = require "./ui-layout"
 
 export type Property = { datatype: string, scriptability: string, tags: { string } }
 export type ClassEntry = {
@@ -14,6 +15,7 @@ export type ClassEntry = {
 	properties: { [string]: Property },
 	defaults: { [string]: unknown },
 	events: { string }?,
+	methods: { string }?,
 }
 export type Snapshot = {
 	schemaVersion: number,
@@ -25,6 +27,7 @@ export type Snapshot = {
 }
 export type Options = {
 	ui: (UiFakes.Options | false)?,
+	layout: UiLayout.Options?,
 	classes: { [string]: Environment.ClassSpec }?,
 	referenceClass: ((className: string, property: string) -> string?)?,
 	validateProperty: ((className: string, property: string, value: unknown, operation: "set" | "poke") -> ...unknown)?,
@@ -235,6 +238,7 @@ local function database(snapshot: Snapshot): Reflection.Database
 			DefaultProperties = defaults,
 			Tags = checkStrings(entry.tags, name .. " tags"),
 			Events = if entry.events ~= nil then checkStrings(entry.events, name .. " events") else nil,
+			Methods = if entry.methods ~= nil then checkStrings(entry.methods, name .. " methods") else nil,
 		}
 	end
 	local self: Reflection.Database
@@ -278,6 +282,7 @@ local function bridge(snapshot: Snapshot, options: Options?): FixtureBridge.Brid
 		undeclaredReads = settings.undeclaredReads,
 		functionDoubles = settings.functionDoubles,
 		ui = settings.ui,
+		layout = settings.layout,
 	}
 end
 

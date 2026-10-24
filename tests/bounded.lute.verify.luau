@@ -95,6 +95,9 @@ return function(suite: Verify.Harness)
 			suite:case("kills the descendants of a timed out command under each shell and mechanism", function(check)
 				local root = temporary(check, "verify-bounded-tests")
 				local shells = { "sh" }
+				if fs.exists "/bin/bash" then
+					table.insert(shells, "/bin/bash")
+				end
 				if fs.exists "/bin/dash" then
 					table.insert(shells, "/bin/dash")
 				end
@@ -123,7 +126,11 @@ return function(suite: Verify.Harness)
 						check:expect(fs.exists(marker)):toBe(false)
 						check:expect(result.ok):toBe(false)
 						check:expect(result.timedOut or result.unsupported):toBe(true)
-						if mechanism == "perl" or mechanism == "setsid" or (mechanism == "job" and shell == "sh") then
+						if
+							mechanism == "perl"
+							or mechanism == "setsid"
+							or (mechanism == "job" and shell == "/bin/bash")
+						then
 							check
 								:expect(label .. " timed out " .. tostring(result.timedOut))
 								:toBe(label .. " timed out true")

@@ -17,12 +17,14 @@ local function thrown(body: () -> unknown): string
 end
 
 local function library(): Roblox.DatatypeLibrary
-	return Roblox.reflectionSnapshot.library(Lute.fixture.load(SNAPSHOT))
+	return Roblox.reflectionSnapshot.library(Lute.fixture.load())
 end
 
 local function environment(types: Roblox.DatatypeLibrary): { [string]: unknown }
 	local globals = table.clone((types :: unknown) :: { [string]: unknown })
-	globals.typeof = types.typeof
+	local bridge = Lute.fixture.bridge()
+	globals.Instance = { new = bridge.environment.createInstance }
+	globals.typeof = bridge.placeEngine().typeName
 	return globals
 end
 

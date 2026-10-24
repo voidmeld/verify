@@ -1,9 +1,9 @@
 --!strict
 
 local PlaceRuntime = require "./place-runtime"
-local Environment = require "./environment"
+local Paths = require "../core/path"
 type Instance = PlaceRuntime.Instance
-type Engine = PlaceRuntime.Engine
+export type Engine = PlaceRuntime.Engine
 type Runtime = PlaceRuntime.Runtime
 type ProjectNode = { [string]: unknown }
 type Project = { globIgnorePaths: { string }?, tree: { [string]: ProjectNode } }
@@ -20,7 +20,7 @@ export type Files = {
 
 export type Opaque = {
 	attribute: string?,
-	fill: ((engine: Engine, object: Instance, path: string) -> ())?,
+	fill: ((engine: PlaceRuntime.Engine, object: Instance, path: string) -> ())?,
 }
 
 export type TreeDeps<B = unknown> = {
@@ -95,9 +95,6 @@ export type Report = {
 	roots: { string },
 	mountedRoots: { string },
 	lines: { string },
-	waits: { { target: string, name: string, source: string } },
-	frames: number,
-	blocked: number,
 	step: () -> (),
 }
 
@@ -166,7 +163,54 @@ local function scriptClass(fileName: string): (string?, string?)
 	return nil
 end
 
-local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<B>): Mounted
+local function numbers(value: unknown, count: number): { number }
+	assert(type(value) == "table" and #(value :: { unknown }) == count, "invalid project datatype component count")
+	for _, component in value :: { unknown } do
+		assert(type(component) == "number", "project datatype requires numeric components")
+	end
+	return value :: { number }
+end
+
+local function projectValue(engine: PlaceRuntime.Engine, declared: string?, value: unknown): unknown
+	local category = if declared then string.match(declared, "^Enum%.(.+)$") else nil
+	if category then
+		local family = engine.datatypes.Enum[category]
+		if type(value) == "string" then
+			return family[value]
+		end
+		if type(value) == "table" then
+			local ordinal = (value :: { Enum: unknown }).Enum
+			for _, item in family:GetEnumItems() do
+				if item.Value == ordinal then
+					return item
+				end
+			end
+		end
+		error("project property requires a declared Enum." .. category)
+	end
+	if type(value) ~= "table" or declared == nil then
+		return value
+	end
+	local encoded = (value :: { [string]: unknown })[declared]
+	if declared == "Color3" then
+		local v = numbers(encoded, 3)
+		return engine.datatypes.Color3.new(v[1], v[2], v[3])
+	elseif declared == "Vector3" then
+		local v = numbers(encoded, 3)
+		return engine.datatypes.Vector3.new(v[1], v[2], v[3])
+	elseif declared == "CFrame" then
+		assert(type(encoded) == "table", "project CFrame requires position and orientation")
+		local frame = encoded :: { position: unknown, orientation: { unknown } }
+		local p = numbers(frame.position, 3)
+		assert(type(frame.orientation) == "table" and #frame.orientation == 3, "project CFrame requires three rows")
+		local x, y, z =
+			numbers(frame.orientation[1], 3), numbers(frame.orientation[2], 3), numbers(frame.orientation[3], 3)
+		return engine.datatypes.CFrame.new(p[1], p[2], p[3], x[1], x[2], x[3], y[1], y[2], y[3], z[1], z[2], z[3])
+	end
+	return value
+end
+
+local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, deps: TreeDeps<B>): Mounted
 	local cache = deps.cache
 	local files = deps.files
 	local opaque = deps.opaque
@@ -180,8 +224,7 @@ local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<
 	local sources: { [Instance]: string } = {}
 
 	local function attach(object: Instance, parent: Instance, name: string)
-		engine.stateOf(object).name = name
-		engine.stateOf(object).values.Name = name
+		engine.environment.poke(object, "Name", name)
 		object.Parent = parent
 	end
 
@@ -252,6 +295,9 @@ local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<
 	local function mountNode(node: ProjectNode, name: string, parent: Instance?): Instance
 		local object: Instance
 		local path = node["$path"] :: string?
+		if path then
+			path = Paths.collapse(Paths.join(Paths.parent(projectPath), Paths.normalize(path)))
+		end
 		if parent == nil then
 			object = engine.game
 		elseif path ~= nil then
@@ -290,19 +336,10 @@ local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<
 				if type(key) ~= "string" then
 					continue
 				end
-				local kind = engine.surface.memberKind(engine.stateOf(object).className, key)
+				local kind = engine.surface.memberKind(object.ClassName, key)
 				if kind == "property" then
-					local declared = engine.surface.memberType(engine.stateOf(object).className, key)
-					if type(value) == "string" and string.match(declared or "", "^Enum") ~= nil then
-						local category = string.match(declared :: string, "^Enum(%w+)$")
-						if category ~= nil then
-							local ok, item = pcall(function()
-								return engine.datatypes.Enum[category][value]
-							end)
-							value = if ok then item else value
-						end
-					end
-					engine.stateOf(object).values[key] = value
+					local declared = engine.surface.memberType(object.ClassName, key)
+					engine.environment.poke(object, key, projectValue(engine, declared, value))
 				end
 			end
 		end
@@ -327,8 +364,12 @@ local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<
 				if type(key) ~= "string" then
 					continue
 				end
-				if engine.surface.memberKind(engine.stateOf(service).className, key) == "property" then
-					engine.stateOf(service).values[key] = value
+				if engine.surface.memberKind(service.ClassName, key) == "property" then
+					engine.environment.poke(
+						service,
+						key,
+						projectValue(engine, engine.surface.memberType(service.ClassName, key), value)
+					)
 				end
 			end
 		end
@@ -343,23 +384,6 @@ local function buildTree<B>(engine: Engine, projectPath: string, deps: TreeDeps<
 	return { root = engine.game, scripts = scripts, sources = sources }
 end
 
-local function frameOnce(engine: Engine, runtime: Runtime)
-	local run = engine.service "RunService"
-	local scheduler = engine.scheduler
-	scheduler.advance(FRAME_SECONDS)
-	scheduler.drain(64)
-	engine.fire(engine.stateOf(run).signals.PreRender or engine.signalOf(run, "PreRender"), FRAME_SECONDS)
-	engine.fire(engine.signalOf(run, "Stepped"), scheduler.clock(), FRAME_SECONDS)
-	engine.fire(engine.signalOf(run, "PreSimulation"), FRAME_SECONDS)
-	engine.fire(engine.signalOf(run, "PostSimulation"), FRAME_SECONDS)
-	engine.fire(engine.signalOf(run, "RenderStepped"), FRAME_SECONDS)
-	engine.fire(engine.signalOf(run, "Heartbeat"), FRAME_SECONDS)
-	for _, callback in runtime.renderSteps do
-		engine.scheduler.spawn(callback, FRAME_SECONDS)
-	end
-	scheduler.drain(64)
-end
-
 local function scriptsUnder(container: Instance, className: string, out: { Instance })
 	for _, child in container:GetChildren() do
 		if child.ClassName == className then
@@ -371,8 +395,7 @@ end
 
 local function named(engine: Engine, className: string, name: string, parent: Instance): Instance
 	local object = engine.newInstance(className, true)
-	engine.stateOf(object).name = name
-	engine.stateOf(object).values.Name = name
+	engine.environment.poke(object, "Name", name)
 	object.Parent = parent
 	return object
 end
@@ -408,18 +431,18 @@ end
 
 local function makeCharacter(engine: Engine, name: string): Instance
 	local character = engine.newInstance("Model", true)
-	engine.stateOf(character).name = name
+	engine.environment.poke(character, "Name", name)
 	local root = engine.newInstance("Part", true)
-	engine.stateOf(root).name = "HumanoidRootPart"
+	engine.environment.poke(root, "Name", "HumanoidRootPart")
 	root.Parent = character
 	local head = engine.newInstance("Part", true)
-	engine.stateOf(head).name = "Head"
+	engine.environment.poke(head, "Name", "Head")
 	head.Parent = character
 	local humanoid = engine.newInstance("Humanoid", true)
 	humanoid.Parent = character
 	local animator = engine.newInstance("Animator", true)
 	animator.Parent = humanoid
-	engine.stateOf(character).values.PrimaryPart = root
+	engine.environment.poke(character, "PrimaryPart", root)
 	return character
 end
 
@@ -451,20 +474,10 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		})
 	end
 
-	function engine.signalOf(object: Instance, name: string): Environment.Signal
-		local state = engine.stateOf(object)
-		local existing = state.signals[name]
-		if existing == nil then
-			existing = engine.signal()
-			state.signals[name] = existing
-		end
-		return existing
-	end
-
-	engine.stateOf(engine.game).values.GameId = config.identity.universeId
-	engine.stateOf(engine.game).values.PlaceId = config.identity.placeId
-	engine.stateOf(engine.game).values.JobId = config.subject.jobId
-	engine.stateOf(engine.game).values.PlaceVersion = config.identity.placeVersion
+	engine.environment.poke(engine.game, "GameId", config.identity.universeId)
+	engine.environment.poke(engine.game, "PlaceId", config.identity.placeId)
+	engine.environment.poke(engine.game, "JobId", config.subject.jobId)
+	engine.environment.poke(engine.game, "PlaceVersion", config.identity.placeVersion)
 
 	local players = engine.service "Players"
 	local workspace = engine.service "Workspace"
@@ -473,16 +486,19 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	local starterPlayer = engine.service "StarterPlayer"
 
 	local camera = engine.newInstance("Camera", true)
-	engine.stateOf(camera).name = "Camera"
-	engine.stateOf(camera).values.ViewportSize =
+	engine.environment.poke(camera, "Name", "Camera")
+	engine.environment.poke(
+		camera,
+		"ViewportSize",
 		engine.datatypes.Vector2.new(config.firstViewport.x, config.firstViewport.y)
+	)
 	camera.Parent = workspace
-	engine.stateOf(workspace).values.CurrentCamera = camera
+	engine.environment.poke(workspace, "CurrentCamera", camera)
 
 	local terrain = engine.newInstance("Terrain", true)
-	engine.stateOf(terrain).name = "Terrain"
+	engine.environment.poke(terrain, "Name", "Terrain")
 	terrain.Parent = workspace
-	engine.stateOf(workspace).values.Terrain = terrain
+	engine.environment.poke(workspace, "Terrain", terrain)
 
 	local serverNames: { string } = {}
 	local serverScripts: { Instance } = {}
@@ -493,36 +509,36 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		runtime.runScript(entry, "server")
 	end
 	for _ = 1, 4 do
-		frameOnce(engine, runtime)
+		runtime.step(FRAME_SECONDS)
 	end
 	reachedStage "server"
 
 	local player = engine.newInstance("Player", true)
-	engine.stateOf(player).name = config.subject.name
-	engine.stateOf(player).values.UserId = config.subject.userId
-	engine.stateOf(player).values.DisplayName = config.subject.name
+	engine.environment.poke(player, "Name", config.subject.name)
+	engine.environment.poke(player, "UserId", config.subject.userId)
+	engine.environment.poke(player, "DisplayName", config.subject.name)
 	local playerGui = engine.newInstance("PlayerGui", true)
-	engine.stateOf(playerGui).name = "PlayerGui"
+	engine.environment.poke(playerGui, "Name", "PlayerGui")
 	playerGui.Parent = player
 	local seenRoots: { [string]: boolean } = {}
-	engine.signalOf(playerGui, "ChildAdded"):Connect(function(value: unknown)
+	playerGui.ChildAdded:Connect(function(value: unknown)
 		local child = value :: Instance
-		seenRoots[child.Name] = true
+		seenRoots[tostring(child.Name)] = true
 	end)
 	local playerScripts = engine.newInstance("PlayerScripts", true)
-	engine.stateOf(playerScripts).name = "PlayerScripts"
+	engine.environment.poke(playerScripts, "Name", "PlayerScripts")
 	playerScripts.Parent = player
 	local backpack = engine.newInstance("Backpack", true)
-	engine.stateOf(backpack).name = "Backpack"
+	engine.environment.poke(backpack, "Name", "Backpack")
 	backpack.Parent = player
-	engine.stateOf(players).values.LocalPlayer = player
+	engine.environment.poke(players, "LocalPlayer", player)
 	runtime.localPlayer = player
 	mountEngineProvided(engine, player, config.engineProvidedInput)
 	player.Parent = players
-	engine.fire(engine.signalOf(players, "PlayerAdded"), player)
+	engine.environment.fire(players, "PlayerAdded", player)
 
 	for _ = 1, 2 do
-		frameOnce(engine, runtime)
+		runtime.step(FRAME_SECONDS)
 	end
 	identified = player
 	identifiedGui = playerGui
@@ -549,25 +565,24 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		runtime.runScript(entry, "client")
 	end
 
-	frameOnce(engine, runtime)
+	runtime.step(FRAME_SECONDS)
 	reachedStage "client"
 
-	engine.stateOf(camera).values.ViewportSize =
+	engine.environment.poke(
+		camera,
+		"ViewportSize",
 		engine.datatypes.Vector2.new(config.finalViewport.x, config.finalViewport.y)
-	local viewportChanged = engine.stateOf(camera).propertySignals.ViewportSize
-	if viewportChanged ~= nil then
-		engine.fire(viewportChanged)
-	end
+	)
 
-	frameOnce(engine, runtime)
+	runtime.step(FRAME_SECONDS)
 	reachedStage "viewport"
 
-	local character = makeCharacter(engine, engine.stateOf(player).name)
+	local character = makeCharacter(engine, tostring(player.Name))
 	character.Parent = workspace
-	engine.stateOf(player).values.Character = character
-	engine.fire(engine.signalOf(player, "CharacterAdded"), character)
+	engine.environment.poke(player, "Character", character)
+	engine.environment.fire(player, "CharacterAdded", character)
 
-	frameOnce(engine, runtime)
+	runtime.step(FRAME_SECONDS)
 	reachedStage "character"
 
 	local attributes = config.attributes
@@ -582,15 +597,15 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 
 	local budget = config.frames or DEFAULT_FRAME_BUDGET
 	for _ = 1, budget do
-		frameOnce(engine, runtime)
+		runtime.step(FRAME_SECONDS)
 	end
 
 	reachedStage "settled"
 
 	local roots: { string } = {}
 	for _, child in playerGui:GetChildren() do
-		roots[#roots + 1] = child.Name
-		seenRoots[child.Name] = true
+		roots[#roots + 1] = tostring(child.Name)
+		seenRoots[tostring(child.Name)] = true
 	end
 	table.sort(roots)
 	local mountedRoots: { string } = {}
@@ -621,11 +636,8 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		roots = roots,
 		mountedRoots = mountedRoots,
 		lines = lines,
-		waits = engine.outstandingWaits(),
-		frames = engine.frames(),
-		blocked = engine.blocked(),
 		step = function()
-			frameOnce(engine, runtime)
+			runtime.step(FRAME_SECONDS)
 		end,
 	}
 end

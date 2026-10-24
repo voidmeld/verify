@@ -1,6 +1,9 @@
 --!strict
 
 local Datatypes = require "../src/roblox/datatypes"
+local path = require "@std/path"
+local process = require "@std/process"
+local temporary = require "./temporary"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 local Verify = require "../src/core"
@@ -14,6 +17,114 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("reflection snapshot loaded under Lute", function()
+		suite:case("bundled singleton services restore captured capacity and lighting values", function(check)
+			local engine = Lute.fixture.bridge().placeEngine()
+			local players = engine.service "Players"
+			local lighting = engine.service "Lighting"
+			check:expect(players.MaxPlayers):toBe(12)
+			check:expect(lighting.FogColor):toBe(Datatypes.Color3.new(0.75, 0.75, 0.75))
+			check:expect(lighting.FogEnd):toBe(100000)
+			local original = lighting.Ambient
+			lighting.Ambient = Datatypes.Color3.new(0, 0, 0)
+			lighting.Ambient = original
+			check:expect(lighting.Ambient):toBe(Datatypes.Color3.new(0.5, 0.5, 0.5))
+			check
+				:expect(accepts(function(): unknown
+					players.MaxPlayers = 50
+					return nil
+				end))
+				:toBe(false)
+		end)
+		suite:case("bundled TextChannel preserves write-only delivery callbacks", function(check)
+			local environment = Lute.fixture.bridge().environment
+			local channel = environment.createInstance "TextChannel"
+			local deliver = function(): boolean
+				return false
+			end
+			channel.ShouldDeliverCallback = deliver
+			check:expect(environment.propertyOf(channel, "ShouldDeliverCallback") == deliver):toBe(true)
+			check
+				:expect(accepts(function(): unknown
+					return channel.ShouldDeliverCallback
+				end))
+				:toBe(false)
+			check
+				:expect(accepts(function(): unknown
+					channel.ShouldDeliverCallback = true
+					return nil
+				end))
+				:toBe(true)
+			channel.ShouldDeliverCallback = nil
+			check:expect(environment.propertyOf(channel, "ShouldDeliverCallback")):toBe(nil)
+		end)
+		suite:case("loads the bundled capture from a consumer working directory", function(check)
+			local directory = temporary(check, "bundled-reflection")
+			local source = path.format(path.resolve "tests/programs/bundled-reflection.luau")
+			local result = process.run({ tostring(process.execPath()), "run", source }, { cwd = directory })
+			assert(result.exitcode == 0, result.stderr)
+			check:expect(result.exitcode):toBe(0)
+			check:expect(result.stdout):toContain "bundled-reflection-ready"
+		end)
+		suite:case(
+			"engine-created InputObject retains metadata validation while script construction stays forbidden",
+			function(check)
+				local snapshot: Roblox.ReflectionSnapshot = {
+					schemaVersion = 2,
+					engineVersion = "0.742.0.7421053",
+					classes = {
+						Instance = {
+							tags = { "NotCreatable" },
+							defaults = {},
+							properties = { Name = { datatype = "String", scriptability = "ReadWrite", tags = {} } },
+						},
+						InputObject = {
+							superclass = "Instance",
+							tags = { "NotCreatable" },
+							defaults = {},
+							properties = {
+								Position = { datatype = "Vector3", scriptability = "ReadWrite", tags = {} },
+							},
+						},
+					},
+				}
+				local bridge = Lute.fixture.bridge(snapshot)
+				local env = bridge.environment
+				local created = 0
+				local hook = env.onCreate(function()
+					created += 1
+				end)
+				local object = env.createEngineInstance(
+					"InputObject",
+					{ Name = "OwnedInput", Position = Datatypes.Vector3.new(3, 4, 0) }
+				)
+				check:expect(Roblox.isInstance(object)):toBe(true)
+				check:expect(Roblox.typeName(object)):toBe "Instance"
+				check:expect(object:IsA "InputObject"):toBe(true)
+				check:expect(object.Name):toBe "OwnedInput"
+				check:expect(object.Position):toBe(Datatypes.Vector3.new(3, 4, 0))
+				check:expect(env.liveObjects()):toBe(1)
+				check:expect(created):toBe(1)
+				check
+					:expect(pcall(function()
+						bridge.engine.new "InputObject"
+					end))
+					:toBe(false)
+				check
+					:expect(pcall(function()
+						env.createEngineInstance "UnknownInput"
+					end))
+					:toBe(false)
+				check
+					:expect(pcall(function()
+						object.Position = "invalid"
+					end))
+					:toBe(false)
+				check:expect(object.Position):toBe(Datatypes.Vector3.new(3, 4, 0))
+				object:Destroy()
+				hook:Disconnect()
+				check:expect(env.liveObjects()):toBe(0)
+			end
+		)
 		suite:case("builds the bridge from the exported file", function(check)
 			local bridge = Lute.fixture.bridge(FIXTURE)
 			local env = bridge.environment
@@ -22,6 +133,126 @@ return function(suite: Verify.Harness)
 			check:expect((part.Size :: Datatypes.Vector3Value).X):toBe(4)
 			check:expect(bridge.hasClass "TextLabel"):toBe(true)
 			check:expect(bridge.hasClass "Camera"):toBe(false)
+			check:expect(bridge.layout):toBe(nil)
+		end)
+
+		suite:case("preserves declared methods and requires an explicit implementation", function(check)
+			local snapshot = Lute.fixture.load(FIXTURE)
+			snapshot.classes.Part.methods = { "NativeOnly", "Configured" }
+			snapshot.classes.Instance.methods = { "InheritedOnly" }
+			local methods: { [string]: unknown } = {
+				Configured = function(): number
+					return 42
+				end,
+			}
+			local options: Lute.FixtureOptions = {
+				classes = { Part = { methods = methods } },
+			}
+			local bridge = Lute.fixture.bridge(snapshot, options)
+			local env = bridge.environment
+			local part = env.createInstance "Part"
+			check:expect((part.Configured :: (unknown) -> number)(part)):toBe(42)
+			for _, name in { "NativeOnly", "InheritedOnly" } do
+				local ok, problem = pcall(function()
+					return part[name]
+				end)
+				check:expect(ok):toBe(false)
+				check:expect(tostring(problem)):toContain "unsupported_method"
+			end
+			local close = env.fakeOn(part, "NativeOnly", function(): string
+				return "configured"
+			end)
+			check:expect((part.NativeOnly :: (unknown) -> string)(part)):toBe "configured"
+			close()
+			check
+				:expect(accepts(function()
+					return part.NativeOnly
+				end))
+				:toBe(false)
+			local folder = env.createInstance "Folder"
+			local ok, problem = pcall(function()
+				return folder.NativeOnly
+			end)
+			check:expect(ok):toBe(false)
+			check:expect(tostring(problem)):toContain "not a valid member"
+		end)
+
+		suite:case("preserves captured class names when resetting Name", function(check)
+			local snapshot = Lute.fixture.load(FIXTURE)
+			snapshot.classes.StringValue = {
+				superclass = "Instance",
+				tags = {},
+				properties = {},
+				defaults = { Name = "Value" },
+			}
+			local bridge = Lute.fixture.bridge(snapshot)
+			local object = bridge.environment.createInstance "StringValue"
+			check:expect(object.Name):toBe "Value"
+			object.Name = "Renamed"
+			object:ResetPropertyToDefault "Name"
+			check:expect(object.Name):toBe "Value"
+			check:expect(object:IsPropertyModified "Name"):toBe(false)
+		end)
+
+		suite:case("steps layout over mounted snapshot instances and updates after resize", function(check)
+			local roots: { Roblox.Instance } = {}
+			local bridge = Lute.fixture.bridge(FIXTURE, {
+				layout = {
+					roots = function()
+						return roots
+					end,
+					viewport = function()
+						return { X = 800, Y = 600 }
+					end,
+				},
+			})
+			local env = bridge.environment
+			local root = env.createInstance("Frame", { Size = Datatypes.UDim2.fromOffset(120, 80) })
+			local child = env.createInstance("Frame", {
+				Parent = root,
+				Size = Datatypes.UDim2.new(0.5, 0, 0, 20),
+				Position = Datatypes.UDim2.fromOffset(7, 9),
+			})
+			table.insert(roots, root)
+			local changes = 0
+			child:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+				changes += 1
+			end)
+			assert(bridge.layout).step()
+			check:expect(child.AbsoluteSize):toEqual(Datatypes.Vector2.new(60, 20))
+			check:expect(child.AbsolutePosition):toEqual(Datatypes.Vector2.new(7, 9))
+			root.Size = Datatypes.UDim2.fromOffset(200, 80)
+			assert(bridge.layout).step()
+			check:expect(child.AbsoluteSize):toEqual(Datatypes.Vector2.new(100, 20))
+			check:expect(changes):toBe(2)
+			check:expect(env.now()):toBe(0)
+		end)
+
+		suite:case("snapshot layout rejects unsupported text before publishing its mounted ancestors", function(check)
+			local roots: { Roblox.Instance } = {}
+			local snapshot = Lute.fixture.load(FIXTURE)
+			local types = Roblox.reflectionSnapshot.library(snapshot)
+			local bridge = Roblox.reflectionSnapshot.bridge(snapshot, {
+				layout = {
+					roots = function()
+						return roots
+					end,
+					viewport = function()
+						return { X = 800, Y = 600 }
+					end,
+				},
+			})
+			local env = bridge.environment
+			local root = env.createInstance("Frame", { Size = types.UDim2.fromOffset(120, 80) })
+			env.createInstance("TextLabel", { Parent = root, AutomaticSize = types.Enum.AutomaticSize.XY })
+			table.insert(roots, root)
+			local before = root.AbsoluteSize
+			local ok, message = pcall(function()
+				assert(bridge.layout).step()
+			end)
+			check:expect(ok):toBe(false)
+			check:expect(tostring(message)):toContain "AutomaticSize text measurement"
+			check:expect(root.AbsoluteSize):toEqual(before)
 		end)
 
 		suite:case("accepts and refuses writes like the real database did when it was exported", function(check)
@@ -182,6 +413,26 @@ return function(suite: Verify.Harness)
 					:toBe(false)
 			end
 		)
+
+		suite:case("accepts unset custom physical properties without loosening other property types", function(check)
+			local bridge = Lute.fixture.bridge()
+			local part = bridge.environment.createInstance "Part"
+			check:expect(part.CustomPhysicalProperties):toBe(nil)
+			part.CustomPhysicalProperties = nil
+			check:expect(part.CustomPhysicalProperties):toBe(nil)
+			check
+				:expect(accepts(function(): unknown
+					part.CustomPhysicalProperties = {}
+					return nil
+				end))
+				:toBe(false)
+			check
+				:expect(accepts(function(): unknown
+					part.Size = nil
+					return nil
+				end))
+				:toBe(false)
+		end)
 
 		suite:case("accepts nil or a CFrame for an optional CFrame property", function(check)
 			local bridge = Roblox.reflectionSnapshot.bridge {

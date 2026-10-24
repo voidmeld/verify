@@ -1,14 +1,19 @@
 --!strict
 
 local Datatypes = require "./datatypes"
+local Names = require "./datatypes/names"
 local Classes = require "./environment-classes"
 local Scheduler = require "./scheduler"
 local Types = require "./environment-types"
+local SpatialFakes = require "./spatial-fakes"
+local AudioFakes = require "./audio-fakes"
+local SpatialQueryFakes = require "./spatial-query-fakes"
 
 export type Connection = Types.Connection
 export type Signal<A... = ...unknown> = Types.Signal<A...>
 export type Method<A... = ...unknown, R... = ...unknown> = Types.Method<A..., R...>
 export type Instance = Types.Instance
+export type Object = Types.Object
 export type Snapshot = Types.Snapshot
 export type ClassSpec<P = { [string]: unknown }, M = { [string]: unknown }> = Types.ClassSpec<P, M>
 export type DefineOptions = Types.DefineOptions
@@ -74,7 +79,11 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local alive = 0
 
 	local environment = {} :: Environment
-	local newObject: (className: string, props: { [unknown]: unknown }?, isRoot: boolean) -> Instance
+	type MethodOverride = { handler: unknown, previous: unknown, active: boolean }
+	local function doubleHandler(value: unknown): unknown
+		return if type(value) == "table" then (value :: MethodOverride).handler else value
+	end
+	local newObject: (className: string, props: { [unknown]: unknown }?, isRoot: boolean, engineOwned: boolean?) -> Instance
 
 	local function defineClass<P, M>(className: string, spec: ClassSpec<P, M>, defineOptions: DefineOptions?)
 		if type(className) ~= "string" or className == "" then
@@ -111,16 +120,21 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			error(("class %q extends undefined class %q"):format(className, spec.super), 3)
 		end
 		local result: Resolved = {
+			instance = className == "Instance" or (if parent ~= nil then parent.instance else className ~= "Object"),
 			creatable = if spec.creatable ~= nil then spec.creatable else true,
 			access = if parent ~= nil then table.clone(parent.access) else {},
-			properties = if parent ~= nil then table.clone(parent.properties) else { Name = false, Archivable = true },
+			properties = if parent ~= nil then table.clone(parent.properties) else {},
 			events = if parent ~= nil then table.clone(parent.events) else {},
 			methods = if parent ~= nil then table.clone(parent.methods) else {},
 		}
-		if parent == nil then
+		if (parent == nil and result.instance) or className == "Instance" then
+			result.properties.Name = false
+			result.properties.Archivable = true
 			for _, event in UNIVERSAL_EVENTS do
 				result.events[event] = true
 			end
+		elseif parent == nil then
+			result.events.Changed = true
 		end
 		local declared: { [string]: unknown } = spec.properties or {}
 		for key, default in declared do
@@ -218,8 +232,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		local live: { { handler: (A...) -> (), connected: boolean, connection: Connection } } = {}
 		local fired = initialFires or 0
 		local signal = {} :: Signal<A...>
+		Names.register(signal, "RBXScriptSignal")
 		function signal:Connect(handler: (A...) -> ()): Connection
 			local connection = { Connected = true } :: Connection
+			Names.register(connection, "RBXScriptConnection")
 			local record = { handler = handler, connected = true, connection = connection }
 			table.insert(live, record)
 			connections += 1
@@ -237,6 +253,26 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			end
 			return connection :: Connection
 		end
+		local function wait(_self: Signal<A...>): ...unknown
+			return scheduler.block(function(waiter: thread)
+				local connection: Connection?
+				local function cleanup()
+					if connection then
+						connection:Disconnect()
+						connection = nil
+					end
+				end
+				local function resume(...: unknown)
+					cleanup()
+					if coroutine.status(waiter) ~= "dead" then
+						scheduler.resume(waiter, ...)
+					end
+				end
+				connection = signal:Connect((resume :: unknown) :: (A...) -> ())
+				return cleanup
+			end)
+		end
+		signal.Wait = (wait :: unknown) :: (Signal<A...>) -> A...
 		local function dispatch(_self: Signal<A...>, ...: A...)
 			fired += 1
 			if #live == 0 then
@@ -244,10 +280,12 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			end
 			for _, record in table.clone(live) do
 				if record.connected then
-					local ok, thrown: unknown = pcall(record.handler, ...)
-					if not ok then
-						table.insert(errors, tostring(thrown))
-					end
+					scheduler.spawn(function(...: A...)
+						local ok, thrown: unknown = pcall(record.handler, ...)
+						if not ok then
+							table.insert(errors, tostring(thrown))
+						end
+					end, ...)
 				end
 			end
 		end
@@ -269,7 +307,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return signal :: Signal<A...>
 	end
 
-	local function stateOf(object: Instance): State
+	local function stateOf(object: Object): State
 		return rawget((object :: unknown) :: { [string]: unknown }, "__state") :: State
 	end
 
@@ -341,6 +379,28 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local function changed(object: Instance, state: State, property: string)
 		fireSignal(state, "prop:" .. property)
 		fireSignal(state, "Changed", property)
+	end
+
+	local function assign(object: Instance, state: State, key: string, value: unknown)
+		local coupled: string? = nil
+		if isA(state.className, "BasePart") then
+			if key == "CFrame" and Names.of(value) == "CFrame" and state.class.properties.Position ~= nil then
+				local position = (value :: Datatypes.CFrameValue).Position
+				if (state.values.Position :: Datatypes.Vector3Value?) ~= position then
+					state.values.Position = position
+					coupled = "Position"
+				end
+			elseif key == "Position" and Names.of(value) == "Vector3" and Names.of(state.values.CFrame) == "CFrame" then
+				local frame = state.values.CFrame :: Datatypes.CFrameValue
+				state.values.CFrame = frame + ((value :: Datatypes.Vector3Value) - frame.Position)
+				coupled = "CFrame"
+			end
+		end
+		state.values[key] = value
+		changed(object, state, key)
+		if coupled then
+			changed(object, state, coupled)
+		end
 	end
 
 	local function subtree(object: Instance): { Instance }
@@ -421,7 +481,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if state.destroyed or state.destroying or state.removing then
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
 		end
-		if parent ~= nil and not isObject(parent) then
+		if parent ~= nil and (not isObject(parent) or not stateOf(parent).class.instance) then
 			error(("Parent of %s must be an Instance of this environment"):format(describe(state)), 4)
 		end
 		local walk = parent
@@ -519,6 +579,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function universal(object: Instance, state: State, key: string): unknown
+		local common = { IsA = true, GetPropertyChangedSignal = true }
+		if not state.class.instance and common[key] ~= true then
+			return nil
+		end
 		if key == "Destroy" then
 			return function()
 				destroy(object, state)
@@ -544,6 +608,86 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				end
 				walk(object)
 				return out
+			end
+		elseif key == "WaitForChild" then
+			return function(_self: Instance, name: string, timeout: number?): Instance?
+				if timeout ~= nil and timeout <= 0 then
+					error("illegal argument #2 (timeOut must be greater than 0)", 2)
+				end
+				for _, child in state.children do
+					if stateOf(child).values.Name == name then
+						return child
+					end
+				end
+				return (
+					scheduler.block(function(waiter: thread)
+						local finished = false
+						local added: Connection?
+						local removed: Connection?
+						local names: { [Instance]: Connection } = {}
+						local timer: thread?
+						local function cleanup()
+							if finished then
+								return
+							end
+							finished = true
+							if added then
+								added:Disconnect()
+							end
+							if removed then
+								removed:Disconnect()
+							end
+							for _, connection in names do
+								connection:Disconnect()
+							end
+							table.clear(names)
+							if timer then
+								scheduler.cancel(timer)
+							end
+						end
+						local function finish(child: Instance?)
+							if finished then
+								return
+							end
+							cleanup()
+							if coroutine.status(waiter) ~= "dead" then
+								scheduler.resume(waiter, child)
+							end
+						end
+						local function watch(child: Instance)
+							names[child] = child:GetPropertyChangedSignal("Name"):Connect(function()
+								if stateOf(child).parent == object and stateOf(child).values.Name == name then
+									finish(child)
+								end
+							end)
+						end
+						for _, child in state.children do
+							watch(child)
+						end
+						added = signalFor(state, "ChildAdded"):Connect(function(value: unknown)
+							local child = value :: Instance
+							if stateOf(child).values.Name == name then
+								finish(child)
+							else
+								watch(child)
+							end
+						end)
+						removed = signalFor(state, "ChildRemoved"):Connect(function(value: unknown)
+							local child = value :: Instance
+							local connection = names[child]
+							if connection then
+								connection:Disconnect()
+								names[child] = nil
+							end
+						end)
+						if timeout ~= nil then
+							timer = scheduler.delay(timeout, function()
+								finish(nil)
+							end)
+						end
+						return cleanup
+					end) :: unknown
+				) :: Instance?
 			end
 		elseif key == "FindFirstChild" then
 			return function(_self: Instance, name: string, recursive: boolean?): unknown
@@ -632,6 +776,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 					local rootCopy = copyTree(object)
 					for original, copy in copies do
 						local source, target = stateOf(original), stateOf(copy)
+						target.worldPivotSet = source.worldPivotSet
 						for property, value in source.values do
 							if
 								computedFor(source.className, property) == nil
@@ -673,11 +818,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				if key == "HasTag" then
 					return state.tags[tag] == true
 				end
-				if key == "AddTag" then
-					state.tags[tag] = true
-				else
-					state.tags[tag] = nil
-				end
+				environment.setTag(object, tag, key == "AddTag")
 				return nil
 			end
 		elseif key == "GetTags" then
@@ -748,7 +889,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			return function(_self: Instance, property: string): Signal
 				if
 					state.class.properties[property] == nil
-					and property ~= "Parent"
+					and property ~= "ClassName"
+					and not (property == "Parent" and state.class.instance)
 					and not state.extras[property]
 					and settings.undeclaredWrites ~= true
 					and computedFor(state.className, property) == nil
@@ -756,6 +898,13 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 					memberError(state, property)
 				end
 				return signalFor(state, "prop:" .. property)
+			end
+		elseif key == "IsPropertyModified" then
+			return function(_self: Instance, property: string): boolean
+				if state.class.properties[property] == nil then
+					memberError(state, property)
+				end
+				return state.values[property] ~= defaultOf(state.className, state.class, property)
 			end
 		elseif key == "ResetPropertyToDefault" then
 			return function(_self: Instance, property: string)
@@ -780,6 +929,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	local function readMember(object: Instance, key: string): unknown
 		local state = stateOf(object)
+		if not state.class.instance and (key == "Name" or key == "Archivable") then
+			memberError(state, key)
+		end
 		local access = state.class.access[key]
 		if access == "callback" then
 			error(
@@ -794,10 +946,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		if key == "ClassName" then
 			return state.className
-		elseif key == "Parent" then
+		elseif key == "Parent" and state.class.instance then
 			return state.parent
 		end
-		local double = state.doubles[key]
+		local double = doubleHandler(state.doubles[key])
 		if double ~= nil then
 			return operation(function(_self: Instance, ...: unknown): ...unknown
 				return (double :: Method)(object, ...)
@@ -842,15 +994,20 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	local function writeMember(object: Instance, key: string, value: unknown)
 		local state = stateOf(object)
+		if not state.class.instance and (key == "Name" or key == "Archivable") then
+			memberError(state, key)
+		end
 		local access = state.class.access[key]
 		if access == "callback" then
-			assert(value == nil or type(value) == "function", key .. " must be a function or nil")
-			state.doubles[key] = value
+			state.doubles[key] = if value == nil then nil else { handler = value, previous = nil, active = true }
 			return
 		elseif access == "read" or access == "none" then
 			error("read-only property: " .. key, 3)
 		end
 		if key == "Parent" then
+			if not state.class.instance then
+				memberError(state, key)
+			end
 			setParent(object, state, value :: Instance?)
 			return
 		end
@@ -881,14 +1038,16 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		then
 			return
 		end
+		if key == "WorldPivot" and isA(state.className, "Model") then
+			state.worldPivotSet = true
+		end
 		if state.values[key] == value then
 			return
 		end
-		state.values[key] = value
 		if not declared then
 			state.extras[key] = true
 		end
-		changed(object, state, key)
+		assign(object, state, key, value)
 	end
 
 	local objectMetatable = {
@@ -896,12 +1055,17 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		__newindex = (operation(writeMember) :: unknown) :: typeof(writeMember),
 	}
 
-	function newObject(className: string, props: { [unknown]: unknown }?, isRoot: boolean): Instance
+	function newObject(
+		className: string,
+		props: { [unknown]: unknown }?,
+		isRoot: boolean,
+		engineOwned: boolean?
+	): Instance
 		local class = resolve(className)
 		if class == nil then
 			error(("Unable to create an Instance of type %q"):format(className), 3)
 		end
-		if not class.creatable and not isRoot then
+		if (not class.creatable or not class.instance) and not isRoot and engineOwned ~= true then
 			error(("Unable to create an Instance of type %q"):format(className), 3)
 		end
 		local values: { [string]: unknown } = {}
@@ -909,6 +1073,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			values[key] = defaultOf(className, class, key)
 		end
 		local object = (setmetatable({} :: { [string]: unknown }, objectMetatable) :: unknown) :: Instance
+		Names.register(object, if class.instance then "Instance" else "Object")
 		rawset(
 			object,
 			"__state",
@@ -1009,6 +1174,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	environment.root = root
 	environment.heartbeat = heartbeat
+	environment.tagChanged = newSignal()
 	environment.scheduler = scheduler
 	environment.task = {
 		spawn = scheduler.spawn,
@@ -1022,8 +1188,44 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	environment.fake = function<A..., R...>(member: string, handler: (Instance, A...) -> R...)
 		fakes[member] = handler
 	end
+	environment.hasFake = function(object: Instance, member: string): boolean
+		local state = stateOf(object)
+		if doubleHandler(state.doubles[member]) ~= nil or type(state.class.methods[member]) == "function" then
+			return true
+		end
+		local className: string? = state.className
+		while className do
+			if fakes[className .. "." .. member] ~= nil then
+				return true
+			end
+			className = specs[className].super
+		end
+		return false
+	end
 	environment.createInstance = function(className: string, props: { [unknown]: unknown }?): Instance
 		return newObject(className, props, false)
+	end
+	environment.createEngineInstance = function(className: string, props: { [unknown]: unknown }?): Instance
+		local class = resolve(className)
+		assert(class ~= nil and class.instance, "engine Instance creation requires an Instance class: " .. className)
+		return newObject(className, props, false, true)
+	end
+	environment.createEngineObject = function(className: string, props: { [unknown]: unknown }?): Object
+		return newObject(className, props, false, true)
+	end
+	environment.releaseObject = function(object: Object)
+		assert(metatableOf(object) == objectMetatable, "object must belong to this environment")
+		local state = stateOf(object)
+		if state.class.instance then
+			destroy(object :: Instance, state)
+		elseif not state.destroyed then
+			state.destroyed = true
+			alive -= 1
+			for _, signal in state.signals do
+				signal:DisconnectAll()
+			end
+			table.clear(state.doubles)
+		end
 	end
 	environment.newSignal = newSignal
 	environment.step = function(seconds: number)
@@ -1038,13 +1240,42 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	environment.parentOf = function(object: Instance): Instance?
 		return stateOf(object).parent
 	end
-	environment.propertyOf = function(object: Instance, key: string): unknown
-		return stateOf(object).values[key]
+	environment.propertyOf = function(object: Object, key: string): unknown
+		local state = stateOf(object)
+		return if state.class.access[key] == "callback" then doubleHandler(state.doubles[key]) else state.values[key]
+	end
+	environment.defaultPropertyOf = function(object: Instance, key: string): unknown
+		local state = stateOf(object)
+		if state.class.properties[key] == nil then
+			memberError(state, key)
+		end
+		return defaultOf(state.className, state.class, key)
+	end
+	environment.tagsOf = function(object: Instance): { string }
+		local tags: { string } = {}
+		for tag in stateOf(object).tags do
+			table.insert(tags, tag)
+		end
+		table.sort(tags)
+		return tags
+	end
+	environment.setTag = function(object: Instance, tag: string, present: boolean)
+		local state = stateOf(object)
+		assert(type(tag) == "string" and type(present) == "boolean", "invalid tag mutation")
+		if (state.tags[tag] == true) == present then
+			return
+		end
+		if present then
+			state.tags[tag] = true
+		else
+			state.tags[tag] = nil
+		end
+		environment.tagChanged:Fire(object, tag, present)
 	end
 	environment.attributeOf = function(object: Instance, name: string): unknown
 		return stateOf(object).attributes[name]
 	end
-	environment.isAlive = function(object: Instance): boolean
+	environment.isAlive = function(object: Object): boolean
 		return not stateOf(object).destroyed
 	end
 	environment.liveObjects = function(): number
@@ -1070,14 +1301,16 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			then
 				return
 			end
+			if key == "WorldPivot" and isA(state.className, "Model") then
+				state.worldPivotSet = true
+			end
 			if state.values[key] == value then
 				return
 			end
-			state.values[key] = value
 			if not declared then
 				state.extras[key] = true
 			end
-			changed(object, state, key)
+			assign(object, state, key, value)
 		end) :: unknown
 	) :: (object: Instance, key: string, value: unknown) -> ()
 	environment.fire = (
@@ -1089,8 +1322,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			fireSignal(state, event, ...)
 		end) :: unknown
 	) :: (object: Instance, event: string, ...unknown) -> ()
-	environment.fakeOn = function<A..., R...>(object: Instance, name: string, handler: (Instance, A...) -> R...)
-		local state = stateOf(object)
+	environment.fakeOn = function<O, A..., R...>(object: O, name: string, handler: (O, A...) -> R...)
+		local state = stateOf((object :: unknown) :: Object)
 		if
 			state.class.properties[name] ~= nil
 			or state.class.events[name] == true
@@ -1100,7 +1333,23 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		then
 			error(("%s of %s is a property or event and cannot be a method double"):format(name, describe(state)), 2)
 		end
-		state.doubles[name] = handler
+		local entry: MethodOverride = { handler = handler, previous = state.doubles[name], active = true }
+		state.doubles[name] = entry
+		return function()
+			if not entry.active then
+				return
+			end
+			entry.active = false
+			entry.handler = nil
+			if state.doubles[name] == entry then
+				local previous = entry.previous
+				while type(previous) == "table" and not (previous :: MethodOverride).active do
+					previous = (previous :: MethodOverride).previous
+				end
+				state.doubles[name] = previous
+				entry.previous = nil
+			end
+		end
 	end
 	environment.snapshot = function(object: Instance): Snapshot
 		local function walk(current: Instance): Snapshot
@@ -1216,18 +1465,23 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		return total
 	end
+	SpatialFakes.attach(environment, function(object: Instance): boolean
+		return stateOf(object).worldPivotSet == true
+	end)
+	AudioFakes.attach(environment)
+	SpatialQueryFakes.attach(environment)
+	for member, handler in initialFakes do
+		fakes[member] = handler
+	end
 	return environment :: Environment
 end
 
 local function isInstance(value: unknown): boolean
-	return type(value) == "table" and rawget(value :: { [string]: unknown }, "__state") ~= nil
+	return Names.registered(value) == "Instance"
 end
 
 local function typeName(value: unknown): string
-	if isInstance(value) then
-		return "Instance"
-	end
-	return Datatypes.typeName(value) or typeof(value)
+	return Names.kind(value)
 end
 
 return {

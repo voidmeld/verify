@@ -28,9 +28,11 @@ local DATATYPE_ENUMS = {
 	"FontStyle",
 	"FontWeight",
 	"KeyInterpolationMode",
+	"RaycastFilterType",
 }
 local GLOBALS = "{ game = game, Instance = Instance, Enum = Enum, BrickColor = BrickColor, Font = Font, typeof = typeof,"
-	.. " version = version, security = SecurityCapabilities.fromCurrent():Add(Enum.SecurityCapability.Plugin) }"
+	.. " version = version, security = SecurityCapabilities.fromCurrent():Add(Enum.SecurityCapability.Plugin),"
+	.. " classSecurity = SecurityCapabilities.new(table.unpack(Enum.SecurityCapability:GetEnumItems())) }"
 
 local function literal(names: { string }): string
 	local quoted: { string } = {}

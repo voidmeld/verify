@@ -15,6 +15,7 @@ local property, class = Fixture.property, Fixture.class
 local function database(withMedia: boolean): Reflection.Database
 	local classes: ClassTable = {
 		Instance = class("Instance", nil, { property("Name", "String") }, { "NotCreatable" }),
+		DataModel = class("DataModel", "Instance", nil, { "NotCreatable" }),
 		Folder = class("Folder", "Instance"),
 		GuiObject = class(
 			"GuiObject",
@@ -28,6 +29,7 @@ local function database(withMedia: boolean): Reflection.Database
 		GuiService = class("GuiService", "Instance", { property("SelectedObject", "Ref") }, { "Service" }),
 		TextService = class("TextService", "Instance", nil, { "Service" }),
 		StyleSheet = class("StyleSheet", "Instance"),
+		StyleLink = class("StyleLink", "Instance", { property("StyleSheet", "Ref") }),
 		StyleRule = class("StyleRule", "Instance", { property("Selector", "String") }),
 	}
 	if withMedia then
@@ -61,6 +63,47 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("generic fixture bridge", function()
+		suite:case("place engines reuse one environment and validate reflected services", function(check)
+			local bridge = create(false, nil)
+			local engine = bridge.placeEngine()
+			check:expect(bridge.placeEngine()):toBe(engine)
+			check:expect(engine.environment):toBe(bridge.environment)
+			local gui = engine.service "GuiService"
+			check:expect(engine.service "GuiService"):toBe(gui)
+			check:expect(gui.Parent):toBe(engine.game)
+			check:expect(engine.surface.memberKind("TextButton", "Name")):toBe "property"
+			check:expect(engine.surface.memberType("TextButton", "Name")):toBe "String"
+			check:expect((pcall(engine.service, "Folder"))):toBe(false)
+			check:expect((pcall(engine.service, "Missing"))):toBe(false)
+			check:expect((pcall(engine.newInstance, "GuiService"))):toBe(false)
+			check:expect(engine.newInstance("GuiService", true).ClassName):toBe "GuiService"
+			engine.setSourceResolver(function(): string
+				return "module"
+			end)
+			engine.record("error", "failure", engine.currentSource())
+			check:expect(engine.diagnostics[1]):toEqual { kind = "error", text = "failure", source = "module" }
+			bridge.close()
+		end)
+		suite:case("internal UI fakes preserve creation restrictions and explicit overrides", function(check)
+			local bridge = create(false, nil)
+			for _, name in { "GuiService", "TextService", "UserInputService" } do
+				check
+					:expect(succeeds(function()
+						bridge.engine.new(name)
+						return nil
+					end))
+					:toBe(false)
+				check:expect(bridge.environment.createEngineInstance(name).ClassName):toBe(name)
+			end
+			bridge.close()
+			local configured = Bridge.create {
+				database = database(false),
+				typeName = typeof,
+				classes = { GuiService = { creatable = true } },
+			}
+			check:expect(configured.engine.new("GuiService").ClassName):toBe "GuiService"
+			configured.close()
+		end)
 		suite:case("composes reflection, event metadata and UI fakes over one environment", function(check)
 			local bridge = create(true, nil)
 			local env = bridge.environment
@@ -103,7 +146,7 @@ return function(suite: Verify.Harness)
 			local env = bridge.environment
 			local panel = env.createInstance("Frame", { Visible = false })
 			local box = env.createInstance("TextBox", { Parent = panel })
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			check
 				:expect(succeeds(function(): unknown
 					return call(box, "CaptureFocus")
@@ -146,7 +189,7 @@ return function(suite: Verify.Harness)
 				for index = 1, 50 do
 					frame.Visible = index % 2 == 0
 				end
-				local service = counted.environment.createInstance "GuiService"
+				local service = counted.environment.createEngineInstance "GuiService"
 				service.SelectedObject = nil
 				check:expect(selections):toBe(1)
 				check:expect(acted):toBe(1)
@@ -154,7 +197,7 @@ return function(suite: Verify.Harness)
 					validate = false,
 				})
 				local hidden = relaxed.environment.createInstance("TextButton", { Visible = false })
-				local target = relaxed.environment.createInstance "GuiService"
+				local target = relaxed.environment.createEngineInstance "GuiService"
 				target.SelectedObject = hidden
 				check:expect(acted):toBe(1)
 				check:expect(target.SelectedObject == hidden):toBe(true)
@@ -182,7 +225,7 @@ return function(suite: Verify.Harness)
 				end,
 			})
 			local hidden = kept.environment.createInstance("TextButton", { Visible = false })
-			local service = kept.environment.createInstance "GuiService"
+			local service = kept.environment.createEngineInstance "GuiService"
 			check
 				:expect(succeeds(function(): unknown
 					service.SelectedObject = hidden
@@ -196,7 +239,7 @@ return function(suite: Verify.Harness)
 				end,
 			})
 			local target = relaxed.environment.createInstance("TextButton", { Visible = false })
-			local other = relaxed.environment.createInstance "GuiService"
+			local other = relaxed.environment.createEngineInstance "GuiService"
 			other.SelectedObject = target
 			check:expect(other.SelectedObject == target):toBe(true)
 			check
@@ -227,7 +270,7 @@ return function(suite: Verify.Harness)
 
 		suite:case("measures text only through injected providers", function(check)
 			local refused = create(true, nil)
-			local service = refused.environment.createInstance "TextService"
+			local service = refused.environment.createEngineInstance "TextService"
 			check
 				:expect(succeeds(function(): unknown
 					return call(service, "GetTextSize", "abc", 10)
@@ -238,7 +281,7 @@ return function(suite: Verify.Harness)
 					return #text * size
 				end,
 			})
-			local measured = measuring.environment.createInstance "TextService"
+			local measured = measuring.environment.createEngineInstance "TextService"
 			check:expect(call(measured, "GetTextSize", "abc", 10)):toBe(30)
 		end)
 

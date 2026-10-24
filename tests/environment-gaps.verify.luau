@@ -102,6 +102,7 @@ return function(suite: Verify.Harness)
 				local callbacks: { [string]: { string } } = {
 					RemoteFunction = { "OnServerInvoke", "OnClientInvoke" },
 					BindableFunction = { "OnInvoke" },
+					TextChannel = { "ShouldDeliverCallback" },
 				}
 				for className, members in callbacks do
 					local object = env.createInstance(className)
@@ -130,11 +131,16 @@ return function(suite: Verify.Harness)
 								object[member] = nil
 							end))
 							:toBe(true)
-						check
-							:expect(succeeds(function()
-								object[member] = 1
-							end))
-							:toBe(false)
+						local assignedValues: { unknown } = { true, 1, "value", {} }
+						for _, value in assignedValues do
+							object[member] = value
+							check:expect(env.propertyOf(object, member) == value):toBe(true)
+							check
+								:expect(succeeds(function()
+									return object[member]
+								end))
+								:toBe(false)
+						end
 					end
 				end
 			end
@@ -448,7 +454,7 @@ return function(suite: Verify.Harness)
 			local built = ui(nil)
 			local env = built.environment
 			local frame = env.createInstance("Frame", { Visible = false })
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			check
 				:expect(thrown(function()
 					service.SelectedObject = frame
@@ -466,7 +472,7 @@ return function(suite: Verify.Harness)
 			local shown = env.createInstance("Frame", { Parent = hidden })
 			local locked = env.createInstance("Frame", { Selectable = false })
 			local open = env.createInstance "Frame"
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			local fired = 0
 			service:GetPropertyChangedSignal("SelectedObject"):Connect(function()
 				fired += 1
@@ -490,7 +496,7 @@ return function(suite: Verify.Harness)
 		suite:case("ignore keeps raising for a value that is not a GuiObject", function(check)
 			local built = ui "ignore"
 			local env = built.environment
-			local service = env.createInstance "GuiService"
+			local service = env.createEngineInstance "GuiService"
 			check
 				:expect(thrown(function()
 					service.SelectedObject = env.createInstance "Folder"
@@ -507,7 +513,7 @@ return function(suite: Verify.Harness)
 			for _, mode in { "raise", "ignore" } do
 				local built = ui(mode, true)
 				local env = built.environment
-				local service = env.createInstance "GuiService"
+				local service = env.createEngineInstance "GuiService"
 				local loose = env.createInstance "Frame"
 				check
 					:expect(thrown(function()
@@ -553,7 +559,7 @@ return function(suite: Verify.Harness)
 			check:expect(fired):toBe(1)
 		end)
 
-		suite:case("GetStyled reads the plain property and its changed signal", function(check)
+		suite:case("GetStyled raw writes do not fire style notifications", function(check)
 			local built = bridge()
 			local label = built.environment.createInstance "TextLabel"
 			local styled = label.GetStyled :: (Environment.Instance, string) -> unknown
@@ -567,7 +573,7 @@ return function(suite: Verify.Harness)
 			check:expect(styled(label, "Text")):toBe "Label"
 			label.Text = "changed"
 			check:expect(styled(label, "Text")):toBe "changed"
-			check:expect(fired):toBe(1)
+			check:expect(fired):toBe(0)
 			check
 				:expect(thrown(function()
 					return styled(label, "Nope")

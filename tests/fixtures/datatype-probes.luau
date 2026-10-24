@@ -351,6 +351,60 @@ local probes: { Probe } = {
 	},
 }
 
+local spatial: { Probe } = {
+	{
+		name = "query instance filters",
+		source = "local p = RaycastParams.new() local a, b = Instance.new('Part'), Instance.new('Folder') p.FilterDescendantsInstances = {a, {b}} local count = #p.FilterDescendantsInstances local copy = p.FilterDescendantsInstances table.clear(copy) p:AddToFilter(a) local added = #p.FilterDescendantsInstances local ok = pcall(function() p.FilterDescendantsInstances = {42} end) local invalid = #p.FilterDescendantsInstances a:Destroy() b:Destroy() return s(count, added, ok, invalid)",
+	},
+	{
+		name = "part pivot and position",
+		source = "local p = Instance.new('Part') p.PivotOffset = CFrame.new(0, 1, 0) p:PivotTo(CFrame.new(8, 4, -2) * CFrame.Angles(0, math.pi/2, 0)) local pivot, position = p:GetPivot(), p.Position p.Position = Vector3.new(2, 3, 4) local frame = p.CFrame p:Destroy() return s(pivot.Position, position, frame.Position, frame.LookVector)",
+		tolerance = 1e-6,
+	},
+	{
+		name = "model bounds and movement",
+		source = "local m, a, b = Instance.new('Model'), Instance.new('Part'), Instance.new('Part') a.Size, a.CFrame = Vector3.new(2, 4, 6), CFrame.new(4, 2, 0) * CFrame.Angles(0, math.pi/2, 0) b.Size, b.CFrame = Vector3.new(2, 2, 2), CFrame.new(10, 1, 0) a.Parent, b.Parent = m, m local initial = m:GetPivot() local box, size = m:GetBoundingBox() m:PivotTo(CFrame.new(30, 8, -4)) local target = m:GetPivot() b.Position = Vector3.new(100, 0, 0) local retained = m:GetPivot() m:Destroy() return s(initial.Position, box.Position, size, target.Position, retained.Position)",
+		tolerance = 1e-6,
+	},
+	{
+		name = "empty model pivot",
+		source = "local m = Instance.new('Model') local p = m:GetPivot() m:Destroy() return s(p.Position)",
+	},
+	{
+		name = "ray projection",
+		source = "local r = Ray.new(Vector3.new(1, 2, 3), Vector3.new(2, 0, 0)) return s(r, r.Unit, r:ClosestPoint(Vector3.new(4, 6, 3)), r:ClosestPoint(Vector3.new(-4, 6, 3)), r:Distance(Vector3.new(4, 6, 3)), typeof(r), r == Ray.new(r.Origin, r.Direction))",
+	},
+	{
+		name = "ray zero",
+		source = "local r = Ray.new() return s(r.Origin, r.Direction, r:ClosestPoint(Vector3.new(2, 3, 4)), r:Distance(Vector3.new(2, 3, 4)))",
+		tolerance = 1e-7,
+	},
+	{
+		name = "spatial immutability",
+		source = "local r = Ray.new() local region = Region3.new(Vector3.zero, Vector3.one) return s(pcall(function() r.Origin = Vector3.one end), pcall(function() region.Size = Vector3.zero end))",
+	},
+	{
+		name = "region bounds and grid",
+		source = "local r = Region3.new(Vector3.new(-3, 1, 5), Vector3.new(2, 6, 10)) local g = r:ExpandToGrid(4) return s(r.CFrame.Position, r.Size, g.CFrame.Position, g.Size, typeof(r), r == Region3.new(Vector3.new(-3, 1, 5), Vector3.new(2, 6, 10)))",
+	},
+	{
+		name = "region reversed bounds",
+		source = "local r = Region3.new(Vector3.one, Vector3.zero) return s(r.CFrame.Position, r.Size)",
+	},
+	{
+		name = "query defaults",
+		source = "local r, o = RaycastParams.new(), OverlapParams.new() return s(typeof(r), r.FilterType, #r.FilterDescendantsInstances, r.IncludeInstances, r.ExcludeInstances, r.CollisionGroup, r.IgnoreWater, r.RespectCanCollide, r.BruteForceAllSlow, typeof(o), o.MaxParts, o.Tolerance)",
+	},
+	{
+		name = "query mutation",
+		source = "local r, o = RaycastParams.new(), OverlapParams.new() r.IgnoreWater = true r.FilterType = Enum.RaycastFilterType.Include r.CollisionGroup = 'Characters' o.MaxParts = 3.9 o.Tolerance = 4 return s(r.IgnoreWater, r.FilterType, r.CollisionGroup, o.MaxParts, o.Tolerance)",
+		tolerance = 1e-7,
+	},
+}
+for _, probe in spatial do
+	table.insert(probes, probe)
+end
+
 local list: { Probe } = {}
 for _, probe in probes do
 	table.insert(list, { name = probe.name, source = PREAMBLE .. probe.source, tolerance = probe.tolerance })

@@ -11,6 +11,7 @@ export type Class = {
 	DefaultProperties: { [string]: unknown },
 	Tags: { string },
 	Events: { string }?,
+	Methods: { string }?,
 }
 export type Database = { GetClassNames: (Database) -> { string }, GetClass: (Database, string) -> Class? }
 export type Options = {
@@ -47,7 +48,8 @@ local function create(options: Options): Environment.Environment
 			resolve(super)
 		end
 		local members = if super then table.clone(properties[super]) else {}
-		local values = if super then table.clone(defaults[super]) else {}
+		local values: { [string]: unknown } = if super then table.clone(defaults[super]) else {}
+		values.Name = nil
 		local declared: { [string]: unknown } = {}
 		local builtin = Classes[name]
 		local access: { [string]: "read" | "write" | "none" | "callback" } =
@@ -69,12 +71,18 @@ local function create(options: Options): Environment.Environment
 		for key, value in class.DefaultProperties do
 			values[key] = value
 		end
+		local methods: { [string]: unknown } = {}
+		local declaredMethods: { string } = class.Methods or {}
+		for _, method in declaredMethods do
+			methods[method] = true
+		end
 		definitions[name] = {
 			super = super,
 			creatable = table.find(class.Tags, "NotCreatable") == nil and table.find(class.Tags, "Service") == nil,
 			properties = declared,
 			access = access,
 			events = class.Events,
+			methods = methods,
 		}
 		properties[name], defaults[name] = members, values
 		active[name] = nil
@@ -97,7 +105,12 @@ local function create(options: Options): Environment.Environment
 				table.insert(events, event)
 			end
 		end
-		merged.events, merged.methods = events, overlay.methods
+		local methods = table.clone(base.methods or {})
+		local extraMethods: { [string]: unknown } = overlay.methods or {}
+		for method, handler in extraMethods do
+			methods[method] = handler
+		end
+		merged.events, merged.methods = events, methods
 		local access: { [string]: "read" | "write" | "none" | "callback" } = table.clone(base.access or {})
 		local extraAccess: { [string]: "read" | "write" | "none" | "callback" } = overlay.access or {}
 		for key in extraAccess do
@@ -129,7 +142,8 @@ local function create(options: Options): Environment.Environment
 		classes = definitions,
 		defaultProperty = function(className, key, fallback)
 			if key == "Name" then
-				return className
+				local values = defaults[className]
+				return if values ~= nil and values[key] ~= nil then values[key] else className
 			end
 			local declared = properties[className]
 			if declared ~= nil and declared[key] then
@@ -174,6 +188,8 @@ local function create(options: Options): Environment.Environment
 				valid = actual == "string" or actual == expected
 			elseif expected == "Ref" then
 				valid = value == nil or Environment.isInstance(value)
+			elseif expected == "PhysicalProperties" then
+				valid = value == nil or actual == "PhysicalProperties"
 			elseif expected == "OptionalCFrame" then
 				valid = value == nil or actual == "CFrame"
 			elseif expected:sub(1, 5) == "Enum." then

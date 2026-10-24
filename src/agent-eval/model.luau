@@ -1,6 +1,6 @@
 --!strict
 
-local Paths = require "../codec/path"
+local Paths = require "../core/path"
 local Schema = require "./schema"
 local Services = require "./services"
 

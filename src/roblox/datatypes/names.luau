@@ -10,6 +10,7 @@ export type Behavior = {
 }
 
 local BEHAVIOR = {}
+local registered = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [unknown]: string }
 local metatableOf = (getmetatable :: unknown) :: (unknown) -> unknown
 
 local function behaviorOf(value: unknown): Behavior?
@@ -33,7 +34,7 @@ end
 
 local function kindOf(value: unknown): string
 	local found = behaviorOf(value)
-	return if found ~= nil then found.name else typeof(value)
+	return if found ~= nil then found.name else registered[value] or typeof(value)
 end
 
 local function arithmetic(operation: string, left: unknown, right: unknown): never
@@ -143,6 +144,12 @@ local function argument(position: number, expected: string, value: unknown): nev
 end
 
 return {
+	registered = function(value: unknown): string?
+		return registered[value]
+	end,
+	register = function(value: unknown, name: string)
+		registered[value] = name
+	end,
 	behavior = behavior,
 	make = make,
 	fields = fields,

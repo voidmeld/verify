@@ -5,49 +5,18 @@ local Datatypes = require "./datatypes"
 local Environment = require "./environment"
 
 export type Chunk = () -> unknown
-export type Instance = {
-	[string]: unknown,
-	Name: string,
-	ClassName: string,
-	Parent: Instance?,
-	Character: Instance?,
-	UserId: number,
-	GetChildren: (Instance) -> { Instance },
-	FindFirstChild: (Instance, string) -> Instance?,
-	GetFullName: (Instance) -> string,
-	GetPlayers: (Instance) -> { Instance },
-	Destroy: (Instance) -> (),
-	Clone: (Instance) -> Instance,
-	AddTag: (Instance, string) -> (),
-	RemoveTag: (Instance, string) -> (),
-	HasTag: (Instance, string) -> boolean,
-	SetAttribute: (Instance, string, unknown) -> (),
-	GetAttributes: (Instance) -> { [string]: unknown },
-}
-export type State = {
-	name: string,
-	className: string,
-	values: { [string]: unknown },
-	signals: { [string]: Environment.Signal },
-	propertySignals: { [string]: Environment.Signal },
-}
+export type Instance = Environment.Instance
 export type Diagnostic = { kind: string, text: string, source: string }
 export type Engine = {
 	game: Instance,
-	scheduler: Scheduler.Scheduler,
+	environment: Environment.Environment,
 	newInstance: (string, boolean?) -> Instance,
-	stateOf: (Instance) -> State,
 	service: (string) -> Instance,
-	serviceMethods: { [string]: { [string]: unknown } },
 	setSourceResolver: (() -> string) -> (),
 	currentSource: () -> string,
 	record: (string, string, string) -> (),
 	isInstance: (unknown) -> boolean,
-	signal: () -> Environment.Signal,
-	signalOf: (Instance, string) -> Environment.Signal,
-	fire: (Environment.Signal, ...unknown) -> (),
 	datatypes: typeof(Datatypes),
-	methods: { Destroy: (Instance) -> () },
 	typeName: (unknown) -> string,
 	diagnostics: { Diagnostic },
 	surface: {
@@ -55,16 +24,12 @@ export type Engine = {
 		memberKind: (string, string) -> string?,
 		memberType: (string, string) -> string?,
 	},
-	outstandingWaits: () -> { { target: string, name: string, source: string } },
-	frames: () -> number,
-	blocked: () -> number,
 }
 type Entry = { status: string, waiters: { thread }, value: unknown, failure: unknown }
 export type Runtime = {
 	localPlayer: Instance?,
 	closeHandlers: { () -> () },
 	renderSteps: { [string]: (number) -> () },
-	tagged: { [string]: { Instance } },
 	tagAdded: { [string]: Environment.Signal },
 	tagRemoved: { [string]: Environment.Signal },
 	guidCount: number,
@@ -78,6 +43,7 @@ export type Runtime = {
 	globals: { [string]: unknown },
 	requireInstance: (unknown) -> unknown,
 	runScript: (Instance, string) -> thread?,
+	step: (seconds: number) -> (),
 }
 
 export type Host<B = unknown, C = Chunk> = {
@@ -100,10 +66,15 @@ export type Mounted = {
 	sources: { [Instance]: string },
 }
 
+export type Client = { name: string, userId: number, viewport: { x: number, y: number } }
+
 export type Options<B = unknown> = {
 	aliases: { [string]: string },
 	cache: Cache<B>,
 	host: Host<B>,
+	methodDoubles: { string }?,
+	client: Client?,
+	beforeRender: (() -> ())?,
 }
 
 local function createCache<B, C>(host: Host<B, C>): Cache<B, C>
@@ -154,7 +125,8 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	local cache = options.cache
 	local host = options.host
 	local runtime = {} :: Runtime
-	local scheduler = engine.scheduler
+	local environment = engine.environment
+	local scheduler = environment.scheduler
 	local modules: { [string]: { [Instance]: Entry } } = { server = {}, client = {} }
 	local fileModules: { [string]: Entry } = {}
 	local globals: { [string]: unknown } = {}
@@ -204,12 +176,11 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	local requirePath: (string) -> unknown
 
 	local function awaitEntry(entry: Entry): unknown
-		if entry.status == "done" then
-			return entry.value
+		if entry.status == "loading" then
+			scheduler.block(function(thread: thread)
+				table.insert(entry.waiters, thread)
+			end)
 		end
-		scheduler.block(function(thread: thread)
-			table.insert(entry.waiters, thread)
-		end)
 		if entry.status ~= "done" then
 			error(entry.failure, 0)
 		end
@@ -244,8 +215,9 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		end
 		local entry: Entry = { status = "loading", waiters = {}, value = nil, failure = nil }
 		fileModules[path] = entry
-		local chunk = loadSource(path, "@" .. path, environment)
-		local ok, value = pcall(chunk)
+		local ok, value = pcall(function(): unknown
+			return loadSource(path, "@" .. path, environment)()
+		end)
 		settle(entry, if ok then "done" else "failed", value)
 		if not ok then
 			error(value, 0)
@@ -261,10 +233,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			base = scriptInstance
 			rest = selfPath
 		else
-			local origin = mounted.sources[scriptInstance]
-			local container = if origin ~= nil and string.match(origin, "/init%.[%w.]+luau$") ~= nil
-				then scriptInstance
-				else scriptInstance.Parent
+			local container = scriptInstance.Parent
 			local upward = string.match(target, "^%.%./(.+)$")
 			if upward ~= nil then
 				base = (container :: Instance).Parent
@@ -320,11 +289,14 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		end
 		local entry: Entry = { status = "loading", waiters = {}, value = nil, failure = nil }
 		moduleCache[object] = entry
-		local chunk = loadSource(path, "@" .. path, environmentFor(object))
-		local ok, value = pcall(chunk)
-		settle(entry, if ok then "done" else "failed", value)
+		local ok, value = pcall(function(): unknown
+			return loadSource(path, "@" .. path, environmentFor(object))()
+		end)
+		local failure = "Requested module experienced an error while loading"
+		settle(entry, if ok then "done" else "failed", if ok then value else failure)
 		if not ok then
-			error(value, 0)
+			engine.record("error", tostring(value), path)
+			error(failure, 0)
 		end
 		return value
 	end
@@ -363,7 +335,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	end
 
 	local function serviceOverrides()
-		local overrides = engine.serviceMethods
+		local overrides: { [string]: { [string]: unknown } } = {}
 		overrides.ContextActionService = {
 			BindAction = function(_service: Instance, name: string, _handler: unknown, createTouchButton: unknown)
 				if createTouchButton == true then
@@ -422,6 +394,57 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return ""
 			end,
 		}
+		overrides.ReplicatedFirst = {
+			RemoveDefaultLoadingScreen = function() end,
+		}
+		local humanoidStates = setmetatable({} :: { [Instance]: Datatypes.EnumMember }, { __mode = "k" })
+		local disabledStates = setmetatable({} :: { [Instance]: { [string]: boolean } }, { __mode = "k" })
+		local function validateHumanoidState(state: Datatypes.EnumMember)
+			assert(
+				Datatypes.typeName(state) == "EnumItem" and Datatypes.enumType(state) == "HumanoidStateType",
+				"HumanoidStateType required"
+			)
+		end
+		local function humanoidState(object: Instance): Datatypes.EnumMember
+			local parent = object.Parent
+			if parent == nil or not parent:IsA "Model" or not object:IsDescendantOf(engine.service "Workspace") then
+				humanoidStates[object] = nil
+				return engine.datatypes.Enum.HumanoidStateType.None
+			end
+			return humanoidStates[object] or engine.datatypes.Enum.HumanoidStateType.Running
+		end
+		overrides.Humanoid = {
+			GetState = humanoidState,
+			GetStateEnabled = function(object: Instance, state: Datatypes.EnumMember): boolean
+				validateHumanoidState(state)
+				local disabled = disabledStates[object]
+				return disabled == nil or disabled[state.Name] ~= true
+			end,
+			SetStateEnabled = function(object: Instance, state: Datatypes.EnumMember, enabled: boolean)
+				validateHumanoidState(state)
+				assert(type(enabled) == "boolean", "state enabled flag must be boolean")
+				if state.Name == "None" then
+					return
+				end
+				local disabled = disabledStates[object] or {}
+				disabledStates[object] = disabled
+				disabled[state.Name] = not enabled
+				environment.fire(object, "StateEnabledChanged", state, enabled)
+			end,
+			ChangeState = function(object: Instance, state: Datatypes.EnumMember)
+				validateHumanoidState(state)
+				if humanoidState(object) == engine.datatypes.Enum.HumanoidStateType.None then
+					return
+				end
+				scheduler.defer(function()
+					local previous = humanoidState(object)
+					if previous ~= engine.datatypes.Enum.HumanoidStateType.None and previous ~= state then
+						humanoidStates[object] = state
+						environment.fire(object, "StateChanged", previous, state)
+					end
+				end)
+			end,
+		}
 		overrides.RunService = {
 			IsServer = function(): boolean
 				return context() == "server"
@@ -448,6 +471,17 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				runtime.renderSteps[name] = nil
 			end,
 		}
+		overrides.Workspace = {
+			GetServerTimeNow = function(): number
+				return scheduler.clock()
+			end,
+		}
+		local lastInput = engine.datatypes.Enum.UserInputType.None
+		overrides.UserInputService = {
+			GetLastInputType = function(): Datatypes.EnumMember
+				return lastInput
+			end,
+		}
 		overrides.Players = {
 			GetPlayers = function(service: Instance): { Instance }
 				local out: { Instance } = {}
@@ -459,7 +493,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return out
 			end,
 			GetPlayerFromCharacter = function(service: Instance, character: Instance): unknown
-				for _, player in service:GetPlayers() do
+				for _, player in ((service.GetPlayers :: unknown) :: (Instance) -> { Instance })(service) do
 					if player.Character == character then
 						return player
 					end
@@ -467,7 +501,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return nil
 			end,
 			GetPlayerByUserId = function(service: Instance, userId: number): unknown
-				for _, player in service:GetPlayers() do
+				for _, player in ((service.GetPlayers :: unknown) :: (Instance) -> { Instance })(service) do
 					if player.UserId == userId then
 						return player
 					end
@@ -476,26 +510,20 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			end,
 		}
 		local function signalOn(object: Instance, name: string): Environment.Signal
-			local state = engine.stateOf(object)
-			local existing = state.signals[name]
-			if existing == nil then
-				existing = engine.signal()
-				state.signals[name] = existing
-			end
-			return existing
+			return object[name] :: Environment.Signal
 		end
 		local function callbackOf(object: Instance, name: string): unknown
-			return engine.stateOf(object).values[name]
+			return environment.propertyOf(object, name)
 		end
 		overrides.RemoteEvent = {
 			FireServer = function(object: Instance, ...: unknown)
-				engine.fire(signalOn(object, "OnServerEvent"), runtime.localPlayer, ...)
+				signalOn(object, "OnServerEvent"):Fire(runtime.localPlayer, ...)
 			end,
 			FireClient = function(object: Instance, _player: unknown, ...: unknown)
-				engine.fire(signalOn(object, "OnClientEvent"), ...)
+				signalOn(object, "OnClientEvent"):Fire(...)
 			end,
 			FireAllClients = function(object: Instance, ...: unknown)
-				engine.fire(signalOn(object, "OnClientEvent"), ...)
+				signalOn(object, "OnClientEvent"):Fire(...)
 			end,
 		}
 		overrides.UnreliableRemoteEvent = overrides.RemoteEvent
@@ -523,7 +551,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		}
 		overrides.BindableEvent = {
 			Fire = function(object: Instance, ...: unknown)
-				engine.fire(signalOn(object, "Event"), ...)
+				signalOn(object, "Event"):Fire(...)
 			end,
 		}
 		overrides.BindableFunction = {
@@ -551,40 +579,79 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return host.decodeJson(text)
 			end,
 		}
-		overrides.CollectionService = {
-			AddTag = function(_service: Instance, object: Instance, tag: string)
-				object:AddTag(tag)
-				local list = runtime.tagged[tag]
-				if list == nil then
-					list = {}
-					runtime.tagged[tag] = list
+		local pendingDetach = (setmetatable({}, { __mode = "k" }) :: unknown) :: { [Instance]: boolean }
+		local function tagged(tag: string): { Instance }
+			local out: { Instance } = {}
+			local candidates = engine.game:GetDescendants()
+			table.insert(candidates, 1, engine.game)
+			for _, object in candidates do
+				if not pendingDetach[object] and table.find(environment.tagsOf(object), tag) then
+					table.insert(out, object)
 				end
-				list[#list + 1] = object
-				local added = runtime.tagAdded[tag]
-				if added ~= nil then
-					engine.fire(added, object)
-				end
-			end,
-			RemoveTag = function(_service: Instance, object: Instance, tag: string)
-				object:RemoveTag(tag)
-			end,
-			HasTag = function(_service: Instance, object: Instance, tag: string): boolean
-				return object:HasTag(tag)
-			end,
-			GetTagged = function(_service: Instance, tag: string): { Instance }
-				local out: { Instance } = {}
-				local tagged: { Instance } = runtime.tagged[tag] or {}
-				for _, object in tagged do
-					if object:HasTag(tag) then
-						out[#out + 1] = object
+			end
+			return out
+		end
+		if options.methodDoubles == nil or table.find(options.methodDoubles, "CollectionService") then
+			local function notify(object: Instance, present: boolean)
+				for _, tag in environment.tagsOf(object) do
+					local signals: { [string]: Environment.Signal } = if present
+						then runtime.tagAdded
+						else runtime.tagRemoved
+					local signal = signals[tag]
+					if signal then
+						signal:Fire(object)
 					end
 				end
-				return out
+			end
+			local added = engine.game.DescendantAdded:Connect(function(object)
+				pendingDetach[object] = nil
+				notify(object, true)
+			end)
+			local removed = engine.game.DescendantRemoving:Connect(function(object)
+				pendingDetach[object] = true
+				notify(object, false)
+			end)
+			local tags = environment.tagChanged:Connect(function(object, tag, present)
+				if not pendingDetach[object] and (object == engine.game or object:IsDescendantOf(engine.game)) then
+					local signals: { [string]: Environment.Signal } = if present
+						then runtime.tagAdded
+						else runtime.tagRemoved
+					local signal = signals[tag]
+					if signal then
+						signal:Fire(object)
+					end
+				end
+			end)
+			table.insert(runtime.closeHandlers, function()
+				added:Disconnect()
+				removed:Disconnect()
+				tags:Disconnect()
+				for _, map in { runtime.tagAdded, runtime.tagRemoved } do
+					for _, signal in map do
+						signal:DisconnectAll()
+					end
+					table.clear(map)
+				end
+				table.clear(pendingDetach)
+			end)
+		end
+		overrides.CollectionService = {
+			AddTag = function(_service: Instance, object: Instance, tag: string)
+				environment.setTag(object, tag, true)
+			end,
+			RemoveTag = function(_service: Instance, object: Instance, tag: string)
+				environment.setTag(object, tag, false)
+			end,
+			HasTag = function(_service: Instance, object: Instance, tag: string): boolean
+				return table.find(environment.tagsOf(object), tag) ~= nil
+			end,
+			GetTagged = function(_service: Instance, tag: string): { Instance }
+				return tagged(tag)
 			end,
 			GetInstanceAddedSignal = function(_service: Instance, tag: string): unknown
 				local existing = runtime.tagAdded[tag]
 				if existing == nil then
-					existing = engine.signal()
+					existing = environment.newSignal()
 					runtime.tagAdded[tag] = existing
 				end
 				return existing
@@ -592,7 +659,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			GetInstanceRemovedSignal = function(_service: Instance, tag: string): unknown
 				local existing = runtime.tagRemoved[tag]
 				if existing == nil then
-					existing = engine.signal()
+					existing = environment.newSignal()
 					runtime.tagRemoved[tag] = existing
 				end
 				return existing
@@ -606,24 +673,15 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				goal: { [string]: unknown }
 			): unknown
 				local tween = engine.newInstance("Tween", true)
-				engine.stateOf(tween).values.Instance = target
-				local completed = engine.signal()
-				engine.stateOf(tween).signals.Completed = completed
-				engine.serviceMethods.Tween = engine.serviceMethods.Tween or {}
-				engine.serviceMethods.Tween.Play = function(instance: Instance)
+				environment.poke(tween, "Instance", target)
+				environment.fakeOn(tween, "Play", function(instance: Environment.Instance)
 					for key, value in goal do
 						target[key] = value
 					end
-					engine.fire(
-						engine.stateOf(instance).signals.Completed,
-						engine.datatypes.Enum.PlaybackState.Completed
-					)
-				end
-				engine.serviceMethods.Tween.Cancel = function() end
-				engine.serviceMethods.Tween.Pause = function() end
-				engine.serviceMethods.Tween.Destroy = function(instance: Instance)
-					engine.methods.Destroy(instance)
-				end
+					environment.fire(instance, "Completed", engine.datatypes.Enum.PlaybackState.Completed)
+				end)
+				environment.fakeOn(tween, "Cancel", function() end)
+				environment.fakeOn(tween, "Pause", function() end)
 				return tween
 			end,
 			GetValue = function(_service: Instance, alpha: number): number
@@ -640,22 +698,20 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		overrides.ContentProvider = {
 			PreloadAsync = function(
 				_service: Instance,
-				instances: { Instance },
-				callback: ((Instance, Datatypes.EnumMember) -> ())?
+				instances: { Instance | string },
+				_callback: ((string, Datatypes.EnumMember) -> ())?
 			)
-				for _, object in instances do
-					if callback ~= nil then
-						callback(object, engine.datatypes.Enum.AssetFetchStatus.Success)
-					end
-				end
+				assert(next(instances) == nil, "unsupported_place_asset: ContentProvider.PreloadAsync")
 			end,
 		}
 		overrides.AssetService = {
 			CreateMeshPartAsync = function(_service: Instance, content: unknown): unknown
+				local uri = if engine.datatypes.typeName(content) == "Content"
+					then (content :: Datatypes.ContentValue).Uri
+					else content
+				assert(type(uri) == "string" and uri ~= "", "mesh content must have a non-empty URI")
 				local part = engine.newInstance("MeshPart", true)
-				engine.stateOf(part).values.MeshId = if type(content) == "table"
-					then (content :: { Uri: unknown }).Uri
-					else tostring(content)
+				environment.poke(part, "MeshId", uri)
 				return part
 			end,
 		}
@@ -676,6 +732,26 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return nil
 			end,
 		}
+		local hashMaps: { [string]: Instance } = {}
+		overrides.MemoryStoreService = {
+			GetHashMap = function(service: Instance, value: unknown): Instance
+				local gameId = engine.game.GameId
+				assert(
+					type(gameId) == "number" and gameId > 0,
+					"You must publish this place to use MemoryStoreService."
+				)
+				local name = if type(value) == "number" then tostring(value) else value
+				assert(type(name) == "string", "MemoryStoreService.GetHashMap requires a string name")
+				local map = hashMaps[name]
+				if map == nil then
+					map = engine.newInstance("MemoryStoreHashMap", true)
+					map.Name = "Instance"
+					map.Parent = service
+					hashMaps[name] = map
+				end
+				return map
+			end,
+		}
 		overrides.DataStoreService = {
 			GetDataStore = function(): unknown
 				return runtime.dataStore
@@ -687,12 +763,56 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 				return runtime.dataStore
 			end,
 		}
+		local allowed: { [string]: boolean }? = nil
+		if options.methodDoubles then
+			allowed = {}
+			for _, name in options.methodDoubles do
+				assert(allowed)[name] = true
+			end
+		end
+		local function install(object: Environment.Object)
+			local methods = overrides[object.ClassName]
+			if methods and (allowed == nil or allowed[object.ClassName]) then
+				for name, method in methods do
+					if not environment.hasFake(object :: Instance, name) then
+						table.insert(
+							runtime.closeHandlers,
+							environment.fakeOn(object, name, method :: Environment.Method)
+						)
+					end
+				end
+				if object.ClassName == "UserInputService" then
+					local service = object :: Instance
+					for _, event in { "InputBegan", "InputChanged", "InputEnded" } do
+						local connection = (service[event] :: Environment.Signal):Connect(function(input: unknown)
+							assert(engine.isInstance(input), "input event requires an InputObject")
+							local inputType =
+								environment.propertyOf(input :: Instance, "UserInputType") :: Datatypes.EnumMember
+							if inputType ~= lastInput then
+								lastInput = inputType
+								environment.fire(service, "LastInputTypeChanged", inputType)
+							end
+						end)
+						table.insert(runtime.closeHandlers, function()
+							connection:Disconnect()
+						end)
+					end
+				end
+			end
+		end
+		install(engine.game)
+		for _, object in engine.game:GetDescendants() do
+			install(object)
+		end
+		local created = environment.onCreate(install)
+		table.insert(runtime.closeHandlers, function()
+			created:Disconnect()
+		end)
 	end
 
 	runtime.localPlayer = nil
 	runtime.closeHandlers = {}
 	runtime.renderSteps = {}
-	runtime.tagged = {}
 	runtime.tagAdded = {}
 	runtime.tagRemoved = {}
 	runtime.guidCount = 0
@@ -782,13 +902,29 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	globals.bit32 = bit32
 	globals.utf8 = utf8
 	globals.buffer = buffer
-	globals.debug = debug
+	local runtimeDebug: { [string]: unknown } = {}
+	for name, value in debug do
+		assert(type(name) == "string")
+		runtimeDebug[name] = value
+	end
+	runtimeDebug.profilebegin = function(label: string)
+		assert(type(label) == "string", "profile label must be a string")
+	end
+	runtimeDebug.profileend = function() end
+	runtimeDebug.setmemorycategory = function(category: string)
+		assert(type(category) == "string", "memory category must be a string")
+	end
+	globals.debug = table.freeze(runtimeDebug)
 	globals.select = select
 	globals.pcall = pcall
 	globals.xpcall = xpcall
 	globals.error = error
 	globals.assert = assert
-	globals.type = type
+	local nativeKinds = { Instance = true, Object = true, RBXScriptSignal = true, RBXScriptConnection = true }
+	globals.type = function(value: unknown): string
+		local kind = type(value)
+		return if kind == "table" and nativeKinds[engine.typeName(value)] then "userdata" else kind
+	end
 	globals.tostring = tostring
 	globals.tonumber = tonumber
 	globals.pairs = pairs
@@ -829,6 +965,50 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		scheduler.tag(thread, { context = scriptContext, source = name })
 		scheduler.spawn(thread)
 		return thread
+	end
+	function runtime.step(seconds: number)
+		assert(seconds >= 0 and seconds < math.huge, "frame duration must be finite and nonnegative")
+		local run = engine.service "RunService"
+		scheduler.advance(seconds)
+		scheduler.drain(64)
+		if options.beforeRender then
+			options.beforeRender()
+		end
+		environment.fire(run, "PreRender", seconds)
+		environment.fire(run, "Stepped", scheduler.clock(), seconds)
+		environment.fire(run, "PreSimulation", seconds)
+		environment.fire(run, "PostSimulation", seconds)
+		environment.fire(run, "RenderStepped", seconds)
+		environment.fire(run, "Heartbeat", seconds)
+		for _, callback in runtime.renderSteps do
+			scheduler.spawn(callback, seconds)
+		end
+		scheduler.drain(64)
+	end
+	local client = options.client
+	if client then
+		assert(
+			client.viewport.x > 0 and client.viewport.x < math.huge,
+			"client viewport width must be positive and finite"
+		)
+		assert(
+			client.viewport.y > 0 and client.viewport.y < math.huge,
+			"client viewport height must be positive and finite"
+		)
+		local players = engine.service "Players"
+		local player = engine.newInstance("Player", true)
+		environment.poke(player, "Name", client.name)
+		environment.poke(player, "UserId", client.userId)
+		player.Parent = players
+		local playerGui = engine.newInstance("PlayerGui", true)
+		playerGui.Parent = player
+		runtime.localPlayer = player
+		environment.poke(players, "LocalPlayer", player)
+		local workspace = engine.service "Workspace"
+		local camera = engine.newInstance("Camera", true)
+		environment.poke(camera, "ViewportSize", engine.datatypes.Vector2.new(client.viewport.x, client.viewport.y))
+		camera.Parent = workspace
+		environment.poke(workspace, "CurrentCamera", camera)
 	end
 
 	return runtime

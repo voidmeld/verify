@@ -5,6 +5,9 @@ local Adapter = require "./environment-engine"
 local InstanceHost = require "./instance-host"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
+local UiLayout = require "./ui-layout"
+local PlaceRuntime = require "./place-runtime"
+local Datatypes = require "./datatypes"
 
 type Vector2 = Adapter.Vector2
 type Vector3 = Adapter.Vector3
@@ -28,6 +31,7 @@ export type Options<V2 = Vector2, V3 = Vector3, C3 = Color3, U1 = UDim, U2 = UDi
 	undeclaredReads: ("raise" | "nil")?,
 	functionDoubles: boolean?,
 	ui: (UiFakes.Options | false)?,
+	layout: UiLayout.Options?,
 }
 
 export type Accounting = {
@@ -44,7 +48,7 @@ export type Faults = {
 }
 
 export type Tracking = {
-	created: { Environment.Instance },
+	created: { Environment.Object },
 	cloned: { { source: Environment.Instance, copy: Environment.Instance } },
 	stop: () -> (),
 }
@@ -53,6 +57,7 @@ export type Bridge = {
 	environment: Environment.Environment,
 	engine: Adapter.Engine,
 	ui: UiFakes.Controller?,
+	layout: UiLayout.Controller?,
 	unavailable: { string },
 	faults: Faults,
 	hasClass: (className: string) -> boolean,
@@ -60,6 +65,7 @@ export type Bridge = {
 	track: () -> Tracking,
 	record: () -> { events: { Environment.Event }, stop: () -> () },
 	instanceHost: (actor: string) -> InstanceHost.Simulated,
+	placeEngine: () -> PlaceRuntime.Engine,
 	accounting: () -> Accounting,
 	close: () -> Accounting,
 }
@@ -79,7 +85,9 @@ local function overlays(options: Options, unavailable: { string }): { [string]: 
 		table.sort(names)
 		for _, name in names do
 			if options.database:GetClass(name) ~= nil then
-				result[name] = UiFakes.classes[name]
+				local spec = table.clone(UiFakes.classes[name])
+				spec.creatable = nil
+				result[name] = spec
 			else
 				table.insert(unavailable, name)
 			end
@@ -94,6 +102,21 @@ end
 
 local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U2, CF>): Bridge
 	local settings = (options :: unknown) :: Options
+	local serviceClasses: { [string]: boolean } = {}
+	local resolveService: ((string) -> Environment.Instance)? = nil
+	local computed: { [string]: Environment.Computed } = table.clone(settings.computed or {})
+	for _, name in settings.database:GetClassNames() do
+		local class = settings.database:GetClass(name)
+		if class and table.find(class.Tags, "Service") then
+			serviceClasses[name] = true
+			local key = "DataModel." .. name
+			if computed[key] == nil then
+				computed[key] = function(): Environment.Instance?
+					return if resolveService then resolveService(name) else nil
+				end
+			end
+		end
+	end
 	local unavailable: { string } = {}
 	local ui = settings.ui
 	local validate = if type(ui) == "table" then ui.validate else nil
@@ -127,7 +150,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		validateProperty = validator,
 		defaultProperty = settings.defaultProperty,
 		handlerErrors = settings.handlerErrors,
-		computed = settings.computed,
+		computed = computed,
 		undeclaredWrites = settings.undeclaredWrites,
 		undeclaredReads = settings.undeclaredReads,
 		functionDoubles = settings.functionDoubles,
@@ -137,6 +160,95 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		else nil
 	local library = (settings.library :: unknown) :: Adapter.Library<V2, V3, C3, U1, U2, CF>?
 	local engine = Adapter.create(environment, library)
+	local layoutOptions = if settings.layout then table.clone(settings.layout) else nil
+	if layoutOptions and controller and layoutOptions.read == nil then
+		layoutOptions.read = controller.styled
+	end
+	local layout = if layoutOptions then UiLayout.attach(environment, layoutOptions) else nil
+	if layout and controller then
+		local step = layout.step
+		local stepStyles = controller.step
+		layout.step = function()
+			stepStyles()
+			step()
+		end
+	end
+	local place: PlaceRuntime.Engine? = nil
+	local function placeEngine(): PlaceRuntime.Engine
+		if place then
+			return place
+		end
+		local services: { [string]: Environment.Instance } = {}
+		local diagnostics: { PlaceRuntime.Diagnostic } = {}
+		local source = function(): string
+			return "fixture"
+		end
+		local game = environment.createEngineInstance "DataModel"
+		local function member(className: string, property: string): (string?, string?)
+			local class = settings.database:GetClass(className)
+			while class do
+				local entry = class.Properties[property]
+				if entry then
+					return "property", entry.Datatype
+				end
+				if table.find(class.Events or {}, property) then
+					return "event", nil
+				end
+				if table.find(class.Methods or {}, property) then
+					return "method", nil
+				end
+				class = if class.Superclass then settings.database:GetClass(class.Superclass) else nil
+			end
+			return nil, nil
+		end
+		local value: PlaceRuntime.Engine = {
+			environment = environment,
+			game = game,
+			newInstance = function(name: string, engineOwned: boolean?): Environment.Instance
+				return if engineOwned then environment.createEngineInstance(name) else environment.createInstance(name)
+			end,
+			service = function(name: string): Environment.Instance
+				assert(serviceClasses[name], "not a reflected service: " .. name)
+				local existing = services[name]
+				if existing then
+					return existing
+				end
+				local object = environment.createEngineInstance(name)
+				object.Parent = game
+				services[name] = object
+				return object
+			end,
+			setSourceResolver = function(resolve: () -> string)
+				source = resolve
+			end,
+			currentSource = function(): string
+				return source()
+			end,
+			record = function(kind: string, text: string, origin: string)
+				table.insert(diagnostics, { kind = kind, text = text, source = origin })
+			end,
+			isInstance = Environment.isInstance,
+			datatypes = if settings.library
+				then (settings.library.datatypes :: unknown) :: typeof(Datatypes)
+				else Datatypes,
+			typeName = settings.typeName,
+			diagnostics = diagnostics,
+			surface = {
+				services = serviceClasses,
+				memberKind = function(className: string, property: string): string?
+					local kind = member(className, property)
+					return kind
+				end,
+				memberType = function(className: string, property: string): string?
+					local _, datatype = member(className, property)
+					return datatype
+				end,
+			},
+		}
+		place = value
+		resolveService = value.service
+		return value
+	end
 
 	local function accounting(): Accounting
 		return {
@@ -170,9 +282,9 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 	end
 
 	local function track(): Tracking
-		local created: { Environment.Instance } = {}
+		local created: { Environment.Object } = {}
 		local cloned: { { source: Environment.Instance, copy: Environment.Instance } } = {}
-		local creating = environment.onCreate(function(object: Environment.Instance)
+		local creating = environment.onCreate(function(object: Environment.Object)
 			table.insert(created, object)
 		end)
 		local cloning = environment.onClone(function(source: Environment.Instance, copy: Environment.Instance)
@@ -192,6 +304,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		environment = environment,
 		engine = engine,
 		ui = controller,
+		layout = layout,
 		unavailable = unavailable,
 		faults = faults,
 		hasClass = function(className: string): boolean
@@ -203,6 +316,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		instanceHost = function(actor: string): InstanceHost.Simulated
 			return InstanceHost.simulated(actor, environment)
 		end,
+		placeEngine = placeEngine,
 		accounting = accounting,
 		close = function(): Accounting
 			if controller ~= nil then

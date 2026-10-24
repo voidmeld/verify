@@ -6,7 +6,7 @@ local system = require "@std/system"
 local task = require "@std/task"
 
 local Files = require "../src/lute/files"
-local Paths = require "../src/codec/path"
+local Paths = require "../src/core/path"
 local Lute = require "../src/lute"
 local Verify = require "../src/core"
 

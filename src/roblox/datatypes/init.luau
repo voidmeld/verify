@@ -6,7 +6,10 @@ local Enum = require "@self/enum"
 local Font = require "@self/font"
 local Misc = require "@self/misc"
 local Names = require "@self/names"
+local Query = require "@self/query"
+local Random = require "@self/random"
 local Sequence = require "@self/sequence"
+local Spatial = require "@self/spatial"
 local Udim = require "@self/udim"
 local Vector = require "@self/vector"
 
@@ -15,6 +18,11 @@ export type Vector3Value = Vector.Vector3Value
 export type Vector2int16Value = Vector.Vector2int16Value
 export type Vector3int16Value = Vector.Vector3int16Value
 export type CFrameValue = CFrame.CFrameValue
+export type RayValue = Spatial.RayValue
+export type Region3Value = Spatial.Region3Value
+export type RaycastParamsValue = Query.RaycastParamsValue
+export type RandomValue = Random.RandomValue
+export type OverlapParamsValue = Query.OverlapParamsValue
 export type Color3Value = Color.Color3Value
 export type BrickColorValue = Color.BrickColorValue
 export type UDimValue = Udim.UDimValue
@@ -49,6 +57,11 @@ export type Library = {
 	Vector2int16: typeof(Vector.Vector2int16),
 	Vector3int16: typeof(Vector.Vector3int16),
 	CFrame: typeof(CFrame.CFrame),
+	Ray: typeof(Spatial.Ray),
+	Region3: typeof(Spatial.Region3),
+	RaycastParams: Query.RaycastParamsConstructor,
+	Random: typeof(Random),
+	OverlapParams: Query.OverlapParamsConstructor,
 	Color3: typeof(Color.Color3),
 	BrickColor: Color.BrickColorConstructor,
 	UDim: typeof(Udim.UDim),
@@ -103,6 +116,11 @@ local function create(catalog: Catalog?): Library
 		Vector2int16 = Vector.Vector2int16,
 		Vector3int16 = Vector.Vector3int16,
 		CFrame = CFrame.CFrame,
+		Ray = Spatial.Ray,
+		Region3 = Spatial.Region3,
+		RaycastParams = Query.raycast(enums),
+		Random = Random,
+		OverlapParams = Query.overlap(enums),
 		Color3 = Color.Color3,
 		BrickColor = Color.brickColor(source.brickColors),
 		UDim = Udim.UDim,
@@ -136,6 +154,11 @@ return {
 	Vector2int16 = library.Vector2int16,
 	Vector3int16 = library.Vector3int16,
 	CFrame = library.CFrame,
+	Ray = library.Ray,
+	Region3 = library.Region3,
+	RaycastParams = library.RaycastParams,
+	Random = library.Random,
+	OverlapParams = library.OverlapParams,
 	Color3 = library.Color3,
 	BrickColor = library.BrickColor,
 	UDim = library.UDim,
