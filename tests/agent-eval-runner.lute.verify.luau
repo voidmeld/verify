@@ -222,6 +222,68 @@ local function check(result: AgentEval.RunResult, id: string): AgentEval.CheckRe
 end
 
 return function(suite: Verify.Harness)
+	suite:case(
+		"keeps an early provisioning failure when its evidence directory can be created afterward",
+		function(context)
+			local memory = Fakes.memory()
+			corpus(memory)
+			local directory = "/evidence/runs/one/treatment/agent/seed-1"
+			local makeDirectory = memory.files.makeDirectory
+			local refused = false
+			memory.files.makeDirectory = function(path: string)
+				if path == directory and not refused then
+					refused = true
+					error("initial directory creation failed", 0)
+				end
+				makeDirectory(path)
+			end
+			local calls: Calls = { requests = {} }
+			local summary = execute(memory, calls, { selection = { tasks = { "one" }, arms = { "treatment" } } })
+			context:expect(#calls.requests):toBe(0)
+			context:expect(#summary.results):toBe(1)
+			local result = summary.results[1]
+			context:expect(result.status):toBe "provision_failed"
+			context:expect(result.passed):toBe(false)
+			context:expect(result.detail):toBe "initial directory creation failed"
+			context:expect(Lute.parse(memory.files.read(directory .. "/result.json"))):toEqual(result)
+		end
+	)
+
+	suite:case("reports the original setup fault when its failed result cannot be persisted", function(context)
+		local memory = Fakes.memory()
+		corpus(memory)
+		local directory = "/evidence/runs/one/treatment/agent/seed-1"
+		local makeDirectory = memory.files.makeDirectory
+		memory.files.makeDirectory = function(path: string)
+			if path == directory then
+				error("evidence directory is unavailable", 0)
+			end
+			makeDirectory(path)
+		end
+		local calls: Calls = { requests = {} }
+		local messages: { string } = {}
+		local summary = AgentEval.run {
+			suite = suiteOf(memory),
+			loader = Fakes.loader(memory.files),
+			services = Fakes.services(memory.files, {}),
+			adapters = { replay = replay(calls) },
+			evidence = "/evidence",
+			encode = Lute.encode,
+			decode = Lute.parse,
+			selection = { tasks = { "one" }, arms = { "treatment" } },
+			log = function(message: string)
+				table.insert(messages, message)
+			end,
+		}
+		context:expect(#calls.requests):toBe(0)
+		context:expect(summary.results[1].status):toBe "provision_failed"
+		context:expect(summary.results[1].passed):toBe(false)
+		context:expect(summary.results[1].detail):toBe "evidence directory is unavailable"
+		context:expect(memory.files.exists(directory .. "/result.json")):toBe(false)
+		context:expect(table.concat(messages, "\n")):toContain "result could not be kept"
+		context:expect(table.concat(messages, "\n")):toContain "evidence directory is unavailable"
+	end)
+
 	suite:case("rechecks saved workspaces without calling an adapter or changing agent metrics", function(context)
 		local memory = Fakes.memory()
 		corpus(memory)

@@ -11,6 +11,7 @@ local time = require "@std/time"
 
 local Adapters = require "./adapters"
 local Bounded = require "../lute/bounded"
+local Files = require "../lute/files"
 local Gate = require "../gate"
 local LuteGate = require "../lute/gate"
 local Model = require "./model"
@@ -174,11 +175,7 @@ local files: Services.Files = {
 		end
 		return result
 	end,
-	makeDirectory = function(path: string)
-		if not fs.exists(path) then
-			fs.createDirectory(path, { makeParents = true })
-		end
-	end,
+	makeDirectory = Files.ensureDirectory,
 	remove = function(path: string)
 		if isDirectory(path) then
 			fs.removeDirectory(path, { recursive = true })

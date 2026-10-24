@@ -2,6 +2,7 @@
 
 local process = require "@std/process"
 local AgentEval = require "../src/agent-eval"
+local Files = require "../src/lute/files"
 local Verify = require "../src/core"
 
 local binding = AgentEval.lute
@@ -33,6 +34,22 @@ for index = 2, #process.args do
 end
 ]]
 
+local OVERLAP = [[
+local fs = require "@std/fs"
+local process = require "@std/process"
+local task = require "@std/task"
+local root, workspace = process.args[2], process.args[3]
+local arm = assert(string.match(workspace, "/([^/]+)/local/seed%-1$"))
+local peer = if arm == "one" then "two" else "one"
+fs.writeStringToFile(root .. "/" .. arm, "started")
+local deadline = os.clock() + 5
+while not fs.exists(root .. "/" .. peer) and os.clock() < deadline do
+	task.wait(0.01)
+end
+assert(fs.exists(root .. "/" .. peer), "the other arm did not start before this arm ended")
+print("overlapped")
+]]
+
 local function prepare(): string
 	local files = binding.files
 	if files.exists(ROOT) then
@@ -48,6 +65,68 @@ end
 
 return function(suite: Verify.Harness)
 	suite:suite("agent evaluation Lute binding", function()
+		suite:case("starts both arms on fresh evidence and workspace trees before either child exits", function(context)
+			local root = binding.absolute(Files.claimDirectory ".lute/tmp/agent-eval-overlap")
+			local files = binding.files
+			context:defer(function()
+				files.remove(root)
+			end)
+			files.makeDirectory(root .. "/task/starter")
+			files.makeDirectory(root .. "/barrier")
+			files.write(root .. "/overlap.luau", OVERLAP)
+			files.write(root .. "/task/brief.md", "Run the local overlap fixture.")
+			files.write(
+				root .. "/task/task.json",
+				binding.encode {
+					schemaVersion = 1,
+					id = "task",
+					title = "Local overlap",
+					brief = "brief.md",
+					starter = "starter",
+					checks = {},
+				}
+			)
+			local suitePath = root .. "/suite.json"
+			files.write(
+				suitePath,
+				binding.encode {
+					schemaVersion = 1,
+					id = "overlap",
+					tasks = { "task" },
+					arms = { { id = "one" }, { id = "two" } },
+					agents = { { id = "local", adapter = "local" } },
+					seeds = { 1 },
+					budgets = { wallSeconds = 15 },
+					parallelism = 2,
+				}
+			)
+			local configured = AgentEval.decodeSuite(binding.decode(files.read(suitePath)), suitePath, binding.loader())
+			local summary = AgentEval.run {
+				suite = configured,
+				loader = binding.loader(),
+				services = binding.services { workspaces = root .. "/workspaces" },
+				adapters = {
+					["local"] = AgentEval.adapters.command {
+						id = "local",
+						argv = { LUTE, "run", root .. "/overlap.luau", root .. "/barrier", "{workspace}" },
+						stamp = true,
+						decode = binding.decode,
+					},
+				},
+				evidence = root .. "/evidence",
+				encode = binding.encode,
+				decode = binding.decode,
+				resume = false,
+			}
+			context:expect(#summary.results):toBe(2)
+			for _, result in summary.results do
+				context:expect(result.status):toBe "completed"
+				context:expect(result.passed):toBe(true)
+				context:expect(result.session.result):toBe "overlapped"
+				context:expect(files.exists(result.directory .. "/result.json")):toBe(true)
+			end
+		end)
+
 		suite:case("stamps each output line, feeds the prompt file and keeps the exit code", function(context)
 			local root = prepare()
 			local services = binding.services { workspaces = root .. "/live" }
