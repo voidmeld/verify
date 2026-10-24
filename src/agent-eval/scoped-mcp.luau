@@ -36,28 +36,54 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 			return {}
 		elseif method == "tools/list" then
 			local tools: { Tool } = {}
-			local properties: { [string]: { [string]: unknown } } = {
+			local fields: { [string]: { [string]: unknown } } = {
 				studio_id = { type = "string", enum = { target.id } },
 				code = { type = "string" },
 				datamodel_type = { type = "string", enum = { "Edit", "Client", "Server" } },
 				is_start = { type = "boolean" },
+				capture_id = { type = "string" },
 			}
-			for _, name in
-				{
-					"list_roblox_studios",
-					"start_stop_play",
-					"screen_capture",
-					"execute_luau",
-					"get_console_output",
-					"input",
+			local function add(name: string, description: string, required: { string }, optional: { string }?)
+				local properties: { [string]: unknown } = { studio_id = fields.studio_id }
+				for _, key in required do
+					properties[key] = fields[key]
+				end
+				local optionalKeys: { string } = optional or {}
+				for _, key in optionalKeys do
+					properties[key] = fields[key]
+				end
+				local schema: { [string]: unknown } = {
+					type = "object",
+					properties = properties,
+					additionalProperties = false,
 				}
-			do
+				if #required > 0 then
+					schema.required = required
+				end
 				table.insert(tools, {
 					name = name,
-					description = "Operate only the Studio owned by this run. Input uses execute_luau and native VirtualInput on Client.",
-					inputSchema = { type = "object", properties = properties },
+					description = description .. " Operates only on the Studio owned by this run.",
+					inputSchema = schema,
 				})
 			end
+			add("list_roblox_studios", "List the available owned Studio.", {})
+			add("start_stop_play", "Start Play with is_start=true or stop it with false.", { "is_start" })
+			add("screen_capture", "Capture the current Studio viewport.", {}, { "capture_id" })
+			add(
+				"execute_luau",
+				"Execute Luau in Edit, Client, or Server. Return the result. Edit changes persist; Play changes are temporary.",
+				{ "code", "datamodel_type" }
+			)
+			add("get_console_output", "Read this Studio's console output.", {})
+			add(
+				"input",
+				"Execute Luau on Client for native virtual input during Play. "
+					.. "local input = game:GetService('UserInputService'):CreateVirtualInput(); "
+					.. "input:SendKey(true, Enum.KeyCode.W, false) presses W; false releases it. "
+					.. "input:SendMouseButton(Vector2.new(x, y), Enum.UserInputType.MouseButton1, true) presses; false releases. "
+					.. "Release held inputs. CoreGUI-reserved keys cannot be injected.",
+				{ "code" }
+			)
 			return { tools = tools }
 		end
 		assert(method == "tools/call", "unsupported MCP method")

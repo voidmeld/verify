@@ -319,6 +319,48 @@ return function(harness: Verify.Harness)
 		t:expect(raw.studios[1].id):toBe "own"
 		t:expect(calls):toBe(0)
 	end)
+	harness:case("scoped MCP advertises only each operation's accepted arguments", function(t)
+		local calls = 0
+		local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {
+			call = function(): unknown
+				calls += 1
+				return {}
+			end,
+		}, Eval.lute.encode)
+		local listing =
+			scope.dispatch("tools/list", {}) :: { tools: { { name: string, inputSchema: { [string]: unknown } } } }
+		local examples: { [string]: { [string]: unknown } } = {
+			list_roblox_studios = {},
+			start_stop_play = { is_start = true },
+			screen_capture = { capture_id = "capture" },
+			execute_luau = { code = "return 1", datamodel_type = "Edit" },
+			get_console_output = {},
+			input = { code = "return 1" },
+		}
+		t:expect(#listing.tools):toBe(6)
+		for _, tool in listing.tools do
+			local example = assert(examples[tool.name])
+			local schema = tool.inputSchema
+			local properties = schema.properties :: { [string]: unknown }
+			t:expect(schema.additionalProperties):toBe(false)
+			for key in properties do
+				t:expect(key == "studio_id" or example[key] ~= nil):toBe(true)
+			end
+			for key in example do
+				t:expect(properties[key] ~= nil):toBe(true)
+			end
+			t:expect((pcall(scope.dispatch, "tools/call", { name = tool.name, arguments = example }))):toBe(true)
+			for _, key in (schema.required or {}) :: { string } do
+				local missing = table.clone(example)
+				missing[key] = nil
+				t:expect((pcall(scope.dispatch, "tools/call", { name = tool.name, arguments = missing }))):toBe(false)
+			end
+			local extra = table.clone(example)
+			extra.unknown = true
+			t:expect((pcall(scope.dispatch, "tools/call", { name = tool.name, arguments = extra }))):toBe(false)
+		end
+		t:expect(calls):toBe(5)
+	end)
 	harness:case("scoped MCP rejects alternate ids and tools before forwarding", function(t)
 		local calls = 0
 		local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {

@@ -239,14 +239,26 @@ return function(suite: Verify.Harness)
 			context:expect(#check(result, "cases").cases):toBe(2)
 		end
 	end)
-	suite:case("scoped Studio closes before hidden checks and after adapter errors", function(context)
-		for _, raises in { false, true } do
+	suite:case("scoped Studio releases before checks and never keeps an adapter error", function(context)
+		for _, configuration in
+			{
+				{ raises = false, keep = false },
+				{ raises = true, keep = false },
+				{ raises = false, keep = true },
+				{ raises = true, keep = true },
+			}
+		do
+			local raises = configuration.raises
 			local memory = Fakes.memory()
 			corpus(memory)
 			local configured = suiteOf(memory)
 			for _, arm in configured.arms do
 				arm.setup.mcp = nil
-				arm.setup.studio = { place = "{evidence}/agent.rbxlx", build = { "build", "{workspace}" } }
+				arm.setup.studio = {
+					place = "{evidence}/agent.rbxlx",
+					build = { "build", "{workspace}" },
+					keep = configuration.keep,
+				}
 			end
 			local services = Fakes.services(memory.files, {})
 			local opened, closed = 0, 0
@@ -258,7 +270,8 @@ return function(suite: Verify.Harness)
 				memory.files.write(config, "scoped")
 				return {
 					config = config,
-					close = function()
+					close = function(keep)
+						context:expect(keep):toBe(configuration.keep and not raises)
 						closed += 1
 					end,
 				}
