@@ -91,7 +91,7 @@ local function parse(selector: string): Selector
 	return branches
 end
 
-local function matches(branch: Branch, object: Instance): boolean
+local function matches(branch: Branch, object: Instance, hasTag: ((Instance, string) -> boolean)?): boolean
 	local function at(index: number, candidate: Instance): boolean
 		local segment = branch.segments[index]
 		if segment.className and not candidate:IsA(segment.className) then
@@ -101,7 +101,8 @@ local function matches(branch: Branch, object: Instance): boolean
 			return false
 		end
 		for _, tag in segment.tags do
-			if not candidate:HasTag(tag) then
+			local tagged = if hasTag then hasTag(candidate, tag) else candidate:HasTag(tag)
+			if not tagged then
 				return false
 			end
 		end

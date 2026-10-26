@@ -286,7 +286,7 @@ describe("generic fixture bridge", function()
 		local copiedRule = assert(copiedDerived:FindFirstChildOfClass "StyleRule")
 		expect(call(copiedRule, "GetProperty", "Color")):toBe "red"
 		expect(call(copiedRule, "GetDefaultPropertyTransition")):toBe "slow"
-		expect(call(copiedRule, "GetPropertyTransitions")):toEqual { Color = "fast" }
+		expect(call(copiedRule, "GetPropertyTransitions")):toEqual { Color = "fast", ["*"] = "slow" }
 		local derives = call(copiedDerived, "GetDerives") :: { Environment.Instance }
 		expect(derives[1] == copiedBase):toBe(true)
 		expect(derives[1] == base):toBe(false)

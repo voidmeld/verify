@@ -4,6 +4,10 @@ local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 local Environment = require "../src/roblox/environment"
 local UI = require "../src/roblox/ui-fakes"
+local Datatypes = require "../src/roblox/datatypes"
+local Transition = require "../src/roblox/ui-style-transition"
+local Frames = require "../src/roblox/datatypes/cframe"
+local Enum = Datatypes.Enum
 local function invoke(object: Environment.Instance, name: string, ...: unknown): unknown
 	return (object[name] :: Environment.Method)(object, ...)
 end
@@ -156,6 +160,23 @@ describe("explicit UI fakes", function()
 		nestedLink.StyleSheet = nested
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0)
 		link:Destroy()
+		nestedLink:Destroy()
+		env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
+		ui.step()
+		invoke(
+			hot,
+			"SetPropertyTransition",
+			"BackgroundTransparency",
+			Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear)
+		)
+		invoke(hot, "SetProperty", "BackgroundTransparency", 0.4)
+		frame.BackgroundTransparency = 0.7
+		ui.step()
+		local before = fired
+		env.step(0.1)
+		ui.step()
+		expect(fired):toEqual(before + 1)
+		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.7)
 		ui.close()
 		expect(env.liveConnections()):toEqual(0)
 	end)
@@ -229,8 +250,10 @@ describe("explicit UI fakes", function()
 		expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
 		rule.Selector = "Frame"
 		invoke(rule, "SetPropertyTransition", "BackgroundTransparency", { Time = 1 })
-		expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
-		invoke(rule, "SetPropertyTransition", "BackgroundTransparency", { Time = 0 })
+		local ok, detail = pcall(ui.styled, frame, "BackgroundTransparency")
+		expect(ok):toEqual(false)
+		expect(string.find(tostring(detail), "transition requires TweenInfo", 1, true) ~= nil):toEqual(true)
+		invoke(rule, "SetPropertyTransition", "BackgroundTransparency", Datatypes.TweenInfo.new(0))
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.5)
 		invoke(sheet, "SetDerives", { env.createInstance "StyleSheet" })
 		expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
@@ -310,6 +333,250 @@ describe("explicit UI fakes", function()
 		end)
 		expect(invoke(path, "GetLength")):toEqual(42)
 	end)
+end)
+
+local function number(value: unknown): number
+	assert(type(value) == "number")
+	return value
+end
+
+local function near(value: unknown, expected: number)
+	expect(math.abs(number(value) - expected) < 0.00001):toBe(true)
+end
+
+local function fixture(own: (() -> ()) -> ())
+	local env = Environment.create { classes = UI.classes }
+	local ui = UI.attach(env)
+	own(ui.close)
+	local root = env.createInstance "Folder"
+	local frame = env.createInstance("Frame", { Parent = root })
+	local sheet = env.createInstance "StyleSheet"
+	local link = env.createInstance("StyleLink", { Parent = root, StyleSheet = sheet })
+	local base = env.createInstance("StyleRule", { Selector = "Frame", Parent = sheet, Priority = 1 })
+	local hot = env.createInstance("StyleRule", { Selector = ".Hot", Parent = sheet, Priority = 2 })
+	invoke(base, "SetProperty", "BackgroundTransparency", 0)
+	invoke(hot, "SetProperty", "BackgroundTransparency", 1)
+	return env, ui, frame, base, hot, sheet, link
+end
+
+it("hover tags interpolate for 0.2 seconds on virtual frames and return through the base transition", function(own)
+	local env, ui, frame, base = fixture(own)
+	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	frame:AddTag "Hot"
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	for index = 1, 4 do
+		env.step(0.05)
+		ui.step()
+		near(ui.styled(frame, "BackgroundTransparency"), index / 4)
+	end
+	frame:RemoveTag "Hot"
+	env.step(0.1)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.5)
+	env.step(0.11)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	expect(frame.BackgroundTransparency):toBe(0)
+end)
+
+it("retargeting samples the current interpolation even without an intervening read", function(own)
+	local env, ui, frame, base, hot = fixture(own)
+	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	ui.styled(frame, "BackgroundTransparency")
+	frame:AddTag "Hot"
+	env.step(0.1)
+	invoke(hot, "SetProperty", "BackgroundTransparency", 0.25)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.5)
+	env.step(0.1)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.375)
+	env.step(0.11)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0.25)
+end)
+
+it("zero duration overrides the default and takes effect immediately", function(own)
+	local _, ui, frame, base, hot = fixture(own)
+	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2))
+	invoke(hot, "SetPropertyTransition", "BackgroundTransparency", Datatypes.TweenInfo.new(0))
+	ui.styled(frame, "BackgroundTransparency")
+	frame:AddTag "Hot"
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(1)
+end)
+
+it("delay holds the current value and repeats and reverses are ignored", function(own)
+	local env, ui, frame, base = fixture(own)
+	invoke(
+		base,
+		"SetDefaultPropertyTransition",
+		Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true, 0.1)
+	)
+	ui.styled(frame, "BackgroundTransparency")
+	frame:AddTag "Hot"
+	env.step(0.05)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	env.step(0.15)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.5)
+	env.step(1)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(1)
+end)
+
+it("transition tokens retarget styled theme values and preserve raw overrides", function(own)
+	local env, ui, frame, base, _, sheet = fixture(own)
+	sheet:SetAttribute("Motion", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	sheet:SetAttribute("Alpha", 0)
+	invoke(base, "SetProperty", "BackgroundTransparency", "$Alpha")
+	invoke(base, "SetPropertyTransition", "BackgroundTransparency", "$Motion")
+	ui.styled(frame, "BackgroundTransparency")
+	sheet:SetAttribute("Alpha", 1)
+	env.step(0.1)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.5)
+	frame.BackgroundTransparency = 0.8
+	sheet:SetAttribute("Alpha", 0)
+	env.step(0.1)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0.8)
+	frame:ResetPropertyToDefault "BackgroundTransparency"
+	near(ui.styled(frame, "BackgroundTransparency"), 0.25)
+end)
+
+it("removing rules uses the surviving transition and removing its scope snaps to the default", function(own)
+	local env, ui, frame, base, hot, _, link = fixture(own)
+	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	frame:AddTag "Hot"
+	ui.styled(frame, "BackgroundTransparency")
+	hot:Destroy()
+	env.step(0.1)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.5)
+	link:Destroy()
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	ui.close()
+	expect(env.liveConnections()):toBe(0)
+end)
+
+it("default transition accessors share the star entry and replacement clears it", function(own)
+	local _, _, _, base = fixture(own)
+	local timing = Datatypes.TweenInfo.new(0.2)
+	invoke(base, "SetDefaultPropertyTransition", timing)
+	expect(invoke(base, "GetDefaultPropertyTransition")):toBe(timing)
+	expect(invoke(base, "GetPropertyTransitions")):toEqual { ["*"] = timing }
+	invoke(base, "SetPropertyTransitions", {})
+	expect(invoke(base, "GetDefaultPropertyTransition")):toBe(nil)
+	invoke(base, "SetPropertyTransition", "*", timing)
+	expect(invoke(base, "GetDefaultPropertyTransition")):toBe(timing)
+end)
+
+it("all easing styles and directions map to reference sample points", function()
+	local samples: { [string]: number } = {
+		Linear = 0.25,
+		Sine = 0.0761204675,
+		Quad = 0.0625,
+		Cubic = 0.015625,
+		Quart = 0.00390625,
+		Quint = 0.0009765625,
+		Exponential = 0.00552427173,
+		Circular = 0.0317541634,
+		Back = -0.0641365625,
+		Bounce = 0.02734375,
+		Elastic = -0.00552427173,
+	}
+	for style, expected in pairs(samples) do
+		near(Transition.ease(0.25, style, "In"), expected)
+		near(Transition.ease(0.75, style, "Out"), 1 - expected)
+		for _, direction in { "In", "Out", "InOut" } do
+			expect(Transition.ease(0, style, direction)):toBe(0)
+			expect(Transition.ease(1, style, direction)):toBe(1)
+		end
+		near(Transition.ease(0.5, style, "InOut"), 0.5)
+	end
+	near(Transition.ease(0.25, "Quad", "InOut"), 0.125)
+	near(Transition.ease(0.25, "Back", "InOut"), -0.09968184375)
+	near(Transition.ease(0.25, "Elastic", "InOut"), 0.0119694444)
+end)
+
+it("styled properties interpolate every tweenable datatype and switch discrete values", function(own)
+	local cases: { { unknown } } = {
+		{ 0, 8, 4 },
+		{ Datatypes.Color3.new(), Datatypes.Color3.new(1, 0.5, 0.25), Datatypes.Color3.new(0.5, 0.25, 0.125) },
+		{ Datatypes.UDim.new(0, 0), Datatypes.UDim.new(1, 20), Datatypes.UDim.new(0.5, 10) },
+		{ Datatypes.UDim2.new(), Datatypes.UDim2.new(1, 20, 0.5, 40), Datatypes.UDim2.new(0.5, 10, 0.25, 20) },
+		{ Datatypes.Vector2.new(), Datatypes.Vector2.new(8, 4), Datatypes.Vector2.new(4, 2) },
+		{ Datatypes.Vector2int16.new(), Datatypes.Vector2int16.new(8, 4), Datatypes.Vector2int16.new(4, 2) },
+		{ Datatypes.Vector3.new(), Datatypes.Vector3.new(8, 4, 2), Datatypes.Vector3.new(4, 2, 1) },
+		{ Datatypes.Rect.new(), Datatypes.Rect.new(2, 4, 8, 12), Datatypes.Rect.new(1, 2, 4, 6) },
+		{ Datatypes.CFrame.new(), Datatypes.CFrame.new(8, 4, 2), Datatypes.CFrame.new(4, 2, 1) },
+		{ false, true, true },
+		{ Enum.AutomaticSize.None, Enum.AutomaticSize.X, Enum.AutomaticSize.X },
+		{ "before", "after", "after" },
+	}
+	for index, row in cases do
+		local env, ui, frame, base = fixture(own)
+		local timing = Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear)
+		invoke(base, "SetDefaultPropertyTransition", timing)
+		local property = "Value" .. index
+		env.defineClass("Styled" .. index, { super = "Frame", properties = { [property] = row[1] } })
+		local object = env.createInstance("Styled" .. index, { Parent = frame })
+		invoke(base, "SetProperty", property, row[1])
+		expect(ui.styled(object, property)):toBe(row[1])
+		invoke(base, "SetProperty", property, row[2])
+		env.step(timing.Time / 2)
+		expect(ui.styled(object, property)):toEqual(row[3])
+		env.step(0.11)
+		expect(ui.styled(object, property)):toEqual(row[2])
+	end
+end)
+
+it("CFrame transitions interpolate rotation on the place scheduler clock", function(own)
+	local env, ui, frame, base = fixture(own)
+	env.defineClass("StyledTransform", { super = "Frame", properties = { Transform = Datatypes.CFrame.new() } })
+	local object = env.createInstance("StyledTransform", { Parent = frame })
+	local timing = Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear)
+	invoke(base, "SetDefaultPropertyTransition", timing)
+	ui.styled(object, "Transform")
+	invoke(base, "SetProperty", "Transform", Datatypes.CFrame.Angles(0, math.pi / 2, 0))
+	env.scheduler.advance(timing.Time / 2)
+	ui.step()
+	local value = Frames.expect(ui.styled(object, "Transform"), 1)
+	local _, y = value:ToOrientation()
+	near(y, math.pi / 4)
+end)
+
+it("retargeting during delay holds the current value and restarts the delay", function(own)
+	local env, ui, frame, base, hot = fixture(own)
+	invoke(
+		base,
+		"SetDefaultPropertyTransition",
+		Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, 0, false, 0.1)
+	)
+	ui.styled(frame, "BackgroundTransparency")
+	frame:AddTag "Hot"
+	env.step(0.05)
+	invoke(hot, "SetProperty", "BackgroundTransparency", 0.5)
+	env.step(0.075)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	env.step(0.125)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.25)
+end)
+
+it("invalid and unresolved transition tokens retain precise refusals", function(own)
+	local _, ui, frame, base, _, sheet = fixture(own)
+	for _, entry in { { "$Missing", "missing token Missing" }, { "$Invalid", "transition requires TweenInfo" } } do
+		sheet:SetAttribute("Invalid", 1)
+		invoke(base, "SetDefaultPropertyTransition", entry[1])
+		local ok, detail = pcall(ui.styled, frame, "BackgroundTransparency")
+		expect(ok):toBe(false)
+		expect(string.find(tostring(detail), entry[2], 1, true) ~= nil):toBe(true)
+	end
+end)
+
+it("a tag retarget preserves an unread token transition", function(own)
+	local env, ui, frame, base, _, sheet = fixture(own)
+	sheet:SetAttribute("Alpha", 0)
+	invoke(base, "SetProperty", "BackgroundTransparency", "$Alpha")
+	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	ui.styled(frame, "BackgroundTransparency")
+	sheet:SetAttribute("Alpha", 0.5)
+	env.step(0.1)
+	frame:AddTag "Hot"
+	near(ui.styled(frame, "BackgroundTransparency"), 0.25)
+	env.step(0.1)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.625)
 end)
 
 return nil
