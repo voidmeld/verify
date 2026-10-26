@@ -134,4 +134,25 @@ describe("retained heap estimates", function()
 	end)
 end)
 
+describe("engine scheduler retention", function()
+	it("releases a finished tagged thread", function()
+		local Scheduler = require "../src/roblox/scheduler"
+		local scheduler = Scheduler.create()
+		local probe: { [thread]: true } = {}
+		setmetatable(probe, { __mode = "k" })
+		local function launch()
+			local thread = scheduler.spawnTagged("finished", function() end)
+			probe[thread] = true
+		end
+		launch()
+		scheduler.drain(16)
+		local pressure = 0
+		while next(probe) ~= nil and pressure < 512 do
+			pressure += 1
+			buffer.create(64 * 1024)
+		end
+		expect(next(probe)):toEqual(nil)
+	end)
+end)
+
 return nil
