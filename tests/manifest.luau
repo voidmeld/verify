@@ -65,6 +65,7 @@ return table.freeze {
 	"tests/progress.lute.verify.luau",
 	"tests/published-source.lute.verify.luau",
 	"tests/random-datatype.lute.verify.luau",
+	"tests/reflection-cache.lute.verify.luau",
 	"tests/reflection-snapshot.lute.verify.luau",
 	"tests/reflection.verify.luau",
 	"tests/requires.lute.verify.luau",
