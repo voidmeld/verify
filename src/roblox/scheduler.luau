@@ -25,6 +25,8 @@ export type Scheduler = {
 	pending: () -> number,
 }
 
+local WEAK_KEYS = table.freeze { __mode = "k" }
+
 local function create(): Scheduler
 	local now = 0
 	local ready: { Ready } = {}
@@ -33,6 +35,8 @@ local function create(): Scheduler
 	local tags: { [thread]: unknown } = {}
 	local owners: { [thread]: thread } = {}
 	local cleanups: { [thread]: () -> () } = {}
+	setmetatable(tags, WEAK_KEYS)
+	setmetatable(owners, WEAK_KEYS)
 	local active: unknown = nil
 	local scheduler = {}
 	local onFailure: (string) -> () = function() end
