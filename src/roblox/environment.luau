@@ -186,10 +186,15 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local cloneHooks: { { hook: CloneHook, connected: boolean } } = {}
 	local createHooks: { { hook: CreateHook, connected: boolean } } = {}
 
+	local function injecting(operation: Operation): boolean
+		return #observers > 0 or (failures[operation] or 0) > 0
+	end
+
 	local function inject(operation: Operation, subject: string, object: Instance, member: string?, value: unknown)
 		local remaining = failures[operation]
 		local failing = remaining ~= nil and remaining > 0
-		for _, observer in table.clone(observers) do
+		local current: typeof(observers) = if #observers > 1 then table.clone(observers) else observers
+		for _, observer in current do
 			if observer.connected then
 				observer.listener {
 					operation = operation,
@@ -505,6 +510,20 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return objects
 	end
 
+	local function without(list: { Instance }, removed: { Instance }): { Instance }
+		local excluded: { [Instance]: true } = {}
+		for _, item in removed do
+			excluded[item] = true
+		end
+		local kept: { Instance } = {}
+		for _, item in list do
+			if not excluded[item] then
+				table.insert(kept, item)
+			end
+		end
+		return kept
+	end
+
 	local function move(object: Instance, state: State, parent: Instance?)
 		local previous = state.parent
 		if previous == parent then
@@ -516,11 +535,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		for _, descendant in objects do
 			stateOf(descendant).removing = true
 		end
+		local leaving = without(before, after)
 		for _, descendant in objects do
-			for _, ancestor in before do
-				if table.find(after, ancestor) == nil then
-					fireSignal(stateOf(ancestor), "DescendantRemoving", descendant)
-				end
+			for _, ancestor in leaving do
+				fireSignal(stateOf(ancestor), "DescendantRemoving", descendant)
 			end
 		end
 		if previous ~= nil then
@@ -543,11 +561,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if parent ~= nil then
 			fireSignal(stateOf(parent), "ChildAdded", object)
 		end
+		local joining = without(after, before)
 		for _, descendant in objects do
-			for _, ancestor in after do
-				if table.find(before, ancestor) == nil then
-					fireSignal(stateOf(ancestor), "DescendantAdded", descendant)
-				end
+			for _, ancestor in joining do
+				fireSignal(stateOf(ancestor), "DescendantAdded", descendant)
 			end
 		end
 		changed(object, state, "Parent")
@@ -557,7 +574,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function setParent(object: Instance, state: State, parent: Instance?)
-		inject("setParent", describe(state), object, nil, parent)
+		if injecting "setParent" then
+			inject("setParent", describe(state), object, nil, parent)
+		end
 		if state.destroyed or state.destroying or state.removing then
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
 		end
@@ -587,7 +606,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if state.removing then
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
 		end
-		inject("destroy", describe(state), object, nil, nil)
+		if injecting "destroy" then
+			inject("destroy", describe(state), object, nil, nil)
+		end
 		state.destroying = true
 		fireSignal(state, "Destroying")
 		move(object, state, nil)
@@ -658,9 +679,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 	end
 
+	local COMMON: { [string]: boolean } = table.freeze { IsA = true, GetPropertyChangedSignal = true }
 	local function universal(object: Instance, state: State, key: string): unknown
-		local common = { IsA = true, GetPropertyChangedSignal = true }
-		if not state.class.instance and common[key] ~= true then
+		if not state.class.instance and COMMON[key] ~= true then
 			return nil
 		end
 		if key == "Destroy" then
@@ -948,7 +969,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			end
 		elseif key == "SetAttribute" then
 			return function(_self: Instance, name: string, value: unknown)
-				inject("setAttribute", describe(state), object, name, value)
+				if injecting "setAttribute" then
+					inject("setAttribute", describe(state), object, name, value)
+				end
 				validAttribute(name, value)
 				if state.attributes[name] == value then
 					return
@@ -992,7 +1015,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 					memberError(state, property)
 				end
 				local value = defaultOf(state.className, state.class, property)
-				inject("setProperty", describe(state), object, property, value)
+				if injecting "setProperty" then
+					inject("setProperty", describe(state), object, property, value)
+				end
 				if state.values[property] == value then
 					return
 				end
@@ -1029,6 +1054,16 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		elseif key == "Parent" and state.class.instance then
 			return state.parent
 		end
+		local class = state.class
+		if
+			class.properties[key] ~= nil
+			and state.doubles[key] == nil
+			and not class.events[key]
+			and class.methods[key] == nil
+			and computedFor(state.className, key) == nil
+		then
+			return state.values[key]
+		end
 		local double = doubleHandler(state.doubles[key])
 		if double ~= nil then
 			return operation(function(_self: Instance, ...: unknown): ...unknown
@@ -1038,18 +1073,32 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if state.class.events[key] then
 			return signalFor(state, key)
 		end
+		local bound = state.bound
+		local cached = if bound ~= nil then bound[key] else nil
+		if cached ~= nil then
+			return cached
+		end
+		local resolved: unknown = nil
 		if type(state.class.methods[key]) == "function" then
 			local method = memberMethod(object, state, key)
 			assert(method ~= nil)
-			return operation(method)
+			resolved = operation(method)
+		else
+			local builtin = universal(object, state, key)
+			if type(builtin) == "function" then
+				resolved = operation(builtin :: Method)
+			else
+				local method = memberMethod(object, state, key)
+				if method ~= nil then
+					resolved = operation(method)
+				end
+			end
 		end
-		local builtin = universal(object, state, key)
-		if type(builtin) == "function" then
-			return operation(builtin :: Method)
-		end
-		local method = memberMethod(object, state, key)
-		if method ~= nil then
-			return operation(method)
+		if resolved ~= nil then
+			local store = bound or {}
+			state.bound = store
+			store[key] = resolved
+			return resolved
 		end
 		local getter = computedFor(state.className, key)
 		if getter ~= nil then
@@ -1113,7 +1162,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				memberError(state, key)
 			end
 		end
-		inject("setProperty", describe(state), object, key, value)
+		if injecting "setProperty" then
+			inject("setProperty", describe(state), object, key, value)
+		end
 		if
 			settings.validateProperty ~= nil
 			and settings.validateProperty(state.className, key, value, "set") == false
@@ -1173,7 +1224,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		}
 		states[object] = state
 		rawset(object, "__state", state)
-		inject("create", className, object, nil, nil)
+		if injecting "create" then
+			inject("create", className, object, nil, nil)
+		end
 		if not isRoot then
 			alive += 1
 		end
