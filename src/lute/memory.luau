@@ -17,6 +17,7 @@ export type Spec<T> = {
 	teardown: (state: T) -> (),
 	warmup: number?,
 	iterations: number,
+	rehearsals: number?,
 }
 local function witness()
 	local weak: { token: {}? } = { token = {} }
@@ -77,10 +78,12 @@ local function create(host: Host): Memory
 
 	local function measure<T>(spec: Spec<T>, options: Options?): Result
 		local warmup = spec.warmup or 0
+		local rehearsals = spec.rehearsals or 0
 		assert(integer(warmup, 0), "memory warmup must be a nonnegative integer")
 		assert(integer(spec.iterations, 1), "memory iterations must be a positive integer")
-		local baseline = settle(options)
+		assert(integer(rehearsals, 0), "memory rehearsals must be a nonnegative integer")
 		local mounted: Reading? = nil
+		local measuring = false
 		local function exercise()
 			local state = spec.setup()
 			local ran, problem = pcall(function()
@@ -90,7 +93,9 @@ local function create(host: Host): Memory
 						spec.afterRun(state)
 					end
 				end
-				mounted = settle(options)
+				if measuring then
+					mounted = settle(options)
+				end
 			end)
 			local cleaned, cleanupProblem = pcall(function()
 				spec.teardown(state)
@@ -106,6 +111,11 @@ local function create(host: Host): Memory
 				error("memory cleanup failed: " .. tostring(cleanupProblem), 0)
 			end
 		end
+		for _ = 1, rehearsals do
+			exercise()
+		end
+		local baseline = settle(options)
+		measuring = true
 		exercise()
 		local teardown = settle(options)
 		local held = assert(mounted)
