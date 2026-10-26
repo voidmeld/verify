@@ -9,6 +9,7 @@ local UiLayout = require "./ui-layout"
 local PlaceRuntime = require "./place-runtime"
 local Datatypes = require "./datatypes"
 local ContentFakes = require "./content-fakes"
+local LocalizationFakes = require "./localization-fakes"
 local LogFakes = require "./log-fakes"
 
 local SERVICE_DEFAULTS: { [string]: { [string]: unknown } } = {
@@ -192,6 +193,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		then UiFakes.attach(environment, ui :: UiFakes.Options?, selection)
 		else nil
 	ContentFakes.attach(environment, settings.content)
+	LocalizationFakes.attach(environment)
 	local library = (settings.library :: unknown) :: Adapter.Library<V2, V3, C3, U1, U2, CF>?
 	if library then
 		local found, member = pcall(function(): unknown
