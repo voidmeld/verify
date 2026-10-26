@@ -1,5 +1,8 @@
 --!strict
 
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local Wire = require "../src/lute/wire"
 
 local temporary = require "./temporary"
@@ -64,122 +67,118 @@ local function fixture(bytes: string): (Player.Backend, {
 	return backend, state
 end
 
-return function(suite: Verify.Harness)
-	suite:suite("Player launcher", function()
-		suite:case("uses the documented deep link and percent encodes launch data", function(check)
-			local address = Player.url(123, "run&+#")
-			check:expect(address):toContain "roblox://placeId=123&launchData="
-			check:expect(address):toContain "run%26%2B%23"
-			check:expect((pcall(Player.url, 0, "run"))):toBe(false)
-			check:expect((pcall(Player.url, 1, ""))):toBe(false)
-		end)
-		suite:case("forwards explicit case and entry selection", function(check)
-			local address = Player.url(123, "run", { caseIds = { "motion" }, entry = "tests/shared" })
-			check:expect(address):toContain "verifyCases"
-			check:expect(address):toContain "motion"
-			check:expect(address):toContain "verifyEntry"
-			check:expect(address):toContain "tests%2Fshared"
-			check:expect((pcall(Player.url, 123, "run", { caseIds = {} }))):toBe(false)
-			check:expect((pcall(Player.url, 123, "run", { caseIds = { "x", "x" } }))):toBe(false)
-		end)
-		suite:case("collects a bound report and closes its client", function(check)
-			local backend, state = fixture(reportBytes "new")
-			local outcome = Player.run { placeId = 123, runId = "new", backend = backend }
-			check:expect(outcome.status):toBe "returned"
-			if outcome.status == "returned" then
-				check:expect(Verify.decode(outcome.report).passed):toBe(1)
-			end
-			check:expect(state.closed):toBe(true)
-		end)
-		suite:case("rejects reports from another run and still closes", function(check)
-			local backend, state = fixture(reportBytes "old")
-			local outcome = Player.run { placeId = 123, runId = "new", backend = backend }
-			check:expect(outcome.status):toBe "faulted"
-			check:expect(state.closed):toBe(true)
-		end)
-		suite:case("rejects conflicting reports instead of selecting a convenient success", function(check)
-			local bytes = reportBytes "new"
-			local backend, state = fixture(bytes .. "VERIFY_REPORT|{}\n")
-			check:expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
-			check:expect(state.closed):toBe(true)
-		end)
-		suite:case("times out incomplete output and closes the client", function(check)
-			local backend, state = fixture "VERIFY_REPORT|chunk|1/2|partial\n"
-			check
-				:expect(Player.run({ placeId = 123, runId = "new", backend = backend, deadlineSeconds = 1 }).status)
-				:toBe "timed_out"
-			check:expect(state.closed):toBe(true)
-		end)
-		suite:case("fails if the client disappears before reporting", function(check)
-			local backend, state = fixture ""
-			state.alive = false
-			check:expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
-			check:expect(state.closed):toBe(true)
-		end)
-		suite:case("rejects a complete report delivered after the deadline", function(check)
-			local backend, state = fixture(reportBytes "new")
-			local launch = backend.launch
-			backend.launch = function(address, deadline)
-				local session = launch(address, deadline)
-				local read = session.read
-				session.read = function(remaining)
-					backend.sleep(remaining + 1)
-					return read(remaining)
-				end
-				return session
-			end
-			check
-				:expect(Player.run({ placeId = 123, runId = "new", backend = backend, deadlineSeconds = 1 }).status)
-				:toBe "timed_out"
-			check:expect(state.closed):toBe(true)
-		end)
-		suite:case("reports launch failure without inventing a session", function(check)
-			local backend, state = fixture ""
-			backend.launch = function()
-				error("launch failed", 0)
-			end
-			check:expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
-			check:expect(state.closed):toBe(false)
-		end)
-		suite:case("saves requested raw log evidence before cleanup", function(check)
-			local bytes = reportBytes "new"
-			local backend, state = fixture(bytes)
-			local directory = Files.claimDirectory(Files.temporary "verify-player-test")
-			local path = directory .. "/host.log"
-			local result = Player.run { placeId = 123, runId = "new", backend = backend, logPath = path }
-			check:expect(result.status):toBe "returned"
-			check:expect(fs.readFileToString(path)):toBe(bytes)
-			check:expect(state.closed):toBe(true)
-			fs.remove(path)
-			fs.removeDirectory(directory)
-		end)
-		suite:case("cleanup failure cannot turn into success", function(check)
-			local backend, state = fixture(reportBytes "new")
-			state.cleanupFails = true
-			check:expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
-		end)
-
-		suite:case("refuses the reference launcher on Windows and reports the Player host unsupported", function(check)
-			local able, reason = Player.supported()
-			check:expect(able):toBe(not system.win32)
-			if not system.win32 then
-				check:expect(reason):toBeNil()
-				return
-			end
-			check:expect(reason):toContain "macOS only"
-			local direct = Player.run { placeId = 123, runId = "windows" }
-			check:expect(direct.status):toBe "faulted"
-			check:expect(direct.detail):toContain "macOS only"
-			local root = temporary(check, "verify-player-windows")
-			local result = Platform.run {
-				host = "player",
-				entry = "examples/platform-entry.luau",
-				placeId = 123,
-				output = root,
-			}
-			check:expect(result.report.unsupported):toBe(1)
-			check:expect(result.report.passed):toBe(0)
-			check:expect(result.report.results[1].missingCapabilities):toEqual { "roblox-player-launcher" }
-		end)
+describe("Player launcher", function()
+	it("uses the documented deep link and percent encodes launch data", function()
+		local address = Player.url(123, "run&+#")
+		expect(address):toContain "roblox://placeId=123&launchData="
+		expect(address):toContain "run%26%2B%23"
+		expect((pcall(Player.url, 0, "run"))):toBe(false)
+		expect((pcall(Player.url, 1, ""))):toBe(false)
 	end)
-end
+	it("forwards explicit case and entry selection", function()
+		local address = Player.url(123, "run", { caseIds = { "motion" }, entry = "tests/shared" })
+		expect(address):toContain "verifyCases"
+		expect(address):toContain "motion"
+		expect(address):toContain "verifyEntry"
+		expect(address):toContain "tests%2Fshared"
+		expect((pcall(Player.url, 123, "run", { caseIds = {} }))):toBe(false)
+		expect((pcall(Player.url, 123, "run", { caseIds = { "x", "x" } }))):toBe(false)
+	end)
+	it("collects a bound report and closes its client", function()
+		local backend, state = fixture(reportBytes "new")
+		local outcome = Player.run { placeId = 123, runId = "new", backend = backend }
+		expect(outcome.status):toBe "returned"
+		if outcome.status == "returned" then
+			expect(Verify.decode(outcome.report).passed):toBe(1)
+		end
+		expect(state.closed):toBe(true)
+	end)
+	it("rejects reports from another run and still closes", function()
+		local backend, state = fixture(reportBytes "old")
+		local outcome = Player.run { placeId = 123, runId = "new", backend = backend }
+		expect(outcome.status):toBe "faulted"
+		expect(state.closed):toBe(true)
+	end)
+	it("rejects conflicting reports instead of selecting a convenient success", function()
+		local bytes = reportBytes "new"
+		local backend, state = fixture(bytes .. "VERIFY_REPORT|{}\n")
+		expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
+		expect(state.closed):toBe(true)
+	end)
+	it("times out incomplete output and closes the client", function()
+		local backend, state = fixture "VERIFY_REPORT|chunk|1/2|partial\n"
+		expect(Player.run({ placeId = 123, runId = "new", backend = backend, deadlineSeconds = 1 }).status):toBe "timed_out"
+		expect(state.closed):toBe(true)
+	end)
+	it("fails if the client disappears before reporting", function()
+		local backend, state = fixture ""
+		state.alive = false
+		expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
+		expect(state.closed):toBe(true)
+	end)
+	it("rejects a complete report delivered after the deadline", function()
+		local backend, state = fixture(reportBytes "new")
+		local launch = backend.launch
+		backend.launch = function(address, deadline)
+			local session = launch(address, deadline)
+			local read = session.read
+			session.read = function(remaining)
+				backend.sleep(remaining + 1)
+				return read(remaining)
+			end
+			return session
+		end
+		expect(Player.run({ placeId = 123, runId = "new", backend = backend, deadlineSeconds = 1 }).status):toBe "timed_out"
+		expect(state.closed):toBe(true)
+	end)
+	it("reports launch failure without inventing a session", function()
+		local backend, state = fixture ""
+		backend.launch = function()
+			error("launch failed", 0)
+		end
+		expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
+		expect(state.closed):toBe(false)
+	end)
+	it("saves requested raw log evidence before cleanup", function()
+		local bytes = reportBytes "new"
+		local backend, state = fixture(bytes)
+		local directory = Files.claimDirectory(Files.temporary "verify-player-test")
+		local path = directory .. "/host.log"
+		local result = Player.run { placeId = 123, runId = "new", backend = backend, logPath = path }
+		expect(result.status):toBe "returned"
+		expect(fs.readFileToString(path)):toBe(bytes)
+		expect(state.closed):toBe(true)
+		fs.remove(path)
+		fs.removeDirectory(directory)
+	end)
+	it("cleanup failure cannot turn into success", function()
+		local backend, state = fixture(reportBytes "new")
+		state.cleanupFails = true
+		expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"
+	end)
+
+	it("refuses the reference launcher on Windows and reports the Player host unsupported", function(_, caseContext)
+		local able, reason = Player.supported()
+		expect(able):toBe(not system.win32)
+		if not system.win32 then
+			expect(reason):toBeNil()
+			return
+		end
+		expect(reason):toContain "macOS only"
+		local direct = Player.run { placeId = 123, runId = "windows" }
+		expect(direct.status):toBe "faulted"
+		expect(direct.detail):toContain "macOS only"
+		local root = temporary(caseContext, "verify-player-windows")
+		local result = Platform.run {
+			host = "player",
+			entry = "examples/platform-entry.luau",
+			placeId = 123,
+			output = root,
+		}
+		expect(result.report.unsupported):toBe(1)
+		expect(result.report.passed):toBe(0)
+		expect(result.report.results[1].missingCapabilities):toEqual { "roblox-player-launcher" }
+	end)
+end)
+
+return nil

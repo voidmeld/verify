@@ -1,5 +1,8 @@
 --!strict
 
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local Verify = require "../src/core"
 local Experience = require "../src/core/operations"
 
@@ -70,84 +73,84 @@ local function spec(run: (Verify.Context) -> (), cleaned: { boolean }?): Verify.
 	}
 end
 
-return function(suite: Verify.Harness)
-	suite:suite("per-call operation deadlines", function()
-		suite:case("fails a stuck call as a timeout naming the actor and operation and still cleans up", function(check)
-			local state = fixture { ghost = true }
-			local cleaned: { boolean } = {}
-			local report = Verify.runCase(
-				spec(function(context)
-					context:perform("ghost", ask, nil, 2)
-					context:expect(false):toBe(true)
-				end, cleaned),
-				state.host
-			)
-			check:expect(report.timedOut):toBe(1)
-			local result = report.results[1]
-			check:expect(result.status):toBe "timed_out"
-			local step = result.steps[1]
-			check:expect(step.status):toBe "timed_out"
-			check:expect(step.actor):toBe "ghost"
-			check:expect(step.message or ""):toContain "operation deadline exceeded: ghost query answer"
-			check:expect(#cleaned):toBe(1)
-			check:expect(state.clock() < 5):toBe(true)
-			check:expect(state.seen[1]):toBe(2)
-		end)
-
-		suite:case("bounds a call by the case time and leaves a prompt call untouched", function(check)
-			local state = fixture {}
-			local report = Verify.runCase(
-				spec(function(context)
-					check:expect(context:perform("server", ask, nil, 1000)):toBe(7)
-					check:expect(context:perform("server", ask, nil)):toBe(7)
-				end),
-				state.host
-			)
-			check:expect(report.passed):toBe(1)
-			check:expect(state.seen[1]):toBe(60)
-			check:expect(state.seen[2]):toBe(60)
-		end)
-
-		suite:case("bounds a whole await and names the actor and query", function(check)
-			local state = fixture {}
-			local report = Verify.runCase(
-				spec(function(context)
-					context:await("server", ask, nil, function(value: number): boolean
-						return value > 100
-					end, 0.5, 3)
-				end),
-				state.host
-			)
-			check:expect(report.timedOut):toBe(1)
-			local steps = report.results[1].steps
-			local named = false
-			for _, step in steps do
-				if string.find(step.message or "", "await deadline exceeded: server answer", 1, true) ~= nil then
-					named = true
-				end
-			end
-			check:expect(named):toBe(true)
-			check:expect(state.clock() < 8):toBe(true)
-		end)
-
-		suite:case("refuses a deadline that is not positive and finite", function(check)
-			local state = fixture {}
-			local report = Verify.runCase(
-				spec(function(context)
-					context:perform("server", ask, nil, 0)
-				end),
-				state.host
-			)
-			check:expect(report.failed):toBe(1)
-			local again = Verify.runCase(
-				spec(function(context)
-					context:await("server", ask, nil, function()
-						return true
-					end, 0.1, math.huge)
-				end),
-				state.host
-			)
-			check:expect(again.failed):toBe(1)
-		end)
+describe("per-call operation deadlines", function()
+	it("fails a stuck call as a timeout naming the actor and operation and still cleans up", function()
+		local state = fixture { ghost = true }
+		local cleaned: { boolean } = {}
+		local report = Verify.runCase(
+			spec(function(context)
+				context:perform("ghost", ask, nil, 2)
+				context:expect(false):toBe(true)
+			end, cleaned),
+			state.host
+		)
+		expect(report.timedOut):toBe(1)
+		local result = report.results[1]
+		expect(result.status):toBe "timed_out"
+		local step = result.steps[1]
+		expect(step.status):toBe "timed_out"
+		expect(step.actor):toBe "ghost"
+		expect(step.message or ""):toContain "operation deadline exceeded: ghost query answer"
+		expect(#cleaned):toBe(1)
+		expect(state.clock() < 5):toBe(true)
+		expect(state.seen[1]):toBe(2)
 	end)
-end
+
+	it("bounds a call by the case time and leaves a prompt call untouched", function()
+		local state = fixture {}
+		local report = Verify.runCase(
+			spec(function(context)
+				expect(context:perform("server", ask, nil, 1000)):toBe(7)
+				expect(context:perform("server", ask, nil)):toBe(7)
+			end),
+			state.host
+		)
+		expect(report.passed):toBe(1)
+		expect(state.seen[1]):toBe(60)
+		expect(state.seen[2]):toBe(60)
+	end)
+
+	it("bounds a whole await and names the actor and query", function()
+		local state = fixture {}
+		local report = Verify.runCase(
+			spec(function(context)
+				context:await("server", ask, nil, function(value: number): boolean
+					return value > 100
+				end, 0.5, 3)
+			end),
+			state.host
+		)
+		expect(report.timedOut):toBe(1)
+		local steps = report.results[1].steps
+		local named = false
+		for _, step in steps do
+			if string.find(step.message or "", "await deadline exceeded: server answer", 1, true) ~= nil then
+				named = true
+			end
+		end
+		expect(named):toBe(true)
+		expect(state.clock() < 8):toBe(true)
+	end)
+
+	it("refuses a deadline that is not positive and finite", function()
+		local state = fixture {}
+		local report = Verify.runCase(
+			spec(function(context)
+				context:perform("server", ask, nil, 0)
+			end),
+			state.host
+		)
+		expect(report.failed):toBe(1)
+		local again = Verify.runCase(
+			spec(function(context)
+				context:await("server", ask, nil, function()
+					return true
+				end, 0.1, math.huge)
+			end),
+			state.host
+		)
+		expect(again.failed):toBe(1)
+	end)
+end)
+
+return nil

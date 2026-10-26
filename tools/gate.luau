@@ -78,7 +78,7 @@ local producers: { Gate.ProducerDraft } = {
 	{
 		id = "specs",
 		kind = "tests",
-		worker = "examples/worker.luau",
+		worker = "tests/worker.luau",
 		locators = shared,
 		tier = "behavior",
 		why = "the repository's own spec corpus",
@@ -87,7 +87,7 @@ local producers: { Gate.ProducerDraft } = {
 	{
 		id = "memory",
 		kind = "tests",
-		worker = "examples/worker.luau",
+		worker = "tests/worker.luau",
 		locators = { MEMORY },
 		isolate = true,
 		tier = "behavior",

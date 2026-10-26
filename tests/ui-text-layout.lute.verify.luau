@@ -1,68 +1,71 @@
 --!strict
+--!nolint LocalUnused
+
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Core = require "../src/core"
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local probe = require "./fixtures/ui-text-layout"
 
-return function(harness: Core.Harness)
-	local function mountProbe(check: Core.Context, source: string): (boolean, { string })
-		local roots: { Roblox.Instance } = {}
-		local bridge = Lute.fixture.bridge(nil, {
-			layout = {
-				roots = function()
-					return roots
-				end,
-				viewport = function()
-					return { X = 800, Y = 600 }
-				end,
-			},
-		})
-		check:defer(function()
-			bridge.close()
-		end)
-		local engine = bridge.placeEngine()
-		local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
-			aliases = {},
-			cache = Roblox.createPlaceCache(Lute.fixture.host),
-			host = Lute.fixture.host,
-			client = { name = "Text", userId = 1, viewport = { x = 800, y = 600 } },
-			beforeRender = assert(bridge.layout).step,
-		})
-		check:defer(function()
-			for index = #runtime.closeHandlers, 1, -1 do
-				runtime.closeHandlers[index]()
-			end
-		end)
-		table.insert(roots, assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui"))
-		local complete = false
-		local scheduler = bridge.environment.scheduler
-		local thread = scheduler.spawnTagged({ context = "client", source = "ui-text-layout" }, function()
-			complete = Lute.chunk.load(source, { environment = runtime.globals })() == true
-		end)
-		check:defer(function()
-			scheduler.cancel(thread)
-		end)
-		for _ = 1, 240 do
-			if complete or #scheduler.failures > 0 then
-				break
-			end
-			local stepped = table.pack(pcall(runtime.step, 1 / 60))
-			if not stepped[1] then
-				return false, { tostring(stepped[2]) }
-			end
+local function mountProbe(caseContext: Core.Context, source: string): (boolean, { string })
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	caseContext:defer(function()
+		bridge.close()
+	end)
+	local engine = bridge.placeEngine()
+	local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
+		aliases = {},
+		cache = Roblox.createPlaceCache(Lute.fixture.host),
+		host = Lute.fixture.host,
+		client = { name = "Text", userId = 1, viewport = { x = 800, y = 600 } },
+		beforeRender = assert(bridge.layout).step,
+	})
+	caseContext:defer(function()
+		for index = #runtime.closeHandlers, 1, -1 do
+			runtime.closeHandlers[index]()
 		end
-		local messages: { string } = {}
-		for _, failure in scheduler.failures do
-			table.insert(messages, tostring(failure))
+	end)
+	table.insert(roots, assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui"))
+	local complete = false
+	local scheduler = bridge.environment.scheduler
+	local thread = scheduler.spawnTagged({ context = "client", source = "ui-text-layout" }, function()
+		complete = Lute.chunk.load(source, { environment = runtime.globals })() == true
+	end)
+	caseContext:defer(function()
+		scheduler.cancel(thread)
+	end)
+	for _ = 1, 240 do
+		if complete or #scheduler.failures > 0 then
+			break
 		end
-		return complete, messages
+		local stepped = table.pack(pcall(runtime.step, 1 / 60))
+		if not stepped[1] then
+			return false, { tostring(stepped[2]) }
+		end
 	end
+	local messages: { string } = {}
+	for _, failure in scheduler.failures do
+		table.insert(messages, tostring(failure))
+	end
+	return complete, messages
+end
 
-	harness:case("single-line truncated text reports the Studio ellipsis width", function(check)
-		local complete, messages = mountProbe(
-			check,
-			[=[
+it("single-line truncated text reports the Studio ellipsis width", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local expected = {
@@ -108,15 +111,15 @@ return function(harness: Core.Harness)
 				end
 				return true
 			]=]
-		)
-		check:expect(table.concat(messages, "\n")):toBe ""
-		check:expect(complete):toBe(true)
-	end)
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
 
-	harness:case("wrapped truncated text reports the Studio ellipsis width", function(check)
-		local complete, messages = mountProbe(
-			check,
-			[=[
+it("wrapped truncated text reports the Studio ellipsis width", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local expected = {
@@ -164,15 +167,15 @@ return function(harness: Core.Harness)
 				assert(#failures == 0, table.concat(failures, "\n"))
 				return true
 			]=]
-		)
-		check:expect(table.concat(messages, "\n")):toBe ""
-		check:expect(complete):toBe(true)
-	end)
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
 
-	harness:case("scaled text reports the Studio size it renders at", function(check)
-		local complete, messages = mountProbe(
-			check,
-			[=[
+it("scaled text reports the Studio size it renders at", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local expected = {
@@ -223,15 +226,15 @@ return function(harness: Core.Harness)
 				assert(#failures == 0, table.concat(failures, "\n"))
 				return true
 			]=]
-		)
-		check:expect(table.concat(messages, "\n")):toBe ""
-		check:expect(complete):toBe(true)
-	end)
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
 
-	harness:case("fractional rendered text sizes measure at the floored size as Studio 0.744 does", function(check)
-		local complete, messages = mountProbe(
-			check,
-			[=[
+it("fractional rendered text sizes measure at the floored size as Studio 0.744 does", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local failures = {}
@@ -252,15 +255,15 @@ return function(harness: Core.Harness)
 				assert(#failures == 0, table.concat(failures, "\n"))
 				return true
 			]=]
-		)
-		check:expect(table.concat(messages, "\n")):toBe ""
-		check:expect(complete):toBe(true)
-	end)
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
 
-	harness:case("rich text without metric tags measures as its plain text as Studio 0.744 does", function(check)
-		local complete, messages = mountProbe(
-			check,
-			[=[
+it("rich text without metric tags measures as its plain text as Studio 0.744 does", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local failures = {}
@@ -291,15 +294,15 @@ return function(harness: Core.Harness)
 				assert(#failures == 0, table.concat(failures, "\n"))
 				return true
 			]=]
-		)
-		check:expect(table.concat(messages, "\n")):toBe ""
-		check:expect(complete):toBe(true)
-	end)
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
 
-	harness:case("a hyphen beside punctuation measures as Studio 0.744 does", function(check)
-		local complete, messages = mountProbe(
-			check,
-			[=[
+it("a hyphen beside punctuation measures as Studio 0.744 does", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local failures = {}
@@ -323,17 +326,17 @@ return function(harness: Core.Harness)
 				assert(#failures == 0, table.concat(failures, "\n"))
 				return true
 			]=]
-		)
-		check:expect(table.concat(messages, "\n")):toBe ""
-		check:expect(complete):toBe(true)
-	end)
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
 
-	harness:case("rich text with tags that change metrics is refused", function(check)
-		for _, row in { { "<b>Save</b> changes", "<b>" }, { '<font size="24">Save</font> changes', "<font size>" } } do
-			local complete, messages = mountProbe(
-				check,
-				string.format(
-					[[
+it("rich text with tags that change metrics is refused", function(_, caseContext)
+	for _, row in { { "<b>Save</b> changes", "<b>" }, { '<font size="24">Save</font> changes', "<font size>" } } do
+		local complete, messages = mountProbe(
+			caseContext,
+			string.format(
+				[[
 						local screen = Instance.new("ScreenGui")
 						screen.Parent = game.Players.LocalPlayer.PlayerGui
 						local label = Instance.new("TextLabel")
@@ -343,24 +346,24 @@ return function(harness: Core.Harness)
 						task.wait(0.05)
 						return true
 					]],
-					row[1]
-				)
+				row[1]
 			)
-			check:expect(complete):toBe(false)
-			check:expect(table.concat(messages, "\n")):toContain("unsupported_text_metrics: RichText " .. row[2])
-		end
-	end)
+		)
+		expect(complete):toBe(false)
+		expect(table.concat(messages, "\n")):toContain("unsupported_text_metrics: RichText " .. row[2])
+	end
+end)
 
-	harness:case("truncation the text model cannot place exactly is refused", function(check)
-		local rows: { { mode: string, width: number, height: number, message: string } } = {
-			{ mode = "AtEnd", width = 100, height = 40, message = "wrapped truncation shorter than its line" },
-			{ mode = "SplitWord", width = 140, height = 40, message = "truncation within a pixel of the limit" },
-		}
-		for _, row in rows do
-			local complete, messages = mountProbe(
-				check,
-				string.format(
-					[[
+it("truncation the text model cannot place exactly is refused", function(_, caseContext)
+	local rows: { { mode: string, width: number, height: number, message: string } } = {
+		{ mode = "AtEnd", width = 100, height = 40, message = "wrapped truncation shorter than its line" },
+		{ mode = "SplitWord", width = 140, height = 40, message = "truncation within a pixel of the limit" },
+	}
+	for _, row in rows do
+		local complete, messages = mountProbe(
+			caseContext,
+			string.format(
+				[[
 						local screen = Instance.new("ScreenGui")
 						screen.Parent = game.Players.LocalPlayer.PlayerGui
 						local label = Instance.new("TextLabel")
@@ -371,60 +374,61 @@ return function(harness: Core.Harness)
 						task.wait(0.05)
 						return true
 					]],
-					row.width,
-					row.height,
-					row.mode
-				)
+				row.width,
+				row.height,
+				row.mode
 			)
-			check:expect(complete):toBe(false)
-			check:expect(table.concat(messages, "\n")):toContain(row.message)
-		end
-	end)
+		)
+		expect(complete):toBe(false)
+		expect(table.concat(messages, "\n")):toContain(row.message)
+	end
+end)
 
-	harness:case("text layout matches the same native conformance assertions", function(check)
-		local roots: { Roblox.Instance } = {}
-		local bridge = Lute.fixture.bridge(nil, {
-			layout = {
-				roots = function()
-					return roots
-				end,
-				viewport = function()
-					return { X = 800, Y = 600 }
-				end,
-			},
-		})
-		check:defer(function()
-			bridge.close()
-		end)
-		local engine = bridge.placeEngine()
-		local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
-			aliases = {},
-			cache = Roblox.createPlaceCache(Lute.fixture.host),
-			host = Lute.fixture.host,
-			client = { name = "Text", userId = 1, viewport = { x = 800, y = 600 } },
-			beforeRender = assert(bridge.layout).step,
-		})
-		check:defer(function()
-			for index = #runtime.closeHandlers, 1, -1 do
-				runtime.closeHandlers[index]()
-			end
-		end)
-		table.insert(roots, assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui"))
-		local complete = false
-		local scheduler = bridge.environment.scheduler
-		local thread = scheduler.spawnTagged({ context = "client", source = "ui-text-layout" }, function()
-			complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
-		end)
-		check:defer(function()
-			scheduler.cancel(thread)
-		end)
-		for _ = 1, 240 do
-			if complete or #scheduler.failures > 0 then
-				break
-			end
-			runtime.step(1 / 60)
-		end
-		check:expect(engine.diagnostics):toEqual {}
-		check:expect(complete):toBe(true)
+it("text layout matches the same native conformance assertions", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(function()
+		bridge.close()
 	end)
-end
+	local engine = bridge.placeEngine()
+	local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
+		aliases = {},
+		cache = Roblox.createPlaceCache(Lute.fixture.host),
+		host = Lute.fixture.host,
+		client = { name = "Text", userId = 1, viewport = { x = 800, y = 600 } },
+		beforeRender = assert(bridge.layout).step,
+	})
+	own(function()
+		for index = #runtime.closeHandlers, 1, -1 do
+			runtime.closeHandlers[index]()
+		end
+	end)
+	table.insert(roots, assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui"))
+	local complete = false
+	local scheduler = bridge.environment.scheduler
+	local thread = scheduler.spawnTagged({ context = "client", source = "ui-text-layout" }, function()
+		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+	end)
+	own(function()
+		scheduler.cancel(thread)
+	end)
+	for _ = 1, 240 do
+		if complete or #scheduler.failures > 0 then
+			break
+		end
+		runtime.step(1 / 60)
+	end
+	expect(engine.diagnostics):toEqual {}
+	expect(complete):toBe(true)
+end)
+
+return nil
