@@ -96,4 +96,29 @@ local function noAny(config: Selection): { string }
 	return findings
 end
 
-return { selected = selected, leakage = leakage, boundary = boundary, noAny = noAny }
+local SPEC_STYLE: { { pattern: string, why: string } } = {
+	{ pattern = "%f[%w_][%w_]+%s*:case%(", why = "registers a case with colon syntax; use it(...)" },
+	{ pattern = "%f[%w_][%w_]+%s*:expect%(", why = "expects through a context; use expect(...)" },
+	{ pattern = "%f[%w_]Test%.it%(", why = "calls Test.it in a body; declare local it once" },
+	{ pattern = "%f[%w_]Test%.expect%(", why = "calls Test.expect in a body; declare local expect once" },
+	{ pattern = "%f[%w_]Test%.describe%(", why = "calls Test.describe in a body; declare local describe once" },
+}
+
+local function specStyle(config: Selection): { string }
+	local selection = table.clone(config)
+	selection.suffixes = { ".verify.luau" }
+	local findings: { string } = {}
+	for _, path in selected(selection) do
+		local source = fs.readFileToString((config.root or ".") .. "/" .. path)
+		for _, rule in SPEC_STYLE do
+			local at = string.find(source, rule.pattern)
+			if at ~= nil then
+				local _, breaks = string.gsub(string.sub(source, 1, at), "\n", "")
+				table.insert(findings, ("%s:%d: %s"):format(path, breaks + 1, rule.why))
+			end
+		end
+	end
+	return findings
+end
+
+return { selected = selected, leakage = leakage, boundary = boundary, noAny = noAny, specStyle = specStyle }

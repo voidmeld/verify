@@ -12,6 +12,7 @@ return table.freeze {
 	leakage = Repository.leakage,
 	boundary = Repository.boundary,
 	noAny = Repository.noAny,
+	specStyle = Repository.specStyle,
 	comments = require "@self/comments",
 	provenance = require "@self/provenance",
 	lintRules = table.freeze {
