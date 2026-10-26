@@ -571,6 +571,17 @@ local function attach(environment: Environment.Environment, options: Options): C
 	setmetatable(turns, { __mode = "k" })
 	local frames: { [Instance]: Rectangle } = {}
 	setmetatable(frames, { __mode = "k" })
+	local scrollingProperties = { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" }
+	local scrollingGeometry: { [Instance]: { [string]: Vector } } = {}
+	setmetatable(scrollingGeometry, { __mode = "k" })
+	local function scrollingBounds(object: Instance): { [string]: Vector }
+		local bounds: { [string]: Vector } = {}
+		for _, property in scrollingProperties do
+			local value = environment.propertyOf(object, property)
+			bounds[property] = if value == nil then { X = 0, Y = 0 } else Values.vector(value)
+		end
+		return bounds
+	end
 	local function rotate(x: number, y: number, turn: Turn, sign: number): (number, number)
 		local radians = math.rad(turn.angle) * sign
 		local cosine, sine = math.cos(radians), math.sin(radians)
@@ -687,6 +698,40 @@ local function attach(environment: Environment.Environment, options: Options): C
 				position = position,
 			}
 		end
+		local function validateScrollingGeometry(object: Instance, rectangle: Rectangle, scrolled: Canvas)
+			local requested = Values.vector(read(object, "CanvasPosition"))
+			local position = scrolled.position
+			if position.X ~= requested.X or position.Y ~= requested.Y then
+				local supplied = scrollingBounds(object)
+				local previous = scrollingGeometry[object]
+				local computed = {
+					AbsoluteSize = { X = rectangle.width, Y = rectangle.height },
+					AbsoluteWindowSize = scrolled.window,
+					AbsoluteCanvasSize = scrolled.canvas,
+				}
+				local stale: { string } = {}
+				local details: { string } = {}
+				for _, property in scrollingProperties do
+					local value = supplied[property]
+					local measured = if previous then previous[property] else { X = 0, Y = 0 }
+					if value.X ~= measured.X or value.Y ~= measured.Y then
+						table.insert(stale, property)
+					end
+					local nextValue = computed[property]
+					table.insert(details, `{property}=({value.X}, {value.Y}), computed=({nextValue.X}, {nextValue.Y})`)
+				end
+				if #stale > 0 then
+					unsupported(
+						object,
+						"layout-owned scrolling geometry before clamping CanvasPosition; stale/poked "
+							.. table.concat(stale, ", ")
+							.. "; "
+							.. table.concat(details, "; ")
+							.. `; CanvasPosition=({requested.X}, {requested.Y}), computed=({position.X}, {position.Y}); author Size and CanvasSize or exclude the poked frame from layout roots`
+					)
+				end
+			end
+		end
 		local measureTree: (Instance, Rectangle, Rectangle?) -> ()
 		measureTree = function(object: Instance, parent: Rectangle, placed: Rectangle?)
 			local rectangle = if object:IsA "GuiObject" then placed or size(object, parent) else area(object, parent)
@@ -712,6 +757,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 			textBounds(object, rectangle)
 			local basis = bases[object]
 			local scrolled = if object:IsA "ScrollingFrame" then canvasOf(object, rectangle, parent) else nil
+			if scrolled then
+				validateScrollingGeometry(object, rectangle, scrolled)
+			end
 			local content = if scrolled
 				then scrolled.content
 				else inset(
@@ -815,6 +863,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				if requested.X ~= scrolled.position.X or requested.Y ~= scrolled.position.Y then
 					environment.poke(object, "CanvasPosition", vector(scrolled.position.X, scrolled.position.Y))
 				end
+				scrollingGeometry[object] = scrollingBounds(object)
 			end
 			local list = object:FindFirstChildWhichIsA "UIListLayout"
 			local grid = object:FindFirstChildWhichIsA "UIGridLayout"
