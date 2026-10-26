@@ -57,6 +57,34 @@ it("asset versions load independent copies of supplied content under InsertServi
 	expect(engine.environment.liveObjects()):toBe(alive)
 	expect(#service:GetChildren()):toBe(2)
 end)
+it("localization tables store entries and format keys through a translator", function()
+	local engine = Lute.fixture.bridge().placeEngine()
+	local localization = engine.newInstance "LocalizationTable"
+	type Entries = { { Key: string, Source: string, Values: { [string]: string } } }
+	type SetEntries = (Instance, Entries) -> ()
+	type GetEntries = (Instance) -> Entries
+	type Translator = {
+		FormatByKey: (Translator, string, { [string | number]: unknown }?) -> string,
+		Translate: (Translator, unknown, string) -> string,
+	}
+	type GetTranslator = (Instance, string) -> Translator
+	local entries: Entries = {
+		{ Key = "greeting", Source = "Hello {name}", Values = { es = "Hola {name}" } },
+		{ Key = "count", Source = "{1} games", Values = {} },
+	}
+	local setEntries = localization.SetEntries :: SetEntries
+	setEntries(localization, entries)
+	entries[1].Source = "changed after storing"
+	local stored = (localization.GetEntries :: GetEntries)(localization)
+	expect(stored[1].Source):toBe "Hello {name}"
+	local spanish = (localization.GetTranslator :: GetTranslator)(localization, "es")
+	local named: { [string | number]: unknown } = { name = "Ada" }
+	local positional: { [string | number]: unknown } = { 3 }
+	expect(spanish:FormatByKey("greeting", named)):toBe "Hola Ada"
+	expect(spanish:FormatByKey("count", positional)):toBe "3 games"
+	expect(spanish:Translate(nil, "Hello {name}")):toBe "Hola {name}"
+	expect(pcall(spanish.FormatByKey, spanish, "missing")):toBe(false)
+end)
 it("asset loading refuses absent providers and invalid content without inventing geometry", function()
 	local engine = Lute.fixture.bridge().placeEngine()
 	local service = engine.service "InsertService"
