@@ -26,15 +26,7 @@ local function write(root: string, path: string, source: string)
 end
 
 local function git(root: string, args: { string })
-	local argv = {
-		"git",
-		"-c",
-		"safe.directory=*",
-		"-c",
-		"user.name=voidmeld",
-		"-c",
-		"user.email=158495725+voidmeld@users.noreply.github.com",
-	}
+	local argv = { "git" }
 	for _, arg in args do
 		table.insert(argv, arg)
 	end
@@ -186,6 +178,8 @@ end)
 it("checks leakage and type policy honor git selection and ignored files", function()
 	fixture(function(root)
 		git(root, { "init", "--quiet" })
+		git(root, { "config", "user.name", "voidmeld" })
+		git(root, { "config", "user.email", "158495725+voidmeld@users.noreply.github.com" })
 		write(root, ".gitignore", "ignored.luau\n")
 		write(root, "tracked.luau", "--!strict\nreturn 1\n")
 		git(root, { "add", "." })
@@ -238,6 +232,8 @@ end)
 it("checks clean clone proves committed content gate failure and dirty refusal", function()
 	fixture(function(root)
 		git(root, { "init", "--quiet" })
+		git(root, { "config", "user.name", "voidmeld" })
+		git(root, { "config", "user.email", "158495725+voidmeld@users.noreply.github.com" })
 		write(
 			root,
 			"gate.luau",
@@ -245,16 +241,7 @@ it("checks clean clone proves committed content gate failure and dirty refusal",
 		)
 		write(root, "payload", "committed")
 		git(root, { "add", "." })
-		git(root, {
-			"-c",
-			"user.name=fixture",
-			"-c",
-			"user.email=fixture@example.invalid",
-			"commit",
-			"--quiet",
-			"-m",
-			"fixture",
-		})
+		git(root, { "commit", "--quiet", "-m", "fixture" })
 		expect(
 			table.concat(
 				Checks.cleanClone { root = root, command = { tostring(process.execPath()), "run", "gate.luau" } },
