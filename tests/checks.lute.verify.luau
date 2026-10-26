@@ -195,6 +195,32 @@ it("checks leakage and type policy honor git selection and ignored files", funct
 	end)
 end)
 
+it("checks spec style rejects colon registration and dotted harness calls", function()
+	fixture(function(root)
+		git(root, { "init", "--quiet" })
+		write(
+			root,
+			"compact.verify.luau",
+			"--!strict\nlocal describe, it, expect = T.describe, T.it, T.expect\ndescribe('a', function()\n\tit('b', function()\n\t\texpect(1):toBe(1)\n\tend)\nend)\n"
+		)
+		write(
+			root,
+			"colon.verify.luau",
+			"--!strict\nsuite:case('b', function(context)\n\tcontext\n\t\t:expect(1)\nend)\n"
+		)
+		write(root, "dotted.verify.luau", "--!strict\nTest.it('b', function()\n\tTest.expect(1):toBe(1)\nend)\n")
+		write(root, "module.luau", "--!strict\nreturn suite:case\n")
+		git(root, { "add", "." })
+		local findings = Checks.specStyle { root = root }
+		expect(#findings):toBe(4)
+		expect(table.concat(findings, "\n")):toContain "colon.verify.luau:2"
+		expect(table.concat(findings, "\n")):toContain "dotted.verify.luau:2"
+		expect(
+			#Checks.specStyle { root = root, exclude = { ["colon.verify.luau"] = true, ["dotted.verify.luau"] = true } }
+		):toBe(0)
+	end)
+end)
+
 it("checks provenance rejects missing license unmanaged notices scripts and dependency failure", function()
 	fixture(function(root)
 		local config = {

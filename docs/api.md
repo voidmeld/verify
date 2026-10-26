@@ -1666,6 +1666,12 @@ Check Git-selected repository files against configured leakage rules.
 
 Require strict maintained Luau and reject explicit dynamic type escapes.
 
+### `Checks.specStyle`
+
+Reject colon case registration, context expectations and dotted `Test.it`, `Test.expect` or `Test.describe` calls in
+`*.verify.luau` files, so specs declare `describe`, `it` and `expect` once. Takes the same selection as `Checks.noAny`;
+`exclude` names files whose subject is the raw harness API.
+
 ### `Checks.testManifest`
 
 Compare or write a manifest against configured corpus discovery.
