@@ -30,9 +30,20 @@ local function environmentFor(options: Options): { [string]: unknown }
 	return environment
 end
 
+local compiled: { [string]: luau.Bytecode } = {}
+
+local function bytecode(source: string): luau.Bytecode
+	local cached = compiled[source]
+	if cached == nil then
+		cached = luau.compile(source)
+		compiled[source] = cached
+	end
+	return cached
+end
+
 local function load(source: string, options: Options?): (...unknown) -> ...unknown
 	local settings: Options = options or {}
-	return luau.load(luau.compile(source), "@" .. (settings.name or "chunk"), environmentFor(settings))
+	return luau.load(bytecode(source), "@" .. (settings.name or "chunk"), environmentFor(settings))
 end
 
 local function check(source: string, name: string?): (boolean, string?)

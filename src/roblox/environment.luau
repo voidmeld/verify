@@ -1073,32 +1073,36 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if state.class.events[key] then
 			return signalFor(state, key)
 		end
-		local bound = state.bound
-		local cached = if bound ~= nil then bound[key] else nil
-		if cached ~= nil then
-			return cached
-		end
-		local resolved: unknown = nil
-		if type(state.class.methods[key]) == "function" then
-			local method = memberMethod(object, state, key)
-			assert(method ~= nil)
-			resolved = operation(method)
-		else
-			local builtin = universal(object, state, key)
-			if type(builtin) == "function" then
-				resolved = operation(builtin :: Method)
-			else
+		local property = class.methods[key] == nil
+			and (class.properties[key] ~= nil or computedFor(state.className, key) ~= nil)
+		if not property then
+			local bound = state.bound
+			local cached = if bound ~= nil then bound[key] else nil
+			if cached ~= nil then
+				return cached
+			end
+			local resolved: unknown = nil
+			if type(state.class.methods[key]) == "function" then
 				local method = memberMethod(object, state, key)
-				if method ~= nil then
-					resolved = operation(method)
+				assert(method ~= nil)
+				resolved = operation(method)
+			else
+				local builtin = universal(object, state, key)
+				if type(builtin) == "function" then
+					resolved = operation(builtin :: Method)
+				else
+					local method = memberMethod(object, state, key)
+					if method ~= nil then
+						resolved = operation(method)
+					end
 				end
 			end
-		end
-		if resolved ~= nil then
-			local store = bound or {}
-			state.bound = store
-			store[key] = resolved
-			return resolved
+			if resolved ~= nil then
+				local store = bound or {}
+				state.bound = store
+				store[key] = resolved
+				return resolved
+			end
 		end
 		local getter = computedFor(state.className, key)
 		if getter ~= nil then

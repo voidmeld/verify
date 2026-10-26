@@ -46,6 +46,7 @@ type Fields = { [string]: unknown }
 local SCHEMA_VERSION = 2
 
 local libraries: { [Snapshot]: Datatypes.Library } = {}
+local databases: { [Snapshot]: Reflection.Database } = {}
 setmetatable(libraries, { __mode = "k" })
 
 local function number(value: unknown): unknown
@@ -207,6 +208,10 @@ local function checkStrings(values: unknown, label: string): { string }
 end
 
 local function database(snapshot: Snapshot): Reflection.Database
+	local cachedDatabase = databases[snapshot]
+	if cachedDatabase ~= nil then
+		return cachedDatabase
+	end
 	local types = library(snapshot)
 	local names: { string } = {}
 	local built: { [string]: Reflection.Class } = {}
@@ -261,6 +266,7 @@ local function database(snapshot: Snapshot): Reflection.Database
 			return fresh
 		end,
 	}
+	databases[snapshot] = self
 	return self
 end
 

@@ -29,8 +29,19 @@ export type Options = {
 	functionDoubles: boolean?,
 }
 
-local function create(options: Options): Environment.Environment
-	local database = options.database
+type Resolved = {
+	definitions: { [string]: Environment.ClassSpec },
+	properties: { [string]: { [string]: Property } },
+	defaults: { [string]: { [string]: unknown } },
+}
+
+local resolvedDatabases: { [Database]: Resolved } = {}
+
+local function resolveDatabase(database: Database): Resolved
+	local cached = resolvedDatabases[database]
+	if cached ~= nil then
+		return cached
+	end
 	local definitions: { [string]: Environment.ClassSpec } = {}
 	local properties: { [string]: { [string]: Property } } = {}
 	local defaults: { [string]: { [string]: unknown } } = {}
@@ -90,6 +101,15 @@ local function create(options: Options): Environment.Environment
 	for _, name in database:GetClassNames() do
 		resolve(name)
 	end
+	local resolved: Resolved = { definitions = definitions, properties = properties, defaults = defaults }
+	resolvedDatabases[database] = resolved
+	return resolved
+end
+
+local function create(options: Options): Environment.Environment
+	local resolved = resolveDatabase(options.database)
+	local definitions = table.clone(resolved.definitions)
+	local properties, defaults = resolved.properties, resolved.defaults
 	local overlays: { [string]: Environment.ClassSpec } = options.classes or {}
 	for name, overlay in overlays do
 		local base = definitions[name]

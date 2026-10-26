@@ -23,6 +23,7 @@ return table.freeze {
 	"tests/corpus.lute.verify.luau",
 	"tests/datatypes.lute.verify.luau",
 	"tests/engine-content.lute.verify.luau",
+	"tests/engine-reuse.lute.verify.luau",
 	"tests/environment-engine.verify.luau",
 	"tests/environment-gaps.verify.luau",
 	"tests/environment.verify.luau",
