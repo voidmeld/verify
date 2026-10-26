@@ -219,9 +219,12 @@ end
 local function checkCollection(collection: Collection)
 	assert(
 		collection.calibrationAttempts == nil
-			or collection.calibrationAttempts == 1
-			or collection.calibrationAttempts == 2,
-		"collection.calibrationAttempts must be one or two"
+			or (
+				collection.calibrationAttempts % 1 == 0
+				and collection.calibrationAttempts >= 1
+				and collection.calibrationAttempts <= 4
+			),
+		"collection.calibrationAttempts must be an integer from one to four"
 	)
 	assert(type(collection.name) == "string" and string.find(collection.name, "%S") ~= nil, "collection needs a name")
 	assert(#collection.benchmarks > 0, "collection needs at least one benchmark")
