@@ -122,4 +122,5 @@ return table.freeze {
 	"tests/ui-wrap-mutations.lute.verify.luau",
 	"tests/wait.lute.verify.luau",
 	"tests/worker.lute.verify.luau",
+	"tests/worldroot-queries.lute.verify.luau",
 }

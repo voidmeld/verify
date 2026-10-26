@@ -14,7 +14,7 @@ export type Filter = {
 	BruteForceAllSlow: boolean,
 	AddToFilter: (Filter, unknown) -> (),
 }
-export type RaycastParamsValue = Filter & { IgnoreWater: boolean }
+export type RaycastParamsValue = Filter & { IgnoreWater: boolean, Margin: number, SizeGradient: number }
 export type OverlapParamsValue = Filter & { MaxParts: number, Tolerance: number }
 export type RaycastParamsConstructor = { new: () -> RaycastParamsValue }
 export type OverlapParamsConstructor = { new: () -> OverlapParamsValue }
@@ -91,6 +91,13 @@ local function constructor<T>(name: string, enums: Enum.Enums, make: (Names.Beha
 			or (key == "IgnoreWater" and name == "RaycastParams")
 		then
 			values[key] = not not value
+		elseif name == "RaycastParams" and (key == "Margin" or key == "SizeGradient") then
+			local number = Float.coerce(value, 3)
+			assert(
+				number == number and math.abs(number) < math.huge and number >= (if key == "Margin" then 0 else -1),
+				"invalid cast expansion"
+			)
+			values[key] = number
 		elseif name == "OverlapParams" and (key == "MaxParts" or key == "Tolerance") then
 			local number = Float.coerce(value, 3)
 			if key == "Tolerance" and not (number >= 0 and number <= 0.05) then
@@ -112,6 +119,7 @@ local function constructor<T>(name: string, enums: Enum.Enums, make: (Names.Beha
 		}
 		if name == "RaycastParams" then
 			values.IgnoreWater = false
+			values.Margin, values.SizeGradient = 0, 0
 		else
 			values.MaxParts, values.Tolerance = 0, 0
 		end
