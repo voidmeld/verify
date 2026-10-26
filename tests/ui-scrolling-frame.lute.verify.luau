@@ -7,6 +7,136 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 
+it("scroll velocity remains zero after canvas writes, time and velocity reset", function(own)
+	local bridge = Lute.fixture.bridge(nil, { ui = { measureBounds = false, measureText = false } })
+	own(bridge.close)
+	local globals: { [string]: unknown } = {
+		env = bridge.environment,
+		Vector2 = Roblox.datatypes.Vector2,
+		typeof = Roblox.typeName,
+	}
+	local complete = Lute.chunk.load(
+		[==[
+local frame = env.createInstance("ScrollingFrame")
+assert(typeof(frame:GetScrollVelocity()) == "Vector2")
+assert(frame:GetScrollVelocity() == Vector2.zero)
+frame.CanvasPosition = Vector2.new(23, 47)
+env.step(1)
+assert(frame:GetScrollVelocity() == Vector2.zero)
+frame:ResetScrollVelocity()
+assert(frame:GetScrollVelocity() == Vector2.zero)
+assert(frame.CanvasPosition == Vector2.new(23, 47))
+return true
+]==],
+		{ environment = globals }
+	)()
+	expect(complete):toBe(true)
+end)
+
+local function scrollingFixture()
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 1000, Y = 1000 }
+			end,
+		},
+	})
+	local root = bridge.environment.createInstance("ScreenGui", { Name = "ScrollScreen" })
+	table.insert(roots, root)
+	local frame = bridge.environment.createInstance("ScrollingFrame", {
+		Name = "ScrollBounds",
+		Parent = root,
+		Size = Roblox.datatypes.UDim2.fromOffset(1000, 1000),
+		CanvasSize = Roblox.datatypes.UDim2.fromOffset(772, 772),
+		CanvasPosition = Roblox.datatypes.Vector2.new(193, 193),
+	})
+	return bridge, root, frame
+end
+
+it("refuses to clamp poked scrolling bounds with an unmeasured zero canvas before publishing geometry", function(own)
+	local bridge, root, frame = scrollingFixture()
+	own(bridge.close)
+	local env = bridge.environment
+	local V = Roblox.datatypes.Vector2
+	local rootSize = env.propertyOf(root, "AbsoluteSize")
+	env.poke(frame, "AbsoluteSize", V.new(386, 386))
+	env.poke(frame, "AbsoluteWindowSize", V.new(386, 386))
+	expect(env.propertyOf(frame, "AbsoluteCanvasSize")):toEqual(V.zero)
+	local layout = assert(bridge.layout)
+	local ok, message = pcall(function(): unknown
+		layout.step()
+		return nil
+	end)
+	expect(ok):toBe(false)
+	for _, part in
+		{
+			"unsupported_ui_layout",
+			"ScrollScreen.ScrollBounds",
+			"stale/poked",
+			"AbsoluteSize=(386, 386), computed=(1000, 1000)",
+			"AbsoluteWindowSize=(386, 386), computed=(1000, 1000)",
+			"AbsoluteCanvasSize=(0, 0), computed=(1000, 1000)",
+			"CanvasPosition=(193, 193), computed=(0, 0)",
+			"author Size and CanvasSize",
+		}
+	do
+		expect(tostring(message)):toContain(part)
+	end
+	expect(frame.CanvasPosition):toEqual(V.new(193, 193))
+	expect(env.propertyOf(frame, "AbsoluteSize")):toEqual(V.new(386, 386))
+	expect(env.propertyOf(frame, "AbsoluteWindowSize")):toEqual(V.new(386, 386))
+	expect(env.propertyOf(frame, "AbsoluteCanvasSize")):toEqual(V.zero)
+	expect(env.propertyOf(root, "AbsoluteSize")):toEqual(rootSize)
+	frame.Size = Roblox.datatypes.UDim2.fromOffset(386, 386)
+	layout.step()
+	expect(frame.CanvasPosition):toEqual(V.new(193, 193))
+	expect(frame.AbsoluteCanvasSize):toEqual(V.new(772, 772))
+end)
+
+it("detects scrolling geometry poked after a successful layout pass", function(own)
+	for _, property in { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" } do
+		local bridge, _, frame = scrollingFixture()
+		own(bridge.close)
+		local V = Roblox.datatypes.Vector2
+		frame.Size = Roblox.datatypes.UDim2.fromOffset(386, 386)
+		local layout = assert(bridge.layout)
+		layout.step()
+		bridge.environment.poke(frame, property, V.zero)
+		frame.CanvasPosition = V.new(900, 900)
+		expect(layout.step):toThrow("stale/poked " .. property)
+		expect(frame.CanvasPosition):toEqual(V.new(900, 900))
+		expect(bridge.environment.propertyOf(frame, property)):toEqual(V.zero)
+	end
+end)
+
+it("clamps fully measured scrolling frames on the first pass and after authored resizing", function(own)
+	local bridge, _, frame = scrollingFixture()
+	own(bridge.close)
+	local D = Roblox.datatypes
+	frame.Size = D.UDim2.fromOffset(386, 386)
+	frame.CanvasPosition = D.Vector2.new(900, 900)
+	local child = bridge.environment.createInstance("Frame", {
+		Parent = frame,
+		Size = D.UDim2.fromOffset(10, 10),
+	})
+	local layout = assert(bridge.layout)
+	layout.step()
+	expect(frame.CanvasPosition):toEqual(D.Vector2.new(386, 386))
+	expect(frame.AbsoluteCanvasSize):toEqual(D.Vector2.new(772, 772))
+	expect(child.AbsolutePosition):toEqual(D.Vector2.new(-386, -386))
+	frame.CanvasPosition = D.Vector2.new(193, 193)
+	layout.step()
+	expect(frame.CanvasPosition):toEqual(D.Vector2.new(193, 193))
+	frame.Size = D.UDim2.fromOffset(1000, 1000)
+	layout.step()
+	expect(frame.CanvasPosition):toEqual(D.Vector2.zero)
+	expect(child.AbsolutePosition):toEqual(D.Vector2.zero)
+end)
+
 local probe = [==[
 local RS = game:GetService("RunService")
 local pg = game.Players.LocalPlayer:WaitForChild("PlayerGui")

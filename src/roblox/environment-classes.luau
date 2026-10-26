@@ -31,6 +31,7 @@ local scrollingFrameProperties: { [string]: unknown } = {
 	ScrollingEnabled = true,
 	ScrollBarThickness = 12,
 }
+local scrollingFrameMethods: { [string]: unknown } = { GetScrollVelocity = true, ResetScrollVelocity = true }
 local textBoxProperties: { [string]: unknown } = { Text = "", PlaceholderText = "", ClearTextOnFocus = true }
 local uiListLayoutProperties: { [string]: unknown } =
 	{ Padding = Datatypes.UDim.new(0, 0), SortOrder = false, FillDirection = false }
@@ -89,6 +90,7 @@ local classes: { [string]: Types.ClassSpec } = {
 	ScrollingFrame = {
 		super = "GuiObject",
 		properties = scrollingFrameProperties,
+		methods = scrollingFrameMethods,
 	},
 	TextBox = {
 		super = "GuiObject",
