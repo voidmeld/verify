@@ -251,11 +251,9 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 	local invalidateStyle: () -> () = function() end
 	local properties: Style.Properties = {}
 	local transitions: Style.Properties = {}
-	local defaults: { [Instance]: unknown } = {}
 	local derives: { [Instance]: { Instance } } = {}
 	weaken(properties)
 	weaken(transitions)
-	weaken(defaults)
 	weaken(derives)
 	local function mapMethods(
 		prefix: string,
@@ -267,6 +265,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 			return table.clone(store[object] or {})
 		end)
 		env.fake(prefix .. "." .. setter, function(object: Instance, values: { [string]: unknown })
+			invalidateStyle()
 			store[object] = table.clone(values)
 			invalidateStyle()
 		end)
@@ -282,6 +281,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		name: string,
 		value: unknown
 	)
+		invalidateStyle()
 		local values = store[object] or {}
 		store[object] = values
 		values[name] = value
@@ -294,10 +294,10 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		setValue(transitions, object, name, value)
 	end)
 	env.fake("StyleRule.GetDefaultPropertyTransition", function(object: Instance): unknown
-		return defaults[object]
+		return (transitions[object] or {})["*"]
 	end)
 	env.fake("StyleRule.SetDefaultPropertyTransition", function(object: Instance, value: unknown)
-		defaults[object] = value
+		setValue(transitions, object, "*", value)
 	end)
 	env.fake("StyleSheet.GetDerives", function(object: Instance): { Instance }
 		return table.clone(derives[object] or {})
@@ -349,9 +349,6 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		end
 		copyTable(properties)
 		copyTable(transitions)
-		if defaults[source] ~= nil then
-			defaults[copy] = defaults[source]
-		end
 		local derived = derives[source]
 		if derived ~= nil then
 			local mapped: { Instance } = {}
@@ -364,7 +361,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 			points[copy] = table.clone(points[source])
 		end
 	end)
-	local style = Style.create(env, properties, transitions, defaults, derives)
+	local style = Style.create(env, properties, transitions, derives)
 	invalidateStyle = style.invalidate
 	env.fake("Instance.GetStyled", function(object: Instance, property: string, selector: unknown): unknown
 		if selector == nil then

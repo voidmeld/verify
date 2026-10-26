@@ -522,7 +522,7 @@ The simulator proves Luau logic over the declared surface, ordering and disposal
 | A derived property such as `TextBounds` | Reads as stored. | `computed` is a test convenience. A computed property is read-only unless it declares `writable = true`. |
 | An undeclared write raises | Engine-true. | `undeclaredWrites = true` is a test convenience. |
 | An undeclared read raises | Engine-true. | `undeclaredReads = "nil"` is a test convenience. |
-| `GetStyled` and `GetStyledPropertyChangedSignal` | Bounded flat style cascade and style notifications. | No native rendering or timed transitions. |
+| `GetStyled` and `GetStyledPropertyChangedSignal` | Bounded flat style cascade, virtual-time transitions and style notifications. | No native rendering. |
 
 ### Options and result
 
@@ -852,6 +852,12 @@ local Package = loader.require "src"
 `Instance:GetStyled(property, "::ClassName")` reads a phantom `UIPadding`, `UICorner`, `UIStroke` or `UIGradient`. Missing phantoms raise. These components do not appear in the physical hierarchy, change resource counts or fire child events. A physical component has its own styled properties and takes precedence for layout. The shared fixtures check this distinction with physical and phantom padding, raw overrides, default values, token changes and removal.
 
 `Instance:GetStyledPropertyChangedSignal(property)` observes the underlying style value and linked scope. Raw writes do not fire this signal. Style changes can fire it while a raw override masks the returned value. Call `controller.step()` to refresh observations; fixture layout does this before layout. `controller.styled(object, property)` exposes the effective read. `controller.component(object, className, property)` reads a physical component first, then a supported phantom, or returns nil when neither exists. Supply this as `layout.component` beside `layout.read` for phantom padding geometry. The fixture bridge provides both readers when it provides styled reads. Closing the controller disconnects its observations.
+
+Style transitions accept `TweenInfo` values or attribute tokens through `SetPropertyTransition`, `SetPropertyTransitions` and `SetDefaultPropertyTransition`. The `"*"` entry is the default. An explicit property entry overrides the default in its rule. Transition settings cascade separately from property targets, as in [StyleRule](https://create.roblox.com/docs/reference/engine/classes/StyleRule).
+
+The first styled read sets the initial value. Later target changes interpolate on `environment.now`. `GetStyled`, `controller.styled` and phantom reads return the current value. Raw property reads keep their default or explicit value. Retargeting starts from the current value. `DelayTime` holds the value before interpolation. `RepeatCount` and `Reverses` are ignored, as `StyleRule` specifies. `controller.step()` publishes intermediate values; fixture layout calls it before layout.
+
+The double interpolates numbers, `Color3`, `UDim`, `UDim2`, `Vector2`, `Vector2int16`, `Vector3`, `Rect` and `CFrame`. Booleans and enum items switch at eased progress 0.5. Other types snap. All easing styles and directions are supported. Removing a rule, tag or sheet uses the transition left in the cascade, or snaps when none is left. Invalid transitions and unresolved tokens raise `unsupported_ui_style`. Retargeting, discrete switching and removal timing are model choices until native conformance covers them.
 
 Relevant nested rules, state selectors and query selectors raise `unsupported_ui_style`. Implicit space combinators, named or nested phantoms and derived sheets also raise this error. The same applies to multiple links at one scope, equal-priority conflicts, other selector arguments and nonzero transitions. Unsupported selectors do not block properties that their rules cannot affect. This is bounded model coverage. Shared Studio Client and double assertions check hierarchy selectors, name/tag/parent mutations, compound selectors and phantom modifiers. Native conformance does not prove rendering.
 
