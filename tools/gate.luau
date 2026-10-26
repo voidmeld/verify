@@ -18,6 +18,14 @@ for index = 2, #process.args do
 	end
 end
 
+for index = #flags, 2, -1 do
+	if flags[index - 1] == "--tier" and flags[index] == "fast" then
+		flags[index] = "static"
+		table.insert(flags, index + 1, "--tier")
+		table.insert(flags, index + 2, "behavior")
+	end
+end
+
 if #flags == 0 then
 	local status = process.run { "git", "status", "--porcelain" }
 	if not status.ok or string.match(status.stdout, "%S") ~= nil then

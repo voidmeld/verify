@@ -189,6 +189,8 @@ Deferred native producers need `--native` and the reference Studio host.
 `--rerun` and `--explain` read the last outcome of the same producer set.
 After a `--file` run, the producer set changes. Use the same `--file` again.
 
+`lute run tools/gate.luau --tier fast` runs the static and behavior tiers together. It excludes the fresh-clone and native tiers and can run on an uncommitted working tree.
+
 ## Gate command line
 
 `Lute.gate.cli(draft, args, options?)` is the command line of `tools/gate.luau`. It defines the gate, runs it and returns the exit code.

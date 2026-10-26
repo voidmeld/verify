@@ -402,7 +402,29 @@ Humanoid state-enable flags default to true and reset on cloning. `SetStateEnabl
 `StateEnabledChanged` even for repeated writes; `None` remains enabled and ignores writes.
 Flags describe configured state-machine policy; the simulator has no automatic state machine.
 
-The reflected environment raycasts oriented block Parts, honoring direction length, descendant include/exclude filters, `CanQuery`, `CanCollide` and `RespectCanCollide`. An origin inside a block does not hit that block. Non-block collision geometry and custom collision-group rules require an explicit host. Terrain has no voxel simulation; terrain geometry needs a configured query host or native execution.
+The reflected environment supplies these `WorldRoot` methods on Workspace and WorldModel. Queries read live descendants of the queried world; a nested WorldModel is a separate world. They do not advance physics or move the source part.
+
+| Method | Geometry and result |
+| --- | --- |
+| `Raycast(origin, direction, params?)` | Finite segment against oriented boxes and uniform balls; nearest hit or nil. Origins inside a target do not hit that target. Direction magnitude is at most 15000 studs. |
+| `Blockcast(cframe, size, direction, params?)` | Translates an oriented box against boxes and balls; nearest hit or nil. |
+| `Spherecast(position, radius, direction, params?)` | Sweeps a sphere against boxes and balls, including rounded edge and corner contacts; nearest hit or nil. |
+| `Shapecast(part, direction, params?)` | Sweeps the source part's supported geometry and excludes that part. Terrain cannot be a source. Optional frame/size overrides refuse as unsupported. |
+| `GetPartBoundsInBox(cframe, size, params?)` | Returns parts whose oriented bounding boxes overlap the oriented query box, including contact. |
+| `GetPartBoundsInRadius(position, radius, params?)` | Returns parts whose oriented bounding boxes intersect the query sphere, including contact. |
+| `GetPartsInPart(part, params?)` | Returns parts intersecting the source's supported volume, excluding the source. The source must belong to the queried WorldRoot. |
+
+Casts return a read-only `RaycastResult` with `Instance`, world-space contact `Position`, outward unit `Normal`, traveled `Distance`, and target `Material`. Shape casts skip targets intersecting or touching the initial shape. They support direction lengths up to 1024 studs and sizes up to 512 studs per side (sphere radius at most 256). Zero direction misses. Sizes must be positive; overlap radii may be zero. Nonfinite inputs and nonorthonormal CFrames refuse. Simultaneous hits and overlap arrays use descendant traversal order; Roblox does not promise this order. A box contact can have multiple valid points; Verify returns a point in that contact region.
+
+Both parameter types honor `FilterType` and `FilterDescendantsInstances`, including the listed roots and all descendants. `IncludeInstances=nil` adds no restriction; `{}` includes nothing. `ExcludeInstances` wins over inclusion. The legacy and modern filters combine. With default flags, a part is eligible when `CanCollide` or `CanQuery` is true; `CanCollide=false` is required for `CanQuery=false` to exclude it. `RespectCanCollide=true` uses only `CanCollide`. `CanTouch` does not affect queries. `BruteForceAllSlow` bypasses part collision flags and collision-group masks, retaining instance filters.
+
+Collision groups use symmetric masks configured with `PhysicsService.RegisterCollisionGroup`, `UnregisterCollisionGroup`, `IsCollisionGroupRegistered`, `CollisionGroupSetCollidable`, and `CollisionGroupsAreCollidable`. PhysicsService and Workspace share the environment's workspace rules. The corresponding WorldRoot methods maintain independent rules for each WorldModel when declared by the reflection snapshot. Unregistered groups use the default collidable mask. Group IDs, renaming, and other unimplemented group methods retain the ordinary unsupported-method refusal. `MaxParts=0` is unlimited; positive values cap overlap results and negative values refuse. Every eligible candidate is validated even when a limit has already been met, so a partial result cannot hide unsupported content.
+
+Block Parts and uniform Ball Parts have box and sphere geometry. Cylinders, MeshParts, PartOperations (including unions), seats, spawn locations, and trusses use their authored oriented `CFrame`/`Size` bounding box for collision queries. Bounds queries use bounding boxes for every BasePart. This deliberately does not model mesh triangles, concavity, union decomposition or cylinder curvature. Other collision shapes, including wedges and nonuniform balls, refuse with `unsupported_content`; bounds queries can still inspect their boxes.
+
+Terrain has no voxel geometry in the double. An explicit terrain proxy can supply `CFrame`, `Size` and a uniform `Material` through `environment.poke`; queries use that box, in the Default collision group. Terrain without authored bounds refuses with `unsupported_content`; casts also require its material. `IgnoreWater` excludes only terrain proxies with Water material, not ordinary Water-material Parts. Mixed terrain materials and voxel edits require a configured query fake or native host; the double never derives a box from voxels. `Shapecast` cannot cast a Terrain source.
+
+Nonzero `OverlapParams.Tolerance`, `RaycastParams.Margin` and `RaycastParams.SizeGradient` refuse with `unsupported` rather than silently changing the requested volume. The latter two datatype properties accept validated values so callers receive an explicit query refusal. These spatial answers prove only the declared geometry model, not native physics or floating-point parity. At numerically unresolved box contacts, the query refuses rather than inventing a contact point.
 
 AudioEmitter distance curves copy their inputs, outputs and cloned state. Negative finite distances clamp to zero and finite volumes clamp to `[0, 1]`, matching the native setters. Invalid key/value types refuse before replacing the curve. The simulator accepts up to 400 points and does not simulate audibility or audio output.
 
@@ -666,7 +688,7 @@ Arithmetic and member errors use the engine messages.
 | `Rect` | `new` with four numbers or two `Vector2` values, `Min`, `Max`, `Width` and `Height`. |
 | `Ray`, `Region3` | Ray origin, direction, unit ray, closest point and distance; region center, size and grid expansion. |
 | `Random` | `new`, `NextNumber`, `NextInteger`, `NextUnitVector`, `Shuffle` and `Clone`. Seeded streams are reproducible and clones advance independently. The generator reuses Verify's agent-evaluation stream; sequences do not match Roblox's generator. `Shuffle` operates on a dense array without invoking metamethods and preserves hash entries. |
-| `RaycastParams`, `OverlapParams` | Mutable filters, include/exclude arrays, collision group and collision flags; ray water filtering; overlap limit and tolerance. Filter arrays copy on assignment and read. These values configure explicit query doubles; they do not supply a physics engine. |
+| `RaycastParams`, `OverlapParams` | Mutable filters, include/exclude arrays, collision group and collision flags; ray water filtering; overlap limit and tolerance. Filter arrays copy on assignment and read. These values configure the WorldRoot query double described above; they do not supply a physics engine. |
 | `NumberRange`, `NumberSequence`, `ColorSequence` and their keypoints | `new` in each engine form, `Min`, `Max`, `Keypoints`, `Time`, `Value` and `Envelope`. The engine rules for keypoints apply. |
 | `BrickColor` | `new` with a number, a name, a `Color3` or three numbers, `palette` (0 to 127), `random`, the named constructors, `Number`, `Name`, `Color`, `r`, `g` and `b`. |
 | `Font` | `new`, `fromName`, `fromId`, `fromEnum`, `Family`, `Weight`, `Style` and `Bold`. `Family`, `Weight`, `Style` and `Bold` are writable, as in the engine. |
@@ -1695,4 +1717,3 @@ Require clean HEAD and run a configured gate in a disposable exact-HEAD clone.
 ### `Checks.lintRules`
 
 Lute rules for shared globals, misplaced type comparisons and invalid string escapes.
-
