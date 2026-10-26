@@ -749,6 +749,54 @@ describe("selection by source and case name", function()
 	end)
 end)
 
+describe("selection by shard", function()
+	local function registered(count: number): Verify.Harness
+		local harness = Verify.createHarness { now = clock(), source = "alpha.luau", prefixIds = false }
+		for index = 1, count do
+			harness:case(`case {index}`, function() end)
+		end
+		return harness
+	end
+
+	it("puts every selected case in exactly one shard", function()
+		local harness = registered(7)
+		local seen: { [string]: number } = {}
+		for index = 1, 3 do
+			local report = harness:run { executor = "test", selection = { shard = { index = index, count = 3 } } }
+			for _, result in report.results do
+				seen[result.name] = (seen[result.name] or 0) + 1
+			end
+		end
+		for index = 1, 7 do
+			expect(seen[`case {index}`]):toEqual(1)
+		end
+		local narrowed = harness:run {
+			executor = "test",
+			selection = { nameContains = "case 1", shard = { index = 1, count = 2 } },
+		}
+		expect(narrowed.total):toEqual(1)
+	end)
+
+	it("rejects invalid shards and accounts for cases another shard runs", function()
+		local harness = registered(2)
+		for _, shard in
+			{ { index = 0, count = 2 }, { index = 3, count = 2 }, { index = 1, count = 0 }, { index = 1.5, count = 2 } }
+		do
+			expect(function()
+				harness:run { executor = "test", selection = { shard = shard } }
+			end):toThrow()
+		end
+		local accounted = harness:run {
+			executor = "test",
+			selection = { shard = { index = 1, count = 2 }, account = true },
+		}
+		expect(accounted.passed):toEqual(1)
+		expect(accounted.skipped):toEqual(1)
+		local runAgain = harness:run { executor = "test" }
+		expect(runAgain.passed):toEqual(2)
+	end)
+end)
+
 describe("report format", function()
 	it("prints one line per measurement and nothing for a case without one", function()
 		local harness = Verify.createHarness { now = clock() }

@@ -98,6 +98,7 @@ export type Selection = {
 	tags: { string }?,
 	capabilities: { string }?,
 	predicate: SelectionPredicate?,
+	shard: { index: number, count: number }?,
 	account: boolean?,
 }
 
@@ -1045,6 +1046,13 @@ local function createHarness(options: {
 		if runOptions.executor == "" then
 			error("run executor must not be empty", 2)
 		end
+		local shard = if runOptions.selection then runOptions.selection.shard else nil
+		if shard ~= nil then
+			local index, count = shard.index, shard.count
+			if count % 1 ~= 0 or index % 1 ~= 0 or count < 1 or index < 1 or index > count then
+				error("selection shard needs whole numbers with 1 <= index <= count", 2)
+			end
+		end
 		running = true
 		runAttachmentBytes = 0
 		attachmentLimits = Attachment.resolve(runOptions.attachments or configuredLimits)
@@ -1058,10 +1066,16 @@ local function createHarness(options: {
 		end
 		local results: { CaseResult } = {}
 		local invoker = runOptions.invoke or defaultInvoke
+		local position = 0
+		local function inShard(): boolean
+			position += 1
+			return shard == nil or (position - 1) % shard.count == shard.index - 1
+		end
 		local function walk(suite: Suite)
 			local path = suitePath(ancestors(suite))
 			for _, entry in suite.cases do
-				if selected(entry, path, runOptions.selection) then
+				local matches = selected(entry, path, runOptions.selection)
+				if matches and inShard() then
 					local result = executeCase(suite, entry, available, runOrigin, invoker, runOptions)
 					if result.status == nil then
 						result.status = "unsupported"
@@ -1070,7 +1084,10 @@ local function createHarness(options: {
 				elseif runOptions.selection ~= nil and runOptions.selection.account == true then
 					local skipped = table.clone(entry)
 					skipped.requires = {}
-					skipped.skipReason = DESELECTED_PREFIX .. "the run's selection did not include this case"
+					skipped.skipReason = DESELECTED_PREFIX
+						.. if matches
+							then "the run's shard did not include this case"
+							else "the run's selection did not include this case"
 					table.insert(results, executeCase(suite, skipped, available, runOrigin, invoker, runOptions))
 				end
 			end
