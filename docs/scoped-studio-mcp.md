@@ -1,6 +1,6 @@
 # Studio tools for an agent run
 
-An arm can declare `studio` instead of `mcp`:
+Set an arm's `studio` field instead of `mcp`:
 
 ```json
 {
@@ -12,61 +12,22 @@ An arm can declare `studio` instead of `mcp`:
 }
 ```
 
-The consumer owns the build command. Verify runs it in the run workspace before
-the agent starts. `{workspace}` and `{evidence}` name only that run. A failed
-build or launch prevents the agent from starting. A host without the optional
-`Services.studio` binding refuses this setup.
+The consumer owns the build command. Verify runs it in that run's workspace before the agent starts. `{workspace}` and `{evidence}` refer only to that run. Build or launch failure prevents agent startup. A host without the optional `Services.studio` binding rejects this setup.
 
-The Lute binding launches a new Studio with the existing launcher. It identifies
-one new Studio by its unique place name. It writes an MCP configuration outside
-the workspace that starts `tools/scoped-studio-mcp.luau`. The proxy has one
-immutable Studio id. Its listing returns only that Studio. It never forwards a
-global listing. It injects the id when absent and refuses every other id before
-calling the backend. Unknown methods, tools and argument fields are refused.
-The agent gets play/stop, capture, execute, console output and input. `input`
-runs the supplied native VirtualInput code on Client through `execute_luau`.
-It takes `{ code, studio_id? }`. It does not emulate computer or browser input.
-Capture results, including image content, pass through without text conversion.
-Each proxy process claims a fresh transport directory. Restarting the same MCP
-configuration keeps its Studio id and does not reuse old process or close files.
-Each native request has a 60-second deadline, capped by the remaining run time.
-An operator can set a finite positive `callSeconds` in the private scope file
-before starting the proxy. The run's `seconds` limit still applies. Start long
-work without waiting for completion and inspect its progress in later calls.
-A request that returns no answer may have been applied. The proxy closes that
-transport and reports the uncertainty without replaying the request. The next
-explicit request opens a fresh transport to the same Studio. Late answers stay
-with the old transport; they cannot satisfy the next request.
+The Lute binding launches a new Studio. It finds that Studio by its unique place name. It writes an MCP configuration outside the workspace for `tools/scoped-studio-mcp.luau`. The proxy keeps one fixed Studio ID. It lists only that Studio and never sends a global listing request. It inserts the ID when absent. It rejects other IDs, unknown methods, unknown tools and unknown argument fields before forwarding.
 
-The runner closes the Studio before hidden checks. It also closes it when the
-adapter raises. A cleanup failure fails the run. The proxy does not retry an
-ambiguous execution. Each parallel run gets a different scope and Studio. The
-build command must rebuild the place after source edits; the initial place is
-the provisioned snapshot. Agents can use Edit execution to inspect and update
-their Studio. A live source sync service is not provided.
+The agent gets play, stop, capture, execute, console output and input tools. `input` runs the given native VirtualInput code on Client through `execute_luau`. It accepts `{ code, studio_id? }`. It does not simulate computer or browser input. Captures pass through with image content. The proxy does not convert images to text.
 
-For an agent that authors in Studio, set `studio.keep` to `true`. After the
-bounded author process returns, Verify stops Play, closes its MCP session,
-and leaves the owned Studio open. `studio-place.json` in the run directory
-records the Studio id, local place path, and process id. The consumer must save
-that place before closing Studio and evaluate the saved bytes. Keeping Studio
-does not save the place or establish a submission. Hidden checks still run;
-a missing saved submission must fail the consumer's checks. An adapter exception
-still closes Studio, including when `keep` is set.
+Each proxy process creates a new transport directory. A restarted MCP configuration keeps its Studio ID. It does not reuse earlier process or close files. Native requests have a 60-second deadline, limited by the remaining run time. Before proxy startup, an operator can set a positive finite `callSeconds` in the private scope file. The run's `seconds` limit still applies. Start long work without waiting for completion. Check progress in later calls.
 
-Use an agent setup that ignores user MCP configuration and disables unrelated
-plugins, computer use and browser use. `studio` cannot be combined with another
-MCP configuration. This scope restricts the supplied MCP tools. The workspace
-is not an operating-system sandbox; an agent with arbitrary shell access can
-start other processes. The consumer owns that broader permission boundary.
+A request without an answer can still have taken effect. The proxy closes that transport and reports uncertain delivery. It does not repeat the request. The next explicit request opens a new transport to the same Studio. Late answers stay with the old transport. They cannot satisfy a new request.
 
-Token totals use the adapter's recorded usage for both shell and MCP tools.
-There is no character estimate, free MCP allowance or extra charge for a tool
-result already included in usage. A completed MCP item counts once as a tool
-call even when the stream also includes started and updated events. Cached
-input stays in the total. Missing usage remains missing.
+The runner closes Studio before hidden checks. It also closes Studio after an adapter exception. Cleanup failure fails the run. Each parallel run has a separate scope and Studio. After source changes, the build command must rebuild the place. The initial place is a snapshot. Agents can inspect and change Studio through Edit execution. Verify provides no live source synchronization.
 
-Headless tests cover isolation, refusal without forwarding, image preservation,
-closed scopes, adapter failure cleanup and token accounting. They do not prove
-Studio launch, input delivery, captures or process cleanup on a native host.
-Run the native gate on the reference Studio host before making those claims.
+Set `studio.keep` to true for an agent that authors in Studio. After the bounded agent process returns, Verify stops Play and closes MCP. It leaves the owned Studio open. `studio-place.json` records the Studio ID, local place path and process ID. The consumer must save the place before closing Studio. Evaluate those saved bytes. Keeping Studio open does not save a submission. Hidden checks still run. Consumer checks must fail when a required saved submission is absent. An adapter exception still closes Studio, including with `keep`.
+
+Use an agent setup that ignores user MCP configuration. Disable unrelated plugins, computer use and browser use. Do not combine `studio` with another MCP configuration. This scope restricts the given MCP tools. It is not an operating-system sandbox. An agent with arbitrary shell access can start other processes. The consumer controls that permission boundary.
+
+Token totals use recorded adapter usage for shell and MCP tools. There is no character estimate, free MCP allowance or extra charge for results already included in usage. A completed MCP item counts once, even when the stream also contains start and update events. Cached input stays in the total. Missing usage stays missing.
+
+Headless tests check isolation, refusal before forwarding, image preservation, closed scopes, exception cleanup and token accounting. They do not prove native Studio launch, input delivery, captures or process cleanup. Use the native gate on the reference Studio host for those claims.

@@ -1,12 +1,14 @@
 --!strict
 
-local Datatypes = require "./datatypes"
+local createModel = require "./environment-model"
+local createMethods = require "./environment-methods"
 local Names = require "./datatypes/names"
 local FrameTypes = require "./datatypes/cframe"
 local VectorTypes = require "./datatypes/vector"
 local EnumTypes = require "./datatypes/enum"
 local Classes = require "./environment-classes"
 local Scheduler = require "./scheduler"
+local createSignals = require "./environment-signals"
 local Types = require "./environment-types"
 local SpatialFakes = require "./spatial-fakes"
 local AudioFakes = require "./audio-fakes"
@@ -36,34 +38,19 @@ export type SignalHandle = Types.SignalHandle
 export type Environment = Types.Environment
 type Resolved = Types.Resolved
 type State = Types.State
-local ATTRIBUTE_NAME_LIMIT = 100
 local metatableOf = (getmetatable :: unknown) :: (unknown) -> unknown
 
-local UNIVERSAL_EVENTS: { string } = {
-	"Changed",
-	"ChildAdded",
-	"ChildRemoved",
-	"Destroying",
-	"AttributeChanged",
-	"DescendantAdded",
-	"DescendantRemoving",
-	"AncestryChanged",
-}
-
-local BASIC_CLASSES = Classes
 local instances: { [unknown]: Instance } = {}
 Names.weak(instances)
 
 local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local settings: Options = ((options or {}) :: unknown) :: Options
 	local limits: Limits = settings.limits or {}
-	local specs: { [string]: ClassSpec } = {}
 	local fakes: { [string]: unknown } = {}
 	local initialFakes: { [string]: unknown } = settings.fakes or {}
 	for member, handler in initialFakes do
 		fakes[member] = handler
 	end
-	local resolved: { [string]: Resolved } = {}
 	local failures: { [string]: number } = {}
 	local errors: { string } = {}
 	local handlerErrors: HandlerErrors = settings.handlerErrors or "collect"
@@ -78,10 +65,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		error('undeclaredReads must be "raise" or "nil"', 2)
 	end
 	local raising = handlerErrors == "raise"
-	local running: { [thread]: boolean } = {}
-	setmetatable(running, { __mode = "k" })
 	local scheduler = Scheduler.create()
-	local connections = 0
 	local alive = 0
 
 	local environment = {}
@@ -95,96 +79,21 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 	local newObject: (className: string, props: { [unknown]: unknown }?, isRoot: boolean, engineOwned: boolean?) -> Instance
 
-	type ComputedLookup = { get: ((object: Instance) -> unknown)?, writable: boolean }
-	local computedLookups: { [string]: { [string]: ComputedLookup } } = {}
+	local model = createModel(settings)
+	local specs = model.specs
+	local resolved = model.resolved
+	local defineClass = model.defineClass
+	local resolve = model.resolve
+	local isA = model.isA
+	local computedEntry = model.computedEntry
+	local computedFor = model.computedFor
+	local writableComputed = model.writableComputed
+	local defaultOf = model.defaultOf
+	local defaultsOf = model.defaultsOf
 
-	local function defineClass<P, M>(className: string, spec: ClassSpec<P, M>, defineOptions: DefineOptions?)
-		if type(className) ~= "string" or className == "" then
-			error("class name must be a non-empty string", 2)
-		end
-		if specs[className] ~= nil and not (defineOptions ~= nil and defineOptions.replace == true) then
-			error(("class %q is already defined"):format(className), 2)
-		end
-		specs[className] = (spec :: unknown) :: ClassSpec
-		table.clear(resolved)
-		table.clear(computedLookups)
-	end
-
-	if settings.builtins ~= false then
-		for className, spec in BASIC_CLASSES do
-			specs[className] = spec
-		end
-	end
-	local extraClasses: { [string]: ClassSpec } = settings.classes or {}
-	for className, spec in extraClasses do
-		specs[className] = spec
-	end
-
-	local function resolve(className: string): Resolved?
-		local cached = resolved[className]
-		if cached ~= nil then
-			return cached
-		end
-		local spec = specs[className]
-		if spec == nil then
-			return nil
-		end
-		local parent: Resolved? = if spec.super ~= nil then resolve(spec.super) else nil
-		if spec.super ~= nil and parent == nil then
-			error(("class %q extends undefined class %q"):format(className, spec.super), 3)
-		end
-		local result: Resolved = {
-			instance = className == "Instance" or (if parent ~= nil then parent.instance else className ~= "Object"),
-			creatable = if spec.creatable ~= nil then spec.creatable else true,
-			access = if parent ~= nil then table.clone(parent.access) else {},
-			properties = if parent ~= nil then table.clone(parent.properties) else {},
-			events = if parent ~= nil then table.clone(parent.events) else {},
-			methods = if parent ~= nil then table.clone(parent.methods) else {},
-		}
-		if (parent == nil and result.instance) or className == "Instance" then
-			result.properties.Name = false
-			result.properties.Archivable = true
-			for _, event in UNIVERSAL_EVENTS do
-				result.events[event] = true
-			end
-		elseif parent == nil then
-			result.events.Changed = true
-		end
-		local declared: { [string]: unknown } = spec.properties or {}
-		for key, default in declared do
-			result.properties[key] = default
-		end
-		local declaredEvents: { string } = spec.events or {}
-		for _, event in declaredEvents do
-			result.events[event] = true
-		end
-		local declaredMethods: { [string]: unknown } = spec.methods or {}
-		local declaredAccess: { [string]: "read" | "write" | "none" | "callback" } = spec.access or {}
-		for key in declaredAccess do
-			result.access[key] = declaredAccess[key]
-		end
-		for key, method in declaredMethods do
-			result.methods[key] = method
-		end
-		resolved[className] = result
-		return result
-	end
-
-	local function isA(className: string, target: string): boolean
-		local walk: string? = className
-		while walk ~= nil do
-			if walk == target then
-				return true
-			end
-			local spec = specs[walk]
-			walk = if spec ~= nil then spec.super else nil
-		end
-		return false
-	end
-
-	local observers: { { listener: (event: Event) -> (), connected: boolean } } = {}
-	local cloneHooks: { { hook: CloneHook, connected: boolean } } = {}
-	local createHooks: { { hook: CreateHook, connected: boolean } } = {}
+	local observers: { { callback: (event: Event) -> (), connected: boolean } } = {}
+	local cloneHooks: { { callback: CloneHook, connected: boolean } } = {}
+	local createHooks: { { callback: CreateHook, connected: boolean } } = {}
 
 	local function injecting(operation: Operation): boolean
 		return #observers > 0 or (failures[operation] or 0) > 0
@@ -196,7 +105,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		local current: typeof(observers) = if #observers > 1 then table.clone(observers) else observers
 		for _, observer in current do
 			if observer.connected then
-				observer.listener {
+				observer.callback {
 					operation = operation,
 					subject = subject,
 					member = member,
@@ -212,129 +121,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 	end
 
-	local meters: { [unknown]: { connections: () -> number, fires: () -> number } } = {}
-	setmetatable(meters, { __mode = "k" })
-
-	local function guarded<A..., R...>(body: (A...) -> R...): (A...) -> R...
-		if not raising then
-			return body
-		end
-		return function(...: A...): R...
-			local thread = coroutine.running()
-			if running[thread] then
-				return body(...)
-			end
-			running[thread] = true
-			local start = #errors
-			local function finish(ok: boolean, ...: R...): R...
-				running[thread] = nil
-				if not ok then
-					error(table.pack(...)[1], 0)
-				end
-				if #errors > start then
-					local parts: { string } = {}
-					for index = start + 1, #errors do
-						table.insert(parts, errors[index])
-						errors[index] = nil
-					end
-					error(table.concat(parts, "\n"), 0)
-				end
-				return ...
-			end
-			return finish(pcall(body, ...))
-		end
-	end
-
-	local function operation<A..., R...>(body: (A...) -> R...): (A...) -> R...
-		return guarded(body)
-	end
-
-	local function newSignal<A...>(initialFires: number?): Signal<A...>
-		local live: { { handler: (A...) -> (), connected: boolean, connection: Connection } } = {}
-		local fired = initialFires or 0
-		local signal: Signal<A...>
-		local function connect(_self: Signal<A...>, handler: (A...) -> ()): Connection
-			local connection: Connection
-			local record: { handler: (A...) -> (), connected: boolean, connection: Connection }
-			connection = {
-				Connected = true,
-				Disconnect = function(_self: Connection)
-					if not record.connected then
-						return
-					end
-					record.connected = false
-					connection.Connected = false
-					connections -= 1
-					local index = table.find(live, record)
-					if index ~= nil then
-						table.remove(live, index)
-					end
-				end,
-			}
-			Names.register(connection, "RBXScriptConnection")
-			record = { handler = handler, connected = true, connection = connection }
-			table.insert(live, record)
-			connections += 1
-			return connection
-		end
-		local function wait(_self: Signal<A...>): ...unknown
-			return scheduler.block(function(waiter: thread)
-				local connection: Connection?
-				local function cleanup()
-					if connection then
-						connection:Disconnect()
-						connection = nil
-					end
-				end
-				local function resume(...: unknown)
-					cleanup()
-					if coroutine.status(waiter) ~= "dead" then
-						scheduler.resume(waiter, ...)
-					end
-				end
-				connection = signal:Connect((resume :: unknown) :: (A...) -> ())
-				return cleanup
-			end)
-		end
-		local function dispatch(_self: Signal<A...>, ...: A...)
-			fired += 1
-			if #live == 0 then
-				return
-			end
-			for _, record in table.clone(live) do
-				if record.connected then
-					scheduler.spawn(function(...: A...)
-						local ok, thrown: unknown = pcall(record.handler, ...)
-						if not ok then
-							table.insert(errors, tostring(thrown))
-						end
-					end, ...)
-				end
-			end
-		end
-		local function disconnectAll(_self: Signal<A...>)
-			for _, record in table.clone(live) do
-				record.connection:Disconnect()
-			end
-			table.clear(live)
-		end
-		signal = {
-			Connect = connect,
-			Wait = (wait :: unknown) :: (Signal<A...>) -> A...,
-			Fire = operation(dispatch),
-			DisconnectAll = disconnectAll,
-		}
-		Names.register(signal, "RBXScriptSignal")
-		meters[signal] = {
-			connections = function(): number
-				return #live
-			end,
-			fires = function(): number
-				return fired
-			end,
-		}
-		return signal
-	end
+	local signals = createSignals(scheduler, errors, raising)
+	local newSignal = signals.newSignal
+	local operation = signals.operation
+	local meters = signals.meters
 
 	local function stateOf(object: unknown): State
 		return states[object]
@@ -365,85 +155,6 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	local function describe(state: State): string
 		return ("%s %q"):format(state.className, tostring(state.values.Name))
-	end
-
-	local function lookupComputed(
-		getters: { [string]: Computed },
-		className: string,
-		key: string
-	): (((object: Instance) -> unknown)?, boolean)
-		local walk: string? = className
-		while walk ~= nil do
-			local entry = getters[walk .. "." .. key]
-			if entry ~= nil then
-				if type(entry) == "function" then
-					return entry, false
-				end
-				return entry.get, entry.writable == true
-			end
-			local spec = specs[walk]
-			walk = if spec ~= nil then spec.super else nil
-		end
-		return nil, false
-	end
-	local function computedEntry(className: string, key: string): (((object: Instance) -> unknown)?, boolean)
-		local getters = settings.computed
-		if getters == nil or (next(getters) == nil and metatableOf(getters) == nil) then
-			return nil, false
-		end
-		if not table.isfrozen(getters) then
-			return lookupComputed(getters, className, key)
-		end
-		local byKey = computedLookups[className]
-		if byKey == nil then
-			byKey = {}
-			computedLookups[className] = byKey
-		end
-		local found = byKey[key]
-		if found == nil then
-			local get, writable = lookupComputed(getters, className, key)
-			found = { get = get, writable = writable }
-			byKey[key] = found
-		end
-		return found.get, found.writable
-	end
-	local function computedFor(className: string, key: string): ((object: Instance) -> unknown)?
-		local getter = computedEntry(className, key)
-		return getter
-	end
-	local function writableComputed(className: string, key: string): boolean
-		local _, writable = computedEntry(className, key)
-		return writable
-	end
-
-	local function defaultOf(className: string, class: Resolved, key: string): unknown
-		local declared = class.properties[key]
-		local fallback = if key == "Name" then className elseif declared == false then nil else declared
-		return if settings.defaultProperty ~= nil then settings.defaultProperty(className, key, fallback) else fallback
-	end
-
-	local classDefaults: { [Resolved]: { values: { [string]: unknown }, fresh: { string } } } = {}
-
-	local function defaultsOf(className: string, class: Resolved): { [string]: unknown }
-		local cached = classDefaults[class]
-		if cached == nil then
-			local values: { [string]: unknown } = {}
-			local fresh: { string } = {}
-			for key in class.properties do
-				local value = defaultOf(className, class, key)
-				values[key] = value
-				if type(value) == "table" and Names.of(value) == nil then
-					table.insert(fresh, key)
-				end
-			end
-			cached = { values = values, fresh = fresh }
-			classDefaults[class] = cached
-		end
-		local values = table.clone(cached.values)
-		for _, key in cached.fresh do
-			values[key] = defaultOf(className, class, key)
-		end
-		return values
 	end
 
 	local function memberError(state: State, key: string): never
@@ -622,35 +333,6 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 	end
 
-	local function validAttribute(name: unknown, value: unknown)
-		local nameLimit = limits.attributeNameLength or ATTRIBUTE_NAME_LIMIT
-		if type(name) ~= "string" or name == "" or string.match(name, "^[%w_]+$") == nil then
-			error("attribute names must be non-empty alphanumeric or underscore strings", 4)
-		end
-		if #name > nameLimit then
-			error(("attribute name %q is longer than %d characters"):format(name, nameLimit), 4)
-		end
-		if string.sub(name, 1, 3) == "RBX" then
-			error("attribute names must not start with RBX", 4)
-		end
-		local kind = type(value)
-		if kind ~= "string" and kind ~= "number" and kind ~= "boolean" and value ~= nil then
-			local described = if kind == "table" and isObject(value)
-				then "Instance"
-				else Datatypes.typeName(value) or typeof(value)
-			if not Datatypes.isAttributeType(described) then
-				error(("attribute %q cannot hold a %s"):format(name, described), 4)
-			end
-		end
-		if
-			type(value) == "string"
-			and limits.attributeStringLength ~= nil
-			and #value > limits.attributeStringLength
-		then
-			error(("attribute %q string is longer than %d characters"):format(name, limits.attributeStringLength), 4)
-		end
-	end
-
 	local function memberMethod(object: Instance, state: State, key: string): ((Instance, ...unknown) -> ...unknown)?
 		local method = state.class.methods[key]
 		if method == nil then
@@ -679,358 +361,37 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 	end
 
-	local COMMON: { [string]: boolean } = table.freeze { IsA = true, GetPropertyChangedSignal = true }
-	local function universal(object: Instance, state: State, key: string): unknown
-		if not state.class.instance and COMMON[key] ~= true then
-			return nil
-		end
-		if key == "Destroy" then
-			return function()
-				destroy(object, state)
-			end
-		elseif key == "ClearAllChildren" then
-			return function()
-				for _, child in table.clone(state.children) do
-					destroy(child, stateOf(child))
-				end
-			end
-		elseif key == "GetChildren" then
-			return function()
-				return table.clone(state.children)
-			end
-		elseif key == "GetDescendants" then
-			return function()
-				local out: { Instance } = {}
-				local function walk(parent: Instance)
-					for _, child in stateOf(parent).children do
-						table.insert(out, child)
-						walk(child)
-					end
-				end
-				walk(object)
-				return out
-			end
-		elseif key == "WaitForChild" then
-			return function(_self: Instance, name: string, timeout: number?): Instance?
-				if timeout ~= nil and timeout <= 0 then
-					error("illegal argument #2 (timeOut must be greater than 0)", 2)
-				end
-				for _, child in state.children do
-					if stateOf(child).values.Name == name then
-						return child
-					end
-				end
-				return (
-					scheduler.block(function(waiter: thread)
-						local finished = false
-						local added: Connection?
-						local removed: Connection?
-						local names: { [Instance]: Connection } = {}
-						local timer: thread?
-						local function cleanup()
-							if finished then
-								return
-							end
-							finished = true
-							if added then
-								added:Disconnect()
-							end
-							if removed then
-								removed:Disconnect()
-							end
-							for _, connection in names do
-								connection:Disconnect()
-							end
-							table.clear(names)
-							if timer then
-								scheduler.cancel(timer)
-							end
-						end
-						local function finish(child: Instance?)
-							if finished then
-								return
-							end
-							cleanup()
-							if coroutine.status(waiter) ~= "dead" then
-								scheduler.resume(waiter, child)
-							end
-						end
-						local function watch(child: Instance)
-							names[child] = child:GetPropertyChangedSignal("Name"):Connect(function()
-								if stateOf(child).parent == object and stateOf(child).values.Name == name then
-									finish(child)
-								end
-							end)
-						end
-						for _, child in state.children do
-							watch(child)
-						end
-						added = signalFor(state, "ChildAdded"):Connect(function(value: unknown)
-							local child = value :: Instance
-							if stateOf(child).values.Name == name then
-								finish(child)
-							else
-								watch(child)
-							end
-						end)
-						removed = signalFor(state, "ChildRemoved"):Connect(function(value: unknown)
-							local child = value :: Instance
-							local connection = names[child]
-							if connection then
-								connection:Disconnect()
-								names[child] = nil
-							end
-						end)
-						if timeout ~= nil then
-							timer = scheduler.delay(timeout, function()
-								finish(nil)
-							end)
-						end
-						return cleanup
-					end) :: unknown
-				) :: Instance?
-			end
-		elseif key == "FindFirstChild" then
-			return function(_self: Instance, name: string, recursive: boolean?): unknown
-				local function search(parent: Instance): Instance?
-					for _, child in stateOf(parent).children do
-						if stateOf(child).values.Name == name then
-							return child
-						end
-					end
-					if recursive == true then
-						for _, child in stateOf(parent).children do
-							local found = search(child)
-							if found ~= nil then
-								return found
-							end
-						end
-					end
-					return nil
-				end
-				return search(object)
-			end
-		elseif key == "FindFirstChildOfClass" or key == "FindFirstChildWhichIsA" then
-			return function(_self: Instance, className: string, recursive: boolean?): Instance?
-				local function search(parent: Instance): Instance?
-					for _, child in stateOf(parent).children do
-						local childClass = stateOf(child).className
-						if
-							childClass == className or (key == "FindFirstChildWhichIsA" and isA(childClass, className))
-						then
-							return child
-						end
-					end
-					if key == "FindFirstChildWhichIsA" and recursive == true then
-						for _, child in stateOf(parent).children do
-							local found = search(child)
-							if found then
-								return found
-							end
-						end
-					end
-					return nil
-				end
-				return search(object)
-			end
-		elseif
-			key == "FindFirstAncestor"
-			or key == "FindFirstAncestorOfClass"
-			or key == "FindFirstAncestorWhichIsA"
-		then
-			return function(_self: Instance, name: string): Instance?
-				local walk = state.parent
-				while walk ~= nil do
-					local candidate = stateOf(walk)
-					if
-						(key == "FindFirstAncestor" and candidate.values.Name == name)
-						or (key == "FindFirstAncestorOfClass" and candidate.className == name)
-						or (key == "FindFirstAncestorWhichIsA" and isA(candidate.className, name))
-					then
-						return walk
-					end
-					walk = candidate.parent
-				end
-				return nil
-			end
-		elseif key == "Clone" then
-			return function(): Instance?
-				if state.values.Archivable == false then
-					return nil
-				end
-				local copies: { [Instance]: Instance } = {}
-				local originals: { Instance } = {}
-				local function copyTree(original: Instance): Instance
-					local source = stateOf(original)
-					local copy = newObject(source.className, nil, false)
-					copies[original] = copy
-					table.insert(originals, original)
-					for _, child in source.children do
-						if stateOf(child).values.Archivable ~= false then
-							local childCopy = copyTree(child)
-							move(childCopy, stateOf(childCopy), copy)
-						end
-					end
-					return copy
-				end
-				local ok, result = pcall(function(): Instance
-					local rootCopy = copyTree(object)
-					for original, copy in copies do
-						local source, target = stateOf(original), stateOf(copy)
-						target.worldPivotSet = source.worldPivotSet
-						for property, value in source.values do
-							if
-								computedFor(source.className, property) == nil
-								or writableComputed(source.className, property)
-							then
-								target.values[property] = if isObject(value)
-									then copies[instances[value]] or value
-									else value
-							end
-						end
-						target.extras = table.clone(source.extras)
-						target.attributes = table.clone(source.attributes)
-						target.tags = table.clone(source.tags)
-					end
-					local function remap(value: Instance): Instance
-						return copies[value] or value
-					end
-					for _, original in originals do
-						local copy = copies[original]
-						for _, entry in table.clone(cloneHooks) do
-							if entry.connected then
-								entry.hook(original, copy, remap)
-							end
-						end
-					end
-					return rootCopy
-				end)
-				if not ok then
-					for _, copy in copies do
-						destroy(copy, stateOf(copy))
-					end
-					error(result, 0)
-				end
-				return result
-			end
-		elseif key == "AddTag" or key == "RemoveTag" or key == "HasTag" then
-			return function(_self: Instance, tag: string): boolean?
-				assert(type(tag) == "string", "tag must be a string")
-				if key == "HasTag" then
-					return state.tags[tag] == true
-				end
-				setTag(object, tag, key == "AddTag")
-				return nil
-			end
-		elseif key == "GetTags" then
-			return function(): { string }
-				local tags: { string } = {}
-				for tag in state.tags do
-					table.insert(tags, tag)
-				end
-				table.sort(tags)
-				return tags
-			end
-		elseif key == "GetFullName" then
-			return function(): string
-				local parts: { string } = {}
-				local walk: Instance? = object
-				while walk ~= nil and walk ~= root do
-					table.insert(parts, 1, tostring(stateOf(walk).values.Name))
-					walk = stateOf(walk).parent
-				end
-				return table.concat(parts, ".")
-			end
-		elseif key == "IsA" then
-			return function(_self: Instance, className: string): boolean
-				return isA(state.className, className)
-			end
-		elseif key == "IsDescendantOf" then
-			return function(_self: Instance, ancestor: unknown): boolean
-				local walk = state.parent
-				while walk ~= nil do
-					if walk == ancestor then
-						return true
-					end
-					walk = stateOf(walk).parent
-				end
-				return false
-			end
-		elseif key == "IsAncestorOf" then
-			return function(_self: Instance, descendant: unknown): boolean
-				local walk = stateOf(instances[descendant]).parent
-				while walk ~= nil do
-					if walk == object then
-						return true
-					end
-					walk = stateOf(walk).parent
-				end
-				return false
-			end
-		elseif key == "SetAttribute" then
-			return function(_self: Instance, name: string, value: unknown)
-				if injecting "setAttribute" then
-					inject("setAttribute", describe(state), object, name, value)
-				end
-				validAttribute(name, value)
-				if state.attributes[name] == value then
-					return
-				end
-				state.attributes[name] = value
-				fireSignal(state, "attr:" .. name)
-				fireSignal(state, "AttributeChanged", name)
-			end
-		elseif key == "GetAttribute" then
-			return function(_self: Instance, name: string): unknown
-				return state.attributes[name]
-			end
-		elseif key == "GetAttributes" then
-			return function(): { [string]: unknown }
-				return table.clone(state.attributes)
-			end
-		elseif key == "GetPropertyChangedSignal" then
-			return function(_self: Instance, property: string): Signal
-				if
-					state.class.properties[property] == nil
-					and property ~= "ClassName"
-					and not (property == "Parent" and state.class.instance)
-					and not state.extras[property]
-					and settings.undeclaredWrites ~= true
-					and computedFor(state.className, property) == nil
-				then
-					memberError(state, property)
-				end
-				return signalFor(state, "prop:" .. property)
-			end
-		elseif key == "IsPropertyModified" then
-			return function(_self: Instance, property: string): boolean
-				if state.class.properties[property] == nil then
-					memberError(state, property)
-				end
-				return state.values[property] ~= defaultOf(state.className, state.class, property)
-			end
-		elseif key == "ResetPropertyToDefault" then
-			return function(_self: Instance, property: string)
-				if state.class.properties[property] == nil then
-					memberError(state, property)
-				end
-				local value = defaultOf(state.className, state.class, property)
-				if injecting "setProperty" then
-					inject("setProperty", describe(state), object, property, value)
-				end
-				if state.values[property] == value then
-					return
-				end
-				state.values[property] = value
-				changed(object, state, property)
-			end
-		elseif key == "GetAttributeChangedSignal" then
-			return function(_self: Instance, name: string): Signal
-				return signalFor(state, "attr:" .. name)
-			end
-		end
-		return nil
-	end
+	local universal = createMethods {
+		settings = settings,
+		limits = limits,
+		scheduler = scheduler,
+		instances = instances,
+		cloneHooks = cloneHooks,
+		stateOf = stateOf,
+		isObject = isObject,
+		signalFor = signalFor,
+		fireSignal = fireSignal,
+		describe = describe,
+		injecting = injecting,
+		inject = inject,
+		memberError = memberError,
+		changed = changed,
+		destroy = destroy,
+		move = move,
+		isA = isA,
+		computedFor = computedFor,
+		writableComputed = writableComputed,
+		defaultOf = defaultOf,
+		newObject = function(...)
+			return newObject(...)
+		end,
+		setTag = function(...)
+			return setTag(...)
+		end,
+		root = function()
+			return root
+		end,
+	}
 
 	local function readMember(object: Instance, key: string): unknown
 		local state = stateOf(object)
@@ -1236,7 +597,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		for _, entry in table.clone(createHooks) do
 			if entry.connected then
-				entry.hook(object)
+				entry.callback(object)
 			end
 		end
 		local initial: { [unknown]: unknown } = props or {}
@@ -1420,7 +781,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return alive
 	end
 	environment.liveConnections = function(): number
-		return connections
+		return signals.liveConnections()
 	end
 	environment.poke = operation(function(object: Instance, key: string, value: unknown)
 		local state = stateOf(object)
@@ -1521,48 +882,30 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		return total
 	end
-	environment.observe = function(listener: (event: Event) -> ()): Connection
-		local entry = { listener = listener, connected = true }
-		table.insert(observers, entry)
+	local function subscribe<T>(entries: { { callback: T, connected: boolean } }, callback: T): Connection
+		local entry = { callback = callback, connected = true }
+		table.insert(entries, entry)
 		local connection = { Connected = true }
 		function connection.Disconnect(_self: Connection)
 			entry.connected = false
 			connection.Connected = false
-			local index = table.find(observers, entry)
+			local index = table.find(entries, entry)
 			if index ~= nil then
-				table.remove(observers, index)
+				table.remove(entries, index)
 			end
 		end
 		return connection
+	end
+	environment.observe = function(listener: (event: Event) -> ()): Connection
+		return subscribe(observers, listener)
 	end
 	environment.onClone = function(hook: CloneHook): Connection
-		local entry = { hook = hook, connected = true }
-		table.insert(cloneHooks, entry)
-		local connection = { Connected = true }
-		function connection.Disconnect(_self: Connection)
-			entry.connected = false
-			connection.Connected = false
-			local index = table.find(cloneHooks, entry)
-			if index ~= nil then
-				table.remove(cloneHooks, index)
-			end
-		end
-		return connection
+		return subscribe(cloneHooks, hook)
 	end
 	environment.onCreate = function(hook: CreateHook): Connection
-		local entry = { hook = hook, connected = true }
-		table.insert(createHooks, entry)
-		local connection = { Connected = true }
-		function connection.Disconnect(_self: Connection)
-			entry.connected = false
-			connection.Connected = false
-			local index = table.find(createHooks, entry)
-			if index ~= nil then
-				table.remove(createHooks, index)
-			end
-		end
-		return connection
+		return subscribe(createHooks, hook)
 	end
+
 	environment.signalOf = function(object: Instance, event: string): SignalHandle
 		local state = stateOf(object)
 		if not state.class.events[event] then
@@ -1620,14 +963,10 @@ local function assertInstance(value: unknown): Instance
 	return instance
 end
 
-local function typeName(value: unknown): string
-	return Names.kind(value)
-end
-
 return {
 	create = create,
 	isInstance = isInstance,
 	assertInstance = assertInstance,
-	typeName = typeName,
-	BASIC_CLASSES = BASIC_CLASSES,
+	typeName = Names.kind,
+	BASIC_CLASSES = Classes,
 }

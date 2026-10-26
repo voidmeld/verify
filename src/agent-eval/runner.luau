@@ -874,5 +874,4 @@ end
 return {
 	run = run,
 	load = load,
-	copyTree = copyTree,
 }

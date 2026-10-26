@@ -609,5 +609,4 @@ return {
 	digest = digest,
 	transport = mcpTransport,
 	discovered = discovered,
-	CONSOLE_READ = CONSOLE_READ,
 }

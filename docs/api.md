@@ -1,9 +1,6 @@
 # API reference
 
-Verify gives each case an isolated lifecycle and records the result in a report.
-The case context exposes its registered case ID as `context.id`.
-Start with cases and assertions.
-Use sessions, plans and host adapters when you coordinate several sources or collect observations on another host.
+Verify gives each case an isolated lifecycle and records the result in a report. The case context exposes its registered case ID as `context.id`. Start with cases and assertions. Use sessions, plans and host adapters when you coordinate several sources or collect observations on another host.
 
 | Task | Start here |
 | --- | --- |
@@ -31,9 +28,7 @@ The optional packages are:
 - [`Gate`](../src/gate/init.luau), [`Evidence`](../src/evidence/init.luau) and [`Benchmark`](../src/benchmark.luau). They run on the host side. A place mounts only core.
 - [`Consumer`](../src/consumer/init.luau).
 
-Each entry point exports its public functions and types.
-The [working example](../examples/basic.luau) is a case and report that you can run directly.
-The [laws](laws.md) define the lifecycle and evidence boundaries.
+Each entry point exports its public functions and types. The [working example](../examples/basic.luau) is a case and report that you can run directly. The [laws](laws.md) define the lifecycle and evidence boundaries.
 
 ---
 
@@ -43,13 +38,9 @@ The [laws](laws.md) define the lifecycle and evidence boundaries.
 
 `createHarness({ now, source?, prefixIds? }) -> Harness`
 
-`Core.createHarness` creates an isolated registry.
-Register cases, then call `harness:run` to receive their results.
-Importing Verify does not create a shared registry.
+`Core.createHarness` creates an isolated registry. Register cases, then call `harness:run` to receive their results. Importing Verify does not create a shared registry.
 
-`harness:run` returns failed and unsupported results in its report. It does not set the process exit code.
-The caller must judge the report and make its command fail when the required claim is unmet.
-The [repository gate](running.md#repository-gate) checks that a corpus is nonempty and passes entirely.
+`harness:run` returns failed and unsupported results in its report. It does not set the process exit code. The caller must judge the report and make its command fail when the required claim is not met. The [repository gate](running.md#repository-gate) checks that a corpus is nonempty and passes entirely.
 
 ```luau
 local tick = 0
@@ -75,10 +66,7 @@ local report = harness:run {
 print(Core.format(report))
 ```
 
-Supply a monotonic `now` function. This example uses a synthetic clock.
-`source` associates the registry with its source.
-`prefixIds` controls source prefixes in case IDs. It defaults to true when you supply a source.
-Prefixing requires a source and does not change selection visibility.
+Give a monotonic `now` function. This example uses a synthetic clock. `source` associates the registry with its source. `prefixIds` controls source prefixes in case IDs. It defaults to true when you give a source. Prefixing requires a source and does not change selection visibility.
 
 ### Registration and execution
 
@@ -86,16 +74,13 @@ Prefixing requires a source and does not change selection visibility.
 | --- | --- |
 | `harness:suite(name, register)` | Group the cases that a callback registers. |
 | `harness:case(name, run)` | Register a callback that receives a case context. |
-| `harness:case(name, options)` | Supply `run` and optionally `id`, `requires`, `tags`, `limitations`, `timeoutSeconds` and `cleanupTimeoutSeconds`. |
+| `harness:case(name, options)` | Give `run` and optionally `id`, `requires`, `tags`, `limitations`, `timeoutSeconds` and `cleanupTimeoutSeconds`. |
 | `harness:skip(name, reason, run?)` | Register a deliberate omission with its reason. |
 | `harness:beforeEach(run)` | Register setup for the cases in the current suite. |
 | `harness:afterEach(run)` | Register teardown for the cases in the current suite. |
 | `harness:run(options)` | Execute the selected cases and return a report. |
 
-Run options name the `executor`. They can also supply `environment`, `capabilities`, `selection`, `invoke`, `bind` and `cancelled`.
-Selection supports IDs, suite prefixes, sources, a case-name substring (`nameContains`, plain text), tags, capabilities and a predicate. `shard = { index, count }` runs every `count`th case that the rest of the selection matches, starting at `index`, so the shards of one run cover each matching case exactly once. An index outside `1..count` or a fractional value is an error.
-Every field that you set must match.
-A focused result records that execution. It does not establish a complete gate.
+Run options name the `executor`. They can also give `environment`, `capabilities`, `selection`, `invoke`, `bind` and `cancelled`. Selection accepts IDs, suite prefixes, sources, tags, capabilities and a predicate. `nameContains` matches plain text in the case name. `shard = { index, count }` selects every `count`th matching case, starting at `index`. The shards include each matching case once. `index` and `count` must be whole numbers, with `1 <= index <= count`. Every field that you set must match. A focused result records that execution. It does not establish a complete gate.
 
 ```luau
 harness:case("adds two values", {
@@ -108,10 +93,7 @@ harness:case("adds two values", {
 })
 ```
 
-A required capability that the run lacks produces `unsupported`, not a pass.
-A deliberate skip produces `skipped`.
-The optional invoker owns interruption. It must stop the work before it reports a cancellation or a timeout.
-See [execution](execution.md) for host deadlines and policy.
+A required capability that the run lacks produces `unsupported`, not a pass. A deliberate skip produces `skipped`. The optional invoker owns interruption. It must stop the work before it reports a cancellation or a timeout. See [execution](execution.md) for host deadlines and policy.
 
 ### Case context
 
@@ -134,28 +116,17 @@ The context records assertions, steps and artifact references. It owns case-loca
 | `context:measure(actor, name, input, limits)` | Check observed performance against explicit limits. |
 | `context:remainingSeconds()` | Read the current body or cleanup budget. |
 
-The [one case model](experience.md#one-case-model) owns typed operations, host binding, deadlines and evidence.
-`Core.runCase({name, ...caseOptions}, host)` runs one ordinary case and returns the standard report.
-Use `Core.observationParity` to compare the action and query observations of two reports.
+The [one case model](experience.md#one-case-model) owns typed operations, host binding, deadlines and evidence. `Core.runCase({name, ...caseOptions}, host)` runs one ordinary case and returns the standard report. Use `Core.observationParity` to compare the action and query observations of two reports.
 
-`Core.Resource<T>` types a resource for `context:own`. It is a cleanup function or a `T` with a `dispose` or `destroy` member.
-Declare the receiver of a disposal callback as the complete resource type.
+`Core.Resource<T>` types a resource for `context:own`. It is a cleanup function or a `T` with a `dispose` or `destroy` member. Declare the receiver of a disposal callback as the complete resource type.
 
-Cleanup runs once, newest first.
-Setup, case, teardown and cleanup failures stay visible independently. A later failure does not erase an earlier one.
-Hooks and cleanup use the same invocation contract as the case.
-An artifact reference records a location. It does not save or authenticate bytes.
+Cleanup runs once, newest first. Setup, case, teardown and cleanup failures stay visible independently. A later failure does not erase an earlier one. Hooks and cleanup use the same invocation contract as the case. An artifact reference records a location. It does not save or authenticate bytes.
 
 #### Inline attachments
 
-`context:attach(name, mediaType, text)` records text that the case produced in the engine.
-The text travels in the report. The host then writes it to a file and replaces it with an ordinary artifact entry.
-The entry has `reference`, `mediaType`, `size` and `sha256`. `Evidence.seal` stores it like any other artifact.
-Attachments are data. They never prove that a case passed.
+`context:attach(name, mediaType, text)` records text that the case produced in the engine. The text travels in the report. The host then writes it to a file and replaces it with an ordinary artifact entry. The entry has `reference`, `mediaType`, `size` and `sha256`. `Evidence.seal` stores it like any other artifact. Attachments are data. They never prove that a case passed.
 
-The text must be valid UTF-8 and not empty. Binary content is refused.
-`name` is a relative path. It must not be empty, start with `/`, contain `\`, a control character, an empty segment or a `.` or `..` segment.
-A name is unique within a case.
+The text must be valid UTF-8 and not empty. Binary content is refused. `name` is a relative path. It must not be empty, start with `/`, contain `\`, a control character, an empty segment or a `.` or `..` segment. A name is unique within a case.
 
 Limits fail closed. A broken limit raises an error from `attach`, the step fails and cleanup still runs.
 
@@ -168,12 +139,7 @@ Limits fail closed. A broken limit raises an error from `attach`, the step fails
 Set the limits with `attachments` in `Core.createHarness` or in the run options. The run options win.
 
 
-`Lute.attachments.materialize(report, { directory, sink?, limits?, supported?, host? }) -> report, issues` is the host step.
-It checks the limits again and writes `<directory>/attachments/<case id>/<name>`.
-A `sink(caseId, name, text, meta) -> reference, reason` replaces the file write. `meta` is `{ mediaType, sha256, size }`.
-`issues` lists each attachment that was refused, not stored or unsupported. `Lute.platform.run` adds them to the report as a failed case `verify:attachments`.
-`Lute.platform.run` accepts `attachments` for the limits and `attachmentSink`.
-`Evidence.validate` also hashes again each sealed artifact of a case, so a changed stored attachment fails validation.
+`Lute.attachments.materialize(report, { directory, sink?, limits?, supported?, host? }) -> report, issues` is the host step. It checks the limits again and writes `<directory>/attachments/<case id>/<name>`. A `sink(caseId, name, text, meta) -> reference, reason` replaces the file write. `meta` is `{ mediaType, sha256, size }`. `issues` lists each attachment that was refused, not stored or unsupported. `Lute.platform.run` adds them to the report as a failed case `verify:attachments`. `Lute.platform.run` accepts `attachments` for the limits and `attachmentSink`. `Evidence.validate` also hashes again each sealed artifact of a case, so a changed stored attachment fails validation.
 
 ### `Bdd.create`
 
@@ -195,9 +161,7 @@ test.describe("selection", function()
 end)
 ```
 
-The surface contains `describe`, `it`, `itSkip`, `beforeEach`, `afterEach`, `expect`, `spy` and `skip`.
-Case and hook bodies receive `(own, context)`. `own` registers a cleanup function.
-Use `itSkip(name, reason, body?)` during registration and `skip(reason)` during a case or hook.
+The surface contains `describe`, `it`, `itSkip`, `beforeEach`, `afterEach`, `expect`, `spy` and `skip`. Case and hook bodies receive `(own, context)`. `own` registers a cleanup function. Use `itSkip(name, reason, body?)` during registration and `skip(reason)` during a case or hook.
 
 `it(name, { run, id?, requires?, tags?, limitations? })` passes the same case metadata as `harness:case`:
 
@@ -206,23 +170,13 @@ Use `itSkip(name, reason, body?)` during registration and `skip(reason)` during 
 - `tags` select cases.
 - `limitations` appear in the report.
 
-`Bdd.surface({executor, environment, capabilities, ambientSource, now?, selection?})` returns one session-backed surface.
-It holds the verbs above and these members: `load(source, register)`, `adoptReport`, `sourceReport`, `run`, `setSelection(selection?)`, `reset` and `useHarness`.
-`selection` and `setSelection` use the selection of the harness and the session.
-`load` opens the source and registers it. It adopts a registration error as a failed source report.
-`Bdd.formatResults(report, title?)`, `Bdd.formatFailures` and `Bdd.counts` print a report.
-A unit case, an engine-integration case and an end-to-end case use this one vocabulary.
-They differ in the capabilities that they require and the evidence that they attach, not in the runner.
+`Bdd.surface({executor, environment, capabilities, ambientSource, now?, selection?})` returns one session-backed surface. It holds the verbs above and these members: `load(source, register)`, `adoptReport`, `sourceReport`, `run`, `setSelection(selection?)`, `reset` and `useHarness`. `selection` and `setSelection` use the selection of the harness and the session. `load` opens the source and registers it. It adopts a registration error as a failed source report. `Bdd.formatResults(report, title?)`, `Bdd.formatFailures` and `Bdd.counts` print a report. A unit case, an engine-integration case and an end-to-end case use this one vocabulary. They differ in the capabilities that they require and the evidence that they attach, not in the runner.
 
 ### `Core.createSession`
 
 `createSession(options) -> Session`
 
-`Core.createSession` keeps the type of the factory surface in `verbs` and `current()`.
-It owns one registry per source. Use it when modules register their cases as they load.
-The options require `executor` and `environment`.
-Optional fields are `capabilities`, `now`, `surface`, `runtimeVerbs`, `prefixCaseIds` and `selection`.
-With solver v2, declare factory options as `Core.SessionProvidedOptions<YourSurface>` before you call the overloaded constructor.
+`Core.createSession` keeps the type of the factory surface in `verbs` and `current()`. It owns one registry per source. Use it when modules register their cases as they load. The options require `executor` and `environment`. Optional fields are `capabilities`, `now`, `surface`, `runtimeVerbs`, `prefixCaseIds` and `selection`. With solver v2, declare factory options as `Core.SessionProvidedOptions<YourSurface>` before you call the overloaded constructor.
 
 ```luau
 local session = Core.createSession {
@@ -242,18 +196,14 @@ local report = session:run()
 | Method or field | Purpose |
 | --- | --- |
 | `open(source)` / `close()` | Enter and leave the registration scope of a source. |
-| `harness()` / `current()` | Access the harness or the supplied surface of the active source. |
+| `harness()` / `current()` | Access the harness or the given surface of the active source. |
 | `verbs` | Route calls through the surface of the active source. |
 | `adoptReport(source, report)` | Include an existing source report. |
 | `sourceReport(id, source, status, detail)` | Construct a source-level failed or skipped report. |
 | `setSelection(selection?)` | Set which cases to run. |
 | `run()` / `reset()` | Execute the queued sources or reset the session state. |
 
-Call session methods with `:`.
-A `surface` factory maps registration verbs to each harness.
-`runtimeVerbs` routes verbs such as `skip` while cases run.
-A reset or a reentry during a run fails and keeps the queued sources.
-The [worker examples](execution.md#lute-workers) show module-loading integration.
+Call session methods with `:`. A `surface` factory maps registration verbs to each harness. `runtimeVerbs` routes verbs such as `skip` while cases run. A reset or a reentry during a run fails and keeps the queued sources. The [worker examples](execution.md#lute-workers) show module-loading integration.
 
 ---
 
@@ -263,8 +213,7 @@ The [worker examples](execution.md#lute-workers) show module-loading integration
 
 `expect(value) -> Expectation`
 
-Use `expect` directly, through a case context or through the BDD surface.
-Chain `.never` before a matcher to negate it.
+Use `expect` directly, through a case context or through the BDD surface. Chain `.never` before a matcher to negate it.
 
 ```luau
 Core.expect(4):toBe(4)
@@ -280,15 +229,13 @@ end):toThrow("missing entry")
 | `toBe`, `toEqual` | Equality and deep equality. |
 | `toBeNil`, `toBeOk` | Nil and non-nil checks. `false` is non-nil. |
 | `toBeTruthy`, `toBeFalsy` | Truthiness checks. |
-| `toBeTrueWith(detail)` | A true value, with a supplied failure detail. |
+| `toBeTrueWith(detail)` | A true value, with a given failure detail. |
 | `toBeCloseTo`, `toBeNear`, `toBeFloat32` | Numeric tolerance or single-precision representation. |
 | `toBeLessThan`, `toBeGreaterThan`, `toBeLessThanOrEqual`, `toBeGreaterThanOrEqual` | Numeric ordering. |
 | `toContain`, `toContainExactly`, `toHaveLength` | Containment and length. |
 | `toThrow(contains?)`, `toThrowMatching(pattern)` | A thrown error, with optional plain text or a Luau pattern. |
 
-`toThrow` uses plain text containment. Use `toThrowMatching` for patterns.
-`Core.float32(value)` returns the single-precision value.
-The exact matcher signatures are in [`matchers.luau`](../src/core/matchers.luau).
+`toThrow` uses plain text containment. Use `toThrowMatching` for patterns. `Core.float32(value)` returns the single-precision value. The exact matcher signatures are in [`matchers.luau`](../src/core/matchers.luau).
 
 ### `Core.spy`
 
@@ -306,17 +253,13 @@ Core.expect(callback.callCount()):toBe(1)
 Core.expect(callback.lastArgs()):toEqual({ 3 })
 ```
 
-Inspect `calls`, `called()`, `lastArgs()` and `lastReturn()`.
-Use `reset()` to clear the recorded calls.
-Use `returnValue(value)` to supply a fixed return and `implementation(fn)` to replace the callback.
+Inspect `calls`, `called()`, `lastArgs()` and `lastReturn()`. Use `reset()` to clear the recorded calls. Use `returnValue(value)` to give a fixed return and `implementation(fn)` to replace the callback.
 
 ---
 
 ## Reports and transport
 
-A schema-v1 report retains the executor, environment, capabilities, sources and case results.
-Each case result retains status, timing, failures, steps, artifacts, limitations and origin.
-The counts must agree with the result rows.
+A schema-v1 report keeps the executor, environment, capabilities, sources and case results. Each case result keeps status, timing, failures, steps, artifacts, limitations and origin. The counts must agree with the result rows.
 
 | Status | Meaning |
 | --- | --- |
@@ -333,7 +276,7 @@ The counts must agree with the result rows.
 | --- | --- |
 | `Core.decode(value)` | Validate a foreign report and its schema. |
 | `Core.merge(reports, executor, environment)` | Combine trusted reports. |
-| `Core.compose(payloads, executor, environment)` | Account for every expected shard, including missing, malformed and duplicate outcomes. |
+| `Core.compose(payloads, executor, environment)` | Account for every expected shard, including missing, invalid and duplicate outcomes. |
 | `Core.syntheticReport(options)` | Record work that a host could not reach. |
 | `Core.format(report)` | Produce readable output. Each case that carries measurements adds one line for each measurement: name, unit, sample count, `p50`, `p95`, declared extra percentiles and the evaluation reason. |
 
@@ -346,8 +289,7 @@ local combined = Core.compose({
 print(Core.format(combined))
 ```
 
-Supply every launched shard, including errors.
-If you omit an unsuccessful worker from the input, the result cannot establish that all expected work passed.
+Give every launched shard, including errors. If you omit an unsuccessful worker from the input, the result cannot establish that all expected work passed.
 
 ### Move reports between hosts
 
@@ -358,19 +300,13 @@ If you omit an unsuccessful worker from the input, the result cannot establish t
 | `Lute.encode`, `parse` | Any JSON value to text, and JSON text to a plain value. |
 | `Lute.decode` | JSON text to a validated report. |
 
-`Core.reassembleSegments(segments: { unknown })` validates decoded rows before using their segment
-fields. It also accepts arrays produced by `Core.segment`. Invalid fields, missing segments and
-digest disagreements return `nil` and a reason; reassembly never changes the supplied rows.
+`Core.reassembleSegments(segments: { unknown })` validates decoded rows before using their segment fields. It also accepts arrays produced by `Core.segment`. Invalid fields, missing segments and digest disagreements return `nil` and a reason; reassembly never changes the given rows.
 
-Missing, conflicting and mixed chunks fail.
-**JSON decoding is not report validation.** Validate each received report with `Core.decode`.
-The consumer binds executor identity and owns authenticity.
-[Report transport](execution.md#report-transport) describes the run-bound channel.
+Missing, conflicting and mixed chunks fail. **JSON decoding is not report validation.** Validate each received report with `Core.decode`. The consumer binds executor identity and owns authenticity. [Report transport](execution.md#report-transport) describes the run-bound channel.
 
 ## Execution plans
 
-A plan names a finite set of work and its requirements.
-The consumer supplies discovery, the meaning of each locator and an authorized host.
+A plan names a finite set of work and its requirements. The consumer provides discovery, the meaning of each locator and an authorized host.
 
 | API | Responsibility |
 | --- | --- |
@@ -379,30 +315,27 @@ The consumer supplies discovery, the meaning of each locator and an authorized h
 | `Benchmark.case`, `run`, `collection`, `collect`, `store`, `storeReport`, `decode`, `compare`, `spread` (`src/benchmark.luau`) | Warm up, sample and check baselines and stability. Report the result as an ordinary case. Store, compare and summarize runs. See [benchmarks](experience.md#benchmarks). |
 | `Lute.memory.measure`, `settle`, `create` | Estimate retained Luau heap in a separate lifecycle pass with bounded collection progress. See [retained heap estimates](execution.md#retained-heap-estimates-on-lute). |
 
-[Execution](execution.md) describes fixtures, deadlines, retries and Lute workers.
-The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate, reordered, failed and cancelled deliveries without external effects.
+[Execution](execution.md) describes fixtures, deadlines, retries and Lute workers. The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate, reordered, failed and cancelled deliveries without external effects.
 
 ---
 
 ## Mounted place sources
 
-`Roblox.createPlaceCache(host)` shares source and compiled bytes while loading each supplied environment separately. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project through the supplied engine and file host; `Roblox.createPlaceRuntime(engine, mounted, options)` runs its source modules with separate client and server contexts. `Roblox.bootPlace(config, dependencies)` coordinates the bounded boot stages. These are headless checks, and do not establish native rendering, input, asset access or release acceptance.
+`Roblox.createPlaceCache(host)` shares source and compiled bytes. Each load uses its own environment. `Roblox.buildPlaceTree(engine, projectPath, dependencies)` mounts a project with the given engine and file host. `Roblox.createPlaceRuntime(engine, mounted, options)` runs source modules in separate client and server contexts. `Roblox.bootPlace(config, dependencies)` controls the bounded boot stages. These checks do not prove native rendering, input, asset access or release acceptance.
 
-Project properties accept implicit Color3, Vector2, Vector3 and flat CFrame components as well as explicit datatype values. Primitive properties can use their explicit type wrapper. `$attributes` supplies attributes on the root, services and child instances. Attribute values pass through the environment's attribute validation.
+Project properties accept implicit Color3, Vector2, Vector3 and flat CFrame components. They also accept explicit datatype values. Primitive properties accept explicit type wrappers. `$attributes` sets attributes on the root, services and child instances. The environment validates each attribute value.
 
-Project `emitLegacyScripts` defaults to true. When false, client and server source files mount as Scripts with the matching `RunContext`. Authored `RunContext` properties can override that choice. The bounded boot honors the context and disabled state. It runs modern server Scripts from Workspace, ServerScriptService, ReplicatedStorage, ReplicatedFirst and ServerStorage, and modern client Scripts from Workspace, ReplicatedStorage, ReplicatedFirst and PlayerScripts. Legacy server Scripts run from Workspace and ServerScriptService; legacy LocalScripts run from ReplicatedFirst and PlayerScripts. Shared Studio and double assertions cover both project modes, explicit context overrides and disabled sources in the five service locations.
+Project `emitLegacyScripts` defaults to true. Set it to false to mount client and server sources as Scripts with `RunContext`. An explicit `RunContext` property overrides this choice. Boot uses each script context and disabled state. Modern server Scripts run in Workspace, ServerScriptService, ReplicatedStorage, ReplicatedFirst and ServerStorage. Modern client Scripts run in Workspace, ReplicatedStorage, ReplicatedFirst and PlayerScripts. Legacy server Scripts run in Workspace and ServerScriptService. Legacy LocalScripts run in ReplicatedFirst and PlayerScripts. The shared Studio and simulator assertions check both modes, context overrides and disabled sources in the five services.
 
-The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.setmemorycategory` instrumentation without collecting performance or memory measurements. Its debug table retains the host's inspection functions without modifying the host table.
+The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.setmemorycategory`. These calls collect no performance or memory measurements. The debug table keeps the host inspection functions. It does not change the host table.
 
 `ReplicatedFirst:RemoveDefaultLoadingScreen()` is accepted without rendering a loading screen. Arrival logic can continue, but native loading-screen visibility requires a Studio or Player observation.
 
-The place runtime queues explicit Humanoid state changes through its scheduler and emits `StateChanged` after applying them. Detached Humanoids report `None`; a model in Workspace begins in `Running`. This does not simulate automatic locomotion, state-machine physics or network ownership.
+The scheduler applies explicit Humanoid state changes. It then emits `StateChanged`. A detached Humanoid reports `None`. A Humanoid in a Model in Workspace starts in `Running`. This behavior does not simulate automatic movement, state physics or network ownership.
 
-Humanoid state-enable flags default to true and reset on cloning. `SetStateEnabled` emits
-`StateEnabledChanged` even for repeated writes; `None` remains enabled and ignores writes.
-Flags describe configured state-machine policy; the simulator has no automatic state machine.
+Humanoid state-enable flags default to true and reset on cloning. `SetStateEnabled` emits `StateEnabledChanged` even for repeated writes; `None` remains enabled and ignores writes. Flags describe configured state-machine policy; the simulator has no automatic state machine.
 
-The reflected environment supplies these `WorldRoot` methods on Workspace and WorldModel. Queries read live descendants of the queried world; a nested WorldModel is a separate world. They do not advance physics or move the source part.
+The reflected environment gives Workspace and WorldModel these `WorldRoot` methods. Queries read current descendants of that world. A nested WorldModel is a separate world. Queries do not advance physics or move the source part.
 
 | Method | Geometry and result |
 | --- | --- |
@@ -414,87 +347,60 @@ The reflected environment supplies these `WorldRoot` methods on Workspace and Wo
 | `GetPartBoundsInRadius(position, radius, params?)` | Returns parts whose oriented bounding boxes intersect the query sphere, including contact. |
 | `GetPartsInPart(part, params?)` | Returns parts intersecting the source's supported volume, excluding the source. The source must belong to the queried WorldRoot. |
 
-Casts return a read-only `RaycastResult` with `Instance`, world-space contact `Position`, outward unit `Normal`, traveled `Distance`, and target `Material`. Shape casts skip targets intersecting or touching the initial shape. They support direction lengths up to 1024 studs and sizes up to 512 studs per side (sphere radius at most 256). Zero direction misses. Sizes must be positive; overlap radii may be zero. Nonfinite inputs and nonorthonormal CFrames refuse. Simultaneous hits and overlap arrays use descendant traversal order; Roblox does not promise this order. A box contact can have multiple valid points; Verify returns a point in that contact region.
+Casts return a read-only `RaycastResult`. It contains `Instance`, contact `Position` in world coordinates, outward unit `Normal`, traveled `Distance` and target `Material`. Shape casts skip targets that intersect or touch the initial shape. Direction length must not exceed 1024 studs. Each size must not exceed 512 studs. Sphere radius must not exceed 256 studs. A zero direction misses. Sizes must be positive. An overlap radius can be zero. Nonfinite inputs and CFrames without orthonormal axes fail. Simultaneous hits and overlap arrays use descendant order. Roblox does not guarantee this order. A box contact can have several valid points. Verify returns a point in that contact region.
 
-Both parameter types honor `FilterType` and `FilterDescendantsInstances`, including the listed roots and all descendants. `IncludeInstances=nil` adds no restriction; `{}` includes nothing. `ExcludeInstances` wins over inclusion. The legacy and modern filters combine. With default flags, a part is eligible when `CanCollide` or `CanQuery` is true; `CanCollide=false` is required for `CanQuery=false` to exclude it. `RespectCanCollide=true` uses only `CanCollide`. `CanTouch` does not affect queries. `BruteForceAllSlow` bypasses part collision flags and collision-group masks, retaining instance filters.
+Both parameter types use `FilterType` and `FilterDescendantsInstances`. Filters include the listed roots and their descendants. `IncludeInstances=nil` adds no restriction. An empty table includes nothing. `ExcludeInstances` takes priority over inclusion. Legacy and modern filters combine. With default flags, a part is eligible when `CanCollide` or `CanQuery` is true. Set `CanCollide=false` before you use `CanQuery=false` to exclude a part. `RespectCanCollide=true` uses only `CanCollide`. `CanTouch` has no effect. `BruteForceAllSlow` bypasses part collision flags and group masks. Instance filters still apply.
 
-Collision groups use symmetric masks configured with `PhysicsService.RegisterCollisionGroup`, `UnregisterCollisionGroup`, `IsCollisionGroupRegistered`, `CollisionGroupSetCollidable`, and `CollisionGroupsAreCollidable`. PhysicsService and Workspace share the environment's workspace rules. The corresponding WorldRoot methods maintain independent rules for each WorldModel when declared by the reflection snapshot. Unregistered groups use the default collidable mask. Group IDs, renaming, and other unimplemented group methods retain the ordinary unsupported-method refusal. `MaxParts=0` is unlimited; positive values cap overlap results and negative values refuse. Every eligible candidate is validated even when a limit has already been met, so a partial result cannot hide unsupported content.
+Collision groups use symmetric masks. Configure them with `PhysicsService.RegisterCollisionGroup`, `UnregisterCollisionGroup`, `IsCollisionGroupRegistered`, `CollisionGroupSetCollidable` and `CollisionGroupsAreCollidable`. PhysicsService and Workspace share the environment workspace rules. The corresponding WorldRoot methods keep separate WorldModel rules when the snapshot declares them. Unregistered groups use the default collidable mask. Group IDs, renaming and other unimplemented methods raise the usual unsupported-method error. `MaxParts=0` gives unlimited results. Positive values limit overlap results. Negative values fail. Verify validates every eligible candidate, even after it reaches the limit. A partial result cannot hide unsupported content.
 
-Block Parts and uniform Ball Parts have box and sphere geometry. Cylinders, MeshParts, PartOperations (including unions), seats, spawn locations, and trusses use their authored oriented `CFrame`/`Size` bounding box for collision queries. Bounds queries use bounding boxes for every BasePart. This deliberately does not model mesh triangles, concavity, union decomposition or cylinder curvature. Other collision shapes, including wedges and nonuniform balls, refuse with `unsupported_content`; bounds queries can still inspect their boxes.
+Block Parts use box geometry. Uniform Ball Parts use sphere geometry. Cylinders, MeshParts, PartOperations, seats, spawn locations and trusses use their oriented `CFrame` and `Size` box. PartOperations include unions. Bounds queries use boxes for every BasePart. This model has no mesh triangles, concavity, union decomposition or cylinder curvature. Other collision shapes raise `unsupported_content`. These include wedges and nonuniform balls. Bounds queries can inspect their boxes.
 
-Terrain has no voxel geometry in the double. An explicit terrain proxy can supply `CFrame`, `Size` and a uniform `Material` through `environment.poke`; queries use that box, in the Default collision group. Terrain without authored bounds refuses with `unsupported_content`; casts also require its material. `IgnoreWater` excludes only terrain proxies with Water material, not ordinary Water-material Parts. Mixed terrain materials and voxel edits require a configured query fake or native host; the double never derives a box from voxels. `Shapecast` cannot cast a Terrain source.
+The simulator has no terrain voxel geometry. Use `environment.poke` to give a terrain proxy `CFrame`, `Size` and a uniform `Material`. Queries use that box in the Default collision group. Terrain without explicit bounds raises `unsupported_content`. Casts also require its material. `IgnoreWater` excludes terrain proxies with Water material. It does not exclude ordinary Parts with Water material. Mixed terrain materials and voxel changes need a query fake or native host. The simulator does not derive boxes from voxels. `Shapecast` cannot cast a Terrain source.
 
-Nonzero `OverlapParams.Tolerance`, `RaycastParams.Margin` and `RaycastParams.SizeGradient` refuse with `unsupported` rather than silently changing the requested volume. The latter two datatype properties accept validated values so callers receive an explicit query refusal. These spatial answers prove only the declared geometry model, not native physics or floating-point parity. At numerically unresolved box contacts, the query refuses rather than inventing a contact point.
+Nonzero `OverlapParams.Tolerance`, `RaycastParams.Margin` and `RaycastParams.SizeGradient` raise `unsupported`. Verify does not silently change the requested volume. Margin and SizeGradient accept validated values, then fail explicitly during a query. Spatial results prove only this geometry model. They do not prove native physics or floating-point parity. The query fails when it cannot resolve a box contact numerically.
 
-AudioEmitter distance curves copy their inputs, outputs and cloned state. Negative finite distances clamp to zero and finite volumes clamp to `[0, 1]`, matching the native setters. Invalid key/value types refuse before replacing the curve. The simulator accepts up to 400 points and does not simulate audibility or audio output.
+AudioEmitter distance curves copy inputs, outputs and cloned state. Negative finite distances become zero. Finite volumes stay within `[0, 1]`. These rules match the native setters. Invalid keys or values fail before the curve changes. The simulator accepts at most 400 points. It does not simulate audibility or audio output.
 
-`Model:ScaleTo` scales about the current pivot and preserves nested model factors and cloned scale state.
-The supported geometric properties are part sizes/pivot offsets, attachment frames, joint C0/C1,
-mesh offsets and file-mesh scale, sound rolloff distances, particle size/speed/acceleration,
-beam widths/curves, trail min/max length, Humanoid hip height/speed/jump height/power and rope
-length/thickness. AnimationConstraint translation scales linearly and its maximum force and torque
-scale cubically; strength and damping remain unchanged. Motor6D/Bone animated transforms and light
-range remain unchanged. Edited properties become
-the new basis for later scaling; unchanged property sizes retain their original basis. Part positions
-use floating-point transformations. Constraints other than ropes and animation constraints refuse before geometry changes;
-constraint dynamics and other geometric properties require an explicit host or native execution.
+`Model:ScaleTo` scales about the current pivot and keeps nested model factors and cloned scale state. Supported geometry includes part sizes and pivot offsets, attachment frames, joint C0/C1, mesh offsets and file-mesh scale. It includes sound rolloff distances and particle size, speed and acceleration. It also includes beam widths and curves, trail minimum and maximum length, and rope length and thickness. Supported Humanoid properties are hip height, speed, jump height and jump power. AnimationConstraint translation scales linearly and its maximum force and torque scale cubically; strength and damping remain unchanged. Motor6D/Bone animated transforms and light range remain unchanged. Edited properties become the new basis for later scaling; unchanged property sizes keep their original basis. Part positions use floating-point transformations. Constraints other than ropes and animation constraints refuse before geometry changes; constraint dynamics and other geometric properties require an explicit host or native execution.
 
-Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading
-and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when
-injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers retain project paths
-and game-specific setup rather than copying this platform wiring.
+Lute consumers use `Lute.fixture.host` for filesystem reads, compilation, environment-bound loading and JSON, and `Lute.fixture.files` for project traversal. Both tables are frozen; clone the host when injecting fixture sources. `Lute.FixturePlaceHost` is its exported type. Consumers keep project paths and game-specific setup rather than copying this platform wiring.
 
-Project `$path` values resolve relative to the project file's directory. Absolute paths remain absolute.
-Project properties decode Rojo's tagged Color3, Vector3, CFrame and enum values through the engine's
-datatype library. Malformed components and unknown enum values fail before assignment.
+Project `$path` values resolve relative to the project file's directory. Absolute paths remain absolute. Project properties decode Rojo's tagged Color3, Vector3, CFrame and enum values through the engine's datatype library. Malformed components and unknown enum values fail before assignment.
 
 The modeled `ContentProvider.PreloadAsync` accepts an empty request without callbacks. It rejects nonempty requests as `unsupported_place_asset`; it does not fetch assets or report a fabricated asset status.
 
-`PlaceRuntimeEngine.environment` is the authoritative simulated environment. The binding supplies its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment property, event and method-double operations; the engine contract has no mutable `stateOf` or `serviceMethods` table.
+`PlaceRuntimeEngine.environment` owns the simulated environment. The binding gives the runtime its DataModel, instance constructor, service lookup, datatypes and source diagnostics. Runtime and boot use public environment operations for properties, events and method doubles. The engine contract has no mutable `stateOf` or `serviceMethods` table.
 
-Construct it with `Lute.fixture.bridge().placeEngine()`. Use `engine.environment.scheduler`
-for time, `environment.fire(instance, event, ...)` for events and `environment.fake` or
-`fakeOn` for explicit method doubles. BasePart position/CFrame writes remain coupled.
-The reflected environment models pivots, descendant placement and oriented model bounds;
-it does not simulate joints, collisions or physics. Set a model's primary part or world pivot
-when its orientation matters; an unset pivot uses the largest descendant part as its basis.
+Construct it with `Lute.fixture.bridge().placeEngine()`. Use `engine.environment.scheduler` for time, `environment.fire(instance, event, ...)` for events and `environment.fake` or `fakeOn` for explicit method doubles. BasePart position/CFrame writes remain coupled. The reflected environment models pivots, descendant placement and oriented model bounds; it does not simulate joints, collisions or physics. Set a model's primary part or world pivot when its orientation matters; an unset pivot uses the largest descendant part as its basis.
 
-Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects the class names whose existing runtime method doubles are installed. Omit it to retain the standard place simulation, or pass an explicit list to restrict the host surface. An empty list installs none. The runtime applies the selection to existing instances and instances created later. Run its `closeHandlers` when the host closes to stop that registration. Unselected media or physics methods gain no behavior.
+Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects classes for the existing runtime method doubles. Omit it to use the standard simulation. Give an explicit list to restrict the methods. An empty list installs none. The runtime applies this selection to existing and new instances. Run `closeHandlers` when the host closes. This stops registration. Unselected media and physics methods get no behavior.
 
-Runtime defaults preserve methods configured before runtime creation. `environment.hasFake(instance, member)` detects object overrides, inherited class fakes and class-defined handlers. Closing removes only the runtime's own overrides and listeners; caller-owned behavior remains installed.
+Runtime defaults preserve methods configured before runtime creation. `environment.hasFake(instance, member)` finds object overrides, inherited class fakes and class handlers. Closing removes only runtime overrides and listeners. It keeps caller methods.
 
-`MemoryStoreService:GetHashMap()` supplies cached native-shaped handles when the place has a positive game ID. Backend reads, writes, expiry, contention and cross-server sharing remain unsupported unless explicitly injected; handle creation proves none of them.
+`MemoryStoreService:GetHashMap()` gives cached handles with native structure when the game ID is positive. Reads, writes, expiry, contention and sharing across servers need explicit injected behavior. Handle creation proves none of these operations.
 
-`Workspace:GetServerTimeNow()` follows the virtual scheduler clock, starting at simulated epoch zero.
-`UserInputService:GetLastInputType()` starts at `None` and follows dispatched input events;
-close handlers disconnect its listeners. These are controlled simulation inputs, not OS input or
-wall-clock synchronization. The mesh-part double retains URI-backed `Content` and refuses empty or
-object-backed content; it performs no asset load and proves no asset access or appearance.
+`Workspace:GetServerTimeNow()` follows the virtual scheduler clock, starting at simulated epoch zero. `UserInputService:GetLastInputType()` starts at `None` and follows dispatched input events; close handlers disconnect its listeners. These are controlled simulation inputs, not OS input or wall-clock synchronization. The mesh-part double keeps URI-backed `Content` and refuses empty or object-backed content; it performs no asset load and proves no asset access or appearance.
 
-`bridge.placeEngine()` returns one cached engine for both mounted runtime and boot over the bridge's environment and reflection metadata. It owns a DataModel and creates only reflected services through its service lookup. Script construction restrictions remain intact. The boot report retains source diagnostics and observed roots; the engine needs no separate diagnostic adapter.
+`bridge.placeEngine()` returns one cached engine for runtime and boot. The engine uses the bridge environment and reflection metadata. It owns a DataModel. Its service lookup creates only reflected services. Script construction restrictions still apply. The boot report keeps source diagnostics and observed roots. No separate diagnostic adapter is necessary.
 
-The optional `client = { name, userId, viewport = { x, y } }` creates a Player, PlayerGui and camera with that positive finite viewport. It sets `runtime.localPlayer` and `Players.LocalPlayer`; it does not start scripts or create a character. `runtime.step(seconds)` advances the existing scheduler and modeled RunService frame events. It calls `beforeRender()` before render events, so hosts can use `bridge.layout.step`. Reader errors propagate before render publication. These are modeled frames, not native rendering or physics. `StudioDeviceSimulatorService:SetDeviceAsync(id)` applies Studio-captured facts for `iphone_14`, `xbox`, `hd_1080` and `generic_handheld_720`. `runtime.device()` returns the current device facts, and `runtime.screenArea(screenGui)` returns that device's area for the ScreenGui's `ScreenInsets`. Setting `IgnoreGuiInset` selects `DeviceSafeInsets` or `CoreUISafeInsets`, as Studio does.
+The optional `client = { name, userId, viewport = { x, y } }` creates a Player, PlayerGui and camera. Viewport dimensions must be positive and finite. This sets `runtime.localPlayer` and `Players.LocalPlayer`. It does not start scripts or create a character. `runtime.step(seconds)` advances the scheduler and simulated RunService frame events. It calls `beforeRender()` before render events. Hosts can use `bridge.layout.step` there. Reader errors stop execution before render publication. These frames do not prove native rendering or physics. `StudioDeviceSimulatorService:SetDeviceAsync(id)` applies captured Studio facts for `iphone_14`, `xbox`, `hd_1080` and `generic_handheld_720`. `runtime.device()` returns current device facts. `runtime.screenArea(screenGui)` returns the device area for that ScreenGui and its `ScreenInsets`. `IgnoreGuiInset` selects `DeviceSafeInsets` or `CoreUISafeInsets`, as in Studio.
 
-ModuleScript results are cached by instance and execution context. Relative requires resolve against the mounted source tree. Runtime and compile failures remain failed cache entries and raise again on a repeated require.
+ModuleScript results are cached by instance and execution context. Relative requires use the mounted source tree. Runtime and compile failures stay in the cache. Another require raises the same failure.
 
 ## Host observations
 
-Use typed operations, `context:perform`, `await`, `checkpoint`, `judge` and `measure` in the ordinary case.
-Evidence lives in `CaseResult.evidence` and uses the standard report transport.
-The [experience contract](experience.md) describes binding. The [execution contract](execution.md) describes hosts.
+Use typed operations, `context:perform`, `await`, `checkpoint`, `judge` and `measure` in the ordinary case. Evidence lives in `CaseResult.evidence` and uses the standard report transport. The [experience contract](experience.md) describes binding. The [execution contract](execution.md) describes hosts.
 
 ## Evidence provenance
 
-Evidence travels on the report.
-An `Artifact` can carry `sha256`, `size` and a typed `provenance`. Provenance holds:
+Evidence travels on the report. An `Artifact` can carry `sha256`, `size` and a typed `provenance`. Provenance holds:
 
 - The run, case, actor and checkpoint.
 - The build (`commit`, `tree`, `clean`, `digest`).
 - The executing host and its capabilities, taken from the case origin.
 - The `device` class that the caller declares, and `capturedAt`.
 
-A `Review` can carry `kind` (`visual` or `audio`) and `judged`, the content hashes that the reviewer saw.
-The report decoder keeps both. The report is the only record. No second record exists.
+A `Review` can carry `kind` (`visual` or `audio`) and `judged`, the content hashes that the reviewer saw. The report decoder keeps both. The report is the only record. No second record exists.
 
 ### Seal, bind and validate
 
@@ -529,8 +435,7 @@ An empty policy or an invalid clock raises. It never passes.
 
 ### Sinks
 
-A sink is `{ put(content, meta) -> reference, get(reference) -> bytes, stat(reference) -> { size } }`.
-The caller supplies it.
+A sink is `{ put(content, meta) -> reference, get(reference) -> bytes, stat(reference) -> { size } }`. The caller provides it.
 
 - `Lute.evidenceStore.localDirectory(path)` is the content-addressed reference sink.
 - `Core.memorySink(hash)` is a portable sink.
@@ -542,21 +447,15 @@ Validation needs only `get`, `stat`, a hasher and a clock. Pass `hash`, `read` a
 lute run examples/evidence-provenance.luau
 ```
 
-Metadata and a saved screenshot do not establish visual quality, audio quality or physical-device use.
-A review records that a named reviewer judged specific content. `device` is a claim.
-The class `physical` is accepted only when `policy.attest.physical(artifact, provenance)` returns true from the caller's own evidence.
+Metadata and a saved screenshot do not establish visual quality, audio quality or physical-device use. A review records that a named reviewer judged specific content. `device` is a claim. The class `physical` is accepted only when `policy.attest.physical(artifact, provenance)` returns true from the caller's own evidence.
 
 ---
 
 ## Host adapters
 
-Adapters use host operations that you inject.
-The consumer owns authorization, destinations, artifact custody and release acceptance.
-Load only the package that the observation needs.
+Adapters use host operations that you inject. The consumer owns authorization, destinations, artifact custody and release acceptance. Load only the package that the observation needs.
 
-For Studio, Player and Open Cloud, see [execution](execution.md):
-[native Studio](execution.md#native-studio-execution), [attached Studio](execution.md#attached-studio),
-[published Player](execution.md#published-player-execution) and [Open Cloud](execution.md#open-cloud-execution).
+For Studio, Player and Open Cloud, see [execution](execution.md): [native Studio](execution.md#native-studio-execution), [attached Studio](execution.md#attached-studio), [published Player](execution.md#published-player-execution) and [Open Cloud](execution.md#open-cloud-execution).
 
 ### Capture coverage
 
@@ -582,9 +481,7 @@ The consumer owns tool execution, request digests, storage paths, authorization 
 - `descendants(roots)` lists every instance in document order.
 - `find(roots, path)` returns the first instance with that path, or `nil`.
 
-`read` raises for malformed XML and for a document whose root is not `roblox`.
-It reads a binary file (`.rbxm`, `.rbxl`) as malformed. Build the XML format to assert on it.
-`Lute.place.build` merges into a base place with the same XML codec.
+`read` raises for invalid XML and for a document whose root is not `roblox`. It reads a binary file (`.rbxm`, `.rbxl`) as invalid. Build the XML format to assert on it. `Lute.place.build` merges into a base place with the same XML codec.
 
 ### Codecs
 
@@ -598,19 +495,16 @@ It reads a binary file (`.rbxm`, `.rbxl`) as malformed. Build the XML format to 
 
 ## Simulated environment
 
-`Roblox.testEnvironment(options?)` is the optional simulated engine for headless tests.
-It is plain Luau. It depends on no consumer and reads no generated paths. Do not mount it in a released place.
+`Roblox.testEnvironment(options?)` is the optional simulated engine for headless tests. It is plain Luau. It depends on no consumer and reads no generated paths. Do not mount it in a released place.
 
 ### What the simulator proves
 
-The simulator proves Luau logic over the declared surface, ordering and disposal.
-It does not prove rendering, physics, replication, animation, audio, input devices or player capacity.
-Check a supported behavior against the real engine before you rely on it.
+The simulator proves Luau logic over the declared surface, ordering and disposal. It does not prove rendering, physics, replication, animation, audio, input devices or player capacity. Check a supported behavior against the real engine before you rely on it.
 
 | Layer | Behavior comes from | Engine parity |
 | --- | --- | --- |
 | `Roblox.testEnvironment` | Built-in and declared classes, and the explicit fakes that you supply. | None. A method that is declared but not implemented raises `unsupported_method`. |
-| `Roblox.reflection` and `Roblox.fixtureBridge` | Class defaults and property types from a reflection database. Events, methods, layout, rendering, input and physics exist only where you declare or inject them. | None. The database supplies metadata only. |
+| `Roblox.reflection` and `Roblox.fixtureBridge` | Class defaults and property types from a reflection database. Events, methods, layout, rendering, input and physics exist only where you declare or inject them. | None. The database provides metadata only. |
 | `Lute.fixture.bridge` | A serialized reflection snapshot, exported from Studio, and the datatype library bound to it. | Metadata, defaults, enums, brick colors and fonts from the engine that exported it. Behavior stays simulated. |
 | Native Studio or Player host | The engine. | The engine. See [execution](execution.md#native-studio-execution). |
 
@@ -647,7 +541,7 @@ Check a supported behavior against the real engine before you rely on it.
 The result has these members:
 
 - `root`, `createInstance(className, props?)`, `defineClass`, `newSignal`, `heartbeat`.
-- `createEngineInstance(className, props?)` creates a known engine-owned Instance class, including a class whose metadata forbids script construction. It bypasses only creatability; defaults, property validation, creation hooks and lifetime accounting remain active. Script constructors still use `createInstance` and retain their restrictions. Use `poke` for engine-owned read-only properties.
+- `createEngineInstance(className, props?)` creates a known engine-owned Instance class, including a class whose metadata forbids script construction. It bypasses only creatability; defaults, property validation, creation hooks and lifetime accounting remain active. Script constructors still use `createInstance` and keep their restrictions. Use `poke` for engine-owned read-only properties.
 - `createEngineObject(className, props?)` uses the same allocation path for a known Object class. An Object that does not inherit Instance has no Instance hierarchy, name, attributes or destruction methods. `releaseObject(object)` releases an owned Object or Instance and its signal connections. It is an environment cleanup operation, not a simulated native Object method or garbage collector. Creation hooks and fixture tracking receive Objects.
 - `task` with `spawn`, `defer`, `delay`, `wait` and `cancel` on virtual time. Also `scheduler`, `step(seconds)` and `now`.
 - `scheduler.block(register)` suspends the current task. The registration may return a cleanup function. The scheduler calls it once when the task resumes or is canceled, then releases it. Cleanup failures enter `scheduler.failures`; cancellation still closes the task.
@@ -660,23 +554,13 @@ The result has these members:
 - `fake(member, handler)` and `fakeOn(object, name, handler)`.
 - `connectionsOf(signal)`, `firesOf(signal)` and `connectionsOfInstance(object)`.
 
-`createInstance` takes children in the array part: `createInstance("Model", {Name = "m", childA, childB, Parent = root})`.
-`Roblox.isInstance(value)` and `Roblox.typeName(value)` identify instances and datatypes.
-`Roblox.assertInstance(value: unknown)` returns the registered simulated `Instance` or raises an error. Use it when a simulated instance crosses an unknown or native-typed boundary. It preserves identity, including after destruction, and rejects lookalike tables, native instances and Object-only values. Its weak registry does not retain instances.
-`isInstance` rejects Objects that do not inherit Instance. `typeName` returns `Object` for those Objects. A Studio Client capture on 2026-10-22, version `0.744.0.7441077`, confirmed this identity for VirtualInput, its distinct factory objects and its Object-only members.
+`createInstance` takes children in the array part: `createInstance("Model", {Name = "m", childA, childB, Parent = root})`. `Roblox.isInstance(value)` and `Roblox.typeName(value)` identify instances and datatypes. `Roblox.assertInstance(value: unknown)` returns the registered simulated `Instance`. It raises an error for other values. Use it when an unknown or native type contains a simulated instance. It keeps identity after destruction. It rejects lookalike tables, native instances and Object-only values. The weak registry does not keep instances. `isInstance` rejects Objects that do not inherit Instance. `typeName` returns `Object` for those Objects. A Studio Client capture on 2026-10-22, version `0.744.0.7441077`, confirmed this identity for VirtualInput, its distinct factory objects and its Object-only members.
 
-The package exports the types `Environment`, `EnvironmentOptions`, `EnvironmentDefineOptions`, `EnvironmentSnapshot`, `EnvironmentMethod`, `Signal`, `Connection`, `VirtualScheduler`, `VirtualTask` and `VirtualCallback`.
-Instance properties and per-class methods are dynamic schema boundaries.
-Their values still need the class contract of the consumer.
-Assigning a method dictionary does not prove its signatures.
+The package exports the types `Environment`, `EnvironmentOptions`, `EnvironmentDefineOptions`, `EnvironmentSnapshot`, `EnvironmentMethod`, `Signal`, `Connection`, `VirtualScheduler`, `VirtualTask` and `VirtualCallback`. Instance properties and per-class methods are dynamic schema boundaries. Their values still need the class contract of the consumer. Assigning a method dictionary does not prove its signatures.
 
 ### Datatypes
 
-`Roblox.datatypes` is a pure Luau copy of the Roblox datatypes. It needs no engine.
-Each value is a userdata, as in the engine. `type(value)` is `"userdata"`, and table functions refuse it.
-Values are read-only, compare by value and print with the engine format.
-Components are rounded to 32-bit floats, and `UDim` offsets are truncated to 32-bit integers, as in the engine.
-Arithmetic and member errors use the engine messages.
+`Roblox.datatypes` is a pure Luau copy of the Roblox datatypes. It needs no engine. Each value is a userdata, as in the engine. `type(value)` is `"userdata"`, and table functions refuse it. Values are read-only, compare by value and print with the engine format. Components are rounded to 32-bit floats, and `UDim` offsets are truncated to 32-bit integers, as in the engine. Arithmetic and member errors use the engine messages.
 
 | Datatype | Members |
 | --- | --- |
@@ -687,8 +571,8 @@ Arithmetic and member errors use the engine messages.
 | `UDim`, `UDim2` | `new`, `fromScale`, `fromOffset`, `Scale`, `Offset`, `X`, `Y`, `Width`, `Height`, `UDim2:Lerp`, `+`, `-` and unary `-`. |
 | `Rect` | `new` with four numbers or two `Vector2` values, `Min`, `Max`, `Width` and `Height`. |
 | `Ray`, `Region3` | Ray origin, direction, unit ray, closest point and distance; region center, size and grid expansion. |
-| `Random` | `new`, `NextNumber`, `NextInteger`, `NextUnitVector`, `Shuffle` and `Clone`. Seeded streams are reproducible and clones advance independently. The generator reuses Verify's agent-evaluation stream; sequences do not match Roblox's generator. `Shuffle` operates on a dense array without invoking metamethods and preserves hash entries. |
-| `RaycastParams`, `OverlapParams` | Mutable filters, include/exclude arrays, collision group and collision flags; ray water filtering; overlap limit and tolerance. Filter arrays copy on assignment and read. These values configure the WorldRoot query double described above; they do not supply a physics engine. |
+| `Random` | `new`, `NextNumber`, `NextInteger`, `NextUnitVector`, `Shuffle` and `Clone`. Seeded streams are reproducible and clones advance independently. The generator reuses Verify's agent-evaluation stream; sequences do not match Roblox's generator. `Shuffle` operates on a dense array without invoking metamethods and keeps hash entries. |
+| `RaycastParams`, `OverlapParams` | Mutable filters, include/exclude arrays, collision group and collision flags; ray water filtering; overlap limit and tolerance. Filter arrays copy on assignment and read. These values configure the WorldRoot query double described above; they do not give a physics engine. |
 | `NumberRange`, `NumberSequence`, `ColorSequence` and their keypoints | `new` in each engine form, `Min`, `Max`, `Keypoints`, `Time`, `Value` and `Envelope`. The engine rules for keypoints apply. |
 | `BrickColor` | `new` with a number, a name, a `Color3` or three numbers, `palette` (0 to 127), `random`, the named constructors, `Number`, `Name`, `Color`, `r`, `g` and `b`. |
 | `Font` | `new`, `fromName`, `fromId`, `fromEnum`, `Family`, `Weight`, `Style` and `Bold`. `Family`, `Weight`, `Style` and `Bold` are writable, as in the engine. |
@@ -705,23 +589,13 @@ The library also has these functions:
 - `readCFrame(cframe)` returns `x, y, z` and the nine rotation numbers.
 - `create(catalog)` returns a new library bound to `{ enums?, brickColors?, fonts? }`.
 
-The default library has no catalog. Its `Enum` is permissive: any family and any item name exist, and items have no `Value`.
-`BrickColor`, `Font.fromEnum` and `Font.Bold` need a catalog.
-A library from `create` or from a [reflection snapshot](#reflection-snapshots) is strict.
-An unknown family or item raises the engine error.
-Values from different libraries interoperate. Enum items of the same family and name are equal.
+The default library has no catalog. Its `Enum` is permissive: any family and any item name exist, and items have no `Value`. `BrickColor`, `Font.fromEnum` and `Font.Bold` need a catalog. A library from `create` or from a [reflection snapshot](#reflection-snapshots) is strict. An unknown family or item raises the engine error. Values from different libraries interoperate. Enum items of the same family and name are equal.
 
-`TweenInfo.new` defaults to 1, `Enum.EasingStyle.Quad`, `Enum.EasingDirection.Out`, 0, false and 0.
-`FloatCurveKey` tangents default to nil and are writable. `Path2DControlPoint` tangents default to `UDim2.new(0, 0, 0, 0)`.
+`TweenInfo.new` defaults to 1, `Enum.EasingStyle.Quad`, `Enum.EasingDirection.Out`, 0, false and 0. `FloatCurveKey` tangents default to nil and are writable. `Path2DControlPoint` tangents default to `UDim2.new(0, 0, 0, 0)`.
 
-`tests/datatypes.lute.verify.luau` compares more than 100 probes with results that Studio recorded.
-A probe that declares a tolerance compares its numbers with that relative tolerance.
-Floating-point geometry probes declare their tolerances; other probes match exactly.
+`tests/datatypes.lute.verify.luau` compares more than 100 probes with results that Studio recorded. A probe that declares a tolerance compares its numbers with that relative tolerance. Floating-point geometry probes declare their tolerances; other probes match exactly.
 
-`Animator:LoadAnimation` returns a track.
-`Play`, `Stop` and `AdjustSpeed` change `IsPlaying` and `Speed` and fire `Stopped` and `Ended`. The simulator blends no frames.
-The package exports a `Datatype...` type for each datatype, and `DatatypeLibrary` and `DatatypeCatalog`.
-These types describe the values for the type checker. At run time each value is a userdata.
+`Animator:LoadAnimation` returns a track. `Play`, `Stop` and `AdjustSpeed` change `IsPlaying` and `Speed` and fire `Stopped` and `Ended`. The simulator blends no frames. The package exports a `Datatype...` type for each datatype, and `DatatypeLibrary` and `DatatypeCatalog`. These types describe the values for the type checker. At run time each value is a userdata.
 
 ### Instance behavior
 
@@ -749,48 +623,33 @@ These types describe the values for the type checker. At run time each value is 
   The new spec replaces the old spec for instances that you create afterward. It is not merged.
 - A method declared as `true` has no behavior.
   A call raises `unsupported_method: Class.Method ...` unless a function is given in `methods`, in `options.fakes` or through `fake("Class.Method", handler)`.
-  A schema that describes an API is never an implementation. A test that needs a result supplies it explicitly.
+  A schema that describes an API is never an implementation. A test that needs a result provides it explicitly.
 - `Clone()` remaps instance references inside the clone, and copies attributes and tags.
   It omits nonarchivable descendants and leaves external references external. It does not copy signals.
 - The environment includes recursive `FindFirstChildWhichIsA`, exact and inherited ancestor lookup and instance tag methods.
 
 ### Reflection and behavior adapters
 
-The built-in schemas are a small declared test surface. They are not a complete reflection database.
-Use the [reflection and UI adapters](#reflection-and-explicit-ui-fakes) for standard integration.
+The built-in schemas are a small declared test surface. They are not a complete reflection database. Use the [reflection and UI adapters](#reflection-and-explicit-ui-fakes) for standard integration.
 
-A custom environment can supply two functions:
+A custom environment can give two functions:
 
 - `defaultProperty(className, property, fallback)`. A returned `false` is a real default. Return `fallback` for an unmapped property.
 - `validateProperty(className, property, value, operation)`. `operation` is `set` for an authored assignment and `poke` for a simulated engine change.
 
-A class property that you declare as `false` has no default and reads `nil`.
-Reflection declares every database property that way.
-A property for which the database stores no default reads `nil`, unless the consumer overlay declares a value.
-A stored `false` stays `false`.
-Validation runs before mutation.
-Explicit fakes do not establish native rendering or input fidelity.
+A class property that you declare as `false` has no default and reads `nil`. Reflection declares every database property that way. A property for which the database stores no default reads `nil`, unless the consumer overlay declares a value. A stored `false` stays `false`. Validation runs before mutation. Explicit fakes do not establish native rendering or input fidelity.
 
-`environment.defaultClassProperty(className, property)` reads the same default
-without allocating an object. It includes inherited properties and the configured
-default provider. An unknown class or property raises.
+`environment.defaultClassProperty(className, property)` reads the same default without allocating an object. It includes inherited properties and the configured default provider. An unknown class or property raises.
 
 ### Handler errors
 
-The engine prints an error that a handler raises. It does not raise the error to the caller.
-The default `handlerErrors = "collect"` matches the engine. The environment appends each message to `errors`.
+The engine prints an error that a handler raises. It does not raise the error to the caller. The default `handlerErrors = "collect"` matches the engine. The environment appends each message to `errors`.
 
-`handlerErrors = "raise"` is an opt-in test convenience.
-After a property write, `poke`, `Parent` change, attribute change, method call, `fire` or `Signal:Fire`, the environment rethrows.
-It joins every message that the operation collected with a newline, removes them from `errors` and raises the result.
-Every handler still runs first. A nested operation inside a handler does not raise on its own.
-An error from the operation itself wins and leaves the handler messages in `errors`.
-Any other value of `handlerErrors` raises when you create the environment.
+`handlerErrors = "raise"` is an opt-in test convenience. After a property write, `poke`, `Parent` change, attribute change, method call, `fire` or `Signal:Fire`, the environment rethrows. It joins every message that the operation collected with a newline, removes them from `errors` and raises the result. Every handler still runs first. A nested operation inside a handler does not raise on its own. An error from the operation itself wins and leaves the handler messages in `errors`. Any other value of `handlerErrors` raises when you create the environment.
 
 ### Method doubles
 
-A class declares each member that an instance has. A read of any other member raises.
-A test sometimes needs a member that the schema omits, such as `GetFocusedTextBox` or `IsKeyDown`.
+A class declares each member that an instance has. A read of any other member raises. A test sometimes needs a member that the schema omits, such as `GetFocusedTextBox` or `IsKeyDown`.
 
 - `fakeOn(object, name, handler)` installs `handler` for that instance only. It returns idempotent cleanup that restores the previous active override. Out-of-order cleanup does not restore an already disposed handler. Later explicit method assignments remain in place. Overrides use the instance's existing method-double storage.
   The call passes the instance as `self`. A second call replaces the first.
@@ -801,35 +660,15 @@ A test sometimes needs a member that the schema omits, such as `GetFocusedTextBo
 
 Both forms are test doubles, not engine behavior. The engine has no such assignment.
 
-Callback members (`OnInvoke`, `OnServerInvoke`, `OnClientInvoke`, `ShouldDeliverCallback`) accept assignments and always raise on reads. Assignment does not validate callability; use a function for a callable handler or `nil` to clear it. `propertyOf` inspects the assigned value without reading the native member. Reflected `Write` and `None` members also reject reads, including computed getters and method doubles. A class specification can declare inherited member restrictions with `access = { Member = "read" | "write" | "none" | "callback" }`.
-The option is off by default because it would turn a mistyped assignment into a silent member.
-`fakeOn` is explicit and always available.
-A double wins over a declared method of the same name.
-A reference that you read before a replacement keeps the earlier handler.
+Callback members are `OnInvoke`, `OnServerInvoke`, `OnClientInvoke` and `ShouldDeliverCallback`. They accept assignments but always raise errors on reads. Assignment does not check callability. Use a function for a callable handler. Use nil to clear it. `propertyOf` inspects the stored value without a native member read. Reflected Write and None members also reject reads. This includes computed getters and method doubles. Class specifications can declare inherited restrictions with `access = { Member = "read" | "write" | "none" | "callback" }`. The option is off by default because it would turn a mistyped assignment into a silent member. `fakeOn` is explicit and always available. A double wins over a declared method of the same name. A reference that you read before a replacement keeps the earlier handler.
 
 ### Computed reads
 
-`computed = { ["TextLabel.TextBounds"] = function(object) return value end }` answers a read of a derived property.
-The key is a class name and a property name. A getter on a class also applies to its subclasses.
-It also makes an undeclared name readable, and `GetPropertyChangedSignal` accepts it.
-A write or a `poke` to a computed property raises.
-Declare `{ get = fn, writable = true }` instead of the function to opt in to writes.
-A write or a `poke` then stores the value and notifies as a normal write does.
-A read returns the getter result, or the stored value when the getter returns nil.
-`Clone` copies the stored value of a writable computed property.
-The getter runs on every read. Fire the changed signal with `poke` on a stored property that it depends on.
-`propertyOf` and `snapshot` return stored values only.
-This is a test convenience. It does not compute layout or text metrics. The getter you supply does.
+`computed = { ["TextLabel.TextBounds"] = function(object) return value end }` answers a read of a derived property. The key is a class name and a property name. A getter on a class also applies to its subclasses. It also makes an undeclared name readable, and `GetPropertyChangedSignal` accepts it. A write or a `poke` to a computed property raises. Declare `{ get = fn, writable = true }` instead of the function to opt in to writes. A write or a `poke` then stores the value and notifies as a normal write does. A read returns the getter result, or the stored value when the getter returns nil. `Clone` copies the stored value of a writable computed property. The getter runs on every read. Fire the changed signal with `poke` on a stored property that it depends on. `propertyOf` and `snapshot` return stored values only. This is a test convenience. It does not compute layout or text metrics. The getter you give does.
 
 ### Undeclared writes
 
-The engine refuses a write to a property that the class does not have. The default matches.
-`undeclaredWrites = true` is an opt-in test convenience.
-`undeclaredReads = "nil"` is also opt-in. A read of a key that is not a property, an event, a method, a child or a method double then returns `nil`. This includes a key that is not a string. Writes still follow `undeclaredWrites`.
-A write or `poke` then stores the value, fires the property signals and makes the name readable and cloneable.
-A read of a name that nobody wrote still raises.
-Events, methods and `ClassName` still refuse a write.
-Validators still run. The reflection adapter still checks every declared property.
+The engine refuses a write to a property that the class does not have. The default matches. `undeclaredWrites = true` is an opt-in test convenience. Set `undeclaredReads = "nil"` to return `nil` for unknown keys. A known key can name a property, event, method, child or method double. Unknown keys include values that are not strings. `undeclaredWrites` still controls writes. A write or `poke` then stores the value, fires the property signals and makes the name readable and cloneable. A read of a name that nobody wrote still raises. Events, methods and `ClassName` still refuse a write. Validators still run. The reflection adapter still checks every declared property.
 
 ### Hierarchy events
 
@@ -848,8 +687,7 @@ Validators still run. The reflection adapter still checks every declared propert
 
 ### Reflection
 
-`Roblox.reflection.create { database, typeName, enumType?, classes?, referenceClass?, validateProperty? }` builds an environment from a reflection database.
-Pass `Roblox.reflectionSnapshot.database(snapshot)` and `Roblox.typeName`.
+`Roblox.reflection.create { database, typeName, enumType?, classes?, referenceClass?, validateProperty? }` builds an environment from a reflection database. Pass `Roblox.reflectionSnapshot.database(snapshot)` and `Roblox.typeName`.
 
 - `enumType(value)` returns the enum family name, with or without the `Enum.` prefix.
 - The adapter inherits class defaults, rejects unknown and read-only writes, and validates native datatypes.
@@ -869,48 +707,31 @@ Pass `Roblox.reflectionSnapshot.database(snapshot)` and `Roblox.typeName`.
 - UI validation acts only on `SelectedObject`. Every other write makes no extra call.
 - `ui.selection` is `"raise"` (default) or `"ignore"`. See [rejected selection](#rejected-selection).
 - `ui.requirePlayerGui = true` requires the target to descend from a `PlayerGui`.
-- `GuiService.GetGuiInset` requires an explicit `ui.methods["GuiService.GetGuiInset"]` handler that returns both current inset vectors. There is no inferred inset or relationship to `TopbarInset`. A provider supplies representative host state; it does not establish native inset or safe-area coverage.
+- `GuiService.GetGuiInset` requires an explicit `ui.methods["GuiService.GetGuiInset"]` handler that returns both current inset vectors. There is no inferred inset or relationship to `TopbarInset`. A provider provides representative host state; it does not establish native inset or safe-area coverage.
 
-The options `defaultProperty`, `computed`, `handlerErrors`, `undeclaredWrites` and `functionDoubles` pass to the environment.
-`Lute.fixture.bridge` accepts the same options.
+The options `defaultProperty`, `computed`, `handlerErrors`, `undeclaredWrites` and `functionDoubles` pass to the environment. `Lute.fixture.bridge` accepts the same options.
 
 The bridge returns `{ environment, engine, ui, layout, unavailable, faults, hasClass, observe, track, record, instanceHost, accounting, close }`.
 
-`layout = { roots, viewport, origin?, screenArea?, read?, component?, vector?, measureBounds? }` enables explicit simulated layout. `roots()` returns the mounted roots and `viewport()` returns `{ X, Y }`. `screenArea(screenGui)` returns `{ x, y, width, height }` for each ScreenGui; pass `runtime.screenArea` to place each ScreenGui in the inset area of the current simulated device. Call `bridge.layout.step()` after mutations, before the frame observations. It publishes geometry through the same environment. It does not step time or connect frame handlers.
+`layout = { roots, viewport, origin?, screenArea?, read?, component?, vector?, measureBounds? }` enables simulated layout. `roots()` returns mounted roots. `viewport()` returns `{ X, Y }`. `screenArea(screenGui)` returns `{ x, y, width, height }` for each ScreenGui. Give `runtime.screenArea` to use the current device inset area. After mutations, call `bridge.layout.step()` before frame observations. It publishes geometry through the environment. It does not advance time or connect frame handlers.
 
-`layout.objectsAtPosition(root, x, y)` queries published rectangular geometry in GUI coordinates. It returns visible hit objects from front to back, including non-interactable objects. Global and Sibling ordering, ancestor clipping and enabled ScreenGuis are supported. Right and bottom edges are inclusive, matching the native conformance fixture. Coordinates must be finite integers. Equal DisplayOrder across ScreenGuis and unsupported geometry raise. The simulated input backend supplies separate input eligibility and press/release routing over this query; the query itself does not dispatch events.
+`layout.objectsAtPosition(root, x, y)` queries published rectangles in GUI coordinates. It returns visible objects from front to back, including objects that cannot receive input. It supports Global and Sibling ordering, ancestor clipping and enabled ScreenGuis. Right and bottom edges are inclusive, as in the native fixture. Coordinates must be finite integers. Equal DisplayOrder values across ScreenGuis and unsupported geometry raise errors. The input backend separately checks input eligibility and routes presses and releases. The geometry query dispatches no events.
 
-Layout supports UDim2 dimensions, anchors, scale, fixed padding, size constraints, single-line lists and wrapped lists. Lists support parent `Fill`, individual `UIFlexItem` modes, weighted growth and shrink, size limits, cross-axis flex, and item line alignment. Shrink weights include each item's basis. Items that reach a size limit release the remaining space to other flexible items. The same 58 flex configurations run under the double and native Studio. Main-axis `SpaceBetween`, `SpaceAround` and `SpaceEvenly` support leading alignment and non-overflowing children. These modes distribute free space without the authored list padding when items do not flex; `AbsoluteContentSize` retains that padding. The same 24 spacing configurations run under both hosts. Intrinsic `AutomaticSize` supports fixed child bounds, simple lists and grids, including growth and shrink.
+Layout supports UDim2 dimensions, anchors, scale, fixed padding, size constraints, single-line lists and wrapped lists. Lists support parent Fill, individual UIFlexItem modes, weighted growth and shrink, size limits, cross-axis flex and line alignment. Shrink weights include each item basis. Items at a size limit release remaining space to other flexible items. The same 58 flex configurations run in the simulator and Studio. Main-axis SpaceBetween, SpaceAround and SpaceEvenly support leading alignment when children do not overflow. Without flex, these modes distribute free space without list padding. AbsoluteContentSize still includes that padding. Both hosts run the same 24 spacing configurations. Intrinsic AutomaticSize supports fixed child bounds, simple lists and grids, including growth and shrink.
 
-`UIGridLayout` supports both fill directions, start corners, sorting, alignment, cell padding and the maximum cells per row or column. It publishes `AbsoluteCellSize`, `AbsoluteCellCount` and `AbsoluteContentSize`. An aspect constraint on the layout controls the cell size with both aspect types and dominant axes. Cell dimensions use native float precision before the fit calculation. The same 37 native-observed configurations run under the double and Studio. Cells with individual size constraints or scales, non-positive cell sizes, negative cell padding and cells that depend on an automatic parent axis raise before geometry changes.
+UIGridLayout supports both fill directions, start corners, sorting, alignment, cell padding and maximum cells per row or column. It publishes AbsoluteCellSize, AbsoluteCellCount and AbsoluteContentSize. A layout aspect constraint controls cell size with both aspect types and dominant axes. Cell dimensions use native float precision before the fit calculation. Both hosts run the same 37 configurations observed on native Studio. Individual cell size constraints or scales fail before geometry changes. Nonpositive sizes, negative padding and cells that depend on an automatic parent axis also fail before changes.
 
-Wrapped lists form lines in either fill direction. Each line distributes its flexible items independently. Cross-axis flex distributes or stretches the lines. Scaled padding uses the corresponding parent axis. Fixed-child lists support an automatic main axis or cross axis, including resize, visibility, sorting, removal and wrapping changes. Individual GUI aspect constraints support both aspect types and dominant axes, scaling, size limits and list flex. The same 1,164 native-observed wrapping and aspect configurations, plus reflow mutations, run under both hosts.
+Wrapped lists form lines in either fill direction. Each line distributes its flexible items separately. Cross-axis flex distributes or stretches lines. Scaled padding uses the corresponding parent axis. Fixed-child lists support automatic sizing on either axis. They handle resize, visibility, sorting, removal and wrapping changes. Individual GUI aspect constraints support both aspect types, dominant axes, scaling, size limits and list flex. Both hosts run the same 1,164 wrapping and aspect configurations observed on native Studio. They also run reflow mutations.
 
-Relative children under automatic parents support bounded measurement. Lists
-require the authored minimum to contain the children under both ancestor and
-final bounds. Free layouts measure natural child bounds first, then relative
-dimensions, then final padded bounds. Unpadded relative positions and anchors
-are supported when the final children fit. The same 444 configurations and a
-resize, minimum-size, visibility, insertion, removal and padding mutation sequence
-run under Studio and the double.
+Relative children under automatic parents support bounded measurement. Lists require the authored minimum to contain the children under both ancestor and final bounds. Free layouts measure natural child bounds first, then relative dimensions, then final padded bounds. Unpadded relative positions and anchors are supported when the final children fit. The same 444 configurations and a resize, minimum-size, visibility, insertion, removal and padding mutation sequence run under Studio and the double.
 
-Unresolved relative growth, padded relative positions, relative children under
-constrained automatic parents, and relative intrinsic child sizes with their own
-automatic axis or aspect constraint remain unsupported. Non-leading or
-overflowing distributed spacing in unwrapped lists, table and page layouts,
-aspect constraints on automatic-size GUI objects or individual grid cells,
-rotation and LayerCollectors other than ScreenGui also raise
-`unsupported_ui_layout` before geometry is published. A `StyleLink` requires an
-effective-property `read(instance, property)` provider; the bridge supplies its UI
-style reader by default. Supplied reader errors propagate. `vector(x, y)` selects
-the output datatype constructor. These mechanisms are simulated and do not
-establish native rendering or input coverage.
+Unresolved relative growth and padded relative positions remain unsupported. Relative children under constrained automatic parents also remain unsupported. The same applies to relative intrinsic child sizes with their own automatic axis or aspect constraint. Unwrapped lists reject non-leading or overflowing distributed spacing. Table layouts, page layouts, rotation and LayerCollectors other than ScreenGui also fail. Aspect constraints on automatic-size GUI objects and individual grid cells fail. These cases raise `unsupported_ui_layout` before geometry publication. A `StyleLink` requires an effective-property `read(instance, property)` provider; the bridge provides its UI style reader by default. Supplied reader errors propagate. `vector(x, y)` selects the output datatype constructor. These mechanisms are simulated and do not establish native rendering or input coverage.
 
-`Lute.fixture.bridge` installs captured text measurements by default. `TextService.GetTextBoundsAsync` and `TextService.GetTextSize` use native-observed font advances, pair adjustments and boundary corrections. The facts record the native engine version and font face. They cover ASCII letters, digits, spaces and hard newlines at integer sizes 1–100. The committed faces are Builder Sans, Nunito, Fondamento and Michroma in Regular, Medium, SemiBold and Bold, plus Source Sans Pro Regular and Legacy Arial Regular. All use Normal style. Word wrapping supports words that fit within the available width. An unknown font, punctuation, other Unicode, rich text or a word that needs splitting raises `unsupported_text_metrics`. The double does not approximate these inputs. `GetTextSize` limits its returned height to whole lines within `frameSize.Y`, with at least one line; width includes all lines.
+`Lute.fixture.bridge` installs captured text measurements by default. TextService.GetTextBoundsAsync and GetTextSize use font advances, pair adjustments and boundary corrections observed on native Studio. The facts record engine version and font face. They cover ASCII letters, digits, spaces and hard newlines at integer sizes 1-100. Committed families are Builder Sans, Nunito, Fondamento and Michroma. Each has Regular, Medium, SemiBold and Bold weights. Source Sans Pro Regular and Legacy Arial Regular are also included. All use Normal style. Word wrapping supports words that fit the available width. Unknown fonts, punctuation, other Unicode, rich text and words that need splitting raise `unsupported_text_metrics`. The simulator does not estimate those inputs. GetTextSize limits height to whole lines within frameSize.Y, with at least one line. Width includes all lines.
 
-A supplied `ui.measureBounds` or `ui.measureText` replaces the default for that method. Set either field to `false` to leave that method unsupported. The portable `Roblox.fixtureBridge` and `Roblox.reflectionSnapshot.bridge` still require explicit measurement providers.
+A given `ui.measureBounds` or `ui.measureText` replaces the default for that method. Set the field to false to leave the method unsupported. Portable Roblox.fixtureBridge and Roblox.reflectionSnapshot.bridge still need explicit measurement providers.
 
-Layout uses `measureBounds` to publish `TextBounds` and `TextFits`, and to measure automatic text size. The bridge forwards its UI measurement provider unless layout supplies its own. Line height and UI scale use native-observed line metrics, including the different strut sizes of Legacy Arial. Rendered font sizes must be integers within 1–100. Text supports automatic axes and size constraints. Vertical lists with cross-axis `Fill` measure wrapped automatic height at the stretched width. Wrapped text bounds limit visible height to complete lines and retain the full wrapped width. `TextFits` remains false when lines do not fit. Unwrapped multiline text that exceeds available height, wrapped automatic width controlled by a list, other flexed widths, `TextScaled` and `TextTruncate` remain unsupported. The same 36 constraint, 180 clipping, 36 flex and 36 Legacy Arial configurations run under both hosts. Legacy Arial geometry comparisons use a 0.001 pixel tolerance for native float rounding; service bounds compare exactly. A native pass checks only the committed font faces and text grammar; it does not prove arbitrary text rendering.
+Layout uses measureBounds to publish TextBounds and TextFits and measure automatic text size. The bridge forwards its UI provider unless layout has its own. Line height and UI scale use line metrics observed on native Studio. These include Legacy Arial strut sizes. Rendered font sizes must be integers from 1 to 100. Text supports automatic axes and size constraints. Vertical lists with cross-axis Fill measure wrapped automatic height at the stretched width. Wrapped bounds limit visible height to complete lines and keep full wrapped width. TextFits is false when lines do not fit. Unsupported cases include unwrapped multiline text beyond the height and wrapped automatic width controlled by a list. Other flexed widths, TextScaled and TextTruncate also remain unsupported. Both hosts run 36 constraint, 180 clipping, 36 flex and 36 Legacy Arial configurations. Legacy Arial geometry allows 0.001 pixel error for native float rounding. Service bounds compare exactly. A native pass covers only the committed font faces and text grammar. It does not prove arbitrary text rendering.
 
 - `track()` lists created instances and cloned `{ source, copy }` pairs until `stop()`.
 - `faults` wraps `failNext`. `assertConsumed` refuses an injection that never fired.
@@ -920,25 +741,16 @@ Layout uses `measureBounds` to publish `TextBounds` and `TextFits`, and to measu
 
 Application-specific UI expectations stay with the consumer.
 
-This is simulated behavior that is validated against engine metadata. It is not engine parity.
-Instances are Luau tables. Defaults and property types come from the database.
-Events, methods, layout, rendering, input and physics exist only where you declare or inject them.
+This is simulated behavior that is validated against engine metadata. It is not engine parity. Instances are Luau tables. Defaults and property types come from the database. Events, methods, layout, rendering, input and physics exist only where you declare or inject them.
 
 ### Defaults that the database does not store
 
-`defaultProperty(className, property)` is a bridge option. The bridge calls it for a declared property that has no stored default and no overlay value.
-The order is the database default, then an overlay value, then the hook, then `nil`.
-Return `nil` for no default.
-A declaration is never a default. Without a hook such a property reads `nil`.
-`ResetPropertyToDefault(property)` restores the same value and fires the changed signals when the value differs.
-It does not validate, because the value comes from the environment. It raises for an undeclared property.
-It also works on `Roblox.testEnvironment`, where the default is the declared value.
+`defaultProperty(className, property)` is a bridge option. The bridge calls it for a declared property that has no stored default and no overlay value. The order is the database default, then an overlay value, then the hook, then `nil`. Return `nil` for no default. A declaration is never a default. Without a hook such a property reads `nil`. `ResetPropertyToDefault(property)` restores the same value and fires the changed signals when the value differs. It does not validate, because the value comes from the environment. It raises for an undeclared property. It also works on `Roblox.testEnvironment`, where the default is the declared value.
 
 
 ### Reflection snapshots
 
-Under Lute, a serialized reflection snapshot supplies the reflection database at test time.
-A snapshot is a JSON file with schema version 2. A loader refuses every other version.
+Under Lute, a serialized reflection snapshot provides the reflection database at test time. A snapshot is a JSON file with schema version 2. A loader refuses every other version.
 
 | Field | Content |
 | --- | --- |
@@ -954,12 +766,7 @@ A snapshot is a JSON file with schema version 2. A loader refuses every other ve
 lute run tools/export-studio-reflection.luau <out.json> (--studio-id <id> | --studio-name <name>) [--classes A,B,...]... [--enums A,B,...]... [--services] [--mcp <StudioMCP>] [--framework <directory>]
 ```
 
-The command uses an open Studio through the official Studio MCP. See [attached Studio](execution.md#attached-studio).
-Its `authorize` hook permits only the Studio listing and `execute_luau` in the `Edit` data model.
-The capture reads `ReflectionService`, `Enum`, `BrickColor` and `Font`, and it creates instances that it never parents.
-It lists classes with the current security capabilities and the `Plugin` capability, so the export includes plugin classes such as `PluginGui` and `DockWidgetPluginGui`.
-It reads the members of a plugin class with the same capabilities, and the members of every other class with the current capabilities only.
-It does not change, save or publish the place. The default transport of `Lute.studio.attach` must work on the host. See [platform support](running.md#platform-support).
+The command uses an open Studio through the official Studio MCP. See [attached Studio](execution.md#attached-studio). Its `authorize` hook permits only the Studio listing and `execute_luau` in the `Edit` data model. The capture reads `ReflectionService`, `Enum`, `BrickColor` and `Font`, and it creates instances that it never parents. It lists classes with the current security capabilities and the `Plugin` capability, so the export includes plugin classes such as `PluginGui` and `DockWidgetPluginGui`. It reads the members of a plugin class with the same capabilities, and the members of every other class with the current capabilities only. It does not change, save or publish the place. The default transport of `Lute.studio.attach` must work on the host. See [platform support](running.md#platform-support).
 
 - Without `--classes`, the command exports every class. With `--classes`, it exports the named classes and their superclasses.
 - Without `--classes` and `--enums`, it exports every enum.
@@ -974,11 +781,7 @@ It does not change, save or publish the place. The default transport of `Lute.st
 - A superclass that Studio does not list as a class, such as `Object` above `Instance`, is omitted.
 - The full export of Studio 0.742 has 681 classes and 648 enums in about 600 KB.
 
-From code, `Lute.fixture.exportStudio(execute, options?)` returns the snapshot.
-`execute(code)` runs the code in the `Edit` data model and returns its text, for example through `session.execute("Edit", code)`.
-`options` is `{ classes?, enums?, services?, batchSize?, framework? }`. `batchSize` (default 25) bounds the classes for each request.
-`framework` is the Verify checkout that holds `src/roblox/reflection-capture.luau`.
-`Lute.fixture.save(path, snapshot)` writes the file with sorted keys.
+From code, `Lute.fixture.exportStudio(execute, options?)` returns the snapshot. `execute(code)` runs the code in the `Edit` data model and returns its text, for example through `session.execute("Edit", code)`. `options` is `{ classes?, enums?, services?, batchSize?, framework? }`. `batchSize` (default 25) bounds the classes for each request. `framework` is the Verify checkout that holds `src/roblox/reflection-capture.luau`. `Lute.fixture.save(path, snapshot)` writes the file with sorted keys.
 
 
 #### Use a snapshot
@@ -989,7 +792,7 @@ From code, `Lute.fixture.exportStudio(execute, options?)` returns the snapshot.
 - `Roblox.reflectionSnapshot.engineLibrary(library)` returns the `library` option of `Roblox.fixtureBridge`, so the engine seam constructs values of that library.
 - `Roblox.reflectionSnapshot.bridge(snapshot, options?)` and `Lute.fixture.bridge(path | snapshot | nil, options?)` compose these parts. `Lute.fixture.bridge()` uses the bundled capture. Its resource path is relative to the installed Verify package, independent of the working directory.
 
-Captured methods declare members; they do not provide implementations. Calls without a simulation or explicit fake fail as unsupported. Class metadata uses all capabilities to retain the hierarchy; creation permits and member access retain the current or Plugin scope. Captured events require a Listen permit and methods require a Call permit.
+Captured methods declare members without implementations. Calls without simulation or an explicit fake fail as unsupported. Class metadata uses all capabilities to keep the hierarchy. Creation and member access use the current or Plugin scope. Events require a Listen permit. Methods require a Call permit.
 
 ```luau
 local snapshot = Lute.fixture.load()
@@ -1000,22 +803,15 @@ label.Size = types.UDim2.fromOffset(10, 20) + types.UDim2.fromScale(0.5, 0)
 label.TextXAlignment = types.Enum.TextXAlignment.Left
 ```
 
-`tests/reflection-snapshot.lute.verify.luau` builds bridges from both fixture files.
-`tests/studio-reflection.lute.verify.luau` runs the generated Studio code against a fake engine.
-After a Roblox API update, regenerate a committed snapshot.
+`tests/reflection-snapshot.lute.verify.luau` builds bridges from both fixture files. `tests/studio-reflection.lute.verify.luau` runs the generated Studio code against a fake engine. After a Roblox API update, regenerate a committed snapshot.
 
 #### Run code under test with the library
 
-`Lute.chunk.load(source, { name?, environment?, injectGlobals? })` compiles `source` and returns the chunk function.
-A global read looks in `environment` first and then in the Lute globals. `injectGlobals = false` uses `environment` alone.
-A global write stays in the chunk. `environment` does not change.
-`Lute.chunk.check(source, name?)` returns `true`, or `false` and the syntax error, and runs nothing.
-Put the library members and `typeof = types.typeof` in `environment`, so the code under test sees datatype globals with engine names.
+`Lute.chunk.load(source, { name?, environment?, injectGlobals? })` compiles `source` and returns the chunk function. A global read looks in `environment` first and then in the Lute globals. `injectGlobals = false` uses `environment` alone. A global write stays in the chunk. `environment` does not change. `Lute.chunk.check(source, name?)` returns `true`, or `false` and the syntax error, and runs nothing. Put the library members and `typeof = types.typeof` in `environment`, so the code under test sees datatype globals with engine names.
 
 #### Load a module tree under the library
 
-`Lute.loader.new(options?)` returns `{ require(path) }`. It loads Roblox-targeted modules under Lute.
-`require(path)` takes a path relative to the working directory, with or without `.luau`. A directory path loads its `init.luau`.
+`Lute.loader.new(options?)` returns `{ require(path) }`. It loads Roblox-targeted modules under Lute. `require(path)` takes a path relative to the working directory, with or without `.luau`. A directory path loads its `init.luau`.
 
 Each module runs in its own environment:
 
@@ -1025,12 +821,10 @@ Each module runs in its own environment:
 - `require` resolves `./` and `../` paths, `@self/` children and the aliases in `options.aliases`. `@std/` and `@lute/` load from the runtime.
 - Each name in `options.globals` is a global, for example `game`, `Instance` or `Enum` from an engine fixture. A name in `options.globals` replaces `typeof` and `warn`.
 - `options.transform(path, source)` returns the source to load for a file. Use it to change one module in a test.
-- `options.files = { exists(path), readFile(path) }` supplies the module files. Without this option, the loader uses the host filesystem. Use an in-memory file table when module loads must complete without filesystem waits. Both functions receive normalized paths relative to the working directory.
+- `options.files = { exists(path), readFile(path) }` provides the module files. Without this option, the loader uses the host filesystem. Use an in-memory file table when module loads must complete without filesystem waits. Both functions receive normalized paths relative to the working directory.
 - `require` also takes a reference from `loader.reference(path)`. A reference gives a child reference for each indexed name, so `require(game.ReplicatedStorage.shared.rules)` loads `<path>/rules` when `game.ReplicatedStorage.shared` is `loader.reference("<path>")`. The loader reads `options.globals` on each access, so a global can hold references that the loader makes.
 
-The loader loads each file once and keeps the resolved paths. A require cycle, a missing module and an unknown alias raise with the module named.
-A file under a prefix in `options.hostPaths` loads with `options.requireHost(module)` instead, as an ordinary host module.
-`module` is the path without `.luau` or `/init.luau`.
+The loader loads each file once and keeps the resolved paths. A require cycle, a missing module and an unknown alias raise with the module named. A file under a prefix in `options.hostPaths` loads with `options.requireHost(module)` instead, as an ordinary host module. `module` is the path without `.luau` or `/init.luau`.
 
 ```luau
 local loader = Lute.loader.new {
@@ -1045,66 +839,26 @@ local Package = loader.require "src"
 
 #### Studio probes
 
-`Lute.fixture.probeStudio(execute, probes)` runs each `{ name, source, tolerance? }` probe in Studio and returns `{ engineVersion, results }`.
-`Lute.fixture.probeLocal(environment, probes)` runs the same probes with `Lute.chunk.load`.
-Each result is `ok: ` and the `tostring` of the returned value, or `error: ` and the message without its location.
-Record the Studio results in a file. Compare the local results with that file in a test.
-A probe proves only the expression that it runs.
+`Lute.fixture.probeStudio(execute, probes)` runs each `{ name, source, tolerance? }` probe in Studio and returns `{ engineVersion, results }`. `Lute.fixture.probeLocal(environment, probes)` runs the same probes with `Lute.chunk.load`. Each result is `ok: ` and the `tostring` of the returned value, or `error: ` and the message without its location. Record the Studio results in a file. Compare the local results with that file in a test. A probe proves only the expression that it runs.
 
 ### UI fakes
 
-`Roblox.uiFakes.classes` declares optional UI methods.
-Supply it as a class overlay.
-Pass `uiFakes.validateProperty` as the property validator to reject the selection of hidden or unselectable controls.
-`Instance:GetStyled(property)` resolves the nearest linked StyleSheet with class,
-tag and name selectors, compound selectors, child (`>`) and descendant (`>>`)
-combinators, comma-separated alternatives, rule priorities and attribute tokens.
-For example, `.Container > Frame#Card.Hot` requires the parent tag, child class,
-child name and child tag. Relevant branches must use supported syntax. A
-nondefault raw property overrides the style. Writing the default or resetting
-it exposes the style again. Empty links do not replace an ancestor scope.
+`Roblox.uiFakes.classes` declares optional UI methods. Give it as a class overlay. Pass `uiFakes.validateProperty` as the property validator to reject the selection of hidden or unselectable controls. `Instance:GetStyled(property)` resolves the nearest linked StyleSheet. It supports class, tag, name and compound selectors, child (`>`) and descendant (`>>`) combinators. It also supports comma-separated alternatives, rule priorities and attribute tokens. For example, `.Container > Frame#Card.Hot` requires the parent tag, child class, child name and child tag. Relevant branches must use supported syntax. A nondefault raw property overrides the style. Writing the default or resetting it exposes the style again. Empty links do not replace an ancestor scope.
 
-`Instance:GetStyled(property, "::ClassName")` reads a phantom `UIPadding`,
-`UICorner`, `UIStroke` or `UIGradient`. Missing phantoms raise. These components
-do not appear in the physical hierarchy, change resource counts or fire child
-events. A physical component has its own styled properties and takes precedence
-for layout. The shared fixtures check this distinction with physical and phantom
-padding, raw overrides, default values, token changes and removal.
+`Instance:GetStyled(property, "::ClassName")` reads a phantom `UIPadding`, `UICorner`, `UIStroke` or `UIGradient`. Missing phantoms raise. These components do not appear in the physical hierarchy, change resource counts or fire child events. A physical component has its own styled properties and takes precedence for layout. The shared fixtures check this distinction with physical and phantom padding, raw overrides, default values, token changes and removal.
 
-`Instance:GetStyledPropertyChangedSignal(property)` observes the underlying
-style value and linked scope. Raw writes do not fire this signal. Style changes
-can fire it while a raw override masks the returned value. Call
-`controller.step()` to refresh observations; fixture layout does this before
-layout. `controller.styled(object, property)` exposes the effective read.
-`controller.component(object, className, property)` reads a physical component
-first, then a supported phantom, or returns nil when neither exists. Supply
-this as `layout.component` beside `layout.read` for phantom padding geometry.
-The fixture bridge supplies both readers when it supplies styled reads.
-Closing the controller disconnects its observations.
+`Instance:GetStyledPropertyChangedSignal(property)` observes the underlying style value and linked scope. Raw writes do not fire this signal. Style changes can fire it while a raw override masks the returned value. Call `controller.step()` to refresh observations; fixture layout does this before layout. `controller.styled(object, property)` exposes the effective read. `controller.component(object, className, property)` reads a physical component first, then a supported phantom, or returns nil when neither exists. Supply this as `layout.component` beside `layout.read` for phantom padding geometry. The fixture bridge provides both readers when it provides styled reads. Closing the controller disconnects its observations.
 
-Relevant nested rules, state and query selectors, implicit space combinators,
-named or nested phantoms, derived sheets, multiple links at one scope,
-equal-priority conflicts, other selector arguments and nonzero transitions raise
-`unsupported_ui_style`. Unsupported selectors do not block properties that their
-rules cannot affect. This is bounded model coverage. Shared Studio Client and
-double assertions check hierarchy selectors, name/tag/parent mutations, compound
-selectors and phantom modifiers. Native conformance does not prove rendering.
+Relevant nested rules, state selectors and query selectors raise `unsupported_ui_style`. Implicit space combinators, named or nested phantoms and derived sheets also raise this error. The same applies to multiple links at one scope, equal-priority conflicts, other selector arguments and nonzero transitions. Unsupported selectors do not block properties that their rules cannot affect. This is bounded model coverage. Shared Studio Client and double assertions check hierarchy selectors, name/tag/parent mutations, compound selectors and phantom modifiers. Native conformance does not prove rendering.
 
 
 #### Rejected selection
 
-When the real engine gets `GuiService.SelectedObject = target` for a hidden, disabled or unselectable control, it ignores the write.
-The default `ui.selection = "raise"` raises instead, so a test finds the mistake.
-`ui = { selection = "ignore" }` is the engine-true mode.
-It drops the write with no error, no signal and no change.
-`controller.rejectedSelections()` lists each `{ target, reason }` in order.
-A hidden ancestor, a disabled `ScreenGui` and `Selectable == false` reject.
-A value that is not a `GuiObject` still raises in both modes.
+When the real engine gets `GuiService.SelectedObject = target` for a hidden, disabled or unselectable control, it ignores the write. The default `ui.selection = "raise"` raises instead, so a test finds the mistake. `ui = { selection = "ignore" }` is the engine-true mode. It drops the write with no error, no signal and no change. `controller.rejectedSelections()` lists each `{ target, reason }` in order. A hidden ancestor, a disabled `ScreenGui` and `Selectable == false` reject. A value that is not a `GuiObject` still raises in both modes.
 
 `ui.requirePlayerGui = true` makes a target outside a `PlayerGui` raise in both modes. It is an opt-in test convenience.
 
-A `validateProperty` function that returns `false` vetoes the write or `poke` silently, with no change and no signal.
-Any other return value accepts it. This applies to `Parent` too.
+A `validateProperty` function that returns `false` vetoes the write or `poke` silently, with no change and no signal. Any other return value accepts it. This applies to `Parent` too.
 
 `uiFakes.attach(environment, { measureText?, measureBounds?, methods? })` installs fakes for these behaviors:
 
@@ -1114,29 +868,17 @@ Any other return value accepts it. This applies to `Parent` too.
 - Path-point storage.
 - Instant page navigation.
 
-Measurement providers are required for measurement claims.
-Keep the controller and call `close()` to release focus resources.
-The simulator does not simulate curve evaluation, rendered text, animated navigation, playback quality or style rendering.
-A declared method that is unsupported needs an explicit injected implementation.
-`attach` registers `environment.onClone`.
-`Clone()` then copies style, transition, derive and path state, and remaps in-tree derive references. Focus is never copied.
-`environment.observe` and `pendingFailures` expose operation observation and unfired fault injection.
+Measurement providers are required for measurement claims. Keep the controller and call `close()` to release focus resources. The simulator does not simulate curve evaluation, rendered text, animated navigation, playback quality or style rendering. A declared method that is unsupported needs an explicit injected implementation. `attach` registers `environment.onClone`. `Clone()` then copies style, transition, derive and path state, and remaps in-tree derive references. Focus is never copied. `environment.observe` and `pendingFailures` expose operation observation and unfired fault injection.
 
 ### Engine seam
 
-`Roblox.environmentEngine(environment, library?)` exposes the environment as a structural scene engine.
-The engine has creation, heartbeat, clock, datatype constructors, destruction and property observation.
-Objects and signals keep their identity.
-The default uses Verify datatypes. Supply the typed factory library when you use native datatypes.
-This adapter adds no renderer and no native engine claim.
+`Roblox.environmentEngine(environment, library?)` exposes the environment as a structural scene engine. The engine has creation, heartbeat, clock, datatype constructors, destruction and property observation. Objects and signals keep their identity. The default uses Verify datatypes. Give the typed factory library when you use native datatypes. This adapter adds no renderer and no native engine claim.
 
 ---
 
 ## Consumer diagnostics
 
-`Consumer.scan(contents, path, ruleset)`, `scanTree` and `scanProductionPaths` inspect portable specifications and production graphs.
-Choose a ruleset: `Consumer.generic` or `Consumer.roblox`.
-[Consumer diagnostics](lint.md) describes the rules and their limits.
+`Consumer.scan(contents, path, ruleset)`, `scanTree` and `scanProductionPaths` inspect portable specifications and production graphs. Choose a ruleset: `Consumer.generic` or `Consumer.roblox`. [Consumer diagnostics](lint.md) describes the rules and their limits.
 
 ## Shape predicates
 
@@ -1147,14 +889,13 @@ Choose a ruleset: `Consumer.generic` or `Consumer.roblox`.
 - `nonnegativeInteger(value)` also requires a whole number.
 - `denseRows(value, count)` requires a metatable-free array of the exact length. It permits userdata marker keys used by JSON encoders.
 
-Consumers retain their field sets, identifiers and acceptance policy.
+Consumers keep their field sets, identifiers and acceptance policy.
 
 ## Named case collections
 
-`Core.runCases(cases, options, now, ids?)` executes ordinary named cases with exact selection.
-The [run guide](running.md) describes selection, entry modules and host execution.
+`Core.runCases(cases, options, now, ids?)` executes ordinary named cases with exact selection. The [run guide](running.md) describes selection, entry modules and host execution.
 
-`Core.waitUntil(spec, ops)` polls to a bound and returns its terminal reason, last observation and elapsed time. `Core.awaitValue(predicate, seconds, poll, ops)` waits for a non-nil value (including false), returns nil on timeout or cancellation, and raises probe failures. Its optional final `truthy` argument ignores false as well as nil. The caller supplies the clock, sleep and optional cancellation.
+`Core.waitUntil(spec, ops)` polls to a limit. It returns the terminal reason, last observation and elapsed time. `Core.awaitValue(predicate, seconds, poll, ops)` waits for a value other than nil. The value can be false. It returns nil on timeout or cancellation. Probe failures raise errors. Set the optional final `truthy` argument to true to ignore false as well as nil. The caller gives the clock, sleep function and optional cancellation function.
 
 ## Package export index
 
@@ -1254,7 +995,7 @@ Validate a collection of benchmark reports.
 
 ### `Benchmark.collect`
 
-Collect benchmark measurements using the supplied host.
+Collect benchmark measurements using the given host.
 
 ### `Benchmark.collection`
 
@@ -1274,7 +1015,7 @@ Benchmark limit constructors and validation.
 
 ### `Benchmark.run`
 
-Run benchmark cases with the supplied timing options.
+Run benchmark cases with the given timing options.
 
 ### `Benchmark.spread`
 
@@ -1286,7 +1027,7 @@ Benchmark report persistence operations.
 
 ### `Benchmark.storeReport`
 
-Store a benchmark report through the supplied store.
+Store a benchmark report through the given store.
 
 ### `Consumer.generic`
 
@@ -1306,7 +1047,7 @@ Check production paths for test framework leakage.
 
 ### `Consumer.scanTree`
 
-Scan a tree using caller-supplied file operations.
+Scan a tree using caller-given file operations.
 
 ### `Core.SCHEMA_VERSION`
 
@@ -1314,7 +1055,7 @@ Current report schema version.
 
 ### `Core.awaitValue`
 
-Wait for a supplied reader to return the required value within a bound.
+Wait for a given reader to return the required value within a bound.
 
 ### `Core.bindOperation`
 
@@ -1330,7 +1071,7 @@ Decode unknown data as a validated report.
 
 ### `Core.execute`
 
-Execute an explicit plan with supplied executors.
+Execute an explicit plan with given executors.
 
 ### `Core.extract`
 
@@ -1499,13 +1240,13 @@ Create simulated host fixtures and run exported probes.
 `bridge(snapshot?, options?)` accepts `content` providers in addition to the reflection and UI options:
 
 - `content.assetVersion(versionId)` returns a live, archivable Model template created in this bridge's environment, or nil for unavailable content. `InsertService:LoadAssetVersion` validates the version ID, clones the template on each call and parents the result to InsertService. Missing providers, unavailable versions and invalid templates raise. The provider owns fixture acquisition and version mapping; the double performs no network fetch and invents no geometry.
-- `content.terrainMaterialColor(material)` supplies a captured Color3 for an unset terrain material. `Terrain:SetMaterialColor` stores per-terrain overrides and `GetMaterialColor` returns them before consulting the provider. Air, Water, other enum families and invalid colors raise. An unset material without a provider raises rather than inventing a default palette.
+- `content.terrainMaterialColor(material)` provides a captured Color3 for an unset terrain material. `Terrain:SetMaterialColor` stores per-terrain overrides and `GetMaterialColor` returns them before consulting the provider. Air, Water, other enum families and invalid colors raise. An unset material without a provider raises rather than inventing a default palette.
 
-`placeEngine().record` retains diagnostics and feeds LogService history and MessageOut with message types and virtual timestamps. History returns independent tables, retains the newest 512 entries in order and is cleared by ClearOutput. Clearing history preserves diagnostics. Structured Logger context is outside this modeled surface.
+`placeEngine().record` keeps diagnostics and sends virtual timestamps and message types to LogService history and MessageOut. History returns independent tables. It keeps the newest 512 entries in order. ClearOutput clears history but keeps diagnostics. Structured Logger context is outside this simulation.
 
-Sound Play, Pause, Resume and Stop update playback state and emit their corresponding events. Virtual time advances TimePosition at PlaybackSpeed; a supplied positive TimeLength permits completion and loops. The double does not load sound media, discover durations or establish audible playback. TextChatService.OnIncomingMessage uses the environment's write-only callback storage; a host can inspect and invoke it through propertyOf. It does not establish filtered chat delivery.
+Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback. TextChatService.OnIncomingMessage uses write-only callback storage. A host can inspect and invoke it through propertyOf. This does not prove filtered chat delivery.
 
-Uncaptured font faces still raise. Supply measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the needed text operations, or capture font facts with the documented native text-metrics tool. An unrelated face is never substituted.
+Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 
 ### `Lute.gate`
 
@@ -1554,10 +1295,6 @@ Run worker modules that register their own cases.
 ### `Lute.studio`
 
 Launch or attach Studio execution sessions.
-
-### `Lute.typePolicy`
-
-Detect explicit any and weakened strict typing in source.
 
 ### `Lute.worker`
 
@@ -1661,8 +1398,7 @@ Explicit UI behavior doubles used with reflection facts.
 
 ## Repository checks
 
-The Lute-only `src/checks` package returns findings without exiting. Configuration, behavior and
-contract falsifiers are defined in [repository checks](checks.md).
+The Lute-only `src/checks` package returns findings without exiting. Configuration, behavior and contract falsifiers are defined in [repository checks](checks.md).
 
 ### `Checks.walk`
 
@@ -1690,9 +1426,7 @@ Require strict maintained Luau and reject explicit dynamic type escapes.
 
 ### `Checks.specStyle`
 
-Reject colon case registration, context expectations and dotted `Test.it`, `Test.expect` or `Test.describe` calls in
-`*.verify.luau` files, so specs declare `describe`, `it` and `expect` once. Takes the same selection as `Checks.noAny`;
-`exclude` names files whose subject is the raw harness API.
+Reject colon case registration, context expectations and dotted `Test.it`, `Test.expect` or `Test.describe` calls in `*.verify.luau` files, so specs declare `describe`, `it` and `expect` once. Takes the same selection as `Checks.noAny`; `exclude` names files whose subject is the raw harness API.
 
 ### `Checks.testManifest`
 
@@ -1717,3 +1451,9 @@ Require clean HEAD and run a configured gate in a disposable exact-HEAD clone.
 ### `Checks.lintRules`
 
 Lute rules for shared globals, misplaced type comparisons and invalid string escapes.
+
+See the [terms](README.md#terms) for shared technical names.
+
+## Type imports
+
+Types are defined beside their implementation. For example, `src/lute/studio` exports `Options` and `HostOptions`. `src/roblox/fixture-bridge` exports `Options`. Root packages expose selected aliases. Use the defining module for other types.

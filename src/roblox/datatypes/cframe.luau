@@ -518,7 +518,4 @@ return {
 	expect = expectFrame,
 	CFrame = CFrame,
 	read = read,
-	isCFrame = function(value: unknown): boolean
-		return Names.is(value, CFrameKind)
-	end,
 }
