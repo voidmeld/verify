@@ -24,4 +24,16 @@ describe("reflection reuse across engines", function()
 	end)
 end)
 
+describe("chunk reuse across environments", function()
+	it("runs the same source with separate state in each environment", function()
+		local source = "count = (count or 0) + 1\nreturn count"
+		local first: { [string]: unknown } = {}
+		local second: { [string]: unknown } = {}
+		local load = Lute.chunk.load
+		expect(load(source, { environment = first, injectGlobals = false })()):toBe(1)
+		expect(load(source, { environment = first, injectGlobals = false })()):toBe(2)
+		expect(load(source, { environment = second, injectGlobals = false })()):toBe(1)
+	end)
+end)
+
 return nil
