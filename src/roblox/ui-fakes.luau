@@ -4,6 +4,7 @@ local Environment = require "./environment"
 local Values = require "./ui-values"
 local Style = require "./ui-style"
 local Enum = require "./datatypes/enum"
+local Datatypes = require "./datatypes"
 
 type Instance = Environment.Instance
 local function weaken<V>(values: { [Instance]: V })
@@ -221,6 +222,9 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 	end)
 	env.fake("TextBox.IsFocused", function(object: Instance): boolean
 		return focused == object
+	end)
+	env.fake("ScrollingFrame.GetScrollVelocity", function(_object: Instance): Datatypes.Vector2Value
+		return Datatypes.Vector2.zero
 	end)
 	env.fake("ScrollingFrame.ResetScrollVelocity", function(_object: Instance) end)
 	env.fake("UserInputService.GetFocusedTextBox", function(_object: Instance): Instance?

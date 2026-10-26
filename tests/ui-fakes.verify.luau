@@ -36,11 +36,7 @@ describe("explicit UI fakes", function()
 		expect(second == bottomRight):toEqual(true)
 	end)
 	it("scroll velocity resets without moving the canvas because the double has no momentum", function()
-		local classes = table.clone(UI.classes)
-		local properties: { [string]: unknown } = { CanvasPosition = { X = 0, Y = 0 } }
-		local methods: { [string]: unknown } = { ResetScrollVelocity = true }
-		classes.ScrollingFrame = { super = "Instance", properties = properties, methods = methods }
-		local env = Environment.create { classes = classes, validateProperty = UI.validateProperty }
+		local env = create()
 		UI.attach(env)
 		local frame = env.createInstance "ScrollingFrame"
 		local position = { X = 0, Y = 40 }

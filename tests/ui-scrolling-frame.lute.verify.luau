@@ -7,6 +7,32 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 
+it("scroll velocity remains zero after canvas writes, time and velocity reset", function(own)
+	local bridge = Lute.fixture.bridge(nil, { ui = { measureBounds = false, measureText = false } })
+	own(bridge.close)
+	local globals: { [string]: unknown } = {
+		env = bridge.environment,
+		Vector2 = Roblox.datatypes.Vector2,
+		typeof = Roblox.typeName,
+	}
+	local complete = Lute.chunk.load(
+		[==[
+local frame = env.createInstance("ScrollingFrame")
+assert(typeof(frame:GetScrollVelocity()) == "Vector2")
+assert(frame:GetScrollVelocity() == Vector2.zero)
+frame.CanvasPosition = Vector2.new(23, 47)
+env.step(1)
+assert(frame:GetScrollVelocity() == Vector2.zero)
+frame:ResetScrollVelocity()
+assert(frame:GetScrollVelocity() == Vector2.zero)
+assert(frame.CanvasPosition == Vector2.new(23, 47))
+return true
+]==],
+		{ environment = globals }
+	)()
+	expect(complete):toBe(true)
+end)
+
 local function scrollingFixture()
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
