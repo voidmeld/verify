@@ -1,6 +1,7 @@
 --!strict
 
-local Verify = require "../src/core"
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local fs = require "@std/fs"
 
@@ -103,89 +104,89 @@ local function packageOf(path: string): string
 	return if package ~= nil then package else path
 end
 
-return function(suite: Verify.Harness)
-	suite:suite("module graph host neutrality", function()
-		suite:case("engine-mountable packages name no alias other than @self", function(check)
-			local offences: { string } = {}
-			for _, site in collect "src" do
-				if not ENGINE_MOUNTABLE[packageOf(site.path)] then
-					continue
-				end
-				if string.sub(site.request, 1, 1) == "@" and string.match(site.request, "^@self/") == nil then
-					table.insert(offences, site.path .. " requires " .. site.request)
-				end
+describe("module graph host neutrality", function()
+	it("engine-mountable packages name no alias other than @self", function()
+		local offences: { string } = {}
+		for _, site in collect "src" do
+			if not ENGINE_MOUNTABLE[packageOf(site.path)] then
+				continue
 			end
-			check:expect(offences):toEqual {}
-		end)
-
-		suite:case("directory modules reach outward only through @self children", function(check)
-			local offences: { string } = {}
-			for _, site in collect "src" do
-				if not ENGINE_MOUNTABLE[packageOf(site.path)] or not isInit(site.path) then
-					continue
-				end
-				if string.match(site.request, "^@self/") == nil then
-					table.insert(offences, site.path .. " requires " .. site.request)
-				end
+			if string.sub(site.request, 1, 1) == "@" and string.match(site.request, "^@self/") == nil then
+				table.insert(offences, site.path .. " requires " .. site.request)
 			end
-			check:expect(offences):toEqual {}
-		end)
-
-		suite:case("every engine-mountable require resolves to a real module", function(check)
-			local unresolved: { string } = {}
-			for _, site in collect "src" do
-				if not ENGINE_MOUNTABLE[packageOf(site.path)] then
-					continue
-				end
-				if resolve(site.path, site.request) == nil then
-					table.insert(unresolved, site.path .. " requires " .. site.request)
-				end
-			end
-			check:expect(unresolved):toEqual {}
-		end)
-
-		suite:case("the engine-mountable closure never escapes into a host-bound package", function(check)
-			local escapes: { string } = {}
-			local seen: { [string]: boolean } = {}
-			local queue: { string } = {}
-			for _, entry in ENTRY_POINTS do
-				table.insert(queue, entry)
-				seen[entry] = true
-			end
-			local sites = collect "src"
-			while #queue > 0 do
-				local path = table.remove(queue)
-				for _, site in sites do
-					if site.path ~= path then
-						continue
-					end
-					local target = resolve(site.path, site.request)
-					if target == nil then
-						continue
-					end
-					local file = if string.match(target, "%.luau$") ~= nil then target else target .. "/init.luau"
-					if not ENGINE_MOUNTABLE[packageOf(file)] then
-						table.insert(escapes, site.path .. " reaches " .. file)
-						continue
-					end
-					if not seen[file] then
-						seen[file] = true
-						table.insert(queue, file)
-					end
-				end
-			end
-			check:expect(escapes):toEqual {}
-		end)
-
-		suite:case("the excluded package is excluded for a stated host reason", function(check)
-			check:expect(ENGINE_MOUNTABLE[LUTE_ONLY] == true):toEqual(false)
-			local named = false
-			for _, site in collect(LUTE_ONLY) do
-				if string.match(site.request, "^@std/") ~= nil then
-					named = true
-				end
-			end
-			check:expect(named):toEqual(true)
-		end)
+		end
+		expect(offences):toEqual {}
 	end)
-end
+
+	it("directory modules reach outward only through @self children", function()
+		local offences: { string } = {}
+		for _, site in collect "src" do
+			if not ENGINE_MOUNTABLE[packageOf(site.path)] or not isInit(site.path) then
+				continue
+			end
+			if string.match(site.request, "^@self/") == nil then
+				table.insert(offences, site.path .. " requires " .. site.request)
+			end
+		end
+		expect(offences):toEqual {}
+	end)
+
+	it("every engine-mountable require resolves to a real module", function()
+		local unresolved: { string } = {}
+		for _, site in collect "src" do
+			if not ENGINE_MOUNTABLE[packageOf(site.path)] then
+				continue
+			end
+			if resolve(site.path, site.request) == nil then
+				table.insert(unresolved, site.path .. " requires " .. site.request)
+			end
+		end
+		expect(unresolved):toEqual {}
+	end)
+
+	it("the engine-mountable closure never escapes into a host-bound package", function()
+		local escapes: { string } = {}
+		local seen: { [string]: boolean } = {}
+		local queue: { string } = {}
+		for _, entry in ENTRY_POINTS do
+			table.insert(queue, entry)
+			seen[entry] = true
+		end
+		local sites = collect "src"
+		while #queue > 0 do
+			local path = table.remove(queue)
+			for _, site in sites do
+				if site.path ~= path then
+					continue
+				end
+				local target = resolve(site.path, site.request)
+				if target == nil then
+					continue
+				end
+				local file = if string.match(target, "%.luau$") ~= nil then target else target .. "/init.luau"
+				if not ENGINE_MOUNTABLE[packageOf(file)] then
+					table.insert(escapes, site.path .. " reaches " .. file)
+					continue
+				end
+				if not seen[file] then
+					seen[file] = true
+					table.insert(queue, file)
+				end
+			end
+		end
+		expect(escapes):toEqual {}
+	end)
+
+	it("the excluded package is excluded for a stated host reason", function()
+		expect(ENGINE_MOUNTABLE[LUTE_ONLY] == true):toEqual(false)
+		local named = false
+		for _, site in collect(LUTE_ONLY) do
+			if string.match(site.request, "^@std/") ~= nil then
+				named = true
+			end
+		end
+		expect(named):toEqual(true)
+	end)
+end)
+
+return nil

@@ -10,19 +10,19 @@ local root = ".lute/tmp/verify-test-bootstrap"
 local fixtures: { { name: string, source: string?, passes: boolean, output: string } } = {
 	{
 		name = "passing",
-		source = 'return function(harness) harness:case("bootstrap pass", function(context) context:expect(1):toEqual(1) end) end',
+		source = 'local Test = require "../../../../tests/harness" Test.it("bootstrap pass", function() Test.expect(1):toEqual(1) end) return nil',
 		passes = true,
 		output = "::bootstrap pass",
 	},
 	{
 		name = "failing",
-		source = 'return function(harness) harness:case("bootstrap mismatch", function(context) print("bootstrap case executed") context:expect(1):toEqual(2) end) end',
+		source = 'local Test = require "../../../../tests/harness" Test.it("bootstrap mismatch", function() print("bootstrap case executed") Test.expect(1):toEqual(2) end) return nil',
 		passes = false,
 		output = "::bootstrap mismatch",
 	},
 	{
 		name = "registration",
-		source = 'return function() error("bootstrap registration failed", 0) end',
+		source = 'error("bootstrap registration failed", 0) return nil',
 		passes = false,
 		output = "bootstrap registration failed",
 	},
@@ -48,7 +48,7 @@ for _, fixture in fixtures do
 	local ran, outcome = pcall(function()
 		local gate = Gate.define {
 			id = "bootstrap-" .. fixture.name,
-			producers = { { id = "specs", kind = "tests", worker = "examples/worker.luau", locators = locators } },
+			producers = { { id = "specs", kind = "tests", worker = "tests/worker.luau", locators = locators } },
 		}
 		return Lute.gate.run(gate, { directory = directory .. "/gate" })
 	end)

@@ -1,5 +1,8 @@
 --!strict
 
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local Batch = require "../src/lute/batch"
 local Host = require "../src/lute/host"
 local Runtime = require "../src/lute/runtime"
@@ -117,84 +120,84 @@ local function outcomeOf(script: Script): Verify.BatchOutcome
 	return host.runBatch(batchOf("b1", "unit-a"))
 end
 
-return function(suite: Verify.Harness)
-	suite:suite("worker", function()
-		suite:case("prints usage and exits nonzero without both paths", function(check)
-			local state = memory({ "only-one" }, nil)
-			Worker.create(state.runtime).main(operations)
-			check:expect(state.exited):toEqual { 1 }
-			check:expect(#state.printed):toBe(1)
-			check:expect(#state.writes):toBe(0)
-		end)
-
-		suite:case("writes the report of the batch to the result path", function(check)
-			local plain = memory({ "batch.json", "plain.json" }, nil)
-			plain.files["batch.json"] = Batch.encode(batchOf("b", "unit"))
-			Worker.create(plain.runtime).main(operations)
-			check:expect(Wire.decode(plain.files["plain.json"]).passed):toBe(1)
-		end)
+describe("worker", function()
+	it("prints usage and exits nonzero without both paths", function()
+		local state = memory({ "only-one" }, nil)
+		Worker.create(state.runtime).main(operations)
+		expect(state.exited):toEqual { 1 }
+		expect(#state.printed):toBe(1)
+		expect(#state.writes):toBe(0)
 	end)
 
-	suite:suite("worker host", function()
-		suite:case("returns the validated report of a clean run", function(check)
-			local outcome = outcomeOf(workerScript(0))
-			check:expect(outcome.status):toBe "returned"
-			check:expect((outcome.report :: Verify.Report).passed):toBe(1)
-		end)
-
-		suite:case("returns the report of a worker that exits nonzero", function(check)
-			check:expect(outcomeOf(workerScript(2)).status):toBe "returned"
-		end)
-
-		suite:case("faults a clean exit without a report", function(check)
-			local outcome = outcomeOf(function()
-				return { ok = true, exitcode = 0, stdout = "chatter", stderr = "" }
-			end)
-			check:expect(outcome.status):toBe "faulted"
-			check:expect(outcome.detail or ""):toContain "wrote no report"
-			check:expect(outcome.detail or ""):toContain "chatter"
-		end)
-
-		suite:case("faults an unreadable report", function(check)
-			local outcome = outcomeOf(function(argv: { string }, files: { [string]: string }): Runtime.ProcessResult
-				files[argv[#argv]] = "garbage"
-				return { ok = true, exitcode = 0, stdout = "", stderr = "" }
-			end)
-			check:expect(outcome.status):toBe "faulted"
-			check:expect(outcome.detail or ""):toContain "unreadable report"
-		end)
-
-		suite:case("reports a timeout and a worker that cannot start", function(check)
-			local timedOut = outcomeOf(function()
-				return { ok = false, exitcode = 137, stdout = "", stderr = "verify_bounded_timeout\n" }
-			end)
-			check:expect(timedOut.status):toBe "timed_out"
-			local unstartable = outcomeOf(function(): Runtime.ProcessResult
-				error("no such program", 0)
-			end)
-			check:expect(unstartable.status):toBe "faulted"
-			check:expect(unstartable.detail or ""):toContain "no such program"
-		end)
-
-		suite:case("requires a worker path and delivers every batch through the time binding", function(check)
-			local state = memory({}, workerScript(0))
-			check:expect((pcall(Host.create, { worker = "" }, state.runtime))):toBe(false)
-			local host = Host.create({ worker = "w.luau" }, state.runtime)
-			local runBatch = host.runBatch
-			local dispatched = 0
-			host.runBatch = function(batch)
-				dispatched += 1
-				return runBatch(batch)
-			end
-			local delivered: { [number]: string } = {}
-			local first = batchOf("one", "a")
-			local second = batchOf("two", "b")
-			second.index = 2
-			(assert(host.runBatches))({ first, second }, function(index: number, outcome: Verify.BatchOutcome)
-				delivered[index] = outcome.status
-			end)
-			check:expect(delivered):toEqual { "returned", "returned" }
-			check:expect(dispatched):toBe(2)
-		end)
+	it("writes the report of the batch to the result path", function()
+		local plain = memory({ "batch.json", "plain.json" }, nil)
+		plain.files["batch.json"] = Batch.encode(batchOf("b", "unit"))
+		Worker.create(plain.runtime).main(operations)
+		expect(Wire.decode(plain.files["plain.json"]).passed):toBe(1)
 	end)
-end
+end)
+
+describe("worker host", function()
+	it("returns the validated report of a clean run", function()
+		local outcome = outcomeOf(workerScript(0))
+		expect(outcome.status):toBe "returned"
+		expect((outcome.report :: Verify.Report).passed):toBe(1)
+	end)
+
+	it("returns the report of a worker that exits nonzero", function()
+		expect(outcomeOf(workerScript(2)).status):toBe "returned"
+	end)
+
+	it("faults a clean exit without a report", function()
+		local outcome = outcomeOf(function()
+			return { ok = true, exitcode = 0, stdout = "chatter", stderr = "" }
+		end)
+		expect(outcome.status):toBe "faulted"
+		expect(outcome.detail or ""):toContain "wrote no report"
+		expect(outcome.detail or ""):toContain "chatter"
+	end)
+
+	it("faults an unreadable report", function()
+		local outcome = outcomeOf(function(argv: { string }, files: { [string]: string }): Runtime.ProcessResult
+			files[argv[#argv]] = "garbage"
+			return { ok = true, exitcode = 0, stdout = "", stderr = "" }
+		end)
+		expect(outcome.status):toBe "faulted"
+		expect(outcome.detail or ""):toContain "unreadable report"
+	end)
+
+	it("reports a timeout and a worker that cannot start", function()
+		local timedOut = outcomeOf(function()
+			return { ok = false, exitcode = 137, stdout = "", stderr = "verify_bounded_timeout\n" }
+		end)
+		expect(timedOut.status):toBe "timed_out"
+		local unstartable = outcomeOf(function(): Runtime.ProcessResult
+			error("no such program", 0)
+		end)
+		expect(unstartable.status):toBe "faulted"
+		expect(unstartable.detail or ""):toContain "no such program"
+	end)
+
+	it("requires a worker path and delivers every batch through the time binding", function()
+		local state = memory({}, workerScript(0))
+		expect((pcall(Host.create, { worker = "" }, state.runtime))):toBe(false)
+		local host = Host.create({ worker = "w.luau" }, state.runtime)
+		local runBatch = host.runBatch
+		local dispatched = 0
+		host.runBatch = function(batch)
+			dispatched += 1
+			return runBatch(batch)
+		end
+		local delivered: { [number]: string } = {}
+		local first = batchOf("one", "a")
+		local second = batchOf("two", "b")
+		second.index = 2
+		(assert(host.runBatches))({ first, second }, function(index: number, outcome: Verify.BatchOutcome)
+			delivered[index] = outcome.status
+		end)
+		expect(delivered):toEqual { "returned", "returned" }
+		expect(dispatched):toBe(2)
+	end)
+end)
+
+return nil

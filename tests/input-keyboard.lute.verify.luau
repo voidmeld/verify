@@ -1,6 +1,9 @@
 --!strict
+--!nolint LocalUnused
 
-local Core = require "../src/core"
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 
@@ -102,67 +105,67 @@ local STUDIO = {
 	"none=",
 }
 
-return function(harness: Core.Harness)
-	harness:case("simulated keyboard input matches the Studio event order", function(check)
-		local roots: { Roblox.Instance } = {}
-		local snapshot = Lute.fixture.load()
-		local bridge = Lute.fixture.bridge(snapshot, {
-			handlerErrors = "raise",
-			layout = {
-				roots = function()
-					return roots
-				end,
-				viewport = function()
-					return { X = 800, Y = 600 }
-				end,
-			},
-		})
-		check:defer(function()
-			bridge.close()
-		end)
-		local engine = bridge.placeEngine()
-		local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
-			aliases = {},
-			cache = Roblox.createPlaceCache(Lute.fixture.host),
-			host = Lute.fixture.host,
-			client = { name = "Keys", userId = 1, viewport = { x = 800, y = 600 } },
-			beforeRender = assert(bridge.layout).step,
-		})
-		check:defer(function()
-			for index = #runtime.closeHandlers, 1, -1 do
-				runtime.closeHandlers[index]()
-			end
-		end)
-		local playerGui = assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui")
-		table.insert(roots, playerGui)
-		local input = Roblox.inputHost.simulated(bridge.environment, {
-			playerGui = playerGui,
-			inputService = engine.service "UserInputService",
-			layout = assert(bridge.layout),
-			inset = function()
-				return { X = 0, Y = 0 }
+it("simulated keyboard input matches the Studio event order", function(own)
+	local roots: { Roblox.Instance } = {}
+	local snapshot = Lute.fixture.load()
+	local bridge = Lute.fixture.bridge(snapshot, {
+		handlerErrors = "raise",
+		layout = {
+			roots = function()
+				return roots
 			end,
-			library = Roblox.reflectionSnapshot.library(snapshot),
-			activationWindowSeconds = 0.5,
-			read = assert(bridge.ui).styled,
-		})
-		check:defer(input.close)
-		local log: { string }? = nil
-		local scheduler = bridge.environment.scheduler
-		local thread = scheduler.spawnTagged({ context = "client", source = "input-keyboard" }, function()
-			log = Lute.chunk.load(probe, { environment = runtime.globals })() :: { string }
-		end)
-		check:defer(function()
-			scheduler.cancel(thread)
-		end)
-		for _ = 1, 600 do
-			if log or #scheduler.failures > 0 then
-				break
-			end
-			runtime.step(1 / 60)
-		end
-		check:expect(scheduler.failures):toEqual {}
-		check:expect(engine.diagnostics):toEqual {}
-		check:expect(table.concat(log or {}, " | ")):toBe(table.concat(STUDIO, " | "))
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(function()
+		bridge.close()
 	end)
-end
+	local engine = bridge.placeEngine()
+	local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
+		aliases = {},
+		cache = Roblox.createPlaceCache(Lute.fixture.host),
+		host = Lute.fixture.host,
+		client = { name = "Keys", userId = 1, viewport = { x = 800, y = 600 } },
+		beforeRender = assert(bridge.layout).step,
+	})
+	own(function()
+		for index = #runtime.closeHandlers, 1, -1 do
+			runtime.closeHandlers[index]()
+		end
+	end)
+	local playerGui = assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui")
+	table.insert(roots, playerGui)
+	local input = Roblox.inputHost.simulated(bridge.environment, {
+		playerGui = playerGui,
+		inputService = engine.service "UserInputService",
+		layout = assert(bridge.layout),
+		inset = function()
+			return { X = 0, Y = 0 }
+		end,
+		library = Roblox.reflectionSnapshot.library(snapshot),
+		activationWindowSeconds = 0.5,
+		read = assert(bridge.ui).styled,
+	})
+	own(input.close)
+	local log: { string }? = nil
+	local scheduler = bridge.environment.scheduler
+	local thread = scheduler.spawnTagged({ context = "client", source = "input-keyboard" }, function()
+		log = Lute.chunk.load(probe, { environment = runtime.globals })() :: { string }
+	end)
+	own(function()
+		scheduler.cancel(thread)
+	end)
+	for _ = 1, 600 do
+		if log or #scheduler.failures > 0 then
+			break
+		end
+		runtime.step(1 / 60)
+	end
+	expect(scheduler.failures):toEqual {}
+	expect(engine.diagnostics):toEqual {}
+	expect(table.concat(log or {}, " | ")):toBe(table.concat(STUDIO, " | "))
+end)
+
+return nil

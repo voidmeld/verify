@@ -25,7 +25,7 @@ local gate = Gate.define {
 		{
 			id = "specs",
 			kind = "tests",
-			worker = "examples/worker.luau",
+			worker = "tests/worker.luau",
 			locators = { "tests/shape.verify.luau" },
 			after = { "prepare" },
 			tier = "fast",

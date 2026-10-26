@@ -1,5 +1,8 @@
 --!strict
 
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local Core = require "../src/core"
 local Native = require "../src/roblox/experience-host"
 local Multi = require "../src/roblox/multiplayer"
@@ -230,84 +233,78 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 	}
 	return report, connections, cleaned
 end
-return function(suite: Core.Harness)
-	suite:suite("multiplayer transport", function()
-		suite:case("supports one through eight clients and rejects invalid counts before readiness", function(check)
-			for _, count in { 1, 8 } do
-				local report, connections, cleaned = exercise("normal", function(context)
-					context
-						:expect(context:perform("client-" .. tostring(count), operation, "x"))
-						:toBe(if count == 1 then "one:x" else "8:x")
-				end, count)
-				check:expect(report.passed):toBe(1)
-				check:expect(connections):toBe(0)
-				check:expect(cleaned):toBe(count)
-			end
-			for _, count in { 0, -1, 1.5, 9, math.huge, math.huge - math.huge } do
-				local report = exercise("normal", function()
-					error "must not run"
-				end, count)
-				check:expect(report.passed):toBe(0)
-				check
-					:expect(
-						string.find(
-							report.results[1].failures[1].message,
-							"invalid session identity or client count",
-							1,
-							true
-						) ~= nil
-					)
-					:toBe(true)
-			end
-		end)
-
-		suite:case("routes both clients and server through one ordinary case and acknowledges cleanup", function(check)
+describe("multiplayer transport", function()
+	it("supports one through eight clients and rejects invalid counts before readiness", function()
+		for _, count in { 1, 8 } do
 			local report, connections, cleaned = exercise("normal", function(context)
-				context:expect(context:perform("server", operation, "x")):toBe "server:x"
-				context:expect(context:perform("client-1", operation, "x")):toBe "one:x"
-				context:expect(context:perform("client-2", operation, "x")):toBe "two:x"
-				context:checkpoint("client-1", "first")
-				context:checkpoint("client-2", "second")
-			end)
-			check:expect(report.passed):toBe(1)
-			check:expect(connections):toBe(0)
-			check:expect(cleaned):toBe(2)
-			local evidence = report.results[1].evidence
-			assert(evidence)
-			check:expect(evidence.checkpoints[1].artifacts[1].reference):toBe "mock:one"
-			check:expect(evidence.checkpoints[2].artifacts[1].reference):toBe "mock:two"
-		end)
-		suite:case("ignores unauthorized, wrong-run and wrong-player responses", function(check)
-			local report, connections = exercise("spoof", function(context)
-				context:expect(context:perform("client-1", operation, "x")):toBe "one:x"
-				context:expect(context:perform("client-2", operation, "x")):toBe "two:x"
-			end)
-			check:expect(report.passed):toBe(1)
-			check:expect(connections):toBe(0)
-		end)
-		suite:case("fails lost actors and bounded response waits", function(check)
-			for _, mode in { "disconnect", "timeout", "wrong-identity" } do
-				local report = exercise(mode :: Mode, function(context)
-					context:perform("client-1", operation, "x")
-				end)
-				check:expect(report.passed):toBe(0)
-				check:expect(report.failed + report.timedOut):toBe(1)
-			end
-		end)
-		suite:case("records cleanup failure and missing acknowledgments without passing", function(check)
-			for _, mode in { "cleanup-failure", "cleanup-timeout", "premature-ack" } do
-				local report = exercise(mode :: Mode, function() end)
-				check:expect(report.passed):toBe(0)
-				check:expect(report.results[1].failures[1].phase):toBe "cleanup"
-			end
-		end)
-		suite:case("cleans connected clients after readiness fails", function(check)
-			local report, connections, cleaned = exercise("readiness-timeout", function()
+				context
+					:expect(context:perform("client-" .. tostring(count), operation, "x"))
+					:toBe(if count == 1 then "one:x" else "8:x")
+			end, count)
+			expect(report.passed):toBe(1)
+			expect(connections):toBe(0)
+			expect(cleaned):toBe(count)
+		end
+		for _, count in { 0, -1, 1.5, 9, math.huge, math.huge - math.huge } do
+			local report = exercise("normal", function()
 				error "must not run"
-			end)
-			check:expect(report.passed):toBe(0)
-			check:expect(connections):toBe(0)
-			check:expect(cleaned):toBe(1)
-		end)
+			end, count)
+			expect(report.passed):toBe(0)
+			expect(
+				string.find(report.results[1].failures[1].message, "invalid session identity or client count", 1, true)
+					~= nil
+			):toBe(true)
+		end
 	end)
-end
+
+	it("routes both clients and server through one ordinary case and acknowledges cleanup", function()
+		local report, connections, cleaned = exercise("normal", function(context)
+			context:expect(context:perform("server", operation, "x")):toBe "server:x"
+			context:expect(context:perform("client-1", operation, "x")):toBe "one:x"
+			context:expect(context:perform("client-2", operation, "x")):toBe "two:x"
+			context:checkpoint("client-1", "first")
+			context:checkpoint("client-2", "second")
+		end)
+		expect(report.passed):toBe(1)
+		expect(connections):toBe(0)
+		expect(cleaned):toBe(2)
+		local evidence = report.results[1].evidence
+		assert(evidence)
+		expect(evidence.checkpoints[1].artifacts[1].reference):toBe "mock:one"
+		expect(evidence.checkpoints[2].artifacts[1].reference):toBe "mock:two"
+	end)
+	it("ignores unauthorized, wrong-run and wrong-player responses", function()
+		local report, connections = exercise("spoof", function(context)
+			context:expect(context:perform("client-1", operation, "x")):toBe "one:x"
+			context:expect(context:perform("client-2", operation, "x")):toBe "two:x"
+		end)
+		expect(report.passed):toBe(1)
+		expect(connections):toBe(0)
+	end)
+	it("fails lost actors and bounded response waits", function()
+		for _, mode in { "disconnect", "timeout", "wrong-identity" } do
+			local report = exercise(mode :: Mode, function(context)
+				context:perform("client-1", operation, "x")
+			end)
+			expect(report.passed):toBe(0)
+			expect(report.failed + report.timedOut):toBe(1)
+		end
+	end)
+	it("records cleanup failure and missing acknowledgments without passing", function()
+		for _, mode in { "cleanup-failure", "cleanup-timeout", "premature-ack" } do
+			local report = exercise(mode :: Mode, function() end)
+			expect(report.passed):toBe(0)
+			expect(report.results[1].failures[1].phase):toBe "cleanup"
+		end
+	end)
+	it("cleans connected clients after readiness fails", function()
+		local report, connections, cleaned = exercise("readiness-timeout", function()
+			error "must not run"
+		end)
+		expect(report.passed):toBe(0)
+		expect(connections):toBe(0)
+		expect(cleaned):toBe(1)
+	end)
+end)
+
+return nil

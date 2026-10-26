@@ -1,5 +1,8 @@
 --!strict
 
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local function asString(value: unknown): string
 	assert(type(value) == "string")
 	return value
@@ -8,7 +11,6 @@ end
 local fs = require "@std/fs"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
-local Verify = require "../src/core"
 
 type Fields = { [string]: unknown }
 type Member = {
@@ -292,246 +294,232 @@ local function thrown(body: () -> unknown): string
 	return if ok then "" else tostring(problem)
 end
 
-return function(suite: Verify.Harness)
-	suite:suite("Studio reflection export", function()
-		suite:case("keeps the named classes and their ancestors and drops an unknown root", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel" } })
-			local names: { string } = {}
-			for name in snapshot.classes do
-				table.insert(names, name)
-			end
-			table.sort(names)
-			check:expect(names):toEqual { "GuiObject", "Instance", "TextLabel" }
-			check:expect(snapshot.classes.Instance.superclass):toBe(nil)
-			check:expect(snapshot.classes.TextLabel.superclass):toBe "GuiObject"
-			check:expect(snapshot.schemaVersion):toBe(Roblox.reflectionSnapshot.SCHEMA_VERSION)
-			check:expect(snapshot.engineVersion):toBe "0.0.test"
-		end)
-
-		suite:case("exports plugin-security classes that the default reflection filter hides", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "PluginGui", "TextLabel" } })
-			local plugin = snapshot.classes.PluginGui
-			check:expect(plugin.superclass):toBe "Instance"
-			check:expect(plugin.tags):toEqual { "NotCreatable" }
-			check:expect(plugin.properties.Title.datatype):toBe "String"
-			check:expect(plugin.properties.PluginOnly.datatype):toBe "Bool"
-			check:expect(snapshot.classes.TextLabel.properties.PluginOnly):toBe(nil)
-			check:expect(snapshot.classes.Instance.properties.PluginOnly):toBe(nil)
-		end)
-
-		suite:case("uses all capabilities only for hidden class metadata", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "Player" } })
-			check:expect(snapshot.classes.Player.superclass):toBe "Instance"
-			check:expect(snapshot.classes.Player.tags):toEqual { "NotCreatable" }
-			check:expect(snapshot.classes.Player.properties.UserId.scriptability):toBe "Read"
-			check:expect(snapshot.classes.Player.properties.PrivateValue.scriptability):toBe "None"
-			check:expect(snapshot.classes.Player.defaults):toEqual {}
-			local bridge = Lute.fixture.bridge(snapshot)
-			check
-				:expect(pcall(function()
-					bridge.engine.new "Player"
-				end))
-				:toBe(false)
-			local player = bridge.environment.createEngineInstance "Player"
-			check
-				:expect(pcall(function()
-					player.UserId = 7
-				end))
-				:toBe(false)
-			check
-				:expect(pcall(function()
-					local _value = player.PrivateValue
-				end))
-				:toBe(false)
-			bridge.environment.poke(player, "UserId", 7)
-			check:expect(player.UserId):toBe(7)
-		end)
-
-		suite:case("names datatypes, scriptability and tags the way the reflection database does", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "GuiService" } })
-			local gui = snapshot.classes.GuiObject.properties
-			local label = snapshot.classes.TextLabel.properties
-			local base = snapshot.classes.Instance.properties
-			check:expect(base.Archivable):toEqual { datatype = "Bool", scriptability = "ReadWrite", tags = {} }
-			check:expect(base.Name.datatype):toBe "String"
-			check:expect(base.Parent.datatype):toBe "Ref"
-			check
-				:expect(base.UniqueId)
-				:toEqual { datatype = "UniqueId", scriptability = "None", tags = { "NotScriptable" } }
-			check
-				:expect(gui.AbsoluteSize)
-				:toEqual { datatype = "Vector2", scriptability = "Read", tags = { "ReadOnly" } }
-			check:expect(gui.Rotation.datatype):toBe "Float32"
-			check:expect(gui.ZIndex.datatype):toBe "Int32"
-			check:expect(gui.Pivot.datatype):toBe "CFrame"
-			check:expect(gui.Transparency.tags):toEqual { "Deprecated" }
-			check:expect(label.TextXAlignment.datatype):toBe "Enum.TextXAlignment"
-			check:expect(label.Image.datatype):toBe "ContentId"
-			check:expect(label.Secret.scriptability):toBe "None"
-			check:expect(snapshot.classes.Instance.tags):toEqual { "NotCreatable" }
-			check:expect(snapshot.classes.TextLabel.tags):toEqual {}
-			check:expect(snapshot.classes.GuiService.tags):toEqual { "NotCreatable", "Service" }
-			check:expect(snapshot.classes.GuiObject.events):toEqual { "InputBegan" }
-			check:expect(snapshot.classes.TextLabel.events):toEqual {}
-			check:expect(snapshot.classes.GuiObject.methods):toEqual { "NativeMethod" }
-			check:expect(snapshot.classes.TextLabel.methods):toEqual {}
-		end)
-
-		suite:case("reads defaults from a new instance and encodes engine values", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "GuiService" } })
-			local defaults = snapshot.classes.TextLabel.defaults
-			check:expect(defaults.Text):toBe "Label"
-			check:expect(defaults.Size):toEqual { ["$"] = "UDim2", v = { 0, 100, 0, 20 } }
-			check
-				:expect(defaults.TextXAlignment)
-				:toEqual { ["$"] = "EnumItem", family = "TextXAlignment", name = "Center" }
-			check:expect(defaults.FontFace):toEqual {
-				["$"] = "Font",
-				family = "rbxasset://fonts/families/LegacyArial.json",
-				weight = "Regular",
-				style = "Normal",
-			}
-			check:expect(defaults.Pivot):toEqual { ["$"] = "CFrame", v = { 1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }
-			check:expect(defaults.Name):toBe "TextLabel"
-			check:expect(defaults.UniqueId):toBe(nil)
-			check:expect(snapshot.classes.GuiObject.defaults):toEqual {}
-			check:expect(snapshot.classes.GuiService.defaults):toEqual {}
-		end)
-
-		suite:case("samples service values only when asked", function(check)
-			local snapshot =
-				Lute.fixture.exportStudio(executor(studio()), { classes = { "GuiService" }, services = true })
-			check:expect(snapshot.classes.GuiService.defaults):toEqual { AutoSelectGuiEnabled = true }
-		end)
-
-		suite:case("keeps the referenced, requested and datatype enums with their values", function(check)
-			local snapshot =
-				Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel" }, enums = { "KeyCode" } })
-			local families: { string } = {}
-			for name in assert(snapshot.enums) do
-				table.insert(families, name)
-			end
-			table.sort(families)
-			check:expect(families):toEqual {
-				"ContentSourceType",
-				"Font",
-				"FontStyle",
-				"FontWeight",
-				"KeyCode",
-				"TextXAlignment",
-			}
-			check:expect(assert(snapshot.enums).TextXAlignment):toEqual {
-				{ name = "Left", value = 0 },
-				{ name = "Right", value = 1 },
-				{ name = "Center", value = 2 },
-			}
-		end)
-
-		suite:case("captures brick colors and the fonts of the Font enum", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "Folder" } })
-			local colors = assert(snapshot.brickColors)
-			check:expect(#colors.colors):toBe(2)
-			check:expect(colors.colors[2].name):toBe "Medium stone grey"
-			check:expect(#colors.palette):toBe(128)
-			check:expect(snapshot.fonts):toEqual {
-				Legacy = { family = "rbxasset://fonts/families/LegacyArial.json", weight = "Regular", style = "Normal" },
-			}
-		end)
-
-		suite:case("exports every class and enum without a filter", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { batchSize = 2 })
-			local count = 0
-			for _ in snapshot.classes do
-				count += 1
-			end
-			check:expect(count):toBe(#CLASSES + 2)
-			check:expect(snapshot.classes.Hint.tags):toEqual { "Deprecated" }
-			check:expect(assert(snapshot.enums).Material ~= nil):toBe(true)
-		end)
-
-		suite:case("reads each class once in batches of the requested size", function(check)
-			local requested: { string } = {}
-			local calls: { string } = {}
-			Lute.fixture.exportStudio(executor(studio(requested), calls), { batchSize = 2 })
-			table.sort(requested)
-			check
-				:expect(requested)
-				:toEqual { "Folder", "GuiObject", "GuiService", "Hint", "Instance", "Player", "PluginGui", "TextLabel" }
-			check:expect(#calls):toBe(1 + 4 + 2 + 1)
-		end)
-
-		suite:case("refuses an unknown class or enum before it reads a class", function(check)
-			local calls: { string } = {}
-			check
-				:expect(thrown(function(): unknown
-					return Lute.fixture.exportStudio(executor(studio(), calls), { classes = { "Nope" } })
-				end))
-				:toContain "Studio reflection has no class Nope"
-			check:expect(#calls):toBe(1)
-			check
-				:expect(thrown(function(): unknown
-					return Lute.fixture.exportStudio(executor(studio()), { classes = { "Folder" }, enums = { "Nope" } })
-				end))
-				:toContain "Studio has no enum Nope"
-		end)
-
-		suite:case("writes a file that loads into a bridge with engine defaults and enums", function(check)
-			local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "Folder" } })
-			if not fs.exists(DIRECTORY) then
-				fs.createDirectory(DIRECTORY, { makeParents = true })
-			end
-			local path = DIRECTORY .. "/snapshot.json"
-			Lute.fixture.save(path, snapshot)
-			local loaded = Lute.fixture.load(path)
-			local types = Roblox.reflectionSnapshot.library(loaded)
-			local bridge = Lute.fixture.bridge(loaded)
-			local label = bridge.environment.createInstance "TextLabel"
-			check:expect(label.Text):toBe "Label"
-			check:expect(label.TextXAlignment):toBe(types.Enum.TextXAlignment.Center)
-			check:expect(label.Size):toBe(types.UDim2.fromOffset(100, 20))
-			check:expect(label.FontFace):toBe(types.Font.fromEnum(types.Enum.Font.Legacy))
-			label.TextXAlignment = types.Enum.TextXAlignment.Left
-			check
-				:expect(thrown(function(): unknown
-					label.TextXAlignment = types.Enum.FontWeight.Bold
-					return nil
-				end))
-				:toContain "requires Enum.TextXAlignment"
-			check
-				:expect(thrown(function(): unknown
-					label.AbsoluteSize = types.Vector2.zero
-					return nil
-				end))
-				:toContain "read-only property"
-		end)
+describe("Studio reflection export", function()
+	it("keeps the named classes and their ancestors and drops an unknown root", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel" } })
+		local names: { string } = {}
+		for name in snapshot.classes do
+			table.insert(names, name)
+		end
+		table.sort(names)
+		expect(names):toEqual { "GuiObject", "Instance", "TextLabel" }
+		expect(snapshot.classes.Instance.superclass):toBe(nil)
+		expect(snapshot.classes.TextLabel.superclass):toBe "GuiObject"
+		expect(snapshot.schemaVersion):toBe(Roblox.reflectionSnapshot.SCHEMA_VERSION)
+		expect(snapshot.engineVersion):toBe "0.0.test"
 	end)
 
-	suite:suite("Studio probes", function()
-		suite:case("run the same sources in the engine and under Lute", function(check)
-			local probes: { Lute.FixtureProbe } = {
-				{ name = "sum", source = "return tostring(Vector2.new(1, 2) + Vector2.new(3, 4))" },
-				{ name = "raise", source = "return Vector2.new().Nope" },
-			}
-			local globals = table.clone((engine :: unknown) :: Fields)
-			globals.game = {
-				GetService = function(): unknown
-					return {
-						JSONEncode = function(_: unknown, value: unknown): string
-							return Lute.fixture.serialize(value)
-						end,
-					}
-				end,
-			}
-			globals.version = function(): string
-				return "0.0.test"
-			end
-			local recorded = Lute.fixture.probeStudio(executor(globals), probes)
-			check:expect(recorded.engineVersion):toBe "0.0.test"
-			check:expect(recorded.results):toEqual {
-				sum = "ok: 4, 6",
-				raise = "error: Nope is not a valid member of Vector2",
-			}
-			check:expect(Lute.fixture.probeLocal(globals, probes)):toEqual(recorded.results)
-		end)
+	it("exports plugin-security classes that the default reflection filter hides", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "PluginGui", "TextLabel" } })
+		local plugin = snapshot.classes.PluginGui
+		expect(plugin.superclass):toBe "Instance"
+		expect(plugin.tags):toEqual { "NotCreatable" }
+		expect(plugin.properties.Title.datatype):toBe "String"
+		expect(plugin.properties.PluginOnly.datatype):toBe "Bool"
+		expect(snapshot.classes.TextLabel.properties.PluginOnly):toBe(nil)
+		expect(snapshot.classes.Instance.properties.PluginOnly):toBe(nil)
 	end)
-end
+
+	it("uses all capabilities only for hidden class metadata", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "Player" } })
+		expect(snapshot.classes.Player.superclass):toBe "Instance"
+		expect(snapshot.classes.Player.tags):toEqual { "NotCreatable" }
+		expect(snapshot.classes.Player.properties.UserId.scriptability):toBe "Read"
+		expect(snapshot.classes.Player.properties.PrivateValue.scriptability):toBe "None"
+		expect(snapshot.classes.Player.defaults):toEqual {}
+		local bridge = Lute.fixture.bridge(snapshot)
+		expect(pcall(function()
+			bridge.engine.new "Player"
+		end)):toBe(false)
+		local player = bridge.environment.createEngineInstance "Player"
+		expect(pcall(function()
+			player.UserId = 7
+		end)):toBe(false)
+		expect(pcall(function()
+			local _value = player.PrivateValue
+		end)):toBe(false)
+		bridge.environment.poke(player, "UserId", 7)
+		expect(player.UserId):toBe(7)
+	end)
+
+	it("names datatypes, scriptability and tags the way the reflection database does", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "GuiService" } })
+		local gui = snapshot.classes.GuiObject.properties
+		local label = snapshot.classes.TextLabel.properties
+		local base = snapshot.classes.Instance.properties
+		expect(base.Archivable):toEqual { datatype = "Bool", scriptability = "ReadWrite", tags = {} }
+		expect(base.Name.datatype):toBe "String"
+		expect(base.Parent.datatype):toBe "Ref"
+		expect(base.UniqueId):toEqual { datatype = "UniqueId", scriptability = "None", tags = { "NotScriptable" } }
+		expect(gui.AbsoluteSize):toEqual { datatype = "Vector2", scriptability = "Read", tags = { "ReadOnly" } }
+		expect(gui.Rotation.datatype):toBe "Float32"
+		expect(gui.ZIndex.datatype):toBe "Int32"
+		expect(gui.Pivot.datatype):toBe "CFrame"
+		expect(gui.Transparency.tags):toEqual { "Deprecated" }
+		expect(label.TextXAlignment.datatype):toBe "Enum.TextXAlignment"
+		expect(label.Image.datatype):toBe "ContentId"
+		expect(label.Secret.scriptability):toBe "None"
+		expect(snapshot.classes.Instance.tags):toEqual { "NotCreatable" }
+		expect(snapshot.classes.TextLabel.tags):toEqual {}
+		expect(snapshot.classes.GuiService.tags):toEqual { "NotCreatable", "Service" }
+		expect(snapshot.classes.GuiObject.events):toEqual { "InputBegan" }
+		expect(snapshot.classes.TextLabel.events):toEqual {}
+		expect(snapshot.classes.GuiObject.methods):toEqual { "NativeMethod" }
+		expect(snapshot.classes.TextLabel.methods):toEqual {}
+	end)
+
+	it("reads defaults from a new instance and encodes engine values", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "GuiService" } })
+		local defaults = snapshot.classes.TextLabel.defaults
+		expect(defaults.Text):toBe "Label"
+		expect(defaults.Size):toEqual { ["$"] = "UDim2", v = { 0, 100, 0, 20 } }
+		expect(defaults.TextXAlignment):toEqual { ["$"] = "EnumItem", family = "TextXAlignment", name = "Center" }
+		expect(defaults.FontFace):toEqual {
+			["$"] = "Font",
+			family = "rbxasset://fonts/families/LegacyArial.json",
+			weight = "Regular",
+			style = "Normal",
+		}
+		expect(defaults.Pivot):toEqual { ["$"] = "CFrame", v = { 1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }
+		expect(defaults.Name):toBe "TextLabel"
+		expect(defaults.UniqueId):toBe(nil)
+		expect(snapshot.classes.GuiObject.defaults):toEqual {}
+		expect(snapshot.classes.GuiService.defaults):toEqual {}
+	end)
+
+	it("samples service values only when asked", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "GuiService" }, services = true })
+		expect(snapshot.classes.GuiService.defaults):toEqual { AutoSelectGuiEnabled = true }
+	end)
+
+	it("keeps the referenced, requested and datatype enums with their values", function()
+		local snapshot =
+			Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel" }, enums = { "KeyCode" } })
+		local families: { string } = {}
+		for name in assert(snapshot.enums) do
+			table.insert(families, name)
+		end
+		table.sort(families)
+		expect(families):toEqual {
+			"ContentSourceType",
+			"Font",
+			"FontStyle",
+			"FontWeight",
+			"KeyCode",
+			"TextXAlignment",
+		}
+		expect(assert(snapshot.enums).TextXAlignment):toEqual {
+			{ name = "Left", value = 0 },
+			{ name = "Right", value = 1 },
+			{ name = "Center", value = 2 },
+		}
+	end)
+
+	it("captures brick colors and the fonts of the Font enum", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "Folder" } })
+		local colors = assert(snapshot.brickColors)
+		expect(#colors.colors):toBe(2)
+		expect(colors.colors[2].name):toBe "Medium stone grey"
+		expect(#colors.palette):toBe(128)
+		expect(snapshot.fonts):toEqual {
+			Legacy = { family = "rbxasset://fonts/families/LegacyArial.json", weight = "Regular", style = "Normal" },
+		}
+	end)
+
+	it("exports every class and enum without a filter", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { batchSize = 2 })
+		local count = 0
+		for _ in snapshot.classes do
+			count += 1
+		end
+		expect(count):toBe(#CLASSES + 2)
+		expect(snapshot.classes.Hint.tags):toEqual { "Deprecated" }
+		expect(assert(snapshot.enums).Material ~= nil):toBe(true)
+	end)
+
+	it("reads each class once in batches of the requested size", function()
+		local requested: { string } = {}
+		local calls: { string } = {}
+		Lute.fixture.exportStudio(executor(studio(requested), calls), { batchSize = 2 })
+		table.sort(requested)
+		expect(requested):toEqual {
+			"Folder",
+			"GuiObject",
+			"GuiService",
+			"Hint",
+			"Instance",
+			"Player",
+			"PluginGui",
+			"TextLabel",
+		}
+		expect(#calls):toBe(1 + 4 + 2 + 1)
+	end)
+
+	it("refuses an unknown class or enum before it reads a class", function()
+		local calls: { string } = {}
+		expect(thrown(function(): unknown
+			return Lute.fixture.exportStudio(executor(studio(), calls), { classes = { "Nope" } })
+		end)):toContain "Studio reflection has no class Nope"
+		expect(#calls):toBe(1)
+		expect(thrown(function(): unknown
+			return Lute.fixture.exportStudio(executor(studio()), { classes = { "Folder" }, enums = { "Nope" } })
+		end)):toContain "Studio has no enum Nope"
+	end)
+
+	it("writes a file that loads into a bridge with engine defaults and enums", function()
+		local snapshot = Lute.fixture.exportStudio(executor(studio()), { classes = { "TextLabel", "Folder" } })
+		if not fs.exists(DIRECTORY) then
+			fs.createDirectory(DIRECTORY, { makeParents = true })
+		end
+		local path = DIRECTORY .. "/snapshot.json"
+		Lute.fixture.save(path, snapshot)
+		local loaded = Lute.fixture.load(path)
+		local types = Roblox.reflectionSnapshot.library(loaded)
+		local bridge = Lute.fixture.bridge(loaded)
+		local label = bridge.environment.createInstance "TextLabel"
+		expect(label.Text):toBe "Label"
+		expect(label.TextXAlignment):toBe(types.Enum.TextXAlignment.Center)
+		expect(label.Size):toBe(types.UDim2.fromOffset(100, 20))
+		expect(label.FontFace):toBe(types.Font.fromEnum(types.Enum.Font.Legacy))
+		label.TextXAlignment = types.Enum.TextXAlignment.Left
+		expect(thrown(function(): unknown
+			label.TextXAlignment = types.Enum.FontWeight.Bold
+			return nil
+		end)):toContain "requires Enum.TextXAlignment"
+		expect(thrown(function(): unknown
+			label.AbsoluteSize = types.Vector2.zero
+			return nil
+		end)):toContain "read-only property"
+	end)
+end)
+
+describe("Studio probes", function()
+	it("run the same sources in the engine and under Lute", function()
+		local probes: { Lute.FixtureProbe } = {
+			{ name = "sum", source = "return tostring(Vector2.new(1, 2) + Vector2.new(3, 4))" },
+			{ name = "raise", source = "return Vector2.new().Nope" },
+		}
+		local globals = table.clone((engine :: unknown) :: Fields)
+		globals.game = {
+			GetService = function(): unknown
+				return {
+					JSONEncode = function(_: unknown, value: unknown): string
+						return Lute.fixture.serialize(value)
+					end,
+				}
+			end,
+		}
+		globals.version = function(): string
+			return "0.0.test"
+		end
+		local recorded = Lute.fixture.probeStudio(executor(globals), probes)
+		expect(recorded.engineVersion):toBe "0.0.test"
+		expect(recorded.results):toEqual {
+			sum = "ok: 4, 6",
+			raise = "error: Nope is not a valid member of Vector2",
+		}
+		expect(Lute.fixture.probeLocal(globals, probes)):toEqual(recorded.results)
+	end)
+end)
+
+return nil

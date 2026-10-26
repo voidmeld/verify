@@ -1,6 +1,9 @@
 --!strict
+--!nolint LocalUnused
 
-local Core = require "../src/core"
+local Test = require "./harness"
+local describe, it, expect = Test.describe, Test.it, Test.expect
+
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 
@@ -38,58 +41,58 @@ screen:Destroy()
 return true
 ]==]
 
-return function(harness: Core.Harness)
-	harness:case("screen insets place each ScreenGui in its captured device area", function(check)
-		local roots: { Roblox.Instance } = {}
-		local runtime: Roblox.PlaceRuntime? = nil
-		local bridge = Lute.fixture.bridge(nil, {
-			layout = {
-				roots = function()
-					return roots
-				end,
-				viewport = function()
-					return { X = 800, Y = 600 }
-				end,
-				screenArea = function(screen: Roblox.Instance)
-					return assert(runtime).screenArea(screen)
-				end,
-			},
-		})
-		check:defer(function()
-			bridge.close()
-		end)
-		local engine = bridge.placeEngine()
-		local created = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
-			aliases = {},
-			cache = Roblox.createPlaceCache(Lute.fixture.host),
-			host = Lute.fixture.host,
-			client = { name = "Insets", userId = 1, viewport = { x = 800, y = 600 } },
-			beforeRender = assert(bridge.layout).step,
-		})
-		runtime = created
-		check:defer(function()
-			for index = #created.closeHandlers, 1, -1 do
-				created.closeHandlers[index]()
-			end
-		end)
-		table.insert(roots, assert(assert(created.localPlayer):FindFirstChild "PlayerGui"))
-		local complete = false
-		local scheduler = bridge.environment.scheduler
-		local thread = scheduler.spawnTagged({ context = "client", source = "ui-screen-insets" }, function()
-			complete = Lute.chunk.load(probe, { environment = created.globals })() == true
-		end)
-		check:defer(function()
-			scheduler.cancel(thread)
-		end)
-		for _ = 1, 600 do
-			if complete or #scheduler.failures > 0 then
-				break
-			end
-			created.step(1 / 60)
-		end
-		check:expect(created.device().guiInset):toEqual { 0, 58, 0, 0 }
-		check:expect(scheduler.failures):toEqual {}
-		check:expect(engine.diagnostics):toEqual {}
-		check:expect(complete):toBe(true)
+it("screen insets place each ScreenGui in its captured device area", function(own)
+	local roots: { Roblox.Instance } = {}
+	local runtime: Roblox.PlaceRuntime? = nil
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+			screenArea = function(screen: Roblox.Instance)
+				return assert(runtime).screenArea(screen)
+			end,
+		},
+	})
+	own(function()
+		bridge.close()
 	end)
-end
+	local engine = bridge.placeEngine()
+	local created = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
+		aliases = {},
+		cache = Roblox.createPlaceCache(Lute.fixture.host),
+		host = Lute.fixture.host,
+		client = { name = "Insets", userId = 1, viewport = { x = 800, y = 600 } },
+		beforeRender = assert(bridge.layout).step,
+	})
+	runtime = created
+	own(function()
+		for index = #created.closeHandlers, 1, -1 do
+			created.closeHandlers[index]()
+		end
+	end)
+	table.insert(roots, assert(assert(created.localPlayer):FindFirstChild "PlayerGui"))
+	local complete = false
+	local scheduler = bridge.environment.scheduler
+	local thread = scheduler.spawnTagged({ context = "client", source = "ui-screen-insets" }, function()
+		complete = Lute.chunk.load(probe, { environment = created.globals })() == true
+	end)
+	own(function()
+		scheduler.cancel(thread)
+	end)
+	for _ = 1, 600 do
+		if complete or #scheduler.failures > 0 then
+			break
+		end
+		created.step(1 / 60)
+	end
+	expect(created.device().guiInset):toEqual { 0, 58, 0, 0 }
+	expect(scheduler.failures):toEqual {}
+	expect(engine.diagnostics):toEqual {}
+	expect(complete):toBe(true)
+end)
+
+return nil
