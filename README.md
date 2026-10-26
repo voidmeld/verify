@@ -1,96 +1,42 @@
 # Verify
 
-Verify is a testing and verification library for Luau. It gives you one model for every check: the case.
-A unit test, an engine check in Roblox Studio, a multiplayer scenario and a benchmark are all cases.
-Each case uses the same context, the same assertions and the same result states. Each run produces the same structured report.
+Verify is a test library for Luau. Each check is a case. Cases use one context and one report format. You can run cases on Lute, the simulator, Roblox Studio, Player or Open Cloud. A result that cannot run does not pass.
 
-One model has these benefits:
+## First run
 
-- You learn one way to write a check. No host and no kind of check needs its own runner or its own assertion set.
-- A case does not change when its host changes. The host supplies capabilities, and a case that needs a missing capability is reported as unsupported.
-- One gate combines tests, commands, builds, benchmarks and native checks into one verdict.
-- One report format records what passed, failed or could not run. A result that could not run never counts as a pass.
+1. Install the tools: `rokit install`.
+2. Run the [first case](examples/quickstart.luau): `lute run examples/quickstart.luau`.
 
-## Use cases
-
-- Run cases on Lute, the simulator, Studio (launched or attached), a published Player or an Open Cloud task.
-- Declare a gate over tests, commands, builds, benchmarks and native checks, with tiers, selection, deferrals and an acceptance verdict.
-- Benchmark a workload with warmup, phases, sampling, baselines, stored-run comparison and stability checks.
-- Seal and validate evidence: run, build, device and review provenance on a report.
-- Simulate Roblox instances, input, multiplayer and UI with the simulator and the fixture bridge, over Roblox datatypes in pure Luau and a reflection snapshot that Studio exports.
-- Split a test corpus across bounded worker processes and combine their reports.
-- Check consumer specifications and production graphs with `verify-check`.
-- Evaluate coding agents on a task corpus: isolated runs, hidden checks, a Roblox interface audit, a blind screenshot judge and threshold statistics.
-
-## Getting started
-
-1. Install the pinned tools: `rokit install`.
-2. Pin Verify. Use one exact commit of `https://github.com/voidmeld/verify.git`. Record its commit and tree hash in your repository. Require the public roots under its `src` directory.
-3. Write a case and run it. This is the complete file [examples/quickstart.luau](examples/quickstart.luau):
-
-```luau
---!strict
-
-local process = require "@std/process"
-
-local Verify = require "../src/core"
-
-local harness = Verify.createHarness { now = os.clock }
-
-harness:case("adds numbers", function(context)
-	context:expect(2 + 2):toBe(4)
-end)
-
-local report = harness:run {
-	executor = "quickstart",
-	capabilities = {},
-	environment = { revision = "working-tree" },
-}
-print(Verify.format(report))
-if report.passed ~= report.total then
-	process.exit(1)
-end
-```
-
-Run it with `lute run examples/quickstart.luau`. The command prints one passing case.
-To run cases on Studio, a Player or Open Cloud, follow the [run guide](docs/running.md).
+The command prints one passing case. To use Verify in another repository, pin one exact commit of `https://github.com/voidmeld/verify.git`. Record its commit and tree hash. Follow the [consumer skill](.agents/skills/verify/SKILL.md).
 
 ## Documentation
 
-| Document | Owns |
+Select a task. Each page contains the details for that task.
+
+| Task | Document |
 | --- | --- |
-| [Run cases](docs/running.md) | Commands, hosts, evidence files and the repository gate. |
-| [API](docs/api.md) | Public calls, types and report semantics. |
-| [Execution](docs/execution.md) | Plans, workers, gates and external hosts. |
-| [Experience verification](docs/experience.md) | One case model for Roblox hosts, benchmarks and simulation. |
-| [Laws](docs/laws.md) | Lifecycle and evidence rules, with the tests that detect a violation. |
-| [Consumer diagnostics](docs/lint.md) | Lint policy and `verify-check`. |
-| [Agent evaluation](docs/agent-eval.md) | Task and suite files, agent runs, hidden checks, the interface audit, the judge and threshold statistics. |
-| [Consumer skill](.agents/skills/verify/SKILL.md) | How another repository adopts Verify. |
-| [Contributor guide](AGENTS.md) | How to change and validate this repository. |
+| Run cases and check this repository | [Run guide](docs/running.md) |
+| Find public functions, types and report fields | [API reference](docs/api.md) |
+| Use plans, workers, gates and external hosts | [Execution](docs/execution.md) |
+| Use Roblox hosts, simulation and benchmarks | [Experience verification](docs/experience.md) |
+| Read shared technical names | [Terms](docs/README.md) |
+| Read the lifecycle and evidence rules | [Verification laws](docs/laws.md) |
+| Configure repository checks | [Repository checks](docs/checks.md) |
+| Check consumer code | [Lint policy](docs/lint.md) |
+| Evaluate coding agents | [Agent evaluation](docs/agent-eval.md) |
+| Give an agent access to one Studio | [Studio tools for an agent run](docs/scoped-studio-mcp.md) |
+| Add Verify to a repository | [Consumer skill](.agents/skills/verify/SKILL.md) |
+| Change Verify | [Contributor guide](AGENTS.md) |
+| Read the source and license rules | [Provenance](PROVENANCE.md), [MIT License](LICENSE) |
+
+The API reference defines public behavior. The laws define evidence requirements. Consumers control discovery, authorization, host operations, file destinations and release acceptance.
 
 ## Packages
 
-| Public entry point | Use |
-| --- | --- |
-| [`src/core`](src/core) | Harness, assertions, sessions, plans, execution, typed operations, evidence types and reports. |
-| [`src/gate`](src/gate) | Declarative gates: producers, deadlines, selection, acceptance and test sharding. Host side only. |
-| [`src/checks`](src/checks) | Configurable repository checks, file walking, temporary directories and lint rules. Lute only. See [repository checks](docs/checks.md). |
-| [`src/benchmark.luau`](src/benchmark.luau) | Warmup, sampling, baseline and stability checks, reported as an ordinary case. Host side only. |
-| [`src/evidence`](src/evidence) | Sealing and validating provenance on a report. Host side only. |
-| [`src/bdd.luau`](src/bdd.luau) | BDD verbs, case metadata and report printing over the same harness. |
-| [`src/lute`](src/lute) | The run command, workers, hosts and gates, evidence bundles, fixture mounting, reflection snapshot export from Studio, chunk and module loading, model file reading, bounded processes and Studio or Player launch. |
-| [`src/roblox`](src/roblox) | Instance, input and multiplayer hosts, observation and report adapters, reflection and snapshots, Roblox datatypes, UI fakes, the interface audit and the simulator. |
-| [`src/codec`](src/codec) | Base64, image signatures and XML for hosts and the judge. Portable. |
-| [`src/consumer`](src/consumer) | Portable specification and production graph diagnostics. |
-| [`src/agent-eval`](src/agent-eval) | Agent evaluation runs, adapters, the judge, statistics and the command `tools/agent-eval.luau`. Host side only. |
+Require a public root under `src`. See the [package APIs](docs/api.md) for entry points and types.
 
-## Validate
+## Check changes
 
-GitHub Actions runs the repository gate as the `Gate` check using the pinned tools and SDK types. Follow the [contribution rules](AGENTS.md).
+Run `lute run tools/gate.luau --tier fast` to check a working tree. See the [repository gate](docs/running.md#repository-gate) for the full check and its limits.
 
-Run `lute run tools/gate.luau`. The [run guide](docs/running.md#repository-gate) lists the options that narrow it.
-
-## License
-
-Copyright © 2026 voidmeld. [MIT License](LICENSE). [Provenance](PROVENANCE.md) states the source and tool boundaries.
+Copyright (c) 2026 voidmeld.

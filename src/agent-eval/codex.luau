@@ -320,5 +320,4 @@ end
 return {
 	arguments = arguments,
 	parse = parse,
-	tomlString = tomlString,
 }

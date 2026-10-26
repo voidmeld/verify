@@ -2,7 +2,7 @@
 
 Verify is a testing library for Luau. It owns host-neutral cases, execution and reports.
 Consumers own discovery, authorization, host operations, destinations and release acceptance.
-The [README](README.md) maps the packages. Read only the applicable [contract](docs/README.md).
+The [README](README.md) lists the documents. Read the contract for your task.
 
 This file owns the contribution rules. The repository owner sets the scope of each change.
 [Laws](docs/laws.md) own lifecycle and evidence. Each fact has one owning document.

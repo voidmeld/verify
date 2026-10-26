@@ -1,41 +1,22 @@
 # Lint policy
 
-The gate runs `lute lint -c lint.config.luau` on each maintained Luau tree. It also runs `luau-lsp analyze`
-in strict mode on every source, test, tool, example and lint configuration file.
-The analyzer checks consumers against the installed SDK types. It ignores diagnostics inside external SDK and generated build directories.
+Run `lute lint -c lint.config.luau` on maintained Luau code. The gate also runs strict `luau-lsp analyze` on source, tests, tools, examples and lint configuration. The analyzer uses installed SDK types. It ignores diagnostics inside external SDK and generated build directories.
 
-Exported records and callbacks carry concrete types. Dynamic host members, arbitrary assertion values and
-heterogeneous callback arguments stay explicit boundaries. A strict directive alone does not prove those values safe.
+Give exported records and callbacks specific types. Use `unknown` for values that cross a dynamic boundary. Validate those values before use. A strict directive alone does not prove safety. Do not hide weak types behind aliases or casts that bypass validation.
 
-`tools/check-no-any.luau` parses every maintained Luau file. Each file must start with `--!strict`.
-Explicit `any` types and `--!nonstrict` or `--!nocheck` directives fail the gate.
-Use concrete types, correlated generics and validated `unknown` at external boundaries.
-Do not hide weak typing behind aliases or unchecked casts.
+`tools/check-no-any.luau` parses maintained Luau files. Each file must start with `--!strict`. Explicit `any`, `--!nonstrict` and `--!nocheck` fail the gate. Use specific types and generics that preserve the relationship between inputs and outputs.
 
-The lint configuration keeps the Lute defect rules on. It turns off only `global_function_in_scope` and `unused_variable`.
-At the pinned runtime, those two rules misreport forward-declared recursion and locals used as assignment-target bases.
-`luau-lsp` keeps the real unused-local signal.
+The lint configuration enables Lute defect rules. It disables only `global_function_in_scope` and `unused_variable`. In the pinned runtime, these rules incorrectly report forward recursion and locals used as assignment bases. `luau-lsp` still reports unused locals.
 
 ## Consumer specifications
 
-`verify-check` checks consumer specifications. Choose a ruleset with `--ruleset`:
+Select a ruleset:
 
 ```console
 lute run tools/verify-check.luau --ruleset generic path/to/specifications
 lute run tools/verify-check.luau --ruleset roblox path/to/specifications
 ```
 
-Both rulesets treat `*.verify.luau` as a portable specification. `*.lute.verify.luau` is an explicit host variant.
-The generic ruleset rejects ambient scheduling and clocks in portable specifications.
-It rejects unmeasured `--!native` annotations in every specification.
-The `roblox` ruleset adds three rules. `*.roblox.verify.luau` is a host variant.
-Portable specifications may not use the globals `game` and `workspace`.
-No specification may call `PublishAsync`, `PostAsync`, `RequestAsync`, `CreateAssetAsync` or `SavePlaceAsync`.
-A general-purpose linter cannot infer these architectural checks.
+Both rulesets treat `*.verify.luau` as portable specifications. `*.lute.verify.luau` is an explicit host variant. The generic ruleset rejects ambient scheduling and clocks in portable specifications. It rejects unmeasured `--!native` annotations in all specifications. The Roblox ruleset also recognizes `*.roblox.verify.luau` as a host variant. It rejects `game` and `workspace` in portable specifications. It rejects these calls in all specifications: `PublishAsync`, `PostAsync`, `RequestAsync`, `CreateAssetAsync` and `SavePlaceAsync`. A general linter cannot determine these architectural requirements.
 
-The tool calls `Consumer.scanTree(root, { ruleset, listDir, readFile })` ([public consumer root](../src/consumer/init.luau)).
-A `Ruleset` is `{ name, hostVariantSuffixes, hostGlobals, externalMutationMembers }`. A call without one raises.
-`scanTree` owns traversal, specification detection and exemption tracking.
-It also runs `scanProductionPaths` over every discovered path, including files that are not specifications.
-The same call detects `.verify.luau` files and Verify imports in a production source graph.
-A consumer lint runner can reuse `Consumer.scan` and `scanProductionPaths`.
+The tool calls `Consumer.scanTree(root, { ruleset, listDir, readFile })` from the [consumer root](../src/consumer/init.luau). A `Ruleset` contains `{ name, hostVariantSuffixes, hostGlobals, externalMutationMembers }`. A call without a ruleset raises an error. `scanTree` traverses files, finds specifications and tracks exemptions. It also calls `scanProductionPaths` for all discovered paths, including files that are not specifications. This detects `.verify.luau` files and Verify imports in production source graphs. A consumer lint runner can call `Consumer.scan` and `scanProductionPaths` directly.
