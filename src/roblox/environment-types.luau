@@ -198,6 +198,7 @@ export type State = {
 	signalFires: { [string]: number },
 	extras: { [string]: boolean },
 	doubles: { [string]: unknown },
+	bound: { [string]: unknown }?,
 	destroyed: boolean,
 	destroying: boolean,
 	removing: boolean,
