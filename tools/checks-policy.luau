@@ -14,6 +14,11 @@ local productMaterial: { Rule } = {
 return {
 	leakage = productMaterial,
 	allowedLiterals = {
+		["src/roblox/content-facts.luau"] = { "rbxassetid://(%d+)$" },
+		["tools/lib/capture-native-content.luau"] = { 'rbxassetid://" .. request.id' },
+		["tests/fixtures/content-facts.json"] = { 'rbxassetid://43"', 'rbxassetid://50"' },
+		["tests/content-facts.lute.verify.luau"] = { 'rbxassetid://44"', 'rbxassetid://99"', 'rbxassetid://50"' },
+		["docs/api.md"] = { "`rbxassetid://`" },
 		["src/roblox/datatypes/font.luau"] = { 'rbxassetid://" .. tostring(id)' },
 		["src/roblox/datatypes/misc.luau"] = { 'rbxassetid://" .. tostring(id)' },
 		["tests/environment.verify.luau"] = { 'rbxassetid://1"' },

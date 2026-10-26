@@ -1,9 +1,12 @@
 --!strict
+local attachments = require "./capture-attachments"
 return [====[
 local root = game.ReplicatedStorage.TextMetrics
+]====] .. attachments .. [====[
 local Core, Roblox = require(root.src.core), require(root.src.roblox)
 local harness = Core.createHarness {now = os.clock}
 harness:case("native font metrics", function(check)
+ local captured = captureAttachments(check)
  local params = Instance.new("GetTextBoundsParams")
  params.Font = Font.new(descriptor.family, Enum.FontWeight[descriptor.weight], Enum.FontStyle[descriptor.style])
  params.Width = 1000000
@@ -65,12 +68,12 @@ harness:case("native font metrics", function(check)
   for index, pair in pairs do adjustments[index] = row.adjustments[(pair[1] - 1) * #tokens + pair[2]] or 0 end
   row.adjustments = adjustments
  end
- check:attach("metrics.json", "application/json", game.HttpService:JSONEncode({
+ captured.attach("metrics.json", "application/json", game.HttpService:JSONEncode({
   engineVersion = version(), family = params.Font.Family, weight = params.Font.Weight.Name,
   style = params.Font.Style.Name, tokens = tokens, pairs = pairs, calls = count,
  }))
- check:attach("sizes-1.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 1, 50, 1, {})))
- check:attach("sizes-2.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 51, 100, 1, {})))
+ captured.attach("sizes-1.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 1, 50, 1, {})))
+ captured.attach("sizes-2.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 51, 100, 1, {})))
  local model = require(root.src.roblox["text-metrics"]).create({tokens = tokens, pairs = pairs, sizes = sizes})
  local random = Random.new(527)
  local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
@@ -91,11 +94,12 @@ harness:case("native font metrics", function(check)
    if modeled and actual ~= expected then table.insert(differences, {size = size, text = text, native = expected, actual = actual}) end
   end
  end
- check:attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))
+ captured.attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))
  check:expect(#differences):toBe(0)
 
+ captured.finish()
  params:Destroy()
  check:expect(#sizes):toBe(100)
 end)
-return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-font-metrics", environment = {engineVersion = version()}}))
+return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-font-metrics", environment = {engineVersion = version()}, attachments = Parts.limits}))
 ]====]

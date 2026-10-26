@@ -2,6 +2,7 @@
 
 local PlaceBoot = require "@self/place-boot"
 local PlaceRuntime = require "@self/place-runtime"
+local ContentFacts = require "@self/content-facts"
 
 local CaseEntry = require "@self/case-entry"
 local EnvironmentEngineAdapter = require "@self/environment-engine"
@@ -72,6 +73,7 @@ export type PlaceBootView = PlaceBoot.View
 export type PlaceBootHost<B = unknown, C = () -> unknown> = PlaceBoot.Host<B, C>
 
 return {
+	contentFacts = ContentFacts,
 	bootPlace = PlaceBoot.run,
 	buildPlaceTree = PlaceBoot.buildTree,
 	createPlaceCache = PlaceBoot.createCache,
