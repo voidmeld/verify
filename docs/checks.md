@@ -1,0 +1,48 @@
+# Repository checks
+
+Require `src/checks` from a pinned checkout. This Lute-only package owns repository check mechanisms.
+The caller owns policy, discovery roots, public entry points, license requirements and exceptions.
+The package does not select a repository policy or terminate the process.
+
+Each check returns an array of diagnostic strings. An empty array passes. Infrastructure errors
+such as unreadable files, invalid discovery roots and failed Git enumeration throw; callers must
+fail the producer when a check throws. `cleanClone` reports subprocess failures as findings.
+Paths are relative to the working directory unless stated otherwise. No check changes cwd.
+
+```luau
+local Checks = require "../.lute/dependencies/verify/src/checks"
+local findings = Checks.boundary {
+    root = "src/core",
+    rules = { { pattern = "@std/", plain = true, why = "core must be portable" } },
+}
+assert(#findings == 0, table.concat(findings, "\n"))
+```
+
+## Configuration
+
+Configuration types live alongside each implementation and are exported as Luau types.
+All arrays and maps below are caller-owned. The package does not mutate them.
+
+| Call | Configuration and behavior | Contract falsifier |
+| --- | --- | --- |
+| `Checks.walk` | `paths(root, suffixes, into?)`, `pathsSkipping(root, suffixes, skip)`, `files(root, suffixes)`, `filesSkipping(root, suffixes, skip)`, `lineOf(source, offset)`. Sorted depth-first traversal; skip receives root-relative path and entry kind before descending. Missing roots yield no files. Files contain `path` and `contents`. | Unsorted output, descent into an excluded subtree, or incorrect newline count. |
+| `Checks.temporaryDirectory` | `root()` selects the system temporary root. `run(parent, prefix, body)` allocates a unique directory, returns the body result and removes the directory on success or error. Prefix permits letters, digits and hyphens. Cleanup failure throws. Windows retries cleanup after removing read-only attributes. | A thrown body leaves its directory behind, a second allocation reuses a live directory, or a traversal prefix escapes the parent. |
+| `Checks.denylist.scan` | `(path, source, rules, allowedLiterals?)`. Each rule has `pattern`, `why`, optional `plain` for literal matching, and optional `exempt[path]` justification. Literal allowances are keyed by exact path, masked before scanning while retaining line positions. One finding per matching rule. No embedded denylist policy. | A forbidden spelling passes, a pattern is interpreted when `plain` is true, or an allowance for one path masks another path. |
+| `Checks.boundary` | `{ root, rules, exclude?, allowMissing?, allowEmpty? }`. Reads `.luau` recursively. `exclude` is a path pattern. Missing or empty roots fail unless explicitly allowed; `allowMissing` permits only missing roots. | A matching host rule passes or an excluded spec is scanned. |
+| `Checks.leakage` | `{ root?, untracked?, suffixes?, exclude?, rules, allowedLiterals? }`. Git selects cached files and optionally nonignored untracked files. `root` defaults to cwd. `suffixes` defaults to all files; `exclude` is an exact path-to-boolean map. Deleted files are skipped, duplicates removed. Rule paths and allowances remain relative to the Git root. | An included forbidden file passes, an ignored file is scanned, or Git enumeration failure passes. |
+| `Checks.noAny` | `{ root?, untracked?, exclude? }`, same Git selection as leakage, restricted to `.luau`. Requires an initial strict directive and rejects nonstrict/nocheck opt-outs and explicit dynamic type escapes through the existing syntax policy. | A type escape or opt-out passes, or ordinary quoted text fails. |
+| `Checks.testManifest` | `{ path, rules, entries?, write?, format? }`. Corpus rules are `{ root, pattern, exclude? }` in walk order. Check mode compares loaded `entries` with discovery, including duplicates, omissions and ordering. Write mode emits a strict frozen manifest at `path` and invokes optional `format(path)`. Callers load their own manifest to retain module-relative resolution. | A missing, extra, duplicate or reordered entry passes; write omits a discovered spec. |
+| `Checks.publicSurface` | `{ docs, packages, undocumented?, recursive?, codeReferences?, includeTypes? }`. Each package is `{ prefix, entry, load }`; `entry` is its actual `.luau` file, `load()` returns the caller-resolved module. Default docs are exact `###` code headings. Recursive mode descends non-uppercase table fields, guards cycles and can read inline code references with inferred parent headings. `includeTypes` permits declared entry-point type exports in docs. `undocumented` maps exact export names to justification. Missing files, failed loads, non-table modules, missing docs and stale docs fail. | An undocumented export or stale docs pass; a failed module load passes; recursive exports disappear. |
+| `Checks.comments` | `{ roots?, files?, configFiles?, selection?, allowed?, lineDirectives?, licenseFragments?, write? }`. Luau parser trivia detects comments, including interpolated expressions. `roots` walks `.luau`; `files` names explicit sources; `selection` uses the Git selector and supplied suffixes. `allowed` holds comment-text patterns. `lineDirectives` restricts these allowances to line-leading whitespace. Every license fragment must match within the comment to allow a notice. Config files reject unquoted hash comments except a shebang at byte one. Write mode masks prohibited Luau comments preserving newlines and removes config comments, returning no findings after the write. | A comment in an interpolated expression passes, quoted comment text fails, or rewrite changes quoted text/directives. |
+| `Checks.provenance` | `{ forbiddenPaths, license, licenseFragments, licensePrefix?, requiredText?, lock?, dependencyCommand?, root?, skip?, suffixes?, descriptors?, noticeNames?, expectedNotices?, scriptExceptions?, forbiddenSuffixes?, justifiedSuffixes? }`. Required text maps file paths to literal fragments. A configured lock must exist before running the dependency command. Optional recursive audit uses root-relative skip prefixes, descriptor basenames, notice basenames and suffix policy. Notices use exact root-relative paths and must exist with at least 40 bytes. Script exceptions must exist and have at least 20 justification characters. License and forbidden/required/lock paths are cwd-relative independently of the optional audit root. | A changed grant, missing lock, failed dependency command, unmanaged nested notice/descriptor or unjustified script passes. |
+| `Checks.cleanClone` | `{ root?, prefix?, command, env?, requiredPaths? }`. Requires readable HEAD and clean Git status before cloning with `--no-local`, checks out that exact HEAD, runs `command` in the temporary clone and cleans it. Root defaults to cwd; supply an absolute root when using an override. Environment overrides merge into inherited process environment; required paths are checked as supplied. Dependency cache preparation/verification belongs in the caller's command and environment. No working-tree files are copied into the clone. | Dirty or uncommitted content passes, a clone gate failure passes, required cache absence passes or temporary cleanup fails silently. |
+| `Checks.lintRules` | `globalTableUsage`, `typeCheckInsideCall`, `badStringEscape` each expose standard Lute `{ name, lint }`. Configure Lute `rulepaths` to the corresponding files under `src/checks/lint-rules/`. The first rule takes `options.allow` exact paths or path suffixes normalized across Windows separators. The others inspect syntax for misplaced comparisons inside type calls and invalid escapes in quoted/interpolated strings. Configure ignores/severity in the consumer's lint config. | Shared global access, a comparison inside a type call or an invalid escape yields no diagnostic; shadowed locals or valid escapes are flagged. |
+
+Rules also accept `allMatches = true` to report every occurrence and `exempt[path .. ":" .. matched]`
+to exempt only an exact matched literal in one file. A permitted first occurrence never hides a
+later forbidden occurrence. Without `allMatches`, scanning stops at the first nonexempt finding.
+
+`tests/checks.lute.verify.luau` runs the shared success/failure contracts with real temporary
+files, Git selection and disposable committed clone fixtures. Existing type-policy specifications
+cover additional dynamic-type syntax boundaries. The repository gate's existing check producers
+call this package through configured thin commands; the package itself has no CLI or policy defaults.

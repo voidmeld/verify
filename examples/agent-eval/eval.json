@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "counter-example",
+  "tasks": ["tasks/counter", "tasks/counter-reset"],
+  "arms": [
+    {
+      "id": "treatment",
+      "overlay": ["arms/treatment"],
+      "instructions": "arms/treatment.md"
+    },
+    { "id": "baseline" }
+  ],
+  "agents": [
+    {
+      "id": "replay",
+      "adapter": "fixture",
+      "options": {
+        "stream": "fixtures/{arm}/{task}.stamped",
+        "files": {
+          "counter.luau": "fixtures/{arm}/{task}.luau",
+          "ui-dump.json": "fixtures/{arm}/ui-dump.json"
+        }
+      }
+    }
+  ],
+  "seeds": [1, 2],
+  "budgets": { "maxTurns": 20, "maxOutputTokens": 4000, "wallSeconds": 600 },
+  "devices": [
+    { "id": "phone", "width": 844, "height": 390, "scale": 1, "input": ["touch"] }
+  ]
+}
