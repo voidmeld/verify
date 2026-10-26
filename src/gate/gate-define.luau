@@ -402,7 +402,11 @@ local function digestOf(id: string, producers: { Producer }, policy: GateTypes.P
 						return producer.collection.name
 							.. ":"
 							.. table.concat(members, ",")
-							.. (if producer.collection.calibrationAttempts == 2 then ":calibrationAttempts=2" else "")
+							.. (
+								if (producer.collection.calibrationAttempts or 1) > 1
+									then `:calibrationAttempts={producer.collection.calibrationAttempts}`
+									else ""
+							)
 					end)()
 					else "",
 			}, "|")

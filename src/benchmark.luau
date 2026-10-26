@@ -845,11 +845,12 @@ end
 local function collect(collection: Collection): CollectionResult
 	Check.checkCollection(collection)
 	local result = collectOnce(collection)
-	if collection.calibrationAttempts ~= 2 then
+	local allowed = collection.calibrationAttempts or 1
+	if allowed < 2 then
 		return result
 	end
 	local attempts: { CollectionAttempt } = { table.clone(result) }
-	if retryCalibration(result) then
+	while #attempts < allowed and retryCalibration(result) do
 		result = collectOnce(collection)
 		table.insert(attempts, table.clone(result))
 	end

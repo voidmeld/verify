@@ -621,6 +621,19 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		expect(assert(artifact.content)):toContain "yardstick_drift"
 	end)
 
+	it("retries invalid calibration up to the declared attempts", function()
+		local group = collection({ now = 0, calls = 0 }, { 1, 1, 3, 3, 1, 1, 3, 3, 1, 1, 1, 1 }, 0.2)
+		group.calibrationAttempts = 3
+		local raw = Benchmark.collect(group)
+		local attempts = assert(raw.attempts)
+		expect(#attempts):toEqual(3)
+		expect(#attempts[2].invalid):toEqual(1)
+		expect(#raw.invalid):toEqual(0)
+		local stopped = collection({ now = 0, calls = 0 }, { 1, 1, 3, 3, 1, 1, 3, 3, 1, 1, 3, 3 }, 0.2)
+		stopped.calibrationAttempts = 3
+		expect(#assert(Benchmark.collect(stopped).attempts)):toEqual(3)
+	end)
+
 	it("binds the calibration attempt policy into a gate definition", function()
 		local function digest(attempts: number?): string
 			local group = collection({ now = 0, calls = 0 }, { 1, 1, 1, 1 }, 0.2)
@@ -632,6 +645,7 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		end
 		expect(digest(nil)):toEqual(digest(1))
 		expect(digest(1) == digest(2)):toEqual(false)
+		expect(digest(2) == digest(3)):toEqual(false)
 	end)
 
 	it("a second invalid calibration remains unsupported and the attempt bound is validated", function()
@@ -640,7 +654,7 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		local report = executeCollection(group)
 		expect(report.results[1].status):toEqual "unsupported"
 		expect(#report.results[1].artifacts):toEqual(1)
-		for _, count in { 0, 3, 1.5, math.huge, math.nan } do
+		for _, count in { 0, 5, 1.5, math.huge, math.nan } do
 			local invalid = collection({ now = 0, calls = 0 }, { 1, 1, 1, 1 }, 0.2)
 			invalid.calibrationAttempts = count
 			expect(function()
