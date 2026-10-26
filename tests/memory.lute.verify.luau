@@ -134,6 +134,63 @@ describe("retained heap estimates", function()
 	end)
 end)
 
+describe("rehearsed lifecycles", function()
+	it("keeps a one-time cache out of teardown retention after a rehearsal", function()
+		local function measured(rehearsals: number): number
+			local cache: { buffer } = {}
+			local result = Lute.memory.measure({
+				setup = function()
+					return true
+				end,
+				run = function(_state: boolean)
+					if #cache == 0 then
+						table.insert(cache, buffer.create(2 * 1024 * 1024))
+					end
+				end,
+				teardown = function(_state: boolean) end,
+				iterations = 1,
+				rehearsals = rehearsals,
+			}, { cycles = 4 })
+			return result.teardownRetainedKb
+		end
+		local cold = measured(0)
+		local rehearsed = measured(1)
+		expect(cold > 1900):toBeTrueWith(`cold teardown {cold}`)
+		expect(rehearsed < 256):toBeTrueWith(`rehearsed teardown {rehearsed}`)
+	end)
+
+	it("still finds growth that repeats every lifecycle", function()
+		local held: { buffer } = {}
+		local result = Lute.memory.measure({
+			setup = function()
+				return true
+			end,
+			run = function(_state: boolean)
+				table.insert(held, buffer.create(1024 * 1024))
+			end,
+			teardown = function(_state: boolean) end,
+			iterations = 1,
+			rehearsals = 1,
+		}, { cycles = 4 })
+		expect(result.teardownRetainedKb > 960):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
+		expect(#held):toEqual(2)
+	end)
+
+	it("rejects a negative rehearsal count", function()
+		expect(function()
+			Lute.memory.measure {
+				setup = function()
+					return true
+				end,
+				run = function(_state: boolean) end,
+				teardown = function(_state: boolean) end,
+				iterations = 1,
+				rehearsals = -1,
+			}
+		end):toThrow "memory rehearsals must be a nonnegative integer"
+	end)
+end)
+
 describe("engine scheduler retention", function()
 	it("releases a finished tagged thread", function()
 		local Scheduler = require "../src/roblox/scheduler"

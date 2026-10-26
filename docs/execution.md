@@ -117,12 +117,17 @@ Each worker resolves its own `require` paths relative to its script.
 
 ## Retained heap estimates on Lute
 
-`Lute.memory.measure({ setup, run, teardown, iterations, warmup?, afterRun? }, options?)`
+`Lute.memory.measure({ setup, run, teardown, iterations, warmup?, afterRun?, rehearsals? }, options?)`
 performs a separate workload pass. It reads the baseline heap, runs setup and
 the declared iterations, reads the mounted heap, runs teardown, drops the local
 state scope, and reads the heap again. Cleanup runs after a workload failure.
 The result includes raw readings and nonnegative mounted and teardown deltas
 from the baseline, in KiB. Call it outside timed measurements.
+
+`rehearsals` (default 0) runs that many complete lifecycles before the baseline
+is read. Set it to 1 when the first lifecycle fills a one-time cache, such as a
+lazily created table or the first use of a code path. Growth that repeats every
+lifecycle still appears as teardown retention.
 
 `Lute.memory.settle(options?)` estimates the heap low-water mark after collection
 progress. Lute does not expose forced collection. Weak-reference witnesses mark
