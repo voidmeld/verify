@@ -51,7 +51,10 @@ local function create(
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
 	setmetatable(timed, { __mode = "k" })
+	local styleGeneration = 0
+	local readsGeneration = -1
 	local function dirty()
+		styleGeneration += 1
 		pendingAt = nil
 		table.clear(cleared)
 		local now = env.now()
@@ -366,6 +369,7 @@ local function create(
 			end
 			local now = env.now()
 			if pendingAt == now then
+				styleGeneration += 1
 				for _, entry in cleared do
 					entry.dirty = entry.dirty or now
 				end
@@ -415,6 +419,7 @@ local function create(
 			reads[object] = read
 		end
 		if read[property] == nil then
+			observe()
 			local ruleSheet, target = resolve(object, property, nil)
 			read[property] = { sheet = ruleSheet, value = target }
 		end
@@ -478,6 +483,10 @@ local function create(
 					end
 				end
 			end
+			if readsGeneration == styleGeneration then
+				return
+			end
+			readsGeneration = styleGeneration
 			for object, properties in pairs(reads) do
 				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
 					reads[object] = nil
