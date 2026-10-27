@@ -111,9 +111,10 @@ it("destroying a playing tween releases the clock and rejects unsupported tweens
 	env.step(2)
 	expect(frame.BackgroundTransparency):toBe(0)
 	expect(env.liveConnections()):toBe(0)
-	expect((pcall(create, frame, TweenInfo.new(1, nil, nil, 2), { BackgroundTransparency = 1 }))):toBe(false)
-	expect((pcall(create, frame, TweenInfo.new(1, nil, nil, 0, true), { BackgroundTransparency = 1 }))):toBe(false)
-	expect((pcall(create, frame, 1, { BackgroundTransparency = 1 }))):toBe(false)
+	local goal: { [string]: unknown } = { BackgroundTransparency = 1 }
+	expect((pcall(create, frame, TweenInfo.new(1, nil, nil, 2), goal))):toBe(false)
+	expect((pcall(create, frame, TweenInfo.new(1, nil, nil, 0, true), goal))):toBe(false)
+	expect((pcall(create, frame, 1, goal))):toBe(false)
 	expect(#env.errors):toBe(0)
 end)
 
