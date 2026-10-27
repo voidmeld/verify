@@ -1291,7 +1291,11 @@ Create simulated host fixtures and run exported probes.
 
 `placeEngine().record` keeps diagnostics and sends virtual timestamps and message types to LogService history and MessageOut. History returns independent tables. It keeps the newest 512 entries in order. ClearOutput clears history but keeps diagnostics. Structured Logger context is outside this simulation.
 
-Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback. TextChatService.OnIncomingMessage uses write-only callback storage. A host can inspect and invoke it through propertyOf. This does not prove filtered chat delivery.
+Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback.
+
+`TweenService:Create(instance, tweenInfo, goals)` returns a Tween with `Instance`, `TweenInfo` and `PlaybackState`. Play, Pause and Cancel follow the engine states Begin, Delayed, Playing, Paused, Cancelled and Completed. Virtual time advances a playing tween. When `DelayTime` plus `Time` elapses, the tween writes each goal value once and fires `Completed` with `Enum.PlaybackState.Completed`. A tween that is within 1e-6 seconds of its end is complete. The tween writes no intermediate values, because the engine interpolates natively. Cancel resets progress, writes no goal and fires `Completed` with `Enum.PlaybackState.Cancelled`. Destroying a playing tween stops it. `RepeatCount` other than 0 and `Reverses` raise. The simulator does not prove easing curves or rendered motion.
+
+TextChatService.OnIncomingMessage uses write-only callback storage. A host can inspect and invoke it through propertyOf. This does not prove filtered chat delivery.
 
 Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 

@@ -12,6 +12,7 @@ local createSignals = require "./environment-signals"
 local Types = require "./environment-types"
 local SpatialFakes = require "./spatial-fakes"
 local AudioFakes = require "./audio-fakes"
+local TweenFakes = require "./tween-fakes"
 local SpatialQueryFakes = require "./spatial-query-fakes"
 
 export type Connection = Types.Connection
@@ -946,6 +947,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return stateOf(object).worldPivotSet == true
 	end)
 	AudioFakes.attach(environment)
+	TweenFakes.attach(environment)
 	SpatialQueryFakes.attach(environment)
 	for member, handler in initialFakes do
 		fakes[member] = handler
