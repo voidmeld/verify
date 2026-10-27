@@ -20,6 +20,7 @@ type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
 type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
 local PHANTOMS = { UIPadding = true, UICorner = true, UIStroke = true, UIGradient = true }
+local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true }
 
 local function unsupported(detail: string): never
 	error("unsupported_ui_style: " .. detail, 0)
@@ -46,11 +47,16 @@ local function create(
 			then previous.present
 			else object:HasTag(tag)
 	end
+	local cleared: { Animated } = {}
+	local pendingAt: number? = nil
+	local timed: { [Animated]: Instance } = {}
+	setmetatable(timed, { __mode = "k" })
 	local function dirty()
-		for _, entries in pairs(animated) do
-			for _, entry in entries do
-				entry.dirty = entry.dirty or env.now()
-			end
+		pendingAt = nil
+		table.clear(cleared)
+		local now = env.now()
+		for entry in pairs(timed) do
+			entry.dirty = entry.dirty or now
 		end
 	end
 	local watches: { [Instance]: { [string]: Watch } } = {}
@@ -313,24 +319,29 @@ local function create(
 			}
 			entries[key] = entry
 		else
+			if entry.dirty ~= nil then
+				table.insert(cleared, entry)
+			end
 			Transition.retarget(entry.motion, target, timing, entry.dirty or env.now())
 			entry.dirty = nil
+		end
+		if timing ~= nil then
+			timed[entry] = object
+		else
+			timed[entry] = nil
 		end
 		return sheet, Transition.sample(entry.motion, env.now())
 	end
 	function refresh(quiet: boolean?)
-		for object, entries in pairs(animated) do
+		for entry, object in pairs(timed) do
 			if not env.isAlive(object) then
+				timed[entry] = nil
 				animated[object] = nil
-			else
-				for _, entry in entries do
-					if entry.dirty ~= nil then
-						if quiet then
-							pcall(animatedValue, object, entry.property, entry.phantom)
-						else
-							animatedValue(object, entry.property, entry.phantom)
-						end
-					end
+			elseif entry.dirty ~= nil then
+				if quiet then
+					pcall(animatedValue, object, entry.property, entry.phantom)
+				else
+					animatedValue(object, entry.property, entry.phantom)
 				end
 			end
 		end
@@ -339,9 +350,31 @@ local function create(
 		if observed ~= nil then
 			return
 		end
-		observed = env.observe(function()
+		observed = env.observe(function(event: Environment.Event)
+			if event.operation == "setProperty" and not STYLE_MEMBERS[event.member or ""] then
+				local object = event.object
+				if
+					not (
+						object:IsA "StyleRule"
+						or object:IsA "StyleSheet"
+						or object:IsA "StyleLink"
+						or object:IsA "StyleDerive"
+					)
+				then
+					return
+				end
+			end
+			local now = env.now()
+			if pendingAt == now then
+				for _, entry in cleared do
+					entry.dirty = entry.dirty or now
+				end
+				table.clear(cleared)
+				return
+			end
 			refresh(true)
 			dirty()
+			pendingAt = now
 		end)
 		tags = env.tagChanged:Connect(function(object: Instance, tag: string, present: boolean)
 			previousTag = { object = object, tag = tag, present = not present }
@@ -375,14 +408,15 @@ local function create(
 			end
 			return value
 		end
-		local sheet, value = animatedValue(object, property, nil)
+		local _, value = animatedValue(object, property, nil)
 		local read = reads[object]
 		if read == nil then
 			read = {}
 			reads[object] = read
 		end
 		if read[property] == nil then
-			read[property] = { sheet = sheet, value = value }
+			local ruleSheet, target = resolve(object, property, nil)
+			read[property] = { sheet = ruleSheet, value = target }
 		end
 		return if object:IsPropertyModified(property) then env.propertyOf(object, property) else value
 	end
@@ -445,12 +479,12 @@ local function create(
 				end
 			end
 			for object, properties in pairs(reads) do
-				if not env.isAlive(object) then
+				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
 					reads[object] = nil
 				else
 					local changed = false
 					for property, read in properties do
-						local sheet, value = animatedValue(object, property, nil)
+						local sheet, value = resolve(object, property, nil)
 						if sheet ~= read.sheet or value ~= read.value then
 							read.sheet, read.value = sheet, value
 							changed = true
