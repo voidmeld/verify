@@ -19,6 +19,7 @@ local UNIVERSAL_EVENTS: { string } = {
 	"DescendantAdded",
 	"DescendantRemoving",
 	"AncestryChanged",
+	"StyledPropertiesChanged",
 }
 
 local function create(settings: Types.Options)

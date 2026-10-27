@@ -61,6 +61,7 @@ export type Instance = {
 	AncestryChanged: Signal<Instance, Instance?>,
 	Destroying: Signal<()>,
 	AttributeChanged: Signal<string>,
+	StyledPropertiesChanged: Signal<()>,
 }
 export type Snapshot = {
 	className: string,
