@@ -1306,6 +1306,10 @@ Run worker modules that register their own cases.
 
 Launch or attach Studio execution sessions.
 
+### `Lute.typePolicy`
+
+Find explicit `any` annotations (`explicitAny`) and files that weaken strict typing (`nonStrict`). Consumers use it for type budgets.
+
 ### `Lute.worker`
 
 Run the worker protocol over registered sources.

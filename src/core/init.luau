@@ -21,6 +21,7 @@ local Types = require "@self/types"
 export type OperationRequest = Operations.Request
 export type CaseHost = Operations.Host
 export type Operation<I, O> = Operations.Operation<I, O>
+export type ShardPayload = Types.ShardPayload
 export type NamedCase = HarnessModule.NamedCase
 
 export type Status = Types.Status

@@ -47,6 +47,7 @@ export type JudgeRequest = Judge.Request
 export type JudgeComparison = Judge.Comparison
 export type Judgment = Judge.Judgment
 export type Label = Judge.Label
+export type Verdict = Judge.Verdict
 export type JudgeOptions = Judging.Options
 export type Thresholds = Report.Thresholds
 export type EvalReport = Report.EvalReport
