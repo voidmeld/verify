@@ -3,8 +3,12 @@
 local Environment = require "./environment-types"
 local Names = require "./datatypes/names"
 local Enum = require "./datatypes/enum"
+local Facts = require "./content-facts"
+local Datatypes = require "./datatypes"
 
 export type Options = {
+	facts: unknown?,
+	library: Datatypes.Library?,
 	assetVersion: ((number) -> Environment.Instance?)?,
 	terrainMaterialColor: ((Enum.EnumItem) -> unknown)?,
 }
@@ -76,6 +80,10 @@ local function attach(environment: Environment.Environment, options: Options?)
 			colors[copy] = table.clone(colors[source])
 		end
 	end)
+	if settings.facts ~= nil then
+		assert(settings.assetVersion == nil, "content facts and assetVersion providers are mutually exclusive")
+		Facts.attach(environment, settings.facts, settings.library)
+	end
 end
 
 return { attach = attach }

@@ -7,7 +7,7 @@ export type Row = {
 	ends: { number }?,
 	height: number?,
 }
-export type Face = { tokens: { string }, pairs: { { number } }, sizes: { Row } }
+export type Face = { tokens: { string }, pairs: { { number } }, sizes: { Row }, pixelScale: number? }
 export type Model = {
 	width: (text: string, size: number) -> number,
 	height: (size: number) -> number,
@@ -50,6 +50,13 @@ local function letter(token: string): boolean
 end
 
 local function create(face: Face): Model
+	local pixelScale = face.pixelScale or 1
+	assert(pixelScale > 0 and pixelScale < math.huge, "invalid text metric pixel scale")
+	local slot = buffer.create(4)
+	local function scaled(pixels: number): number
+		buffer.writef32(slot, 0, pixels * pixelScale)
+		return buffer.readf32(slot, 0)
+	end
 	local indices: { [string]: number } = {}
 	local sequences: { [string]: { string } } = {}
 	for index, token in face.tokens do
@@ -122,7 +129,7 @@ local function create(face: Face): Model
 			- (if previous and row.starts and letter(face.tokens[previous]) then row.starts[previous] else 0)
 	end
 	local function width(text: string, size: number): number
-		return math.ceil(exact(text, size))
+		return scaled(math.ceil(exact(text, size)))
 	end
 	local function wrap(text: string, size: number, limit: number): (number, number)
 		local maximum, count = 0, 0
@@ -162,10 +169,10 @@ local function create(face: Face): Model
 	local function cut(text: string, size: number, limit: number, mode: string): number?
 		local mark = exact("…", size)
 		local function fits(prefix: string): boolean
-			return exact(prefix, size) + mark <= limit
+			return (exact(prefix, size) + mark) * pixelScale <= limit
 		end
 		local function shown(prefix: string): number
-			local result = width(prefix, size) + math.ceil(mark)
+			local result = width(prefix, size) + scaled(math.ceil(mark))
 			if result >= limit - 1 then
 				error("unsupported_text_metrics: truncation within a pixel of the limit", 0)
 			end
@@ -193,7 +200,7 @@ local function create(face: Face): Model
 				return shown(prefix)
 			end
 		end
-		return if mark <= limit then shown "" else 0
+		return if mark * pixelScale <= limit then shown "" else 0
 	end
 	local function truncate(
 		text: string,

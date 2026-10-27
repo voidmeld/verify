@@ -192,7 +192,11 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 	local controller: UiFakes.Controller? = if ui ~= false
 		then UiFakes.attach(environment, ui :: UiFakes.Options?, selection)
 		else nil
-	ContentFakes.attach(environment, settings.content)
+	local content = if settings.content then table.clone(settings.content) else nil
+	if content and content.library == nil and settings.library then
+		content.library = ((settings.library :: unknown) :: { datatypes: Datatypes.Library }).datatypes
+	end
+	ContentFakes.attach(environment, content)
 	LocalizationFakes.attach(environment)
 	local library = (settings.library :: unknown) :: Adapter.Library<V2, V3, C3, U1, U2, CF>?
 	if library then

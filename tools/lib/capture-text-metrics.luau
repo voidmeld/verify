@@ -1,13 +1,17 @@
 --!strict
+local attachments = require "./capture-attachments"
 return [====[
 local root = game.ReplicatedStorage.TextMetrics
+]====] .. attachments .. [====[
 local Core, Roblox = require(root.src.core), require(root.src.roblox)
 local harness = Core.createHarness {now = os.clock}
 harness:case("native font metrics", function(check)
+ local captured = captureAttachments(check)
  local params = Instance.new("GetTextBoundsParams")
  params.Font = Font.new(descriptor.family, Enum.FontWeight[descriptor.weight], Enum.FontStyle[descriptor.style])
  params.Width = 1000000
  local count = 0
+ local pixelScale = 1
  local function boundsWidth(text, size)
   params.Text, params.Size = text, size
   local value = game:GetService("TextService"):GetTextBoundsAsync(params).X
@@ -15,15 +19,18 @@ harness:case("native font metrics", function(check)
   if count % 1000 == 0 then task.wait() end
   return value
  end
+ local function pixelsWidth(text, size)
+  return math.round(boundsWidth(text, size) / pixelScale)
+ end
  local spaces = {}
  local function width(text, size)
   local space = spaces[size]
   if space == nil then
-   space = (boundsWidth(string.rep(" ", 128), size) - boundsWidth(string.rep(" ", 64), size)) / 64
+   space = (pixelsWidth(string.rep(" ", 128), size) - pixelsWidth(string.rep(" ", 64), size)) / 64
    spaces[size] = space
   end
   local word = text .. " "
-  return (boundsWidth(string.rep(word, 128), size) - boundsWidth(string.rep(word, 64), size)) / 64 - space
+  return (pixelsWidth(string.rep(word, 128), size) - pixelsWidth(string.rep(word, 64), size)) / 64 - space
  end
  local tokens = {}
  for codepoint = 32, 126 do
@@ -32,13 +39,22 @@ harness:case("native font metrics", function(check)
  end
  for _, value in {"…", "•", "—", "–", "×", "·", "’", "“", "”", "°", "→", "−", "★", "é", "á", "í", "ó", "ú", "ñ", "ü", "ö", "ä", "ç", "è", "à", "ê", "ô", "ë", "ß", "É", "ð", "ĝ", "ş", "Ş", "ţ"} do table.insert(tokens, value) end
  for _, value in {"ff", "fi", "fl", "ffi", "ffl"} do table.insert(tokens, value) end
+ local minimum = math.huge
+ for _, value in tokens do
+  params.Text, params.Size = value, 1
+  local measured = game.TextService:GetTextBoundsAsync(params).X
+  count += 1
+  if measured > 0 then minimum = math.min(minimum, measured) end
+ end
+ assert(minimum < math.huge, "font has no measurable pixel scale")
+ pixelScale = minimum
  local sizes, seen = {}, {}
  for size = 1, 100 do
   local advances, adjustments, starts, ends = {}, {}, {}, {}
   for index, value in tokens do
    advances[index] = width(value, size)
-   starts[index] = boundsWidth(value .. " ", size) - width(value .. " ", size)
-   ends[index] = boundsWidth(" " .. value, size) - width(" " .. value, size)
+   starts[index] = pixelsWidth(value .. " ", size) - width(value .. " ", size)
+   ends[index] = pixelsWidth(" " .. value, size) - width(" " .. value, size)
   end
   for leftIndex, left in tokens do
    for rightIndex, right in tokens do
@@ -65,13 +81,13 @@ harness:case("native font metrics", function(check)
   for index, pair in pairs do adjustments[index] = row.adjustments[(pair[1] - 1) * #tokens + pair[2]] or 0 end
   row.adjustments = adjustments
  end
- check:attach("metrics.json", "application/json", game.HttpService:JSONEncode({
+ captured.attach("metrics.json", "application/json", game.HttpService:JSONEncode({
   engineVersion = version(), family = params.Font.Family, weight = params.Font.Weight.Name,
-  style = params.Font.Style.Name, tokens = tokens, pairs = pairs, calls = count,
+  style = params.Font.Style.Name, tokens = tokens, pairs = pairs, calls = count, pixelScale = pixelScale,
  }))
- check:attach("sizes-1.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 1, 50, 1, {})))
- check:attach("sizes-2.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 51, 100, 1, {})))
- local model = require(root.src.roblox["text-metrics"]).create({tokens = tokens, pairs = pairs, sizes = sizes})
+ captured.attach("sizes-1.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 1, 50, 1, {})))
+ captured.attach("sizes-2.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 51, 100, 1, {})))
+ local model = require(root.src.roblox["text-metrics"]).create({tokens = tokens, pairs = pairs, sizes = sizes, pixelScale = pixelScale})
  local random = Random.new(527)
  local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
  local strings = {"Hello world", "Office staff affiliation", "affluent waffle", "A very fine office staff", "The quick brown fox jumps over the lazy dog", "Never store expected test geometry as a font measurement", "Score: 1,250 (+15%) — ready…", "“Quoted” • 3×4 · 90°"}
@@ -91,11 +107,11 @@ harness:case("native font metrics", function(check)
    if modeled and actual ~= expected then table.insert(differences, {size = size, text = text, native = expected, actual = actual}) end
   end
  end
- check:attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))
+ captured.attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))
+ captured.finish()
  check:expect(#differences):toBe(0)
-
  params:Destroy()
  check:expect(#sizes):toBe(100)
 end)
-return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-font-metrics", environment = {engineVersion = version()}}))
+return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-font-metrics", environment = {engineVersion = version()}, attachments = Parts.limits}))
 ]====]
