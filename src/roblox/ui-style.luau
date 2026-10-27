@@ -472,9 +472,11 @@ local function create(
 			reads[object] = read
 		end
 		if read[property] == nil then
-			observe()
 			local ruleSheet, target = resolve(object, property, nil)
 			read[property] = { sheet = ruleSheet, value = target }
+			if ruleSheet ~= nil then
+				observe()
+			end
 		end
 		return if object:IsPropertyModified(property) then env.propertyOf(object, property) else value
 	end
@@ -536,7 +538,7 @@ local function create(
 					end
 				end
 			end
-			if readsGeneration == styleGeneration then
+			if observed ~= nil and readsGeneration == styleGeneration then
 				return
 			end
 			readsGeneration = styleGeneration
