@@ -18,6 +18,7 @@ return table.freeze {
 	"tests/cframe-matrix.verify.luau",
 	"tests/checks.lute.verify.luau",
 	"tests/codec.verify.luau",
+	"tests/consumer-surface.lute.verify.luau",
 	"tests/consumer.verify.luau",
 	"tests/core.verify.luau",
 	"tests/corpus.lute.verify.luau",

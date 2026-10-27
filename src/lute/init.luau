@@ -21,6 +21,8 @@ local Corpus = require "@self/corpus"
 local Host = require "@self/host"
 local Wire = require "@self/wire"
 local Worker = require "@self/worker"
+local Launch = require "@self/studio-launch"
+local TypePolicy = require "@self/type-policy"
 
 export type PlatformOptions = Platform.Options
 export type EvidenceValidateOptions = EvidenceStore.ValidateOptions
@@ -48,6 +50,9 @@ export type MemorySpec<T> = Memory.Spec<T>
 export type FixtureExecute = Fixture.Execute
 export type FixtureProbe = Fixture.Probe
 export type OpenCloudHostOptions = OpenCloud.HostOptions
+export type ModelInstance = Model.Instance
+export type GateOptions = Gate.Options
+export type StudioLaunched = Launch.Launched
 
 return {
 	platform = Platform,
@@ -65,6 +70,7 @@ return {
 	memory = Memory,
 	gate = Gate,
 	corpus = Corpus,
+	typePolicy = TypePolicy,
 	host = Host.create,
 	worker = Worker.main,
 	selfRegisteringWorker = Worker.mainSelfRegistering,
