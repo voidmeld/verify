@@ -85,6 +85,7 @@ return table.freeze {
 	"tests/studio-processes.lute.verify.luau",
 	"tests/studio-reconnect.lute.verify.luau",
 	"tests/studio-reflection.lute.verify.luau",
+	"tests/text-metrics-scale.lute.verify.luau",
 	"tests/type-policy.lute.verify.luau",
 	"tests/ui-aspect-automatic.lute.verify.luau",
 	"tests/ui-aspect-flex.lute.verify.luau",
