@@ -10,6 +10,8 @@ type Instance = Environment.Instance
 type CFrame = Datatypes.CFrameValue
 type Vector3 = Datatypes.Vector3Value
 
+local NEAR = 0.1
+
 local function attach(environment: Environment.Environment, hasPivot: (Instance) -> boolean)
 	local function frame(object: Instance, property: string): CFrame
 		local value = environment.propertyOf(object, property)
@@ -91,6 +93,64 @@ local function attach(environment: Environment.Environment, hasPivot: (Instance)
 		local _, size = bounds(object, pivot(object).Rotation)
 		return size
 	end)
+	local function lens(camera: Instance): (CFrame, number, number, number)
+		local viewport = VectorTypes.expect2(environment.propertyOf(camera, "ViewportSize"), 1)
+		assert(viewport.X > 0 and viewport.Y > 0, "Camera.ViewportSize must be positive")
+		local field = environment.propertyOf(camera, "FieldOfView")
+		assert(type(field) == "number" and field > 0 and field < 180, "Camera.FieldOfView must be in (0, 180)")
+		return frame(camera, "CFrame"), viewport.X, viewport.Y, math.tan(math.rad(field) / 2)
+	end
+	local function inset(camera: Instance): (number, number)
+		local root = camera:FindFirstAncestorWhichIsA "DataModel"
+		local service = root and root:FindFirstChildOfClass "GuiService"
+		if service == nil then
+			return 0, 0
+		end
+		local read: unknown = environment.propertyOf(service, "GetGuiInset")
+		if type(read) ~= "function" then
+			return 0, 0
+		end
+		local ok, topLeft = pcall(read :: (Instance) -> unknown, service)
+		if not ok then
+			return 0, 0
+		end
+		local corner = VectorTypes.expect2(topLeft, 1)
+		return corner.X, corner.Y
+	end
+	local function project(camera: Instance, point: Vector3): (Vector3, boolean)
+		assert(Datatypes.typeName(point) == "Vector3", "WorldToViewportPoint requires a Vector3")
+		local basis, width, height, tangent = lens(camera)
+		local relative = basis:PointToObjectSpace(point)
+		local depth = -relative.Z
+		local x = (relative.X / (math.abs(depth) * tangent * width / height) + 1) / 2 * width
+		local y = (1 - relative.Y / (math.abs(depth) * tangent)) / 2 * height
+		local visible = depth > 0 and x >= 0 and x <= width and y >= 0 and y <= height
+		return Datatypes.Vector3.new(x, y, depth), visible
+	end
+	local function cast(camera: Instance, x: number, y: number, depth: number?): unknown
+		assert(type(x) == "number" and type(y) == "number", "a viewport point needs numeric x and y")
+		local basis, width, height, tangent = lens(camera)
+		local reach = basis:VectorToWorldSpace(
+			Datatypes.Vector3.new((2 * x / width - 1) * tangent * width / height, (1 - 2 * y / height) * tangent, -1)
+		)
+		local direction = reach.Unit
+		local origin = basis.Position + reach * NEAR + direction * (depth or 0)
+		return Datatypes.Ray.new(origin, direction)
+	end
+	environment.fake("Camera.WorldToViewportPoint", project)
+	environment.fake("Camera.WorldToScreenPoint", function(camera: Instance, point: Vector3): (Vector3, boolean)
+		local viewport, visible = project(camera, point)
+		local left, top = inset(camera)
+		return Datatypes.Vector3.new(viewport.X - left, viewport.Y - top, viewport.Z), visible
+	end)
+	environment.fake("Camera.ViewportPointToRay", cast)
+	environment.fake(
+		"Camera.ScreenPointToRay",
+		function(camera: Instance, x: number, y: number, depth: number?): unknown
+			local left, top = inset(camera)
+			return cast(camera, x + left, y + top, depth)
+		end
+	)
 	ModelScale.attach(environment, pivot)
 end
 

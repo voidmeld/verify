@@ -15,6 +15,7 @@ return table.freeze {
 	"tests/benchmark-store.lute.verify.luau",
 	"tests/benchmark.verify.luau",
 	"tests/bounded.lute.verify.luau",
+	"tests/camera-projection.lute.verify.luau",
 	"tests/capture-attachments.lute.verify.luau",
 	"tests/cframe-matrix.verify.luau",
 	"tests/checks.lute.verify.luau",
