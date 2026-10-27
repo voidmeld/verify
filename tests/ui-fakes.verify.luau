@@ -595,6 +595,29 @@ it("invalid and unresolved transition tokens retain precise refusals", function(
 	end
 end)
 
+it("ancestor tag and parent changes retarget descendant transitions", function(own)
+	local env, ui, frame, base, _, sheet = fixture(own)
+	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	local lit = env.createInstance("StyleRule", { Selector = ".Lit > Frame", Parent = sheet, Priority = 3 })
+	invoke(lit, "SetProperty", "BackgroundTransparency", 1)
+	local child = env.createInstance("Frame", { Parent = frame })
+	local other = env.createInstance("Frame", { Parent = frame.Parent })
+	expect(ui.styled(child, "BackgroundTransparency")):toBe(0)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	frame:AddTag "Lit"
+	other:AddTag "Unrelated"
+	env.step(0.1)
+	near(ui.styled(child, "BackgroundTransparency"), 0.5)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+	env.step(0.11)
+	expect(ui.styled(child, "BackgroundTransparency")):toBe(1)
+	child.Parent = other
+	env.step(0.1)
+	near(ui.styled(child, "BackgroundTransparency"), 0.5)
+	env.step(0.11)
+	expect(ui.styled(child, "BackgroundTransparency")):toBe(0)
+end)
+
 it("a tag retarget preserves an unread token transition", function(own)
 	local env, ui, frame, base, _, sheet = fixture(own)
 	sheet:SetAttribute("Alpha", 0)
