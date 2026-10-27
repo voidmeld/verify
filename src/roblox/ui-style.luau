@@ -55,6 +55,8 @@ local function create(
 	end
 	local watches: { [Instance]: { [string]: Watch } } = {}
 	setmetatable(watches, { __mode = "k" })
+	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
+	setmetatable(reads, { __mode = "k" })
 	local parsed: { [string]: Selector.Selector } = {}
 	type Index =
 		{ rules: { Instance }, byProperty: { [string]: { Instance } }, connections: { Environment.Connection } }
@@ -373,7 +375,15 @@ local function create(
 			end
 			return value
 		end
-		local _, value = animatedValue(object, property, nil)
+		local sheet, value = animatedValue(object, property, nil)
+		local read = reads[object]
+		if read == nil then
+			read = {}
+			reads[object] = read
+		end
+		if read[property] == nil then
+			read[property] = { sheet = sheet, value = value }
+		end
 		return if object:IsPropertyModified(property) then env.propertyOf(object, property) else value
 	end
 	local function close()
@@ -396,6 +406,9 @@ local function create(
 		end
 		for object in pairs(watches) do
 			watches[object] = nil
+		end
+		for object in pairs(reads) do
+			reads[object] = nil
 		end
 	end
 	return {
@@ -428,6 +441,23 @@ local function create(
 							watch.sheet, watch.value = sheet, value
 							watch.signal:Fire()
 						end
+					end
+				end
+			end
+			for object, properties in pairs(reads) do
+				if not env.isAlive(object) then
+					reads[object] = nil
+				else
+					local changed = false
+					for property, read in properties do
+						local sheet, value = animatedValue(object, property, nil)
+						if sheet ~= read.sheet or value ~= read.value then
+							read.sheet, read.value = sheet, value
+							changed = true
+						end
+					end
+					if changed then
+						env.fire(object, "StyledPropertiesChanged")
 					end
 				end
 			end
