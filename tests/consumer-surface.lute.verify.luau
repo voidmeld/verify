@@ -13,6 +13,8 @@ type ConsumerTypes = {
 	launched: Lute.StudioLaunched?,
 	event: Roblox.EnvironmentEvent?,
 	class: Roblox.EnvironmentClass?,
+	layoutOptions: Roblox.UiLayoutOptions?,
+	layoutController: Roblox.UiLayoutController?,
 	shard: Core.ShardPayload?,
 	verdict: Eval.Verdict?,
 }

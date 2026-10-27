@@ -375,14 +375,15 @@ local function create(
 			end
 			return value
 		end
-		local sheet, value = animatedValue(object, property, nil)
+		local _, value = animatedValue(object, property, nil)
 		local read = reads[object]
 		if read == nil then
 			read = {}
 			reads[object] = read
 		end
 		if read[property] == nil then
-			read[property] = { sheet = sheet, value = value }
+			local ruleSheet, target = resolve(object, property, nil)
+			read[property] = { sheet = ruleSheet, value = target }
 		end
 		return if object:IsPropertyModified(property) then env.propertyOf(object, property) else value
 	end
@@ -445,12 +446,12 @@ local function create(
 				end
 			end
 			for object, properties in pairs(reads) do
-				if not env.isAlive(object) then
+				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
 					reads[object] = nil
 				else
 					local changed = false
 					for property, read in properties do
-						local sheet, value = animatedValue(object, property, nil)
+						local sheet, value = resolve(object, property, nil)
 						if sheet ~= read.sheet or value ~= read.value then
 							read.sheet, read.value = sheet, value
 							changed = true

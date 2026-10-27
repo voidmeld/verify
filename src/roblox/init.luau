@@ -8,6 +8,7 @@ local CaseEntry = require "@self/case-entry"
 local EnvironmentEngineAdapter = require "@self/environment-engine"
 local Reflection = require "@self/reflection"
 local UiFakes = require "@self/ui-fakes"
+local UiLayout = require "@self/ui-layout"
 local FixtureBridge = require "@self/fixture-bridge"
 local ReflectionSnapshot = require "@self/reflection-snapshot"
 local Multiplayer = require "@self/multiplayer"
@@ -36,6 +37,8 @@ export type EnvironmentEvent = Environment.Event
 export type EnvironmentClass<P = { [string]: unknown }, M = { [string]: unknown }> = Environment.ClassSpec<P, M>
 export type MultiplayerRemote = Multiplayer.Remote
 export type InputGuiTarget = InputHost.GuiTarget
+export type UiLayoutOptions = UiLayout.Options
+export type UiLayoutController = UiLayout.Controller
 export type EnvironmentEngineVector3 = EnvironmentEngineAdapter.Vector3
 export type EnvironmentEngineCFrame = EnvironmentEngineAdapter.CFrame
 export type FixtureBridge = FixtureBridge.Bridge
