@@ -490,7 +490,7 @@ local function create(
 							changed = true
 						end
 					end
-					if changed then
+					if changed and object:IsA "GuiObject" then
 						env.fire(object, "StyledPropertiesChanged")
 					end
 				end
