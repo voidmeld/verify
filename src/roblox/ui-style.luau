@@ -290,6 +290,10 @@ local function create(
 		if target == nil and phantom then
 			target = env.defaultClassProperty(phantom, property)
 		end
+		if sheet == nil then
+			animated[object] = nil
+			return nil, target
+		end
 		local timing = Transition.timing(parameters)
 		local key = property .. "|" .. (phantom or "")
 		local entries = animated[object]
