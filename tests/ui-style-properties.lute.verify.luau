@@ -89,7 +89,7 @@ it("updates a populated unstyled screen after layout within its interaction budg
 		expect(os.clock() - started < 5):toBe(true)
 	end
 	assert(bridge.layout).step()
-	expect(panels[256].AbsolutePosition.X):toBe(256)
+	expect((panels[256].AbsolutePosition :: { X: number }).X):toBe(256)
 end)
 
 return nil
