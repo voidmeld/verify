@@ -49,7 +49,13 @@ local function decode(source: string): (Metrics.Face, string)
 	end
 	assert(#sizes == 100)
 	local key = Values.string(root.family) .. "/" .. Values.string(root.weight) .. "/" .. Values.string(root.style)
-	return { tokens = tokens, pairs = pairs, sizes = sizes }, key
+	return {
+		tokens = tokens,
+		pairs = pairs,
+		sizes = sizes,
+		pixelScale = if root.pixelScale == nil then nil else Values.number(root.pixelScale),
+	},
+		key
 end
 
 local DIRECTORY = Path.format(Path.join(Path.dirname(Path.resolve(debug.info(1, "s"))), "fixtures/text"))
