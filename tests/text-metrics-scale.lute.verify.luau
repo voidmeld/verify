@@ -45,4 +45,23 @@ it("scaled text compares wrap and truncation limits in returned units", function
 	expect(model.truncate("AA AA AA", 1, 1, 1, "AtEnd", false)):toBe(0)
 end)
 
+it("Guru period-prefixed ligatures preserve native kerning and text boundaries", function()
+	local face = Wire.parse(fs.readFileToString "src/lute/fixtures/text/Guru-Regular-Normal.json") :: Metrics.Face
+	local model = Metrics.create(face)
+	for _, entry in
+		{
+			{ text = "W.n", width = 110 },
+			{ text = "W.m", width = 130.6666717529297 },
+			{ text = "W.N", width = 120 },
+			{ text = ".n", width = 68 },
+			{ text = " .n", width = 88.66667175292969 },
+			{ text = "W..n", width = 120.66667175292969 },
+			{ text = "W.nW", width = 178.6666717529297 },
+			{ text = "W.n W.n ", width = 261.3333435058594 },
+		}
+	do
+		expect(model.width(entry.text, 100)):toBe(entry.width)
+	end
+end)
+
 return nil

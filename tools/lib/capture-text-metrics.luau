@@ -37,6 +37,7 @@ harness:case("native font metrics", function(check)
   local value = utf8.char(codepoint)
   table.insert(tokens, value)
  end
+ for _, value in {".D", ".H", ".L", ".M", ".N", ".R", ".S", ".T", ".d", ".h", ".l", ".m", ".n", ".r", ".s", ".t", ".LL", ".RR", ".ll", ".rr"} do table.insert(tokens, value) end
  for _, value in {"…", "•", "—", "–", "×", "·", "’", "“", "”", "°", "→", "−", "★", "é", "á", "í", "ó", "ú", "ñ", "ü", "ö", "ä", "ç", "è", "à", "ê", "ô", "ë", "ß", "É", "ð", "ĝ", "ş", "Ş", "ţ"} do table.insert(tokens, value) end
  for _, value in {"ff", "fi", "fl", "ffi", "ffl"} do table.insert(tokens, value) end
  local minimum = math.huge
