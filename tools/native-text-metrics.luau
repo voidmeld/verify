@@ -45,7 +45,7 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
   params.Font = Font.new(data.family, Enum.FontWeight[data.weight], Enum.FontStyle[data.style])
   local random = Random.new(527)
   local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
-  local strings = {"", "  ", "Hello world", "Office staff affiliation", "affluent waffle", "The quick brown fox jumps over the lazy dog"}
+  local strings = {"", "  ", "Hello world", "Office staff affiliation", "affluent waffle", "The quick brown fox jumps over the lazy dog", "W.n", "W.m", "W.N", ".n", " .n", "W..n", "W.nW", "W.n W.n ", "W.LL W.RR W.ll W.rr"}
   for index = 1, 100 do
    local text = ""
    for cursor = 1, random:NextInteger(1, 80) do
