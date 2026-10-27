@@ -47,25 +47,58 @@ local function create(
 			then previous.present
 			else object:HasTag(tag)
 	end
-	local cleared: { Animated } = {}
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
 	setmetatable(timed, { __mode = "k" })
-	local function dirty()
-		pendingAt = nil
-		table.clear(cleared)
+	local stale: { [Animated]: Instance } = {}
+	setmetatable(stale, { __mode = "k" })
+	local staleSince: number? = nil
+	local styleGeneration = 0
+	local readsGeneration = -1
+	local function mark(subtree: Instance?)
+		styleGeneration += 1
 		local now = env.now()
-		for entry in pairs(timed) do
-			entry.dirty = entry.dirty or now
+		staleSince = staleSince or now
+		if subtree == nil then
+			for entry, object in pairs(timed) do
+				entry.dirty = entry.dirty or now
+				stale[entry] = object
+			end
+			return
 		end
+		local pending = { subtree }
+		while #pending > 0 do
+			local object = table.remove(pending) :: Instance
+			local entries = animated[object]
+			if entries then
+				for _, entry in entries do
+					if timed[entry] then
+						entry.dirty = entry.dirty or now
+						stale[entry] = object
+					end
+				end
+			end
+			for _, child in env.childrenOf(object) do
+				table.insert(pending, child)
+			end
+		end
+	end
+	local function dirty(subtree: Instance?)
+		pendingAt = nil
+		mark(subtree)
 	end
 	local watches: { [Instance]: { [string]: Watch } } = {}
 	setmetatable(watches, { __mode = "k" })
 	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
 	setmetatable(reads, { __mode = "k" })
 	local parsed: { [string]: Selector.Selector } = {}
-	type Index =
-		{ rules: { Instance }, byProperty: { [string]: { Instance } }, connections: { Environment.Connection } }
+	type Index = {
+		rules: { Instance },
+		byProperty: { [string]: { Instance } },
+		candidates: { [string]: { Instance } },
+		nested: { [Instance]: boolean },
+		connections: { Environment.Connection },
+	}
 	local indexes: { [Instance]: Index } = {}
 	local function forget(sheet: Instance)
 		local index = indexes[sheet]
@@ -85,41 +118,50 @@ local function create(
 	end
 	local frameScopes: { [Instance]: { sheet: Instance? } }? = nil
 	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
-	local function linkedSheet(object: Instance): Instance?
-		local current: Instance? = object
-		while current do
-			local link: Instance? = nil
-			for _, child in current:GetChildren() do
-				if child:IsA "StyleLink" then
-					if link then
-						unsupported "multiple StyleLinks"
-					end
-					link = child
+	local function ownSheet(object: Instance): Instance?
+		local link: Instance? = nil
+		for _, child in env.childrenOf(object) do
+			if child:IsA "StyleLink" then
+				if link then
+					unsupported "multiple StyleLinks"
 				end
+				link = child
 			end
-			if link then
-				local sheet = env.propertyOf(link, "StyleSheet")
-				if sheet ~= nil then
-					local instance = Environment.assertInstance(sheet)
-					assert(instance:IsA "StyleSheet", "StyleLink requires a StyleSheet")
-					return instance
-				end
+		end
+		if link then
+			local sheet = env.propertyOf(link, "StyleSheet")
+			if sheet ~= nil then
+				local instance = Environment.assertInstance(sheet)
+				assert(instance:IsA "StyleSheet", "StyleLink requires a StyleSheet")
+				return instance
 			end
-			current = current.Parent
 		end
 		return nil
 	end
 	local function scope(object: Instance): Instance?
 		local scopes = frameScopes
-		if scopes == nil then
-			return linkedSheet(object)
+		local walked: { Instance } = {}
+		local found: Instance? = nil
+		local current: Instance? = object
+		while current do
+			local known = if scopes then scopes[current] else nil
+			if known then
+				found = known.sheet
+				break
+			end
+			table.insert(walked, current)
+			found = ownSheet(current)
+			if found then
+				break
+			end
+			current = env.parentOf(current)
 		end
-		local known = scopes[object]
-		if known == nil then
-			known = { sheet = linkedSheet(object) }
-			scopes[object] = known
+		if scopes then
+			for _, visited in walked do
+				scopes[visited] = { sheet = found }
+			end
 		end
-		return known.sheet
+		return found
 	end
 	local function token(sheet: Instance, value: unknown): unknown
 		local seen: { [string]: boolean } = {}
@@ -150,7 +192,7 @@ local function create(
 		if known then
 			return known
 		end
-		local index: Index = { rules = {}, byProperty = {}, connections = {} }
+		local index: Index = { rules = {}, byProperty = {}, candidates = {}, nested = {}, connections = {} }
 		local function drop()
 			dirty()
 			forget(sheet)
@@ -162,6 +204,7 @@ local function create(
 				continue
 			end
 			table.insert(index.rules, candidate)
+			index.nested[candidate] = #candidate:GetChildren() > 0
 			table.insert(index.connections, candidate:GetPropertyChangedSignal("Selector"):Connect(drop))
 			table.insert(index.connections, candidate:GetPropertyChangedSignal("Priority"):Connect(drop))
 			table.insert(index.connections, candidate.DescendantAdded:Connect(drop))
@@ -240,12 +283,17 @@ local function create(
 		local index = indexOf(sheet)
 		local candidates: { Instance } = index.rules
 		if property then
-			candidates = table.clone(index.byProperty[property] or {})
-			for _, candidate in index.rules do
-				if (transitions[candidate] or {})["*"] ~= nil and not table.find(candidates, candidate) then
-					table.insert(candidates, candidate)
+			local known = index.candidates[property]
+			if known == nil then
+				known = table.clone(index.byProperty[property] or {})
+				for _, candidate in index.rules do
+					if (transitions[candidate] or {})["*"] ~= nil and not table.find(known, candidate) then
+						table.insert(known, candidate)
+					end
 				end
+				index.candidates[property] = known
 			end
+			candidates = known
 		end
 		for _, candidate in candidates do
 			local values = properties[candidate] or {}
@@ -256,7 +304,7 @@ local function create(
 				end
 			end
 			local value = if property then values[property] else nil
-			if #candidate:GetChildren() > 0 then
+			if index.nested[candidate] then
 				unsupported "nested StyleRules"
 			end
 			local matches = false
@@ -319,11 +367,9 @@ local function create(
 			}
 			entries[key] = entry
 		else
-			if entry.dirty ~= nil then
-				table.insert(cleared, entry)
-			end
 			Transition.retarget(entry.motion, target, timing, entry.dirty or env.now())
 			entry.dirty = nil
+			stale[entry] = nil
 		end
 		if timing ~= nil then
 			timed[entry] = object
@@ -333,16 +379,26 @@ local function create(
 		return sheet, Transition.sample(entry.motion, env.now())
 	end
 	function refresh(quiet: boolean?)
-		for entry, object in pairs(timed) do
+		local since = staleSince
+		if since == nil or quiet and since >= env.now() then
+			return
+		end
+		for entry, object in pairs(stale) do
 			if not env.isAlive(object) then
+				stale[entry] = nil
 				timed[entry] = nil
 				animated[object] = nil
-			elseif entry.dirty ~= nil then
-				if quiet then
-					pcall(animatedValue, object, entry.property, entry.phantom)
-				else
-					animatedValue(object, entry.property, entry.phantom)
-				end
+			elseif quiet then
+				pcall(animatedValue, object, entry.property, entry.phantom)
+			else
+				animatedValue(object, entry.property, entry.phantom)
+			end
+		end
+		staleSince = nil
+		for entry in pairs(stale) do
+			local at = entry.dirty
+			if at ~= nil and (staleSince == nil or at < staleSince) then
+				staleSince = at
 			end
 		end
 	end
@@ -351,36 +407,37 @@ local function create(
 			return
 		end
 		observed = env.observe(function(event: Environment.Event)
-			if event.operation == "setProperty" and not STYLE_MEMBERS[event.member or ""] then
-				local object = event.object
-				if
-					not (
-						object:IsA "StyleRule"
-						or object:IsA "StyleSheet"
-						or object:IsA "StyleLink"
-						or object:IsA "StyleDerive"
-					)
-				then
+			local object = event.object
+			local subtree: Instance? = nil
+			if
+				not (
+					object:IsA "StyleRule"
+					or object:IsA "StyleSheet"
+					or object:IsA "StyleLink"
+					or object:IsA "StyleDerive"
+				)
+			then
+				local operation = event.operation
+				if operation == "setParent" or (operation == "setProperty" and STYLE_MEMBERS[event.member or ""]) then
+					subtree = object
+				else
 					return
 				end
 			end
 			local now = env.now()
 			if pendingAt == now then
-				for _, entry in cleared do
-					entry.dirty = entry.dirty or now
-				end
-				table.clear(cleared)
+				mark(subtree)
 				return
 			end
 			refresh(true)
-			dirty()
+			dirty(subtree)
 			pendingAt = now
 		end)
 		tags = env.tagChanged:Connect(function(object: Instance, tag: string, present: boolean)
 			previousTag = { object = object, tag = tag, present = not present }
 			refresh(true)
 			previousTag = nil
-			dirty()
+			dirty(object)
 			refresh(true)
 		end)
 	end
@@ -415,6 +472,7 @@ local function create(
 			reads[object] = read
 		end
 		if read[property] == nil then
+			observe()
 			local ruleSheet, target = resolve(object, property, nil)
 			read[property] = { sheet = ruleSheet, value = target }
 		end
@@ -478,6 +536,10 @@ local function create(
 					end
 				end
 			end
+			if readsGeneration == styleGeneration then
+				return
+			end
+			readsGeneration = styleGeneration
 			for object, properties in pairs(reads) do
 				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
 					reads[object] = nil
