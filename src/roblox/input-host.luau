@@ -582,6 +582,109 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end)
 		return found
 	end
+	local directions: { [string]: { x: number, y: number, name: string } } = {
+		Up = { x = 0, y = -1, name = "Up" },
+		Down = { x = 0, y = 1, name = "Down" },
+		Left = { x = -1, y = 0, name = "Left" },
+		Right = { x = 1, y = 0, name = "Right" },
+	}
+	local function shown(object: Instance): boolean
+		local current: Instance? = object
+		while current and current ~= gui do
+			if current:IsA "GuiObject" and read(current, "Visible") == false then
+				return false
+			end
+			if current:IsA "LayerCollector" and read(current, "Enabled") == false then
+				return false
+			end
+			current = current.Parent
+		end
+		return current == gui
+	end
+	local function selectable(object: Instance): boolean
+		return object:IsA "GuiObject" and read(object, "Selectable") == true and shown(object) and interactable(object)
+	end
+	local function center(object: Instance): Position
+		local at = Values.vector(read(object, "AbsolutePosition"))
+		local size = Values.vector(read(object, "AbsoluteSize"))
+		return { X = at.X + size.X / 2, Y = at.Y + size.Y / 2 }
+	end
+	local function groupOf(object: Instance): Instance?
+		local current = object.Parent
+		while current and current ~= gui do
+			if current:IsA "GuiObject" and read(current, "SelectionGroup") == true then
+				return current
+			end
+			current = current.Parent
+		end
+		return nil
+	end
+	local function nearest(from: Instance, scope: Instance, direction: { x: number, y: number }): Instance?
+		local origin = center(from)
+		local best: Instance? = nil
+		local bestScore = math.huge
+		for _, candidate in scope:GetDescendants() do
+			if candidate ~= from and selectable(candidate) then
+				local at = center(candidate)
+				local dx, dy = at.X - origin.X, at.Y - origin.Y
+				local along = dx * direction.x + dy * direction.y
+				if along > 0 then
+					local across = math.abs(dx * direction.y - dy * direction.x)
+					local score = along + 2 * across
+					if score < bestScore then
+						best, bestScore = candidate, score
+					end
+				end
+			end
+		end
+		return best
+	end
+	local function navigate(from: Instance, direction: { x: number, y: number, name: string }): Instance?
+		local named = read(from, "NextSelection" .. direction.name)
+		if Environment.isInstance(named) then
+			local target = Environment.assertInstance(named)
+			if selectable(target) then
+				return target
+			end
+		end
+		local group = groupOf(from)
+		while group do
+			local found = nearest(from, group, direction)
+			if found then
+				return found
+			end
+			if tostring(read(group, "SelectionBehavior" .. direction.name)) == "Enum.SelectionBehavior.Stop" then
+				return nil
+			end
+			group = groupOf(group)
+		end
+		return nearest(from, gui, direction)
+	end
+	local function deliverSelection(
+		guiService: Instance,
+		selected: Instance,
+		code: string,
+		object: Instance,
+		down: boolean
+	)
+		local direction = directions[code]
+		if down and direction then
+			local target = navigate(selected, direction)
+			if target then
+				env.poke(guiService, "SelectedObject", target)
+			end
+		elseif down and code == "Escape" then
+			env.poke(guiService, "SelectedObject", nil)
+		end
+		env.fire(service, if down then "InputBegan" else "InputEnded", object, true)
+		if down and code == "Return" and button(selected) and interactable(selected) then
+			env.fire(selected, "Activated", object, 1)
+		end
+	end
+	local navigationKeys: { [string]: boolean } = {
+		Return = true,
+		Escape = true,
+	}
 	local function deliverKey(value: Key)
 		local code = value.code
 		local keyboard = inputTypes.Keyboard
@@ -630,8 +733,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			return
 		end
 		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
-		if guiService and env.propertyOf(guiService, "SelectedObject") ~= nil then
-			unsupported "keyboard input while a GuiObject is selected"
+		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
+		if guiService and Environment.isInstance(selected) and (directions[code] or navigationKeys[code]) then
+			deliverSelection(guiService, Environment.assertInstance(selected), code, object, value.down)
+			return
 		end
 		env.fire(service, if value.down then "InputBegan" else "InputEnded", object, false)
 		local sunk: number? = nil
