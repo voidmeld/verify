@@ -98,6 +98,27 @@ describe("native place bundler", function()
 		end):toThrow "verbatim module needs a path"
 	end)
 
+	it("references a verbatim module from a literal import without following it", function(_, caseContext)
+		local root = directory(caseContext)
+		fs.writeStringToFile(root .. "/entry.luau", 'return require "./packages/library"')
+		local bundled = Model.read(Place.bundle {
+			roots = {},
+			modules = { root .. "/entry.luau" },
+			verbatim = { [root .. "/packages/library"] = "return require(script.Parent.Missing)" },
+			rootName = "Mounted",
+		})
+		local sources: { [string]: string } = {}
+		for _, item in Model.descendants(bundled) do
+			if item.className == "ModuleScript" then
+				sources[item.name] = item.properties.Source.value
+			end
+		end
+		expect(sources.entry):toBe(
+			"return require(" .. Place.moduleExpression(root .. "/packages/library", "Mounted") .. ")"
+		)
+		expect(sources.library):toBe "return require(script.Parent.Missing)"
+	end)
+
 	it("rejects missing external and dynamic imports and ambiguous module mounts", function(_, caseContext)
 		local root = directory(caseContext)
 		local source = root .. "/case.luau"
