@@ -24,6 +24,7 @@ export type Options = {
 	entry: string,
 	caseIds: { string }?,
 	roots: { string }?,
+	verbatim: { [string]: string }?,
 	frameworkDirectory: string?,
 	output: string?,
 	deadlineSeconds: number?,
@@ -210,6 +211,7 @@ local function run(options: Options): Result
 					basePlace = options.basePlace,
 					roots = roots,
 					modules = modules,
+					verbatim = options.verbatim,
 					clientSource = clientSource,
 					serverSource = serverSource,
 				}

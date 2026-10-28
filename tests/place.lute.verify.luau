@@ -60,6 +60,44 @@ describe("native place bundler", function()
 		expect(sources.child):toBe "return '<child & value>'"
 		expect(sources.entry):toBe("return require(" .. Place.moduleExpression(root .. "/child.luau", "Mounted") .. ")")
 	end)
+	it("mounts verbatim modules at their paths without rewriting their imports", function(_, caseContext)
+		local root = directory(caseContext)
+		fs.writeStringToFile(root .. "/entry.luau", 'return require "./child"')
+		fs.writeStringToFile(root .. "/child.luau", "return 1")
+		local verbatim = {
+			["packages/library"] = "return require(script.Value)",
+			["packages/library/Value"] = 'return require("./Other")',
+			["packages/Other"] = "return 2",
+		}
+		local bundled = Model.read(Place.bundle {
+			roots = {},
+			modules = { root .. "/entry.luau" },
+			verbatim = verbatim,
+			rootName = "Mounted",
+		})
+		local sources: { [string]: string } = {}
+		local parents: { [string]: string } = {}
+		local function walk(item: Model.Instance, parent: string)
+			parents[item.name] = parent
+			if item.className == "ModuleScript" then
+				sources[item.name] = item.properties.Source.value
+			end
+			for _, child in item.children do
+				walk(child, item.name)
+			end
+		end
+		walk(bundled[1], "")
+		expect(sources.library):toBe "return require(script.Value)"
+		expect(sources.Value):toBe 'return require("./Other")'
+		expect(sources.Other):toBe "return 2"
+		expect(parents.Value):toBe "library"
+		expect(parents.library):toBe "packages"
+		expect(parents.packages):toBe "Mounted"
+		expect(function()
+			Place.bundle { roots = {}, verbatim = { [""] = "return 1" } }
+		end):toThrow "verbatim module needs a path"
+	end)
+
 	it("rejects missing external and dynamic imports and ambiguous module mounts", function(_, caseContext)
 		local root = directory(caseContext)
 		local source = root .. "/case.luau"

@@ -8,6 +8,7 @@ local Xml = require "../codec/xml"
 export type BundleOptions = {
 	roots: { string },
 	modules: { string }?,
+	verbatim: { [string]: string }?,
 	rootName: string?,
 }
 export type Options = BundleOptions & {
@@ -261,6 +262,14 @@ local function moduleTree(options: BundleOptions): string
 		assert(sources[logical(file)] == nil, "duplicate module mount: " .. file)
 		sources[logical(file)] = ""
 		ensure(logical(file))
+	end
+	local verbatim: { [string]: string } = options.verbatim or {}
+	for path, source in verbatim do
+		local name = logical(path)
+		assert(name ~= "", "verbatim module needs a path")
+		assert(sources[name] == nil, "duplicate module mount: " .. path)
+		sources[name] = source
+		ensure(name)
 	end
 	for file, contents in files do
 		sources[logical(file)] = rewrite(contents, function(target)
