@@ -204,6 +204,11 @@ local function moduleTree(options: BundleOptions): string
 	for _, root in options.roots do
 		filesUnder(normalize(root), files)
 	end
+	local verbatim: { [string]: string } = options.verbatim or {}
+	local mounted: { [string]: boolean } = {}
+	for path in verbatim do
+		mounted[logical(path)] = true
+	end
 	local modules: { string } = options.modules or {}
 	for _, file in modules do
 		files[normalize(file)] = fs.readFileToString(file)
@@ -226,6 +231,9 @@ local function moduleTree(options: BundleOptions): string
 			return ""
 		end)
 		for _, target in imports do
+			if mounted[logical(target)] then
+				continue
+			end
 			local resolved: string? = nil
 			local candidates: { string } = if target:sub(-5) == ".luau"
 				then { target }
@@ -263,7 +271,6 @@ local function moduleTree(options: BundleOptions): string
 		sources[logical(file)] = ""
 		ensure(logical(file))
 	end
-	local verbatim: { [string]: string } = options.verbatim or {}
 	for path, source in verbatim do
 		local name = logical(path)
 		assert(name ~= "", "verbatim module needs a path")
@@ -277,7 +284,11 @@ local function moduleTree(options: BundleOptions): string
 				target:sub(1, 1) == "." or target:sub(1, 6) == "@self/",
 				"external module is unavailable: " .. target
 			)
-			local resolved = resolve(reference(file, target), present)
+			local referenced = reference(file, target)
+			if mounted[logical(referenced)] then
+				return "require(" .. moduleExpression(referenced, rootName) .. ")"
+			end
+			local resolved = resolve(referenced, present)
 			return "require(" .. moduleExpression(resolved, rootName) .. ")"
 		end)
 	end
