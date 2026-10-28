@@ -34,5 +34,4 @@ This file owns the contribution rules. The repository owner sets the scope of ea
 Changes to this library use a pull request to `main` and the required `Gate` check. Do not push directly to `main` or bypass a failing check.
 
 Preserve the [MIT provenance](PROVENANCE.md). Keep history append-only unless the Owner authorizes a rewrite.
-Use author and committer `voidmeld <158495725+voidmeld@users.noreply.github.com>`. Add no attribution trailers.
 Consumers follow the [Verify skill](.agents/skills/verify/SKILL.md).
