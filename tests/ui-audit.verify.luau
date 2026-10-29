@@ -234,6 +234,16 @@ describe("ui audit analyzer", function()
 		expect(Audit.isAbove(value, left, right)):toBe(false)
 	end)
 
+	it("does not compare text on a world surface with text on the screen", function()
+		local a = label(1, { rect = rect(100, 100, 200, 30) })
+		local b = label(2, { rect = rect(120, 100, 200, 30) })
+		b.root = 2
+		local value = dump({ a, b }, {})
+		expect(count(Audit.analyze(value), "text-overlap")):toBe(1)
+		value.roots[2].world = true
+		expect(count(Audit.analyze(value), "text-overlap")):toBe(0)
+	end)
+
 	it("reports text intersections without treating label boxes as ink", function()
 		local a = label(1, { rect = rect(100, 100, 200, 30) })
 		local b = label(2, { rect = rect(120, 100, 200, 30) })

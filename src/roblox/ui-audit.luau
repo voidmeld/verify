@@ -652,6 +652,7 @@ local function analyze(dump: Dump, options: Options?): Report
 				or visibleRects[right.index] == nil
 				or ancestorOf(left.index, right)
 				or ancestorOf(right.index, left)
+				or (left.root ~= right.root and not (onScreen(left) and onScreen(right)))
 			then
 				continue
 			end
