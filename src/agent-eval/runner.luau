@@ -765,7 +765,10 @@ local function create(options: Options): () -> Summary
 							local saved =
 								Result.decode(options.decode(files.read(Paths.join(directory, "result.json"))))
 							assert(saved.id == spec.id, "saved run identity differs from the selected run")
-							assert(saved.status == "completed", "checks-only requires a completed saved run")
+							assert(
+								saved.status == "completed" or saved.status == "timed_out",
+								"checks-only requires a completed or deadline-stopped saved run"
+							)
 							local workspace = Paths.join(directory, "workspace")
 							assert(files.isDirectory(workspace), "checks-only requires the saved workspace")
 							local archive = Paths.join(directory, "rechecks/" .. tostring(services.clock()))
@@ -780,7 +783,7 @@ local function create(options: Options): () -> Summary
 							end
 							saved.checks, saved.scores, saved.audits, saved.captures = {}, {}, {}, {}
 							runChecks(spec, workspace, directory, saved)
-							saved.passed = saved.checksPassed and #saved.exceeded == 0
+							saved.passed = saved.status == "completed" and saved.checksPassed and #saved.exceeded == 0
 							saved.timeToPassSeconds = if saved.passed then saved.metrics.wallSeconds else nil
 							write(Paths.join(directory, "result.json"), saved)
 							results[spec.id] = saved

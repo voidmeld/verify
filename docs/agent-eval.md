@@ -31,7 +31,7 @@ lute run tools/agent-eval.luau audit  dump.json [--out audit.json]
 
 - `plan` lists the runs in order with their digests. It runs nothing.
 - `run` executes the runs. It exits 1 when a run could not start, otherwise 0. A failed check does not change the exit code.
-- `run --checks-only` repeats hidden checks and audits on completed saved workspaces. It calls no agent or Studio setup adapter. Agent metrics, transcripts, timestamps and build files stay as recorded. A missing saved result or workspace is an error. It archives the previous result, checks and captures under `rechecks/<clock>` before starting. The saved digest still identifies the original agent run.
+- `run --checks-only` repeats hidden checks and audits on saved workspaces whose run completed or stopped at its deadline. A deadline stop stays a failed run. It calls no agent or Studio setup adapter. Agent metrics, transcripts, timestamps and build files stay as recorded. A missing saved result or workspace is an error. It archives the previous result, checks and captures under `rechecks/<clock>` before starting. The saved digest still identifies the original agent run.
 - `judge` compares the screenshots. With `--transport api` it reads the key from `ANTHROPIC_API_KEY`. Only the command line reads this variable. The library takes the key as an argument.
 - `report` writes `report.json` and `report.md`. It exits 0 for `PASS` and 1 for `FAIL`. `--verify-report` also writes the verdict as an ordinary Verify report in the `{ runId, report }` envelope, so a gate producer can require it.
 - `audit` scores one interface dump.
