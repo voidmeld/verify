@@ -456,7 +456,7 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 		local screenSpace = onScreen(element)
 		local textValue = element.text
-		if textValue ~= nil and textValue.content ~= "" then
+		if textValue ~= nil and textValue.content ~= "" and textValue.transparency < 1 then
 			local overflows = not textValue.scaled
 				and (
 					textValue.bounds.width > element.rect.width + EDGE

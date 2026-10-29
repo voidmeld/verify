@@ -234,6 +234,23 @@ describe("ui audit analyzer", function()
 		expect(Audit.isAbove(value, left, right)):toBe(false)
 	end)
 
+	it("does not check text that draws no ink", function()
+		local function reserve(transparency: number): Object
+			return label(1, {
+				text = {
+					content = "Reserve",
+					size = 16,
+					bounds = { width = 50, height = 16 },
+					fits = true,
+					color = BLACK,
+					transparency = transparency,
+				},
+			})
+		end
+		expect(count(Audit.analyze(dump({ reserve(0) }, {})), "contrast-low")):toBe(1)
+		expect(count(Audit.analyze(dump({ reserve(1) }, {})), "contrast-low")):toBe(0)
+	end)
+
 	it("does not compare text on a world surface with text on the screen", function()
 		local a = label(1, { rect = rect(100, 100, 200, 30) })
 		local b = label(2, { rect = rect(120, 100, 200, 30) })
