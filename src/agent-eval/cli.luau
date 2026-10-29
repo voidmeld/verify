@@ -231,6 +231,7 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 	local suiteProvider = Schema.optionalText(suite.judge.provider, "suite.judge.provider") or "anthropic"
 	local suiteTransport = Schema.optionalText(suite.judge.transport, "suite.judge.transport") or "api"
 	local suiteModel = Schema.optionalText(suite.judge.model, "suite.judge.model")
+	local rubric = Judge.decodeRubric(suite.judge.rubric, "suite.judge.rubric")
 	if suiteProvider ~= "anthropic" and suiteProvider ~= "openai" then
 		services.print "agent-eval: suite.judge.provider must be anthropic or openai"
 		return 2
@@ -332,6 +333,7 @@ local function judgeCommand(parsed: Parsed, context: Context): number
 		decode = context.decode,
 		evidence = evidence,
 		seed = seed,
+		rubric = rubric,
 		attempts = numberFlag(parsed, "attempts"),
 		resume = not parsed.switches.fresh,
 		log = services.print,

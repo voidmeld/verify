@@ -773,8 +773,33 @@ local function calibrate(judgments: { Judgment }, labels: { Label }): Calibratio
 	return calibration
 end
 
+local function decodeRubric(value: unknown, label: string): Rubric?
+	if Schema.absent(value) then
+		return nil
+	end
+	local raw = Schema.record(value, label)
+	Schema.only(raw, label, { "instructions", "criteria" })
+	local entries = Schema.list(raw.criteria, label .. ".criteria")
+	if #entries == 0 then
+		return Schema.fail(label .. ".criteria", "must hold at least one criterion")
+	end
+	local criteria: { Criterion } = {}
+	local ids: { string } = {}
+	for index, entry in entries do
+		local itemLabel = ("%s.criteria[%d]"):format(label, index)
+		local item = Schema.record(entry, itemLabel)
+		Schema.only(item, itemLabel, { "id", "description" })
+		local id = Schema.identifier(item.id, itemLabel .. ".id")
+		table.insert(ids, id)
+		table.insert(criteria, { id = id, description = Schema.text(item.description, itemLabel .. ".description") })
+	end
+	Schema.unique(ids, label .. ".criteria")
+	return { criteria = criteria, instructions = Schema.optionalText(raw.instructions, label .. ".instructions") }
+end
+
 return {
 	DEFAULT_MODEL = DEFAULT_MODEL,
+	decodeRubric = decodeRubric,
 	DEFAULT_CODEX_MODEL = DEFAULT_CODEX_MODEL,
 	DEFAULT_CODEX_EFFORT = DEFAULT_CODEX_EFFORT,
 	DEFAULT_RUBRIC = DEFAULT_RUBRIC,
