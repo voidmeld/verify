@@ -303,6 +303,41 @@ it("rechecks saved workspaces without calling an adapter or changing agent metri
 		expect(#check(result, "cases").cases):toBe(2)
 	end
 end)
+it("rechecks a saved deadline stop without counting it as a pass", function()
+	local memory = Fakes.memory()
+	corpus(memory)
+	local calls: Calls = { requests = {} }
+	local before = execute(memory, calls, { selection = { tasks = { "one" } } })
+	for _, result in before.results do
+		local path = result.directory .. "/result.json"
+		local saved = Lute.parse(memory.files.read(path)) :: { [string]: unknown }
+		saved.status = "timed_out"
+		saved.exceeded = { "wallSeconds" }
+		memory.files.write(path, Lute.encode(saved))
+	end
+	local count = #calls.requests
+	local after = execute(memory, calls, { selection = { tasks = { "one" } }, checksOnly = true })
+	expect(#calls.requests):toBe(count)
+	for _, result in after.results do
+		expect(result.status):toBe "timed_out"
+		expect(result.passed):toBe(false)
+		expect(result.timeToPassSeconds):toBe(nil)
+		expect(#check(result, "cases").cases):toBe(2)
+	end
+end)
+it("refuses to recheck a saved run that did not complete or reach its deadline", function()
+	local memory = Fakes.memory()
+	corpus(memory)
+	local calls: Calls = { requests = {} }
+	local before = execute(memory, calls, { selection = { tasks = { "one" } } })
+	local path = before.results[1].directory .. "/result.json"
+	local saved = Lute.parse(memory.files.read(path)) :: { [string]: unknown }
+	saved.status = "failed"
+	memory.files.write(path, Lute.encode(saved))
+	local ok, problem = pcall(execute, memory, calls, { selection = { tasks = { "one" } }, checksOnly = true })
+	expect(ok):toBe(false)
+	expect(tostring(problem)):toContain "checks-only requires a completed or deadline-stopped saved run"
+end)
 it("scoped Studio releases before checks and never keeps an adapter error", function()
 	for _, configuration in
 		{
