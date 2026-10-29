@@ -486,6 +486,63 @@ describe("agent evaluation judge", function()
 			}))
 		end):toThrow "repeats"
 	end)
+
+	it("a suite rubric replaces the default criteria and adds its instructions", function()
+		expect(AgentEval.judge.decodeRubric(nil, "suite.judge.rubric")):toBeNil()
+		local rubric = assert(AgentEval.judge.decodeRubric(
+			Lute.parse(Fakes.json {
+				instructions = "Prefer the interface that keeps the world in view.",
+				criteria = {
+					{ id = "attention", description = "The next decision stands out." },
+					{ id = "identity", description = "The interface belongs to this game." },
+				},
+			}),
+			"suite.judge.rubric"
+		))
+		expect(#rubric.criteria):toBe(2)
+		expect(rubric.criteria[2].id):toBe "identity"
+		local seen: { AgentEval.JudgeRequest } = {}
+		local answering: AgentEval.JudgeTransport = function(request)
+			table.insert(seen, request)
+			return {
+				text = Fakes.json {
+					criteria = { attention = "first", identity = "first" },
+					overall = "first",
+					confidence = 0.7,
+					reasons = { "clearer next action" },
+				},
+				error = nil,
+				model = nil,
+			}
+		end
+		local judged = AgentEval.judge.compare(comparison({ "/a.png" }, { "/b.png" }), {
+			transport = answering,
+			decode = Lute.parse,
+			seed = 3,
+			rubric = rubric,
+		})
+		expect(judged.status):toBe "judged"
+		expect(string.find(seen[1].system, "keeps the world in view", 1, true) ~= nil):toBe(true)
+		expect(seen[1].criteria):toEqual { "attention", "identity" }
+		expect(judged.criteria.identity ~= nil):toBe(true)
+		expect(function()
+			AgentEval.judge.decodeRubric(Lute.parse(Fakes.json { criteria = {} }), "suite.judge.rubric")
+		end):toThrow "at least one criterion"
+		expect(function()
+			AgentEval.judge.decodeRubric(
+				Lute.parse(Fakes.json {
+					criteria = { { id = "a", description = "x" }, { id = "a", description = "y" } },
+				}),
+				"suite.judge.rubric"
+			)
+		end):toThrow "repeats"
+		expect(function()
+			AgentEval.judge.decodeRubric(
+				Lute.parse(Fakes.json { criteria = { { id = "a", description = "x", weight = 2 } } }),
+				"suite.judge.rubric"
+			)
+		end):toThrow "weight"
+	end)
 end)
 
 return nil

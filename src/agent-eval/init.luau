@@ -89,6 +89,7 @@ return {
 		run = Judging.run,
 		load = Judging.load,
 		decodeLabels = Judge.decodeLabels,
+		decodeRubric = Judge.decodeRubric,
 		calibrate = Judge.calibrate,
 	},
 	stats = Stats,
