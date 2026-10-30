@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native constrained grid cells", source = require "../tests/fixtures/ui-grid-constraints" },
 	{ name = "native oversized word wrapping", source = require "../tests/fixtures/ui-word-wrap" },
 	{ name = "native explicit GUI selection", source = require "../tests/fixtures/input-gui-select" },
 	{ name = "native truncation boundaries", source = require "../tests/fixtures/ui-truncation-boundary" },
