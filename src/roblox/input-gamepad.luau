@@ -66,7 +66,7 @@ local function create(
 	emit: (string, Instance) -> ()
 )
 	local states: { [string]: { Instance } } = {}
-	local held: { [string]: boolean } = {}
+	local held: { [string]: number } = {}
 	local function state(kind: unknown): { Instance }
 		assert(EnumTypes.isItem(kind) and EnumTypes.enumType(kind) == "UserInputType", "expected Enum.UserInputType")
 		local name = tostring(kind):match "([^%.]+)$" or ""
@@ -87,7 +87,7 @@ local function create(
 		return table.clone(entries)
 	end
 	local function axis(positive: string, negative: string): number
-		return (if held[positive] then 1 else 0) - (if held[negative] then 1 else 0)
+		return (held[positive] or 0) - (held[negative] or 0)
 	end
 	local function key(code: string, down: boolean)
 		if code == "One" or code == "Tab" then
@@ -100,10 +100,11 @@ local function create(
 			error("unsupported_simulated_input: virtual controller system menu", 0)
 		end
 		local control = buttons[code] or sticks[code]
-		if control == nil or (held[code] == true) == down then
+		local value = if down then 1 else 0
+		if control == nil or (sticks[code] == nil and (held[code] or 0) == value) then
 			return
 		end
-		held[code] = down
+		held[code] = if sticks[code] then (held[code] or 0) + (if down then 1 else -1) else value
 		local object: Instance? = nil
 		for _, candidate in state(library.Enum.UserInputType.Gamepad1) do
 			if env.propertyOf(candidate, "KeyCode") == library.Enum.KeyCode:FromName(control) then
