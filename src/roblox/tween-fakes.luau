@@ -4,6 +4,8 @@ local D = require "./datatypes"
 local Environment = require "./environment-types"
 
 type Instance = Environment.Instance
+
+local destroyed: Environment.ObserveFilter = { operations = { "destroy" :: Environment.Operation } }
 type Info = D.TweenInfoValue
 type Entry = { target: Instance, goal: { [string]: unknown }, info: Info, elapsed: number }
 
@@ -100,11 +102,11 @@ local function attach(environment: Environment.Environment)
 		idle()
 	end)
 	environment.observe(function(event)
-		if event.operation == "destroy" and active[event.object] then
+		if active[event.object] then
 			active[event.object] = nil
 			idle()
 		end
-	end)
+	end, destroyed)
 end
 
 return { attach = attach }

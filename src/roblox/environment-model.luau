@@ -26,6 +26,7 @@ local function create(settings: Types.Options)
 	local specs: { [string]: ClassSpec } = {}
 	local resolved: { [string]: Resolved } = {}
 	local computedLookups: { [string]: { [string]: { get: ((object: Instance) -> unknown)?, writable: boolean } } } = {}
+	local ancestry: { [string]: { [string]: boolean } } = {}
 	local function defineClass<P, M>(className: string, spec: ClassSpec<P, M>, defineOptions: DefineOptions?)
 		if type(className) ~= "string" or className == "" then
 			error("class name must be a non-empty string", 2)
@@ -36,6 +37,7 @@ local function create(settings: Types.Options)
 		specs[className] = (spec :: unknown) :: ClassSpec
 		table.clear(resolved)
 		table.clear(computedLookups)
+		table.clear(ancestry)
 	end
 
 	if settings.builtins ~= false then
@@ -99,15 +101,27 @@ local function create(settings: Types.Options)
 	end
 
 	local function isA(className: string, target: string): boolean
+		local known = ancestry[className]
+		if known == nil then
+			known = {}
+			ancestry[className] = known
+		end
+		local found = known[target]
+		if found ~= nil then
+			return found
+		end
 		local walk: string? = className
+		found = false
 		while walk ~= nil do
 			if walk == target then
-				return true
+				found = true
+				break
 			end
 			local spec = specs[walk]
 			walk = if spec ~= nil then spec.super else nil
 		end
-		return false
+		known[target] = found
+		return found
 	end
 
 	local function lookupComputed(

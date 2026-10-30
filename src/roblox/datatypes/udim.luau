@@ -59,10 +59,22 @@ local function udim(scale: number, offset: number): UDimValue
 	return made
 end
 
-local function udim2(x: UDimValue, y: UDimValue): UDim2Value
-	local made: UDim2Value = Names.make(UDim2Kind, { X = x, Y = y })
+local XS, XO, YS, YO = {}, {}, {}, {}
+
+local function parts(value: UDim2Value): (number, number, number, number)
+	local fields = Names.fields(value)
+	return fields[XS] :: number, fields[XO] :: number, fields[YS] :: number, fields[YO] :: number
+end
+
+local function compose(xs: number, xo: number, ys: number, yo: number): UDim2Value
+	local made: UDim2Value =
+		Names.make(UDim2Kind, { [XS] = f32(xs), [XO] = Float.int32(xo), [YS] = f32(ys), [YO] = Float.int32(yo) })
 	udim2s[made] = made
 	return made
+end
+
+local function udim2(x: UDimValue, y: UDimValue): UDim2Value
+	return compose(x.Scale, x.Offset, y.Scale, y.Offset)
 end
 
 local function expect(value: unknown, kind: Names.Behavior, owner: string, position: number)
@@ -100,17 +112,14 @@ end
 local udim2Methods: { [unknown]: unknown } = {
 	Lerp = function(self: UDim2Value, goal: unknown, alpha: number): UDim2Value
 		expect(goal, UDim2Kind, "UDim2", 1)
-		local target = udim2s[goal]
 		local t = f32(alpha)
-		return udim2(
-			udim(
-				self.X.Scale + f32(f32(target.X.Scale - self.X.Scale) * t),
-				lerpOffset(self.X.Offset, target.X.Offset, t)
-			),
-			udim(
-				self.Y.Scale + f32(f32(target.Y.Scale - self.Y.Scale) * t),
-				lerpOffset(self.Y.Offset, target.Y.Offset, t)
-			)
+		local xs, xo, ys, yo = parts(self)
+		local txs, txo, tys, tyo = parts(udim2s[goal])
+		return compose(
+			xs + f32(f32(txs - xs) * t),
+			lerpOffset(xo, txo, t),
+			ys + f32(f32(tys - ys) * t),
+			lerpOffset(yo, tyo, t)
 		)
 	end,
 }
@@ -119,29 +128,43 @@ UDim2Kind.fields.__index = function(value: UDim2Value, key: unknown): unknown
 	local method = udim2Methods[key]
 	if method ~= nil then
 		return method
-	elseif key == "Width" then
-		return value.X
-	elseif key == "Height" then
-		return value.Y
+	elseif key == "X" or key == "Width" then
+		local fields = (value :: unknown) :: Names.Fields
+		local made = rawget(fields, "X") or udim(fields[XS] :: number, fields[XO] :: number)
+		rawset(fields, "X", made)
+		return made
+	elseif key == "Y" or key == "Height" then
+		local fields = (value :: unknown) :: Names.Fields
+		local made = rawget(fields, "Y") or udim(fields[YS] :: number, fields[YO] :: number)
+		rawset(fields, "Y", made)
+		return made
 	end
 	return Names.invalid(key, "UDim2")
 end
 UDim2Kind.meta.__add = function(a: UDim2Value, b: UDim2Value): UDim2Value
 	expect(b, UDim2Kind, "UDim2", 2)
-	return udim2(a.X + b.X, a.Y + b.Y)
+	local axs, axo, ays, ayo = parts(a)
+	local bxs, bxo, bys, byo = parts(b)
+	return compose(axs + bxs, axo + bxo, ays + bys, ayo + byo)
 end
 UDim2Kind.meta.__sub = function(a: UDim2Value, b: UDim2Value): UDim2Value
 	expect(b, UDim2Kind, "UDim2", 2)
-	return udim2(a.X - b.X, a.Y - b.Y)
+	local axs, axo, ays, ayo = parts(a)
+	local bxs, bxo, bys, byo = parts(b)
+	return compose(axs - bxs, axo - bxo, ays - bys, ayo - byo)
 end
 UDim2Kind.meta.__unm = function(a: UDim2Value): UDim2Value
-	return udim2(-a.X, -a.Y)
+	local xs, xo, ys, yo = parts(a)
+	return compose(-xs, -xo, -ys, -yo)
 end
 UDim2Kind.meta.__eq = function(a: UDim2Value, b: UDim2Value): boolean
-	return a.X == b.X and a.Y == b.Y
+	local axs, axo, ays, ayo = parts(a)
+	local bxs, bxo, bys, byo = parts(b)
+	return axs == bxs and axo == bxo and ays == bys and ayo == byo
 end
 UDim2Kind.meta.__tostring = function(a: UDim2Value): string
-	return ("{%s, %d}, {%s, %d}"):format(scale(a.X.Scale), a.X.Offset, scale(a.Y.Scale), a.Y.Offset)
+	local xs, xo, ys, yo = parts(a)
+	return ("{%s, %d}, {%s, %d}"):format(scale(xs), xo, scale(ys), yo)
 end
 
 RectKind.fields.__index = function(value: RectValue, key: unknown): unknown
@@ -173,19 +196,16 @@ local function newUDim2(...: unknown): UDim2Value
 		return udim2(udims[first], udims[second])
 	end
 	local _, _, third, fourth = ...
-	return udim2(
-		udim(Float.coerce(first, 1), Float.coerce(second, 2)),
-		udim(Float.coerce(third, 3), Float.coerce(fourth, 4))
-	)
+	return compose(Float.coerce(first, 1), Float.coerce(second, 2), Float.coerce(third, 3), Float.coerce(fourth, 4))
 end
 
 local UDim2 = {
 	new = newUDim2,
 	fromScale = function(x: unknown?, y: unknown?): UDim2Value
-		return udim2(udim(Float.coerce(x, 1), 0), udim(Float.coerce(y, 2), 0))
+		return compose(Float.coerce(x, 1), 0, Float.coerce(y, 2), 0)
 	end,
 	fromOffset = function(x: unknown?, y: unknown?): UDim2Value
-		return udim2(udim(0, Float.coerce(x, 1)), udim(0, Float.coerce(y, 2)))
+		return compose(0, Float.coerce(x, 1), 0, Float.coerce(y, 2))
 	end,
 }
 
