@@ -20,7 +20,7 @@ for _, cfg in { {"Fill", UDim2.fromOffset(0, 0), Enum.AutomaticSize.Y}, {"Fill",
 	local f = Instance.new("UIFlexItem"); f.FlexMode = Enum.UIFlexMode[cfg[1]]; f.Parent = t
 	task.wait(); task.wait()
 	local got = `{t.AbsoluteSize} {t.TextBounds} {row.AbsoluteSize}`
-	if got ~= "260, 32 251, 32 300, 40" then table.insert(failures, `{cfg[1]} {cfg[2]} {cfg[3].Name}: {got}`) end
+	if got ~= "260, 32 236.666672, 32 300, 40" then table.insert(failures, `{cfg[1]} {cfg[2]} {cfg[3].Name}: {got}`) end
 	row:Destroy()
 end
 g:Destroy()
@@ -28,7 +28,7 @@ assert(#failures == 0, table.concat(failures, "\n"))
 return true
 ]==]
 
-it("wrapped text flexed in a horizontal list wraps at its flexed width as Studio 0.744 does", function(own)
+it("wrapped text flexed in horizontal lists reflows at its assigned width", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
 		layout = {
@@ -73,7 +73,10 @@ it("wrapped text flexed in a horizontal list wraps at its flexed width as Studio
 	local complete = false
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-list-text-reflow" }, function()
-		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+		for _, source in { probe, require "./fixtures/ui-wrapped-text-flex" } do
+			assert(Lute.chunk.load(source, { environment = runtime.globals })() == true)
+		end
+		complete = true
 	end)
 	own(function()
 		scheduler.cancel(thread)

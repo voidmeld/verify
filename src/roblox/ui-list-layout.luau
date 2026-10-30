@@ -250,7 +250,7 @@ local function measure(
 			})
 		end
 		local changed = distribute(flex, flexAvailable - gaps)
-		if horizontal and reflow and not wrapped then
+		if horizontal and reflow then
 			local reflowed = false
 			for index, item in items do
 				local child = item.object:FindFirstChildWhichIsA "UIFlexItem"

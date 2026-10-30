@@ -364,6 +364,8 @@ Project `emitLegacyScripts` defaults to true. Set it to false to mount client an
 
 The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.setmemorycategory`. These calls collect no performance or memory measurements. The debug table keeps the host inspection functions. It does not change the host table.
 
+The runtime's `HttpService.JSONEncode` writes engine datatypes, Instances, functions and threads as JSON null. Tables with an array part encode that part and ignore dictionary entries. Holes inside the array part become null. Empty tables become empty arrays. Numeric dictionary keys become integer strings. Cyclic tables fail. The host still encodes strings and numbers. The default host does not model buffer and nonfinite-number encodings, and dictionary keys other than strings and numbers remain unsupported.
+
 `ReplicatedFirst:RemoveDefaultLoadingScreen()` is accepted without rendering a loading screen. Arrival logic can continue, but native loading-screen visibility requires a Studio or Player observation.
 
 The scheduler applies explicit Humanoid state changes. It then emits `StateChanged`. A detached Humanoid reports `None`. A Humanoid in a Model in Workspace starts in `Running`. This behavior does not simulate automatic movement, state physics or network ownership.
@@ -550,8 +552,8 @@ The simulator proves Luau logic over the declared surface, ordering and disposal
 | A handler error only prints, so the environment collects it | Engine-true. | `handlerErrors = "raise"` is a test convenience. |
 | A signal count for any signal | Added metering. | None. |
 | An unknown member raises | Engine-true. | `fakeOn` and `functionDoubles = true` are test doubles. |
-| A write that targets a rejected selection is ignored | `"raise"` is a test convenience. | `ui.selection = "ignore"` is engine-true. |
-| A selection outside a `PlayerGui` is allowed | Engine-true. | `ui.requirePlayerGui = true` is a test convenience. |
+| Selection of a hidden or unselectable control | `"raise"` is a test convenience; `"ignore"` drops the write. | `ui.selection = "native"` accepts the write, as Studio does. |
+| Selection outside a `PlayerGui` | Allowed as a test convenience. | `ui.selection = "native"` or `ui.requirePlayerGui = true` rejects the write. |
 | `TweenInfo`, `FloatCurveKey` and `Path2DControlPoint` fields | Engine-true values and defaults. | None. |
 | A property with no stored default reads `nil` | Engine metadata only. | `defaultProperty` gives the engine value. |
 | A derived property such as `TextBounds` | Reads as stored. | `computed` is a test convenience. A computed property is read-only unless it declares `writable = true`. |
@@ -580,7 +582,8 @@ The result has these members:
 - `createEngineObject(className, props?)` uses the same allocation path for a known Object class. An Object that does not inherit Instance has no Instance hierarchy, name, attributes or destruction methods. `releaseObject(object)` releases an owned Object or Instance and its signal connections. It is an environment cleanup operation, not a simulated native Object method or garbage collector. Creation hooks and fixture tracking receive Objects.
 - `task` with `spawn`, `defer`, `delay`, `wait` and `cancel` on virtual time. Also `scheduler`, `step(seconds)` and `now`.
 - `scheduler.block(register)` suspends the current task. The registration may return a cleanup function. The scheduler calls it once when the task resumes or is canceled, then releases it. Cleanup failures enter `scheduler.failures`; cancellation still closes the task.
-- Inspection: `childrenOf`, `parentOf`, `propertyOf`, `attributeOf`, `isAlive`, `liveObjects` and `liveConnections`.
+- Inspection: `childrenOf`, `parentOf`, `descendantOrderOf`, `propertyOf`, `attributeOf`, `isAlive`, `liveObjects` and `liveConnections`.
+- `descendantOrderOf(ancestor, object)` returns the registration order within that ancestor, or nil when the object is not its descendant. Moving within the ancestor preserves the order. Leaving and reentering gives a later order. ScreenGui hit testing uses this order to resolve equal DisplayOrder values.
 - `propertyOf` can inspect a declared callback. The script-side instance getter still rejects callback reads. Method doubles and undeclared callback names are not exposed by `propertyOf`.
 - `poke` and `fire`, which apply an engine-side change and an engine-side event.
 - `failNext(operation)` and `clearFailures`.
@@ -717,6 +720,24 @@ The engine refuses a write to a property that the class does not have. The defau
 - `task.defer` keeps the engine re-entrancy limit. A thread deferred from a deferred thread is one level deeper. Deferring past 80 levels in one resumption raises `Maximum re-entrancy depth (80) exceeded calling task.defer`.
 - The order across events beyond these guarantees is not a contract.
 
+### Held selection navigation
+
+`GuiService:Select(parent)` chooses the eligible descendant with the lowest SelectionOrder inside the input host's PlayerGui. It excludes hidden, nonselectable, noninteractable and off-screen objects. Active does not affect eligibility. A parent with no eligible descendants leaves SelectedObject unchanged. A parent outside the PlayerGui raises an error.
+
+The simulated input host repeats held arrow-key selection after 0.5 seconds, then at intervals of at least 0.12 seconds. Release stops the repeats. A repeat moves the current selection without another `InputBegan` event. A focused TextBox prevents selection movement. The shared Studio case checks the initial delay, repeat movement, release, key events and the end of a collection.
+
+`UserInputService:GetGamepadState()` returns the 24 idle controls for each Gamepad1–Gamepad8 slot, including disconnected slots. Each InputObject identifies its slot and key, with End state and zero position. Other UserInputType values return an empty array. Each call returns a separate array. This initial-state model does not inject gamepad input.
+
+### Input action state
+
+`InputAction:Fire(value)` and `GetState()` share state with simulated keyboard dispatch. The value must match the action type: boolean, number, Vector2 or Vector3. Repeated values emit no event. Boolean transitions emit `Pressed` or `Released` before `StateChanged`. Other types emit only `StateChanged`.
+
+An action must belong to a DataModel and be enabled. Its nearest InputContext must also be enabled. Disabling either resets the state. A parent change resets affected actions, and a type change publishes the new zero state. Clones start at zero. The shared Studio sequence checks these transitions, duplicate suppression and destruction. This model does not establish physical input delivery.
+
+### Haptic requests without motor hardware
+
+The default environment has no haptic motors. `HapticService:IsVibrationSupported()` and `IsMotorSupported()` return false. `HapticEffect:Play()` and `Stop()` accept requests but produce no motor output or `Ended` event. This matches the observed Studio host without haptic hardware. `SetWaveformKeys()` accepts FloatCurveKey arrays only when the effect type is Custom. Native request validation also accepts empty arrays, negative key times, repeated times and values outside 0–1. This model does not simulate waveform playback on supported hardware.
+
 ---
 
 ## Reflection and explicit UI fakes
@@ -741,7 +762,7 @@ The engine refuses a write to a property that the class does not have. The defau
 - `ui.validate(className, property)` keeps UI property validation for the pairs that it accepts. It relaxes the rest while every fake stays installed.
 - `ui = { validate = false }` installs no UI validator.
 - UI validation acts only on `SelectedObject`. Every other write makes no extra call.
-- `ui.selection` is `"raise"` (default) or `"ignore"`. See [rejected selection](#rejected-selection).
+- `ui.selection` is `"raise"` (default), `"ignore"` or `"native"`. See [rejected selection](#rejected-selection).
 - `ui.requirePlayerGui = true` requires the target to descend from a `PlayerGui`.
 - `GuiService.GetGuiInset` requires an explicit `ui.methods["GuiService.GetGuiInset"]` handler that returns both current inset vectors. There is no inferred inset or relationship to `TopbarInset`. A provider provides representative host state; it does not establish native inset or safe-area coverage.
 
@@ -753,23 +774,39 @@ The bridge returns `{ environment, engine, ui, layout, unavailable, faults, hasC
 
 Layout clamps `ScrollingFrame.CanvasPosition` when it owns the measured bounds. Poked `AbsoluteSize`, `AbsoluteWindowSize` or `AbsoluteCanvasSize` that differ from its last publication make those bounds stale. Before the first pass, nonzero bounds count as supplied geometry. If stale bounds would cause a clamp, layout raises `unsupported_ui_layout` before publishing geometry. The error names the instance and shows supplied and computed bounds. This includes poked bounds with an unmeasured zero canvas. Author `Size` and `CanvasSize`, or keep the poked frame outside layout roots.
 
-`layout.objectsAtPosition(root, x, y)` queries published rectangles in GUI coordinates. It returns visible objects from front to back, including objects that cannot receive input. It supports Global and Sibling ordering, ancestor clipping and enabled ScreenGuis. Right and bottom edges are inclusive, as in the native fixture. Coordinates must be finite integers. Equal DisplayOrder values across ScreenGuis and unsupported geometry raise errors. The input backend separately checks input eligibility and routes presses and releases. The geometry query dispatches no events.
+`CanvasPosition` uses screen pixels, including under `UIScale`. Setting `GuiService.SelectedObject` scrolls its measured, enabled `ScrollingFrame` ancestors immediately. Selection scrolling can move both axes regardless of `ScrollingDirection`. A control that fits the window moves only far enough to fit. An oversized control that lies outside the window advances by its own extent; a partial overlap stays in place. Nested ancestors use the geometry from before the selection change. The shared native fixture checks scaling, disabled scrolling, oversized controls and nested frames. The layout controller's `close()` disconnects its selection observers; closing a fixture bridge calls it automatically.
+
+`layout.objectsAtPosition(root, x, y)` queries published rectangles in GUI coordinates. It returns visible objects from front to back, including objects that cannot receive input. It supports Global and Sibling ordering, ancestor clipping and enabled ScreenGuis. Rotation turns descendant positions and hit regions. Clipping is ignored when the clipping object or any ancestor is rotated, as observed on the reference host; rotation of the clipped child alone does not disable clipping. Right and bottom edges are inclusive, as in the native fixture. Coordinates must be finite integers. Equal DisplayOrder values put later-registered ScreenGuis in front. This includes ScreenGuis inside folders. Moving a screen within the same root preserves its registration order; removing it from the root and adding it again changes the order. Unsupported geometry raises errors. The input backend separately checks input eligibility and routes presses and releases. The geometry query dispatches no events.
 
 Layout supports UDim2 dimensions, anchors, scale, fixed padding, size constraints, single-line lists and wrapped lists. Lists support parent Fill, individual UIFlexItem modes, weighted growth and shrink, size limits, cross-axis flex and line alignment. Shrink weights include each item basis. Items at a size limit release remaining space to other flexible items. The same 58 flex configurations run in the simulator and Studio. Main-axis SpaceBetween, SpaceAround and SpaceEvenly support leading alignment when children do not overflow. Without flex, these modes distribute free space without list padding. AbsoluteContentSize still includes that padding. Both hosts run the same 24 spacing configurations. Intrinsic AutomaticSize supports fixed child bounds, simple lists and grids, including growth and shrink.
 
-UIGridLayout supports both fill directions, start corners, sorting, alignment, cell padding and maximum cells per row or column. It publishes AbsoluteCellSize, AbsoluteCellCount and AbsoluteContentSize. A layout aspect constraint controls cell size with both aspect types and dominant axes. Cell dimensions use native float precision before the fit calculation. Both hosts run the same 37 configurations observed on native Studio. Individual cell size constraints or scales fail before geometry changes. Nonpositive sizes, negative padding and cells that depend on an automatic parent axis also fail before changes.
+UIGridLayout supports both fill directions, start corners, sorting, alignment, cell padding and maximum cells per row or column. It publishes AbsoluteCellSize, AbsoluteCellCount and AbsoluteContentSize. A layout aspect constraint controls cell size with both aspect types and dominant axes. Cell dimensions use native float precision before the fit calculation. Both hosts run the same 37 configurations observed on native Studio. Individual size constraints can reserve multiple cells. The visible cell is centered within its reserved cells. Maximum sizes, child scales and child aspect constraints change the visible rectangle. Nine additional native configurations check these rules. Nonpositive sizes, negative padding and cells that depend on an automatic parent axis also fail before changes.
 
 Wrapped lists form lines in either fill direction. Each line distributes its flexible items separately. Cross-axis flex distributes or stretches lines. Scaled padding uses the corresponding parent axis. Fixed-child lists support automatic sizing on either axis. They handle resize, visibility, sorting, removal and wrapping changes. Individual GUI aspect constraints support both aspect types, dominant axes, scaling, size limits and list flex. Both hosts run the same 1,164 wrapping and aspect configurations observed on native Studio. They also run reflow mutations.
 
 Relative children under automatic parents support bounded measurement. Lists require the authored minimum to contain the children under both ancestor and final bounds. Free layouts measure natural child bounds first, then relative dimensions, then final padded bounds. Unpadded relative positions and anchors are supported when the final children fit. The same 444 configurations and a resize, minimum-size, visibility, insertion, removal and padding mutation sequence run under Studio and the double.
 
-Unresolved relative growth and padded relative positions remain unsupported. Relative children under constrained automatic parents also remain unsupported. The same applies to relative intrinsic child sizes with their own automatic axis or aspect constraint. Unwrapped lists reject non-leading or overflowing distributed spacing. Table layouts, page layouts, rotation and LayerCollectors other than ScreenGui also fail. Aspect constraints on automatic-size GUI objects and individual grid cells fail. These cases raise `unsupported_ui_layout` before geometry publication. A `StyleLink` requires an effective-property `read(instance, property)` provider; the bridge provides its UI style reader by default. Supplied reader errors propagate. `vector(x, y)` selects the output datatype constructor. These mechanisms are simulated and do not establish native rendering or input coverage.
+Unresolved relative growth and padded relative positions remain unsupported. Relative children under constrained automatic parents also remain unsupported. The same applies to relative intrinsic child sizes with their own automatic axis or aspect constraint. Unwrapped lists reject non-leading or overflowing distributed spacing. Table layouts, page layouts and LayerCollectors other than ScreenGui also fail. Aspect constraints on automatic-size GUI objects fail. These cases raise `unsupported_ui_layout` before geometry publication. A `StyleLink` requires an effective-property `read(instance, property)` provider; the bridge provides its UI style reader by default. Supplied reader errors propagate. `vector(x, y)` selects the output datatype constructor. These mechanisms are simulated and do not establish native rendering or input coverage.
 
-`Lute.fixture.bridge` installs captured text measurements by default. TextService.GetTextBoundsAsync and GetTextSize use font advances, pair adjustments and boundary corrections observed on native Studio. The facts record engine version and font face. They cover ASCII letters, digits, spaces and hard newlines at integer sizes 1-100. Committed families are Builder Sans, Nunito, Fondamento and Michroma. Each has Regular, Medium, SemiBold and Bold weights. Source Sans Pro Regular and Legacy Arial Regular are also included. All use Normal style. Word wrapping supports words that fit the available width. Unknown fonts, punctuation, other Unicode, rich text and words that need splitting raise `unsupported_text_metrics`. The simulator does not estimate those inputs. GetTextSize limits height to whole lines within frameSize.Y, with at least one line. Width includes all lines.
+`Lute.fixture.bridge` installs captured text measurements by default. TextService.GetTextBoundsAsync and GetTextSize use font advances, pair adjustments and boundary corrections observed on native Studio. The facts record engine version, font face and supported tokens at integer sizes 1-100. Committed families are Builder Sans, Nunito, Fondamento and Michroma, each with Regular, Medium, SemiBold and Bold weights. The fixtures also include Gotham SSm Medium and Bold; Source Sans Pro Regular, SemiBold and Bold; Guru Regular; and Legacy Arial Regular. All use Normal style. Unknown faces or tokens raise `unsupported_text_metrics`. The simulator does not estimate those inputs. GetTextSize limits height to whole lines within frameSize.Y, with at least one line. Width includes all lines.
+
+Rich text supports underline, strikethrough, stroke, mark, comments, entities, line breaks, uppercase, font color and font transparency. Tags that change font metrics remain unsupported. Token coverage belongs to each captured face. Builder Sans Regular includes the Latin extensions and Japanese characters exercised by its committed service cases; this does not establish support for all Unicode text.
+
+With UI behavior enabled, `TextLabel`, `TextButton` and `TextBox` compute `ContentText` from their current `Text` and `RichText` values. Plain text stays unchanged. Rich text removes tags and comments, decodes the five named XML entities and converts line-break tags to newlines. Content preserves letter case inside uppercase tags. Reads update immediately, including before parenting and after cloning. The shared native case checks these reads; it does not establish property-change signal or automatic localization behavior.
 
 A given `ui.measureBounds` or `ui.measureText` replaces the default for that method. Set the field to false to leave the method unsupported. Portable Roblox.fixtureBridge and Roblox.reflectionSnapshot.bridge still need explicit measurement providers.
 
-Layout uses measureBounds to publish TextBounds and TextFits and measure automatic text size. The bridge forwards its UI provider unless layout has its own. Line height and UI scale use line metrics observed on native Studio. These include Legacy Arial strut sizes. Rendered font sizes must be integers from 1 to 100. Text supports automatic axes and size constraints. Vertical lists with cross-axis Fill measure wrapped automatic height at the stretched width. Wrapped bounds limit visible height to complete lines and keep full wrapped width. TextFits is false when lines do not fit. Unsupported cases include unwrapped multiline text beyond the height and wrapped automatic width controlled by a list. Other flexed widths, TextScaled and TextTruncate also remain unsupported. Both hosts run 36 constraint, 180 clipping, 36 flex and 36 Legacy Arial configurations. Legacy Arial geometry allows 0.001 pixel error for native float rounding. Service bounds compare exactly. A native pass covers only the committed font faces and text grammar. It does not prove arbitrary text rendering.
+Layout passes an optional second argument, `unwrappedWidth`, to `measureBounds` for an unwrapped GUI observation. The default provider uses this width to test the final space gap. Plain text can omit that gap from its bounds when this makes the line fit. It preserves the original glyph spacing and does not join the words for kerning. Rich text keeps the gap. Service measurements receive no second argument and keep their original wrapping rules. Plain unwrapped text without automatic sizing tests horizontal fit; rich text, wrapped text and automatic sizing also test the available height.
+
+The flexed text fixture allows 0.00001 pixels of error in relative child positions. Native float rounding can change these positions when the screen origin changes, including a small nonzero position for the first child. The fixture still compares text bounds, sizes and fit results exactly.
+
+The optional `measureLineHeight(parameters, lines, spacing)` provider returns a block height for GUI layout. The default provider adds each line in float32 raster coordinates before converting to GUI coordinates. This preserves native rounding for scaled fonts and fractional `LineHeight`. A custom bounds provider without this callback uses its returned line height in GUI coordinates. The bridge forwards the UI callback unless layout supplies one.
+
+Text service measurements use the same raster accumulation. `GetTextSize` compares complete block heights with the supplied height limit. It includes a block that fits exactly, even when dividing the limit by a rounded single-line height would lose a line. Shared native cases cover 120 height limits across Builder Sans and Legacy Arial sizes.
+
+Rich text converts raster bounds with the reciprocal of the float32 raster scale. It trims a line's trailing space before splitting an oversized word. Wrapped rich text with `TextTruncate.None` reports the full text height, including lines outside the control. `TextFits` still checks the available height. Shared native cases check these rules against the text service and GUI bounds.
+
+Layout uses measureBounds to publish TextBounds and TextFits and measure automatic text size. The bridge forwards its UI provider unless layout has its own. Line height and UI scale use line metrics observed on native Studio. These include Legacy Arial strut sizes. Fractional rendered font sizes are floored and must remain in the range 1-100. Text supports automatic axes and size constraints. Lists measure wrapped automatic height at the assigned flex width. Plain wrapped bounds limit visible height to complete lines and keep full wrapped width. TextFits is false when lines do not fit. Unwrapped multiline text beyond the available height remains unsupported. TextScaled fits whole words before checking height; TextTruncate supports AtEnd and SplitWord. Both hosts run 36 constraint, 180 clipping, 36 flex and 36 Legacy Arial configurations, plus shared line-height, rich-text and truncation cases. Legacy Arial geometry allows 0.001 pixel error for native float rounding. Service bounds compare exactly. A native pass covers only the committed font faces and text grammar. It does not prove arbitrary text rendering.
 
 - `track()` lists created instances and cloned `{ source, copy }` pairs until `stop()`.
 - `faults` wraps `failNext`. `assertConsumed` refuses an injection that never fired.
@@ -902,9 +939,11 @@ Relevant nested rules, state selectors and query selectors raise `unsupported_ui
 
 #### Rejected selection
 
-When the real engine gets `GuiService.SelectedObject = target` for a hidden, disabled or unselectable control, it ignores the write. The default `ui.selection = "raise"` raises instead, so a test finds the mistake. `ui = { selection = "ignore" }` is the engine-true mode. It drops the write with no error, no signal and no change. `controller.rejectedSelections()` lists each `{ target, reason }` in order. A hidden ancestor, a disabled `ScreenGui` and `Selectable == false` reject. A value that is not a `GuiObject` still raises in both modes.
+`ui = { selection = "native" }` accepts explicit `GuiService.SelectedObject` writes to hidden, inactive and unselectable controls, including controls under a disabled `ScreenGui`. It raises if the target is outside a `PlayerGui`. Shared Studio and double cases check immediate and settled selection. This contract concerns explicit assignment; input navigation chooses eligible controls separately.
 
-`ui.requirePlayerGui = true` makes a target outside a `PlayerGui` raise in both modes. It is an opt-in test convenience.
+The default `ui.selection = "raise"` is a test convenience that rejects hidden and unselectable targets. `ui.selection = "ignore"` drops those writes with no error, no signal and no change. `controller.rejectedSelections()` lists each ignored `{ target, reason }` in order. A hidden ancestor, a disabled `ScreenGui` and `Selectable == false` reject in these two modes. Neither mode represents native explicit assignment. A value that is not a `GuiObject` raises in all modes.
+
+`ui.requirePlayerGui = true` also requires `PlayerGui` ancestry in the `"raise"` and `"ignore"` modes. Native mode always requires this ancestry.
 
 A `validateProperty` function that returns `false` vetoes the write or `poke` silently, with no change and no signal. Any other return value accepts it. This applies to `Parent` too.
 
@@ -915,6 +954,8 @@ A `validateProperty` function that returns `false` vetoes the write or `poke` si
 - Video state.
 - Path-point storage.
 - Instant page navigation.
+
+TextBox focus changes emit the corresponding UserInputService events after the TextBox events. Capturing an already focused box has no effect. During a direct transfer, the old box remains focused while its FocusLost handlers run; the new box then gains focus without a TextBoxFocusReleased event. Releasing or destroying the focused box clears focus before FocusLost and TextBoxFocusReleased. A shared Studio case verifies event order and the focus state visible to handlers.
 
 Measurement providers are required for measurement claims. Keep the controller and call `close()` to release focus resources. The simulator does not simulate curve evaluation, rendered text, animated navigation, playback quality or style rendering. A declared method that is unsupported needs an explicit injected implementation. `attach` registers `environment.onClone`. `Clone()` then copies style, transition, derive and path state, and remaps in-tree derive references. Focus is never copied. `environment.observe` and `pendingFailures` expose operation observation and unfired fault injection. `environment.observe(listener, filter)` takes an optional filter with `operations` and `members` lists. A filtered observer receives only events whose operation is in `operations` and whose member is in `members`. An event without a member does not match a `members` filter. When no observer matches, the environment builds no event.
 
@@ -1300,6 +1341,14 @@ TextChatService.OnIncomingMessage uses write-only callback storage. A host can i
 
 Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 
+Truncation compares the rendered prefix and ellipsis with the available width, including fractional widths. An exact fit is accepted. The combined raster width is converted to a float32 result once. The shared Studio case checks widths on both sides of these boundaries.
+
+When `SplitWord` ends at a space boundary, its bounds include the trailing space instead of an ellipsis. Wrapped truncation also retains the natural width of the last visible line. The shared boundary fixture checks both rules with wrapped and unwrapped labels at several widths and heights.
+
+`AtEnd` keeps a word boundary when the prefix and ellipsis fill at least half the available width. Otherwise it cuts within the word. A cut within a word keeps the glyph spacing from the following character in the original text. The shared truncation fixture checks the threshold and the spacing with repeated letters.
+
+Wrapping splits an oversized word across measured characters. It prefers whitespace between words and preserves explicit paragraph breaks. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
+
 ### `Lute.gate`
 
 Run the gate command line with bounded producer processes.
@@ -1395,6 +1444,16 @@ Bridge reflection facts and behavior adapters into a fixture.
 ### `Roblox.inputHost`
 
 Host adapter for explicit input observations.
+
+When `TouchEnabled` is true and `MouseEnabled` is false, virtual mouse input creates touch contacts. Each press creates one InputObject that persists through movement and release. The host emits GUI contact events, the general input events, and TouchStarted, TouchMoved and TouchEnded. It uses the device's `GetInsetArea(None)` origin for touch coordinates. Shared native cases check entry, movement, exit, release, button activation and UIDragDetector capture with TranslatePlane and CustomOffset. This does not yet model native touch scrolling, gestures or simultaneous contacts.
+
+`simulated` accepts `virtualController = true` to route keyboard keys through the default Studio controller mappings. Button, trigger and stick events update the same objects returned by `GetGamepadState`. Trigger changes precede button transitions. Opposing stick keys cancel an axis. Unmapped keys produce no keyboard events in this mode. The default keeps keyboard input.
+
+With a selected GuiObject, D-pad input moves selection and repeats while held. Button A activates the selected button on release. These inputs report `gameProcessedEvent = true`; activation precedes the release event. Button B leaves selection unchanged and reports an unprocessed event. The left thumbstick moves selection once per cardinal direction until released. The right thumbstick leaves selection unchanged and reports an unprocessed event. Diagonal thumbstick selection remains unsupported. The shared `tests/fixtures/input-controller-selection.luau` case checks these events in the double and in Studio with Controller Emulator enabled.
+
+Controller emulation sets `GamepadEnabled` and `PreferredInput` to gamepad. It preserves the viewport and keyboard and mouse availability. Closing the input host restores the previous gamepad and preferred-input values.
+
+Repeated thumbstick key presses accumulate axis values, including values outside -1 to 1. Each release subtracts one press. The system menu remains unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
 
 ### `Roblox.instanceHost`
 

@@ -11,6 +11,7 @@ local Datatypes = require "./datatypes"
 local ContentFakes = require "./content-fakes"
 local LocalizationFakes = require "./localization-fakes"
 local LogFakes = require "./log-fakes"
+local TextContent = require "./text-content"
 
 local SERVICE_DEFAULTS: { [string]: { [string]: unknown } } = {
 	GuiService = {
@@ -133,6 +134,18 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 			end
 		end
 	end
+	if settings.ui ~= false then
+		for _, className in { "TextLabel", "TextButton", "TextBox" } do
+			local key = className .. ".ContentText"
+			if computed[key] == nil then
+				computed[key] = function(object: Environment.Instance): string
+					local text = object.Text
+					assert(type(text) == "string", "text content requires a string")
+					return if object.RichText == true then TextContent.plain(text) else text
+				end
+			end
+		end
+	end
 	local readInteractable: ((Environment.Instance) -> unknown)? = nil
 	local nonInteractable: unknown = nil
 	if computed["GuiObject.GuiState"] == nil then
@@ -221,6 +234,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		and type(ui.measureBounds) == "function"
 	then
 		layoutOptions.measureBounds = ui.measureBounds
+		layoutOptions.measureLineHeight = layoutOptions.measureLineHeight or ui.measureLineHeight
 		layoutOptions.truncateBounds = ui.truncateBounds
 	end
 	local layout = if layoutOptions then UiLayout.attach(environment, layoutOptions) else nil
@@ -228,6 +242,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		local step = layout.step
 		local stepStyles = controller.step
 		local cached = controller.cached
+		layout.busy = controller.animating
 		layout.step = function()
 			stepStyles()
 			cached(step)
@@ -394,6 +409,9 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		placeEngine = placeEngine,
 		accounting = accounting,
 		close = function(): Accounting
+			if layout ~= nil then
+				layout.close()
+			end
 			if controller ~= nil then
 				controller.close()
 			end

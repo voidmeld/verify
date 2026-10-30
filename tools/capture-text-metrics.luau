@@ -23,7 +23,7 @@ local result = Lute.studio.run {
 	place = place,
 	worker = "tools/studio-worker.luau",
 	context = "Client",
-	deadlineSeconds = 600,
+	deadlineSeconds = 1800,
 	code = 'local descriptor = game:GetService("HttpService"):JSONDecode(' .. string.format(
 		"%q",
 		Lute.encode(descriptor)
@@ -33,8 +33,8 @@ assert(result.status == "returned", result.detail)
 local report = Core.decode(result.report)
 fs.writeStringToFile(output .. ".report.json", Lute.encode(report))
 print(Core.format(report))
-assert(report.total == 1 and report.passed == 1, "font model did not match native measurements")
 local parts = Attachments.write(report.results[1].artifacts, output .. ".attachments")
+assert(report.total == 1 and report.passed == 1, "font model did not match native measurements")
 local metrics = assert(
 	json.asObject(
 		json.deserialize(fs.readFileToString((assert(parts["metrics.json"], "native capture returned no font facts"))))

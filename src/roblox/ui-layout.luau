@@ -6,6 +6,7 @@ local Grid = require "./ui-grid-layout"
 local List = require "./ui-list-layout"
 local Float = require "./datatypes/float"
 local Values = require "./ui-values"
+local SelectionScroll = require "./ui-selection-scroll"
 
 type Instance = Environment.Instance
 type Vector = { X: number, Y: number }
@@ -22,12 +23,15 @@ export type Options = {
 	read: ((Instance, string) -> unknown)?,
 	component: ((Instance, string, string) -> unknown)?,
 	vector: ((number, number) -> unknown)?,
-	measureBounds: ((Values.TextParameters) -> unknown)?,
+	measureBounds: ((Values.TextParameters, number?) -> unknown)?,
+	measureLineHeight: ((Values.TextParameters, number, number) -> number)?,
 	truncateBounds: ((Values.TextParameters, string, number, boolean) -> number?)?,
 }
 export type Controller = {
 	step: () -> (),
+	busy: (() -> boolean)?,
 	objectsAtPosition: (root: Instance, x: number, y: number) -> { Instance },
+	close: () -> (),
 }
 
 local function attach(environment: Environment.Environment, options: Options): Controller
@@ -68,15 +72,13 @@ local function attach(environment: Environment.Environment, options: Options): C
 			unsupported(object, object.ClassName)
 		end
 		if object:IsA "GuiObject" then
+			number(object, "Rotation", 0)
 			if enum(object, "AutomaticSize", "None") ~= "None" then
 				if isText(object) then
 					if options.measureBounds == nil then
 						unsupported(object, "AutomaticSize text measurement")
 					end
 				end
-			end
-			if number(object, "Rotation", 0) ~= 0 and optional(object, "ClipsDescendants") == true then
-				unsupported(object, "Rotation with ClipsDescendants")
 			end
 			if enum(object, "SizeConstraint", "RelativeXY") ~= "RelativeXY" then
 				unsupported(object, "SizeConstraint")
@@ -143,12 +145,24 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local spacing = Float.f32(number(object, "LineHeight", 1))
 		for points = largest, smallest, -1 do
 			local fitted, measured = pcall(function(): Vector
+				for word in text:gmatch "[^ \n]+" do
+					local bounds = Values.vector(measure { Text = word, Font = font, Size = points, Width = 0 })
+					if bounds.X > content.width then
+						return { X = bounds.X, Y = math.huge }
+					end
+				end
 				return Values.vector(measure { Text = text, Font = font, Size = points, Width = content.width })
 			end)
-			if fitted then
+			if fitted and measured.Y < math.huge then
 				local strut = Values.vector(measure { Text = "", Font = font, Size = points, Width = 0 }).Y
-				local lines = measured.Y / strut
-				local height = Float.f32(strut + Float.f32(Float.f32(spacing * strut) * (lines - 1)))
+				local lines = math.round(measured.Y / strut)
+				local height = if options.measureLineHeight
+					then options.measureLineHeight(
+						{ Text = text, Font = font, Size = points, Width = content.width },
+						lines,
+						spacing
+					)
+					else Float.f32(strut + Float.f32(spacing * strut) * (lines - 1))
 				if measured.X <= content.width and height <= content.height then
 					return { X = measured.X, Y = height, intrinsicX = measured.X, intrinsicY = height, fits = true }
 				end
@@ -202,7 +216,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local strut =
 			Values.vector(options.measureBounds { Text = "", Font = parameters.Font, Size = rendered, Width = 0 })
 		local truncation = enum(object, "TextTruncate", "None")
-		local fitted, attempt = pcall(options.measureBounds, parameters)
+		local fitted, attempt =
+			pcall(options.measureBounds, parameters, if not wrapped and not intrinsic then content.width else nil)
 		if
 			not fitted
 			and wrapped
@@ -229,10 +244,13 @@ local function attach(environment: Environment.Environment, options: Options): C
 			error(attempt, 0)
 		end
 		local measured = Values.vector(attempt)
-		local lines = measured.Y / strut.Y
+		local lines = math.round(measured.Y / strut.Y)
 		local step = Float.f32(Float.f32(number(object, "LineHeight", 1)) * strut.Y)
 		local function height(count: number): number
-			return Float.f32(strut.Y + Float.f32(step * (count - 1)))
+			if options.measureLineHeight then
+				return options.measureLineHeight(parameters, count, number(object, "LineHeight", 1))
+			end
+			return Float.f32(strut.Y + step * (count - 1))
 		end
 		local fullHeight = height(lines)
 		local availableHeight = if intrinsic and autoY then maximumY else content.height
@@ -271,14 +289,34 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return {
 			X = shownX,
-			Y = height(visible),
+			Y = if wrapped and parameters.RichText and truncation == "None" then fullHeight else height(visible),
 			intrinsicX = if intrinsic and autoX then intrinsicX else measured.X,
 			intrinsicY = fullHeight,
-			fits = measured.X <= content.width and fullHeight <= content.height,
+			fits = measured.X <= content.width
+				and (not wrapped and not parameters.RichText and automatic == "None" or fullHeight <= content.height),
 		}
 	end
 	local bases: { [Instance]: { width: number, height: number } } = {}
 	setmetatable(bases, { __mode = "k" })
+	type BasisWrite = { object: Instance, value: { width: number, height: number } }
+	type Measurement = {
+		width: number,
+		height: number,
+		scale: number,
+		override: number?,
+		value: Rectangle,
+		first: number,
+		last: number,
+	}
+	local measurements: { [Instance]: { Measurement } }? = nil
+	local basisWrites: { BasisWrite } = {}
+	local function setBasis(object: Instance, width: number, height: number)
+		local value = { width = width, height = height }
+		bases[object] = value
+		if measurements then
+			table.insert(basisWrites, { object = object, value = value })
+		end
+	end
 	local size: (Instance, Rectangle, number?) -> Rectangle
 	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
 		local authored = Values.dimensions(read(object, "Size"))
@@ -458,7 +496,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				rectangle.height = math.max(basis.height, second.height + paddingY)
 			end
 			if rectangle.width ~= reference.width or rectangle.height ~= reference.height then
-				bases[object] = { width = reference.width, height = reference.height }
+				setBasis(object, reference.width, reference.height)
 			end
 			return rectangle
 		end
@@ -525,7 +563,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			local secondX, secondY = reach(reference, true)
 			rectangle.width = if autoX then math.max(basis.width, secondX) else basis.width
 			rectangle.height = if autoY then math.max(basis.height, secondY) else basis.height
-			bases[object] = { width = reference.width, height = reference.height }
+			setBasis(object, reference.width, reference.height)
 			return rectangle
 		end
 		for _, child in object:GetChildren() do
@@ -567,9 +605,56 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return rectangle
 	end
+	local calculateSize = size
+	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
+		local cache = measurements
+		if cache == nil then
+			return calculateSize(object, parent, widthOverride)
+		end
+		local entries = cache[object]
+		if entries then
+			for _, entry in entries do
+				if
+					entry.width == parent.width
+					and entry.height == parent.height
+					and entry.scale == parent.scale
+					and entry.override == widthOverride
+				then
+					for index = entry.first, entry.last do
+						local write = basisWrites[index]
+						bases[write.object] = write.value
+						table.insert(basisWrites, write)
+					end
+					return table.clone(entry.value)
+				end
+			end
+		else
+			entries = {}
+			cache[object] = entries
+		end
+		local first = #basisWrites + 1
+		local value = calculateSize(object, parent, widthOverride)
+		table.insert(entries, {
+			width = parent.width,
+			height = parent.height,
+			scale = parent.scale,
+			override = widthOverride,
+			value = table.clone(value),
+			first = first,
+			last = #basisWrites,
+		})
+		return value
+	end
 	local turns: { [Instance]: { Turn } } = {}
 	setmetatable(turns, { __mode = "k" })
 	local frames: { [Instance]: Rectangle } = {}
+	local step: () -> ()
+	local attached: Controller
+	local selectionScroll = SelectionScroll.attach(environment, read, vector, function(object)
+		return frames[object] ~= nil
+	end, function()
+		step()
+	end)
 	setmetatable(frames, { __mode = "k" })
 	local scrollingProperties = { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" }
 	local scrollingGeometry: { [Instance]: { [string]: Vector } } = {}
@@ -588,8 +673,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local dx, dy = x - turn.x, y - turn.y
 		return turn.x + dx * cosine - dy * sine, turn.y + dx * sine + dy * cosine
 	end
-	local function step()
+	local function measure()
 		local roots = options.roots()
+		for _, root in roots do
+			selectionScroll.watch(root)
+		end
 		for _, root in roots do
 			validate(root)
 		end
@@ -607,7 +695,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		type Canvas = { content: Rectangle, window: Vector, canvas: Vector, position: Vector }
 		local function canvasOf(object: Instance, rectangle: Rectangle, parent: Rectangle): Canvas
 			local scale = rectangle.scale
-			local thickness = (number(object, "ScrollBarThickness", 12) + 1) * scale
+			local thickness = (number(object, "ScrollBarThickness", 12) + number(object, "BorderSizePixel", 1)) * scale
 			local direction = enum(object, "ScrollingDirection", "XY")
 			local alongX, alongY = direction ~= "Y", direction ~= "X"
 			local authored = Values.dimensions(read(object, "CanvasSize"))
@@ -681,12 +769,12 @@ local function attach(environment: Environment.Environment, options: Options): C
 			local maxY = math.max(0, canvasY - (rectangle.height - reserve(insetY, showX)))
 			local requested = Values.vector(read(object, "CanvasPosition"))
 			local position = {
-				X = math.clamp(requested.X, 0, maxX / scale),
-				Y = math.clamp(requested.Y, 0, maxY / scale),
+				X = math.clamp(requested.X, 0, maxX),
+				Y = math.clamp(requested.Y, 0, maxY),
 			}
 			local content = inset(object, {
-				x = rectangle.x - position.X * scale,
-				y = rectangle.y - position.Y * scale,
+				x = rectangle.x - position.X,
+				y = rectangle.y - position.Y,
 				width = canvasX,
 				height = canvasY,
 				scale = scale,
@@ -740,13 +828,14 @@ local function attach(environment: Environment.Environment, options: Options): C
 				and (isText(object))
 				and optional(object, "TextWrapped") == true
 				and enum(object, "AutomaticSize", "None") ~= "None"
+				and not (object.Parent and object.Parent:FindFirstChildWhichIsA "UIGridLayout")
 			then
 				local list = if object.Parent then object.Parent:FindFirstChildWhichIsA "UIListLayout" else nil
 				local reflowed = list ~= nil
-					and optional(list, "Wraps") ~= true
 					and (
 						(
 							enum(list, "FillDirection", "Vertical") == "Vertical"
+							and optional(list, "Wraps") ~= true
 							and enum(list, "HorizontalFlex", "None") == "Fill"
 						) or enum(list, "FillDirection", "Vertical") == "Horizontal"
 					)
@@ -790,14 +879,22 @@ local function attach(environment: Environment.Environment, options: Options): C
 				measureTree(child, content, placements[child])
 			end
 		end
-		for _, root in roots do
-			measureTree(root, screen, nil)
+		measurements = {}
+		local measured, failure = pcall(function()
+			for _, root in roots do
+				measureTree(root, screen, nil)
+			end
+		end)
+		measurements = nil
+		table.clear(basisWrites)
+		if not measured then
+			error(failure, 0)
 		end
 		local function publish(object: Instance, rectangle: Rectangle, around: { Turn })
 			local bounds = textBounds(object, rectangle)
 			if bounds then
-				environment.poke(object, "TextBounds", vector(bounds.X, bounds.Y))
-				environment.poke(object, "TextFits", bounds.fits)
+				environment.publish(object, "TextBounds", vector(bounds.X, bounds.Y))
+				environment.publish(object, "TextFits", bounds.fits)
 			end
 			local x, y = rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2
 			local angle = 0
@@ -806,10 +903,10 @@ local function attach(environment: Environment.Environment, options: Options): C
 				angle += turn.angle
 			end
 			frames[object], turns[object] = rectangle, around
-			environment.poke(object, "AbsolutePosition", vector(x - rectangle.width / 2, y - rectangle.height / 2))
-			environment.poke(object, "AbsoluteSize", vector(rectangle.width, rectangle.height))
+			environment.publish(object, "AbsolutePosition", vector(x - rectangle.width / 2, y - rectangle.height / 2))
+			environment.publish(object, "AbsoluteSize", vector(rectangle.width, rectangle.height))
 			if object:IsA "GuiObject" then
-				environment.poke(object, "AbsoluteRotation", angle + number(object, "Rotation", 0))
+				environment.publish(object, "AbsoluteRotation", angle + number(object, "Rotation", 0))
 			end
 		end
 		local visit: (Instance, Rectangle, Rectangle?, { Turn }) -> ()
@@ -857,11 +954,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 			if object:IsA "ScrollingFrame" then
 				local scrolled = canvasOf(object, rectangle, parent)
 				content = scrolled.content
-				environment.poke(object, "AbsoluteWindowSize", vector(scrolled.window.X, scrolled.window.Y))
-				environment.poke(object, "AbsoluteCanvasSize", vector(scrolled.canvas.X, scrolled.canvas.Y))
+				environment.publish(object, "AbsoluteWindowSize", vector(scrolled.window.X, scrolled.window.Y))
+				environment.publish(object, "AbsoluteCanvasSize", vector(scrolled.canvas.X, scrolled.canvas.Y))
 				local requested = Values.vector(read(object, "CanvasPosition"))
 				if requested.X ~= scrolled.position.X or requested.Y ~= scrolled.position.Y then
-					environment.poke(object, "CanvasPosition", vector(scrolled.position.X, scrolled.position.Y))
+					environment.publish(object, "CanvasPosition", vector(scrolled.position.X, scrolled.position.Y))
 				end
 				scrollingGeometry[object] = scrollingBounds(object)
 			end
@@ -874,15 +971,15 @@ local function attach(environment: Environment.Environment, options: Options): C
 				for _, item in measured.items do
 					placements[item.object] = item.rectangle
 				end
-				environment.poke(grid, "AbsoluteContentSize", vector(measured.width, measured.height))
-				environment.poke(grid, "AbsoluteCellSize", vector(measured.cellWidth, measured.cellHeight))
-				environment.poke(grid, "AbsoluteCellCount", vector(measured.columns, measured.rows))
+				environment.publish(grid, "AbsoluteContentSize", vector(measured.width, measured.height))
+				environment.publish(grid, "AbsoluteCellSize", vector(measured.cellWidth, measured.cellHeight))
+				environment.publish(grid, "AbsoluteCellCount", vector(measured.columns, measured.rows))
 			elseif list then
 				local measured = List.measure(list, content, read, size, size)
 				for _, item in measured.items do
 					placements[item.object] = item.rectangle
 				end
-				environment.poke(list, "AbsoluteContentSize", vector(measured.width, measured.height))
+				environment.publish(list, "AbsoluteContentSize", vector(measured.width, measured.height))
 			end
 			for _, child in children do
 				visit(child, content, placements[child], around)
@@ -890,6 +987,45 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		for _, root in roots do
 			visit(root, screen, nil, {})
+		end
+	end
+	local measuring = false
+	local pending = false
+	local settledAt: number? = nil
+	local settledX, settledY, settledRoots = 0, 0, 0
+	step = function()
+		pending = true
+		if measuring then
+			return
+		end
+		local viewport = options.viewport()
+		local rootCount = #options.roots()
+		local before, publishedBefore = environment.revision()
+		local busy = attached.busy ~= nil and attached.busy()
+		if
+			not busy
+			and settledAt == before
+			and settledX == viewport.X
+			and settledY == viewport.Y
+			and settledRoots == rootCount
+		then
+			pending = false
+			return
+		end
+		settledAt = nil
+		measuring = true
+		repeat
+			pending = false
+			local ok, problem = pcall(measure)
+			if not ok then
+				measuring = false
+				error(problem, 0)
+			end
+		until not pending
+		measuring = false
+		local after, publishedAfter = environment.revision()
+		if not busy and after == before and publishedAfter == publishedBefore then
+			settledAt, settledX, settledY, settledRoots = after, viewport.X, viewport.Y, rootCount
 		end
 	end
 	local function objectsAtPosition(root: Instance, rawX: number, rawY: number): { Instance }
@@ -911,7 +1047,6 @@ local function attach(environment: Environment.Environment, options: Options): C
 		}
 		local hits: { Hit } = {}
 		local index = 0
-		local displays: { [number]: Instance } = {}
 		local function contains(object: Instance): boolean
 			local frame = frames[object]
 			local around = turns[object]
@@ -949,12 +1084,6 @@ local function attach(environment: Environment.Environment, options: Options): C
 				end
 				screen = object
 				path = {}
-				local display = number(object, "DisplayOrder", 0)
-				local prior = displays[display]
-				if prior and prior ~= object then
-					unsupported(object, "equal DisplayOrder across ScreenGuis")
-				end
-				displays[display] = object
 			elseif object:IsA "LayerCollector" then
 				unsupported(object, object.ClassName .. " hit testing")
 			end
@@ -985,7 +1114,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 						path = path,
 					})
 				end
-				clipped = clipped or optional(object, "ClipsDescendants") == true and not inside
+				local around = turns[object]
+				local rotated = number(object, "Rotation", 0) ~= 0 or around ~= nil and #around > 0
+				clipped = clipped or optional(object, "ClipsDescendants") == true and not rotated and not inside
 			end
 			local folder = object:IsA "Folder"
 			for ordinal, child in object:GetChildren() do
@@ -1006,7 +1137,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 				return a.display > b.display
 			end
 			if a.screen ~= b.screen then
-				unsupported(a.screen, "equal DisplayOrder across ScreenGuis")
+				return assert(environment.descendantOrderOf(root, a.screen))
+					> assert(environment.descendantOrderOf(root, b.screen))
 			end
 			if a.mode == "Global" then
 				return if a.z ~= b.z then a.z > b.z else a.index > b.index
@@ -1028,7 +1160,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return result
 	end
-	return { step = step, objectsAtPosition = objectsAtPosition }
+	attached = { step = step, busy = nil, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
+	return attached
 end
 
 return { attach = attach }

@@ -62,28 +62,35 @@ local function bridge(snapshot: (string | Snapshot.Snapshot)?, options: Options?
 		local ui: UiFakes.Options = table.clone(settings.ui or {})
 		if ui.measureBounds == nil then
 			ui.measureBounds = TextMetrics.create()
+			if ui.measureLineHeight == nil then
+				ui.measureLineHeight = TextMetrics.heights()
+			end
 			if ui.truncateBounds == nil then
 				ui.truncateBounds = TextMetrics.truncator()
 			end
 		end
 		if ui.measureText == nil then
 			local measure = TextMetrics.create()
+			local height = TextMetrics.heights()
 			local library = Snapshot.library(captured)
 			ui.measureText = function(text: string, size: number, value: Enum.EnumItem, bounds: Values.Vector): unknown
-				local measured = Values.vector(measure {
+				local parameters = {
 					Text = text,
 					Size = size,
 					Font = Values.font(library.Font.fromEnum(value)),
 					Width = bounds.X,
-				})
-				local lineSize = Values.vector(measure {
-					Text = "",
-					Size = size,
-					Font = Values.font(library.Font.fromEnum(value)),
-					Width = 0,
-				}).Y
-				local height = math.max(1, math.floor(bounds.Y / lineSize)) * lineSize
-				return library.Vector2.new(measured.X, math.min(measured.Y, height))
+				}
+				local measured = Values.vector(measure(parameters))
+				local low, high = 1, math.round(measured.Y / height(parameters, 1, 1))
+				while low < high do
+					local middle = math.ceil((low + high) / 2)
+					if height(parameters, middle, 1) <= bounds.Y then
+						low = middle
+					else
+						high = middle - 1
+					end
+				end
+				return library.Vector2.new(measured.X, height(parameters, low, 1))
 			end
 		end
 		settings.ui = ui

@@ -62,6 +62,18 @@ local function mountProbe(caseContext: Core.Context, source: string): (boolean, 
 	return complete, messages
 end
 
+it("oversized words wrap across glyph boundaries", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-word-wrap")
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
+it("truncation accepts exact and fractional width boundaries", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-truncation-boundary")
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("single-line truncated text reports the Studio ellipsis width", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,
@@ -69,12 +81,12 @@ it("single-line truncated text reports the Studio ellipsis width", function(_, c
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local expected = {
-					{ "AtEnd", 60, 57 },
-					{ "AtEnd", 100, 72 },
-					{ "AtEnd", 140, 72 },
-					{ "SplitWord", 60, 57 },
-					{ "SplitWord", 100, 93 },
-					{ "SplitWord", 140, 137 },
+					{ "AtEnd", 60, 59.333335876464844 },
+					{ "AtEnd", 100, 68.666671752929688 },
+					{ "AtEnd", 140, 138.66667175292969 },
+					{ "SplitWord", 60, 59.333335876464844 },
+					{ "SplitWord", 100, 96.666671752929688 },
+					{ "SplitWord", 140, 138.66667175292969 },
 				}
 				local labels = {}
 				for index, row in expected do
@@ -93,11 +105,11 @@ it("single-line truncated text reports the Studio ellipsis width", function(_, c
 				end
 				local narrow = {
 					{ "AtEnd", false, 4, 0 },
-					{ "AtEnd", false, 12, 9 },
-					{ "AtEnd", true, 20, 17 },
+					{ "AtEnd", false, 12, 9.3333339691162109 },
+					{ "AtEnd", true, 20, 17.333333969116211 },
 					{ "SplitWord", false, 4, 0 },
-					{ "SplitWord", true, 12, 9 },
-					{ "SplitWord", false, 20, 17 },
+					{ "SplitWord", true, 12, 9.3333339691162109 },
+					{ "SplitWord", false, 20, 17.333333969116211 },
 				}
 				for _, row in narrow do
 					local label = Instance.new("TextLabel")
@@ -123,29 +135,29 @@ it("wrapped truncated text reports the Studio ellipsis width", function(_, caseC
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local expected = {
-					{ "Automatic transmission mode", "AtEnd", 100, 40, 86, 32, false },
-					{ "Automatic transmission mode", "AtEnd", 140, 40, 117, 32, true },
-					{ "Automatic transmission mode", "AtEnd", 180, 20, 153, 16, false },
-					{ "Automatic transmission mode", "AtEnd", 120, 60, 117, 32, true },
-					{ "Automatic transmission mode", "AtEnd", 200, 36, 184, 16, true },
-					{ "Automatic transmission mode", "SplitWord", 100, 40, 90, 32, false },
-					{ "Automatic transmission mode", "SplitWord", 140, 40, 117, 32, true },
-					{ "Automatic transmission mode", "SplitWord", 180, 20, 177, 16, false },
-					{ "Automatic transmission mode", "SplitWord", 120, 60, 117, 32, true },
-					{ "Automatic transmission mode", "SplitWord", 200, 36, 184, 16, true },
-					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 100, 40, 71, 32, false },
-					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 140, 40, 130, 32, false },
-					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 180, 20, 176, 16, false },
-					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 120, 60, 117, 48, true },
-					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 200, 36, 199, 32, true },
-					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 100, 40, 98, 32, false },
-					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 140, 40, 134, 32, false },
-					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 120, 60, 117, 48, true },
-					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 200, 36, 199, 32, true },
-					{ "Confirm the selected driver and race details before continuing.", "AtEnd", 200, 36, 198, 32, true },
-					{ "Confirm the selected driver and race details before continuing.", "SplitWord", 100, 40, 96, 32, false },
-					{ "Confirm the selected driver and race details before continuing.", "SplitWord", 120, 60, 119, 48, false },
-					{ "Confirm the selected driver and race details before continuing.", "SplitWord", 200, 36, 198, 32, true },
+					{ "Automatic transmission mode", "AtEnd", 100, 40, 84, 32, false },
+					{ "Automatic transmission mode", "AtEnd", 140, 40, 137.33334350585938, 32, true },
+					{ "Automatic transmission mode", "AtEnd", 180, 20, 174.66667175292969, 16, true },
+					{ "Automatic transmission mode", "AtEnd", 120, 60, 112, 32, true },
+					{ "Automatic transmission mode", "AtEnd", 200, 36, 174.66667175292969, 16, true },
+					{ "Automatic transmission mode", "SplitWord", 100, 40, 98.666671752929688, 32, false },
+					{ "Automatic transmission mode", "SplitWord", 140, 40, 137.33334350585938, 32, true },
+					{ "Automatic transmission mode", "SplitWord", 180, 20, 174.66667175292969, 16, true },
+					{ "Automatic transmission mode", "SplitWord", 120, 60, 112, 32, true },
+					{ "Automatic transmission mode", "SplitWord", 200, 36, 174.66667175292969, 16, true },
+					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 100, 40, 96.666671752929688, 32, false },
+					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 140, 40, 124, 32, false },
+					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 180, 20, 166.66667175292969, 16, false },
+					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 120, 60, 118.66667175292969, 48, true },
+					{ "The quick brown fox jumps over the lazy dog", "AtEnd", 200, 36, 187.33334350585938, 32, true },
+					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 100, 40, 100, 32, false },
+					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 140, 40, 135.33334350585938, 32, false },
+					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 120, 60, 118.66667175292969, 48, true },
+					{ "The quick brown fox jumps over the lazy dog", "SplitWord", 200, 36, 187.33334350585938, 32, true },
+					{ "Confirm the selected driver and race details before continuing.", "AtEnd", 200, 36, 189.33334350585938, 32, true },
+					{ "Confirm the selected driver and race details before continuing.", "SplitWord", 100, 40, 91.333335876464844, 32, false },
+					{ "Confirm the selected driver and race details before continuing.", "SplitWord", 120, 60, 114.66667175292969, 48, false },
+					{ "Confirm the selected driver and race details before continuing.", "SplitWord", 200, 36, 189.33334350585938, 32, true },
 				}
 				local labels = {}
 				for index, row in expected do
@@ -179,27 +191,27 @@ it("scaled text reports the Studio size it renders at", function(_, caseContext)
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local expected = {
-					{ "Score", false, 100, 30, 0, 19, 8, true },
-					{ "Score", false, 200, 50, 24, 19, 8, true },
-					{ "Score", true, 100, 30, 0, 64, 30, true },
+					{ "Score", false, 100, 30, 0, 18, 8, true },
+					{ "Score", false, 200, 50, 24, 18, 8, true },
+					{ "Score", true, 100, 30, 0, 62, 30, true },
 					{ "Score", true, 100, 30, 24, 50, 24, true },
-					{ "Score", true, 200, 50, 0, 104, 50, true },
-					{ "Score", true, 60, 60, 0, 59, 28, true },
-					{ "Score", true, 300, 200, 0, 206, 100, true },
+					{ "Score", true, 200, 50, 0, 103.33333587646484, 50, true },
+					{ "Score", true, 60, 60, 0, 60, 28.666667938232422, true },
+					{ "Score", true, 300, 200, 0, 204.66667175292969, 100, true },
 					{ "Score", true, 300, 200, 24, 50, 24, true },
-					{ "Automatic transmission mode", false, 100, 30, 0, 96, 8, true },
-					{ "Automatic transmission mode", false, 60, 60, 0, 96, 8, false },
-					{ "Automatic transmission mode", true, 100, 30, 0, 94, 26, true },
-					{ "Automatic transmission mode", true, 200, 50, 0, 180, 50, true },
+					{ "Automatic transmission mode", false, 100, 30, 0, 93.333335876464844, 8, true },
+					{ "Automatic transmission mode", false, 60, 60, 0, 93.333335876464844, 8, false },
+					{ "Automatic transmission mode", true, 100, 30, 0, 98.666671752929688, 28, true },
+					{ "Automatic transmission mode", true, 200, 50, 0, 172.66667175292969, 49.333335876464844, true },
 					{ "Automatic transmission mode", true, 200, 50, 24, 168, 48, true },
-					{ "Automatic transmission mode", true, 60, 60, 0, 60, 36, true },
-					{ "Automatic transmission mode", true, 300, 200, 0, 299, 195, true },
-					{ "Automatic transmission mode", true, 300, 200, 24, 262, 24, true },
+					{ "Automatic transmission mode", true, 60, 60, 0, 60, 38, true },
+					{ "Automatic transmission mode", true, 300, 200, 0, 296, 194, true },
+					{ "Automatic transmission mode", true, 300, 200, 24, 263.33334350585938, 24, true },
 					{ "99", false, 100, 30, 0, 8, 8, true },
 					{ "99", true, 100, 30, 0, 28, 30, true },
-					{ "99", true, 100, 30, 24, 22, 24, true },
-					{ "99", true, 200, 50, 0, 46, 50, true },
-					{ "99", true, 60, 60, 0, 56, 60, true },
+					{ "99", true, 100, 30, 24, 22.666667938232422, 24, true },
+					{ "99", true, 200, 50, 0, 46.666667938232422, 50, true },
+					{ "99", true, 60, 60, 0, 55.333335876464844, 60, true },
 					{ "99", true, 300, 200, 0, 92, 100, true },
 				}
 				local labels = {}
@@ -231,14 +243,14 @@ it("scaled text reports the Studio size it renders at", function(_, caseContext)
 	expect(complete):toBe(true)
 end)
 
-it("fractional rendered text sizes measure at the floored size as Studio 0.744 does", function(_, caseContext)
+it("fractional rendered text sizes measure at the floored size", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,
 		[=[
 				local screen = Instance.new("ScreenGui")
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local failures = {}
-				for _, row in { { 15.5, 1, 135, 15 }, { 14, 1.25, 149, 17 }, { 16, 1.5, 206, 24 }, { 14.6, 1, 126, 14 } } do
+				for _, row in { { 15.5, 1, 130, 14.666666984558105 }, { 14, 1.25, 148, 16.666667938232422 }, { 16, 1.5, 208, 24 }, { 14.6, 1, 122, 14 } } do
 					local frame = Instance.new("Frame")
 					frame.Size, frame.Parent = UDim2.fromOffset(600, 100), screen
 					local scale = Instance.new("UIScale")
@@ -260,7 +272,7 @@ it("fractional rendered text sizes measure at the floored size as Studio 0.744 d
 	expect(complete):toBe(true)
 end)
 
-it("rich text without metric tags measures as its plain text as Studio 0.744 does", function(_, caseContext)
+it("rich text without metric tags preserves native text bounds", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,
 		[=[
@@ -268,17 +280,17 @@ it("rich text without metric tags measures as its plain text as Studio 0.744 doe
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local failures = {}
 				local rows = {
-					{ "<u>Save changes</u>", 1000, 94, 18 },
-					{ "<s>Save</s> changes", 1000, 94, 18 },
-					{ '<font color="#FF0000">Save</font> changes', 1000, 94, 18 },
-					{ '<font transparency="0.5">Save</font> changes', 1000, 94, 18 },
-					{ '<stroke color="#000000" thickness="2">Save</stroke> changes', 1000, 94, 18 },
-					{ '<mark color="#FFFF00">Save</mark> changes', 1000, 94, 18 },
-					{ "<!--note-->Save changes", 1000, 94, 18 },
-					{ "Tom &amp; Jerry &lt;3 &gt; &quot;x&quot; &apos;y&apos;", 1000, 154, 18 },
-					{ "line one<br />line two", 1000, 53, 36 },
-					{ "<uc>Save</uc> changes", 1000, 96, 18 },
-					{ "<u>Save all of these changes now</u>", 90, 69, 72 },
+					{ "<u>Save changes</u>", 1000, 91.333335876464844, 18 },
+					{ "<s>Save</s> changes", 1000, 91.333335876464844, 18 },
+					{ "<font color=\"#FF0000\">Save</font> changes", 1000, 91.333335876464844, 18 },
+					{ "<font transparency=\"0.5\">Save</font> changes", 1000, 91.333335876464844, 18 },
+					{ "<stroke color=\"#000000\" thickness=\"2\">Save</stroke> changes", 1000, 91.333335876464844, 18 },
+					{ "<mark color=\"#FFFF00\">Save</mark> changes", 1000, 91.333335876464844, 18 },
+					{ "<!--note-->Save changes", 1000, 91.333335876464844, 18 },
+					{ "Tom &amp; Jerry &lt;3 &gt; &quot;x&quot; &apos;y&apos;", 1000, 152, 18 },
+					{ "line one<br />line two", 1000, 52.666667938232422, 36 },
+					{ "<uc>Save</uc> changes", 1000, 94.666664123535156, 18 },
+					{ "<u>Save all of these changes now</u>", 90, 88.666664123535156, 54 },
 				}
 				for _, row in rows do
 					local label = Instance.new("TextLabel")
@@ -299,7 +311,7 @@ it("rich text without metric tags measures as its plain text as Studio 0.744 doe
 	expect(complete):toBe(true)
 end)
 
-it("a hyphen beside punctuation measures as Studio 0.744 does", function(_, caseContext)
+it("a hyphen beside punctuation preserves native text bounds", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,
 		[=[
@@ -307,8 +319,8 @@ it("a hyphen beside punctuation measures as Studio 0.744 does", function(_, case
 				screen.Parent = game.Players.LocalPlayer.PlayerGui
 				local failures = {}
 				local faces = {
-					{ "BuilderSans", 16, { 9, 14, 7, 6, 7, 12, 10 } },
-					{ "Nunito", 20, { 14, 21, 10, 10, 10, 17, 16 } },
+					{ "BuilderSans", 16, { 8.6666669845581055, 13.333333969116211, 6, 6, 6, 12.666666984558105, 9.3333339691162109 } },
+					{ "Nunito", 20, { 13.333333969116211, 20, 9.3333339691162109, 9.3333339691162109, 9.3333339691162109, 16, 16 } },
 				}
 				for _, face in faces do
 					for index, text in { "--", "---", "-.", ".-", "-,", "(-)", "->" } do
@@ -354,10 +366,10 @@ it("rich text with tags that change metrics is refused", function(_, caseContext
 	end
 end)
 
-it("truncation the text model cannot place exactly is refused", function(_, caseContext)
-	local rows: { { mode: string, width: number, height: number, message: string } } = {
-		{ mode = "AtEnd", width = 100, height = 40, message = "wrapped truncation shorter than its line" },
-		{ mode = "SplitWord", width = 140, height = 40, message = "truncation within a pixel of the limit" },
+it("wrapped truncation preserves preceding lines and accepts a width boundary", function(_, caseContext)
+	local rows = {
+		{ mode = "AtEnd", width = 100, height = 40, bounds = 97.33333587646484 },
+		{ mode = "SplitWord", width = 140, height = 40, bounds = 136 },
 	}
 	for _, row in rows do
 		local complete, messages = mountProbe(
@@ -372,15 +384,18 @@ it("truncation the text model cannot place exactly is refused", function(_, case
 						label.Size, label.TextTruncate = UDim2.fromOffset(%d, %d), Enum.TextTruncate.%s
 						label.Parent = screen
 						task.wait(0.05)
+						assert(label.TextBounds == Vector2.new(%.17g, 32), tostring(label.TextBounds))
+						assert(label.TextFits == false)
 						return true
 					]],
 				row.width,
 				row.height,
-				row.mode
+				row.mode,
+				row.bounds
 			)
 		)
-		expect(complete):toBe(false)
-		expect(table.concat(messages, "\n")):toContain(row.message)
+		expect(complete):toBe(true)
+		expect(table.concat(messages, "\n")):toBe ""
 	end
 end)
 

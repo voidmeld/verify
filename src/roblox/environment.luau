@@ -12,6 +12,8 @@ local createSignals = require "./environment-signals"
 local Types = require "./environment-types"
 local SpatialFakes = require "./spatial-fakes"
 local AudioFakes = require "./audio-fakes"
+local InputActionFakes = require "./input-action-fakes"
+local HapticFakes = require "./haptic-fakes"
 local TweenFakes = require "./tween-fakes"
 local SpatialQueryFakes = require "./spatial-query-fakes"
 
@@ -69,8 +71,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local raising = handlerErrors == "raise"
 	local scheduler = Scheduler.create()
 	local alive = 0
+	local ancestryOrder = 0
 
 	local environment = {}
+	local inputActions: InputActionFakes.Controller? = nil
 	local root: Instance
 	local setTag: (Instance, string, boolean) -> ()
 	local states: { [unknown]: State } = {}
@@ -161,6 +165,13 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return states[object]
 	end
 
+	local mutations, published = 0, 0
+	local publishing = false
+
+	local function touch()
+		mutations += 1
+	end
+
 	local function isObject(value: unknown): boolean
 		return type(value) == "table" and rawget(value :: { [string]: unknown }, "__state") ~= nil
 	end
@@ -193,6 +204,15 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function changed(object: Instance, state: State, property: string)
+		if publishing then
+			publishing = false
+			published += 1
+		else
+			mutations += 1
+		end
+		if inputActions then
+			inputActions.changed(object, property)
+		end
 		fireSignal(state, "prop:" .. property)
 		fireSignal(state, "Changed", property)
 	end
@@ -278,6 +298,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			stateOf(descendant).removing = true
 		end
 		local leaving = without(before, after)
+		local joining = without(after, before)
 		for _, descendant in objects do
 			for _, ancestor in leaving do
 				fireSignal(stateOf(ancestor), "DescendantRemoving", descendant)
@@ -295,7 +316,17 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			table.insert(stateOf(parent).children, object)
 		end
 		for _, descendant in objects do
-			stateOf(descendant).removing = false
+			local descendantState = stateOf(descendant)
+			descendantState.removing = false
+			for _, ancestor in leaving do
+				descendantState.ancestryOrders[ancestor] = nil
+			end
+			if #joining > 0 then
+				ancestryOrder += 1
+				for _, ancestor in joining do
+					descendantState.ancestryOrders[ancestor] = ancestryOrder
+				end
+			end
 		end
 		if previous ~= nil then
 			fireSignal(stateOf(previous), "ChildRemoved", object)
@@ -303,7 +334,6 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if parent ~= nil then
 			fireSignal(stateOf(parent), "ChildAdded", object)
 		end
-		local joining = without(after, before)
 		for _, descendant in objects do
 			for _, ancestor in joining do
 				fireSignal(stateOf(ancestor), "DescendantAdded", descendant)
@@ -316,6 +346,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function setParent(object: Instance, state: State, parent: Instance?)
+		touch()
 		if injecting "setParent" then
 			inject("setParent", state, nil, object, nil, parent)
 		end
@@ -345,6 +376,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if state.destroyed or state.destroying then
 			return
 		end
+		touch()
 		if state.removing then
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
 		end
@@ -415,6 +447,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		newObject = function(...)
 			return newObject(...)
 		end,
+		touch = touch,
 		setTag = function(...)
 			return setTag(...)
 		end,
@@ -423,8 +456,13 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end,
 	}
 
+	local plainReads = model.plainReads
 	local function readMember(object: Instance, key: string): unknown
 		local state = stateOf(object)
+		local plain = plainReads[state.className]
+		if plain ~= nil and plain[key] and state.doubles[key] == nil then
+			return state.values[key]
+		end
 		if not state.class.instance and (key == "Name" or key == "Archivable") then
 			memberError(state, key)
 		end
@@ -453,6 +491,14 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			and class.methods[key] == nil
 			and computedFor(state.className, key) == nil
 		then
+			if settings.computed == nil or table.isfrozen(settings.computed) then
+				local known = plainReads[state.className]
+				if known == nil then
+					known = {}
+					plainReads[state.className] = known
+				end
+				known[key] = true
+			end
 			return state.values[key]
 		end
 		local double = doubleHandler(state.doubles[key])
@@ -607,6 +653,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			class = class,
 			values = values,
 			children = {},
+			ancestryOrders = {},
 			attributes = {},
 			tags = {},
 			signals = {},
@@ -763,6 +810,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	environment.parentOf = function(object: Instance): Instance?
 		return stateOf(object).parent
 	end
+	environment.descendantOrderOf = function(ancestor: Instance, object: Instance): number?
+		return stateOf(object).ancestryOrders[ancestor]
+	end
 	environment.propertyOf = function(object: Object, key: string): unknown
 		local state = stateOf(object)
 		return if state.class.access[key] == "callback" then doubleHandler(state.doubles[key]) else state.values[key]
@@ -793,6 +843,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if (state.tags[tag] == true) == present then
 			return
 		end
+		touch()
 		if present then
 			state.tags[tag] = true
 		else
@@ -840,6 +891,15 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		assign(object, state, key, value)
 	end)
+	environment.publish = function(object: Instance, key: string, value: unknown)
+		publishing = true
+		environment.poke(object, key, value)
+		publishing = false
+	end
+	environment.touch = touch
+	environment.revision = function(): (number, number)
+		return mutations, published
+	end
 	environment.fire = operation(function(object: Instance, event: string, ...: unknown)
 		local state = stateOf(object)
 		if not state.class.events[event] then
@@ -1016,6 +1076,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return stateOf(object).worldPivotSet == true
 	end)
 	AudioFakes.attach(environment)
+	inputActions = InputActionFakes.attach(environment)
+	HapticFakes.attach(environment)
 	TweenFakes.attach(environment)
 	SpatialQueryFakes.attach(environment)
 	for member, handler in initialFakes do

@@ -8,6 +8,8 @@ local Layout = require "./ui-layout"
 local Datatypes = require "./datatypes"
 local Values = require "./ui-values"
 local EnumTypes = require "./datatypes/enum"
+local Gamepad = require "./input-gamepad"
+local Touch = require "./input-touch"
 
 export type Key = { code: string, down: boolean }
 export type Pointer = { x: number, y: number, button: "left" | "right" | "middle", down: boolean }
@@ -20,6 +22,7 @@ export type SimulatedOptions = {
 	library: Datatypes.Library,
 	activationWindowSeconds: number,
 	read: ((Environment.Instance, string) -> unknown)?,
+	virtualController: boolean?,
 }
 local function fields(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "expected input record")
@@ -542,8 +545,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local heldKeys: { [string]: true } = {}
 	local heldInputs: { [string]: Instance } = {}
-	local actionStates: { [Instance]: boolean } = {}
-	setmetatable(actionStates, { __mode = "k" })
+	local selectionRepeats: { [string]: {} } = {}
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
 	end
@@ -582,6 +584,20 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end)
 		return found
 	end
+	local function deliverActions(code: string, down: boolean)
+		local sunk: number? = nil
+		for _, entry in boundActions(code) do
+			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
+			if sunk and priority < sunk then
+				break
+			end
+			local fire = entry.action.Fire :: (Instance, boolean) -> ()
+			fire(entry.action, down)
+			if env.propertyOf(entry.context, "Sink") == true then
+				sunk = priority
+			end
+		end
+	end
 	local directions: { [string]: { x: number, y: number, name: string } } = {
 		Up = { x = 0, y = -1, name = "Up" },
 		Down = { x = 0, y = 1, name = "Down" },
@@ -603,6 +619,43 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local function selectable(object: Instance): boolean
 		return object:IsA "GuiObject" and read(object, "Selectable") == true and shown(object) and interactable(object)
+	end
+	local function onScreen(object: Instance): boolean
+		local at = Values.vector(read(object, "AbsolutePosition"))
+		local size = Values.vector(read(object, "AbsoluteSize"))
+		local left, top, right, bottom = at.X, at.Y, at.X + size.X, at.Y + size.Y
+		local parent = object.Parent
+		while parent and parent ~= gui do
+			if parent:IsA "ScreenGui" or parent:IsA "GuiObject" and read(parent, "ClipsDescendants") == true then
+				local origin = Values.vector(read(parent, "AbsolutePosition"))
+				local extent = Values.vector(read(parent, "AbsoluteSize"))
+				left, top = math.max(left, origin.X), math.max(top, origin.Y)
+				right, bottom = math.min(right, origin.X + extent.X), math.min(bottom, origin.Y + extent.Y)
+			end
+			parent = parent.Parent
+		end
+		return right > left and bottom > top
+	end
+	local selectionService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+	if selectionService then
+		install(selectionService, "Select", function(self: Instance, scope: Instance)
+			ensureOpen()
+			assert(scope == gui or scope:IsDescendantOf(gui), "selection parent must belong to this PlayerGui")
+			layout.step()
+			local chosen: Instance? = nil
+			local order = math.huge
+			for _, object in scope:GetDescendants() do
+				if selectable(object) and onScreen(object) then
+					local candidateOrder = Values.number(read(object, "SelectionOrder"))
+					if candidateOrder < order then
+						chosen, order = object, candidateOrder
+					end
+				end
+			end
+			if chosen then
+				env.poke(self, "SelectedObject", chosen)
+			end
+		end)
 	end
 	local function center(object: Instance): Position
 		local at = Values.vector(read(object, "AbsolutePosition"))
@@ -685,7 +738,98 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		Return = true,
 		Escape = true,
 	}
+	local function repeatSelection(code: string, token: {})
+		if closed or selectionRepeats[code] ~= token then
+			return
+		end
+		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
+		if guiService and Environment.isInstance(selected) and not focusedBox() then
+			local target = navigate(Environment.assertInstance(selected), directions[code])
+			if target then
+				env.poke(guiService, "SelectedObject", target)
+			end
+		end
+		env.scheduler.delay(0.12, repeatSelection, code, token)
+	end
+	local controllerPress: Instance? = nil
+	local stickDirection: string? = nil
+	local gamepad = Gamepad.create(env, library, input, function(event, object)
+		local code = codeName(env.propertyOf(object, "KeyCode"))
+		local direction = code:match "^DPad(.+)$"
+		if event == "InputEnded" and direction then
+			selectionRepeats[direction] = nil
+		end
+		if event == "InputEnded" and code == "Thumbstick1" then
+			stickDirection = nil
+		end
+		if lastInput ~= inputTypes.Gamepad1 then
+			lastInput = inputTypes.Gamepad1
+			env.fire(service, "LastInputTypeChanged", lastInput)
+		end
+		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
+		if guiService and Environment.isInstance(selected) then
+			local target = Environment.assertInstance(selected)
+			if code == "Thumbstick1" then
+				local position = env.propertyOf(object, "Position") :: { X: number, Y: number, Z: number }
+				if position.X ~= 0 and position.Y ~= 0 then
+					unsupported "virtual controller diagonal thumbstick selection"
+				end
+				local current = if position.X > 0
+					then "Right"
+					elseif position.X < 0 then "Left"
+					elseif position.Y > 0 then "Up"
+					elseif position.Y < 0 then "Down"
+					else nil
+				if current and current ~= stickDirection then
+					local nextTarget = navigate(target, directions[current])
+					if nextTarget then
+						env.poke(guiService, "SelectedObject", nextTarget)
+					end
+				end
+				stickDirection = current
+				env.fire(service, event, object, true)
+				return
+			end
+			if direction and directions[direction] then
+				if event == "InputBegan" then
+					local nextTarget = navigate(target, directions[direction])
+					if nextTarget then
+						env.poke(guiService, "SelectedObject", nextTarget)
+					end
+					local token = {}
+					selectionRepeats[direction] = token
+					env.scheduler.delay(0.5, repeatSelection, direction, token)
+				end
+				env.fire(service, event, object, true)
+				return
+			elseif code == "ButtonA" then
+				if event == "InputBegan" then
+					controllerPress = target
+				elseif event == "InputEnded" then
+					if controllerPress == target and button(target) and interactable(target) then
+						env.fire(target, "Activated", object, 1)
+					end
+					controllerPress = nil
+				end
+				env.fire(service, event, object, true)
+				return
+			end
+		end
+		if event == "InputEnded" and code == "ButtonA" then
+			controllerPress = nil
+		end
+		env.fire(service, event, object, false)
+		if event ~= "InputChanged" then
+			deliverActions(code, event == "InputBegan")
+		end
+	end)
 	local function deliverKey(value: Key)
+		if options.virtualController then
+			gamepad.key(value.code, value.down)
+			return
+		end
 		local code = value.code
 		local keyboard = inputTypes.Keyboard
 		local member = library.Enum.KeyCode:FromName(code)
@@ -703,6 +847,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		else
 			heldKeys[code] = nil
 			heldInputs[code] = nil
+			selectionRepeats[code] = nil
 		end
 		if box then
 			if value.down and code == "Backspace" then
@@ -735,25 +880,16 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
 		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
 		if guiService and Environment.isInstance(selected) and (directions[code] or navigationKeys[code]) then
+			if value.down and directions[code] and selectionRepeats[code] == nil then
+				local token = {}
+				selectionRepeats[code] = token
+				env.scheduler.delay(0.5, repeatSelection, code, token)
+			end
 			deliverSelection(guiService, Environment.assertInstance(selected), code, object, value.down)
 			return
 		end
 		env.fire(service, if value.down then "InputBegan" else "InputEnded", object, false)
-		local sunk: number? = nil
-		for _, entry in boundActions(code) do
-			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
-			if sunk and priority < sunk then
-				break
-			end
-			if actionStates[entry.action] ~= value.down then
-				actionStates[entry.action] = value.down
-				env.fire(entry.action, if value.down then "Pressed" else "Released")
-				env.fire(entry.action, "StateChanged", value.down)
-			end
-			if env.propertyOf(entry.context, "Sink") == true then
-				sunk = priority
-			end
-		end
+		deliverActions(code, value.down)
 	end
 	local function deliverText(value: string)
 		local box = focusedBox()
@@ -799,11 +935,46 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		error(problem, 0)
 	end
+	local function touchMode(): boolean
+		return env.propertyOf(service, "TouchEnabled") == true and env.propertyOf(service, "MouseEnabled") == false
+	end
+	local function touchPoint(at: Position): Position
+		local root = gui:FindFirstAncestorWhichIsA "DataModel"
+		local guiService = root and root:FindFirstChildOfClass "GuiService"
+		assert(guiService, "touch input requires GuiService")
+		local getArea = guiService.GetInsetArea :: (Instance, unknown) -> { Min: Position }
+		local area = getArea(guiService, library.Enum.ScreenInsets.None)
+		return { X = at.X + area.Min.X, Y = at.Y + area.Min.Y }
+	end
+	local touch = Touch.create(env, {
+		service = service,
+		activationWindowSeconds = activationWindow,
+		library = library,
+		createInput = input,
+		targets = function(at)
+			local inset = options.inset()
+			return recipients(hits({ X = at.X + inset.X, Y = at.Y + inset.Y }, "button"))
+		end,
+		processed = processed,
+		detector = detectorFor,
+		read = read,
+		changed = function()
+			if lastInput ~= inputTypes.Touch then
+				lastInput = inputTypes.Touch
+				env.fire(service, "LastInputTypeChanged", lastInput)
+			end
+		end,
+	})
 	local function createDevice(): Environment.Object
 		local device = env.createEngineObject "VirtualInput"
 		table.insert(owned, device)
 		install(device, "SendMousePosition", function(_self: Environment.Object, at: Position)
-			move(at, hits(at, "movement"))
+			if touchMode() then
+				position = at
+				touch.move(touchPoint(at))
+			else
+				move(at, hits(at, "movement"))
+			end
 		end)
 		install(
 			device,
@@ -818,7 +989,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if at.X ~= position.X or at.Y ~= position.Y then
 					unsupported "button coordinates without prior pointer movement"
 				end
-				send(at, down)
+				if touchMode() then
+					touch.press(touchPoint(at), down)
+				else
+					send(at, down)
+				end
 			end
 		)
 		install(device, "SendKey", function(_self: Environment.Object, down: boolean, code: unknown, _repeat: boolean)
@@ -845,6 +1020,24 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		ensureOpen()
 		return heldKeys[codeName(code)] == true
 	end)
+	install(service, "GetGamepadState", function(_self: Instance, kind: unknown): { Instance }
+		ensureOpen()
+		return gamepad.state(kind)
+	end)
+	local previousGamepad = env.propertyOf(service, "GamepadEnabled")
+	local previousPreferred = env.propertyOf(service, "PreferredInput")
+	if options.virtualController then
+		env.poke(service, "GamepadEnabled", true)
+		env.poke(service, "PreferredInput", library.Enum.PreferredInput.Gamepad)
+		install(service, "GetConnectedGamepads", function(): { unknown }
+			ensureOpen()
+			return { inputTypes.Gamepad1 }
+		end)
+		install(service, "GetGamepadConnected", function(_self: Instance, kind: unknown): boolean
+			ensureOpen()
+			return kind == inputTypes.Gamepad1
+		end)
+	end
 	install(service, "GetKeysPressed", function(): { Instance }
 		ensureOpen()
 		local pressedKeys: { Instance } = {}
@@ -888,7 +1081,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if current.button ~= "left" then
 				unsupported "non-left mouse button"
 			end
-			send({ X = current.x, Y = current.y }, current.down, true)
+			local at = { X = current.x, Y = current.y }
+			if touchMode() then
+				position = at
+				local point = touchPoint(at)
+				touch.move(point)
+				touch.press(point, current.down)
+			else
+				send(at, current.down, true)
+			end
 		end,
 		close = function()
 			if closed then
@@ -896,6 +1097,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 			closed = true
 			frame:Disconnect()
+			touch.close()
+			if options.virtualController then
+				env.poke(service, "GamepadEnabled", previousGamepad)
+				env.poke(service, "PreferredInput", previousPreferred)
+			end
 			for ordinal = #registrations, 1, -1 do
 				registrations[ordinal]()
 			end

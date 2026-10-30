@@ -6,7 +6,11 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
-local probe = require "./fixtures/ui-grid-layout"
+local probes = {
+	require "./fixtures/ui-grid-layout",
+	require "./fixtures/ui-grid-constraints",
+	require "./fixtures/ui-grid-text",
+}
 
 it("grid layout matches the same native conformance assertions", function(own)
 	local roots: { Roblox.Instance } = {}
@@ -40,18 +44,22 @@ it("grid layout matches the same native conformance assertions", function(own)
 	local complete = false
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-grid-layout" }, function()
-		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+		for _, probe in probes do
+			assert(Lute.chunk.load(probe, { environment = runtime.globals })() == true)
+		end
+		complete = true
 	end)
 	own(function()
 		scheduler.cancel(thread)
 	end)
-	for _ = 1, 240 do
+	for _ = 1, 360 do
 		if complete or #scheduler.failures > 0 then
 			break
 		end
 		runtime.step(1 / 60)
 	end
 	expect(engine.diagnostics):toEqual {}
+	expect(scheduler.failures):toEqual {}
 	expect(complete):toBe(true)
 end)
 

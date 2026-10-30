@@ -762,6 +762,17 @@ it("HttpService encodes nil as JSON null without requiring host serializer suppo
 	expect(value):toEqual { "null", "false", '"hello"', "[1,2]" }
 end)
 
+it("HttpService preserves native null values and table encoding rules", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local fixture = sourceFixture({
+		["json-values.luau"] = require "./fixtures/http-json-values",
+	}, nil, { engine = bridge.placeEngine() })
+	local ok, result = pcall(fixture.runtime.requireInstance, fixture.module("JsonValues", "json-values.luau"))
+	expect(fixture.engine.diagnostics):toEqual {}
+	expect(ok and result):toBe(true)
+end)
+
 it("ModuleScript repeats runtime and compile errors without leaving a loading cache entry", function()
 	local fixture = sourceFixture {
 		["failure.luau"] = 'error("module fixture failure")',

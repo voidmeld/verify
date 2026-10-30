@@ -15,6 +15,7 @@ export type Controller = {
 	cached: (() -> ()) -> (),
 	close: () -> (),
 	invalidate: () -> (),
+	animating: () -> boolean,
 }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
@@ -110,6 +111,7 @@ local function create(
 		end
 	end
 	local function invalidate()
+		env.touch()
 		for sheet in indexes do
 			forget(sheet)
 		end
@@ -118,6 +120,7 @@ local function create(
 	end
 	local frameScopes: { [Instance]: { sheet: Instance? } }? = nil
 	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
+	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
 	local function ownSheet(object: Instance): Instance?
 		local link: Instance? = nil
 		for _, child in env.childrenOf(object) do
@@ -465,7 +468,21 @@ local function create(
 			end
 			return value
 		end
+		local memo = frameStyled
+		local memoEntries = if memo ~= nil then memo[object] else nil
+		local remembered = if memoEntries ~= nil then memoEntries[property] else nil
+		if remembered ~= nil then
+			return if object:IsPropertyModified(property) then env.propertyOf(object, property) else remembered.value
+		end
 		local _, value = animatedValue(object, property, nil)
+		if memo ~= nil then
+			local entries = memo[object]
+			if entries == nil then
+				entries = {}
+				memo[object] = entries
+			end
+			entries[property] = { value = value }
+		end
 		local read = reads[object]
 		if read == nil then
 			read = {}
@@ -565,15 +582,28 @@ local function create(
 				body()
 				return
 			end
-			frameScopes, frameValues = {}, {}
+			frameScopes, frameValues, frameStyled = {}, {}, {}
 			local outcome = table.pack(pcall(body))
-			frameScopes, frameValues = nil, nil
+			frameScopes, frameValues, frameStyled = nil, nil, nil
 			if not outcome[1] then
 				error(outcome[2], 0)
 			end
 		end,
 		close = close,
 		invalidate = invalidate,
+		animating = function(): boolean
+			if next(stale) ~= nil then
+				return true
+			end
+			local now = env.now()
+			for entry in pairs(timed) do
+				local timing = entry.motion.timing
+				if timing ~= nil and now - entry.motion.started - timing.delay < timing.time then
+					return true
+				end
+			end
+			return false
+		end,
 	}
 end
 

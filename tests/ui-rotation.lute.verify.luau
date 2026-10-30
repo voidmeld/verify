@@ -76,6 +76,8 @@ it("rotation turns descendants and hit tests as Studio 0.744 does", function(own
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-rotation" }, function()
 		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+			and Lute.chunk.load(require "./fixtures/ui-rotated-clipping", { environment = runtime.globals })()
+				== true
 	end)
 	own(function()
 		scheduler.cancel(thread)

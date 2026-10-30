@@ -200,7 +200,7 @@ assert(got == want, got)
 return true
 ]==]
 
-it("ScrollingFrames size their window, canvas and scroll offset as Studio 0.744 does", function(own)
+it("ScrollingFrames size their window, canvas, border gutters and scroll offset as Studio does", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
 		layout = {
@@ -245,7 +245,10 @@ it("ScrollingFrames size their window, canvas and scroll offset as Studio 0.744 
 	local complete = false
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-scrolling-frame" }, function()
-		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+		for _, source in { probe, require "./fixtures/ui-scroll-gutter" } do
+			assert(Lute.chunk.load(source, { environment = runtime.globals })() == true)
+		end
+		complete = true
 	end)
 	own(function()
 		scheduler.cancel(thread)

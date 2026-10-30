@@ -357,6 +357,7 @@ local function build(options: Options)
 			.. tree
 			.. "</Item>"
 			.. '<Item class="Lighting"><Properties><token name="Technology">4</token></Properties></Item>'
+			.. '<Item class="TextChatService"><Properties><token name="ChatVersion">1</token></Properties></Item>'
 			.. (if clientItem
 				then '<Item class="StarterPlayer"><Item class="StarterPlayerScripts">' .. clientItem .. "</Item></Item>"
 				else "")

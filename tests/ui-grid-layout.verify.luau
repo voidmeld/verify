@@ -64,17 +64,29 @@ it("grid reflows visible cells after removal, ordering and cell-size changes", f
 	expect(grid.AbsoluteCellCount):toEqual(library.Vector2.new(2, 2))
 end)
 
+it("default cell constraints and scale preserve grid geometry", function(_, caseContext)
+	local bridge, root, grid, library = fixture(caseContext)
+	local env, layout = bridge.environment, assert(bridge.layout)
+	local child = env.createInstance("Frame", { Parent = root })
+	layout.step()
+	local position, size = child.AbsolutePosition, child.AbsoluteSize
+	env.createInstance("UISizeConstraint", { Parent = child })
+	env.createInstance("UIScale", { Parent = child })
+	layout.step()
+	expect(child.AbsolutePosition):toEqual(position)
+	expect(child.AbsoluteSize):toEqual(size)
+	expect(size):toEqual(library.Vector2.new(50, 20))
+	expect(root.AbsoluteSize):toEqual(library.Vector2.new(200, 20))
+	expect(grid.AbsoluteCellCount):toEqual(library.Vector2.new(1, 1))
+end)
+
 it("unmodeled grid constraints fail before geometry changes", function(_, caseContext)
-	for _, scenario in { "scaled automatic axis", "cell constraint", "cell scale", "zero cell" } do
+	for _, scenario in { "scaled automatic axis", "zero cell" } do
 		local bridge, root, grid, library = fixture(caseContext)
 		local env = bridge.environment
 		local child = env.createInstance("Frame", { Parent = root })
 		if scenario == "scaled automatic axis" then
 			grid.CellSize = library.UDim2.new(0, 50, 1, 20)
-		elseif scenario == "cell constraint" then
-			env.createInstance("UISizeConstraint", { Parent = child })
-		elseif scenario == "cell scale" then
-			env.createInstance("UIScale", { Parent = child })
 		else
 			grid.CellSize = library.UDim2.fromOffset(0, 20)
 		end

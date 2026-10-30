@@ -10,8 +10,9 @@ export type Row = {
 export type Face = { tokens: { string }, pairs: { { number } }, sizes: { Row }, pixelScale: number? }
 export type Model = {
 	width: (text: string, size: number) -> number,
-	height: (size: number) -> number,
-	wrap: (text: string, size: number, limit: number) -> (number, number),
+	fit: (text: string, size: number, limit: number) -> (number, number),
+	height: (size: number, lines: number?, spacing: number?) -> number,
+	wrap: (text: string, size: number, limit: number, trimOversized: boolean?) -> (number, number),
 	truncate: (text: string, size: number, limit: number, lines: number, mode: string, wrapped: boolean) -> number?,
 }
 
@@ -40,6 +41,9 @@ for _, letter in
 		"ş",
 		"Ş",
 		"ţ",
+		"þ",
+		"ṽ",
+		"ĥ",
 	}
 do
 	ACCENTED[letter] = true
@@ -53,9 +57,12 @@ local function create(face: Face): Model
 	local pixelScale = face.pixelScale or 1
 	assert(pixelScale > 0 and pixelScale < math.huge, "invalid text metric pixel scale")
 	local slot = buffer.create(4)
-	local function scaled(pixels: number): number
-		buffer.writef32(slot, 0, pixels * pixelScale)
+	local function rounded(value: number): number
+		buffer.writef32(slot, 0, value)
 		return buffer.readf32(slot, 0)
+	end
+	local function scaled(pixels: number): number
+		return rounded(pixels * pixelScale)
 	end
 	local indices: { [string]: number } = {}
 	local sequences: { [string]: { string } } = {}
@@ -131,7 +138,25 @@ local function create(face: Face): Model
 	local function width(text: string, size: number): number
 		return scaled(math.ceil(exact(text, size)))
 	end
-	local function wrap(text: string, size: number, limit: number): (number, number)
+	local function fit(text: string, size: number, limit: number): (number, number)
+		local maximum, count = 0, 0
+		for _, paragraph in string.split(text, "\n") do
+			local measured = width(paragraph, size)
+			if measured > limit then
+				local _, gap = paragraph:match "^(.*[^ ])( +)[^ ]*$"
+				if gap then
+					local compact = scaled(math.ceil(exact(paragraph, size) - exact(gap, size)))
+					if compact <= limit then
+						measured = compact
+					end
+				end
+			end
+			maximum = math.max(maximum, measured)
+			count += 1
+		end
+		return maximum, count
+	end
+	local function wrap(text: string, size: number, limit: number, trimOversized: boolean?): (number, number)
 		local maximum, count = 0, 0
 		for _, paragraph in string.split(text, "\n") do
 			if limit <= 0 then
@@ -140,20 +165,36 @@ local function create(face: Face): Model
 				continue
 			end
 			local line = paragraph:match "^ *" or ""
+			local started = false
 			local function finish(trim: boolean)
 				local measured = width(line, size)
-				if (trim or measured > limit) and line:match "[^ ]" then
+				if (trim or measured > limit and width(line:gsub(" +$", ""), size) <= limit) and line:match "[^ ]" then
 					measured = width(line:gsub(" +$", ""), size)
 				end
 				maximum = math.max(maximum, measured)
 				count += 1
+				started = true
 			end
 			local cursor = #line + 1
 			while cursor <= #paragraph do
 				local word, spaces = paragraph:match("^([^ ]+)( *)", cursor)
 				assert(word and spaces)
 				if width(word, size) > limit then
-					error("unsupported_text_metrics: word exceeds wrap width", 0)
+					if line ~= "" then
+						finish(trimOversized == true)
+						line = ""
+					end
+					for _, codepoint in utf8.codes(word) do
+						local character = utf8.char(codepoint)
+						if width(line .. character, size) > limit and (line ~= "" or not started) then
+							finish(false)
+							line = ""
+						end
+						line ..= character
+					end
+					line ..= spaces
+					cursor += #word + #spaces
+					continue
 				end
 				if line ~= "" and width(line .. word, size) > limit then
 					finish(true)
@@ -168,15 +209,14 @@ local function create(face: Face): Model
 	end
 	local function cut(text: string, size: number, limit: number, mode: string): number?
 		local mark = exact("…", size)
-		local function fits(prefix: string): boolean
-			return (exact(prefix, size) + mark) * pixelScale <= limit
+		local function shown(prefix: string, following: string?): number
+			local advance = if following
+				then exact(prefix .. following, size) - exact(following, size)
+				else exact(prefix, size)
+			return scaled(math.ceil(advance) + math.ceil(mark))
 		end
-		local function shown(prefix: string): number
-			local result = width(prefix, size) + scaled(math.ceil(mark))
-			if result >= limit - 1 then
-				error("unsupported_text_metrics: truncation within a pixel of the limit", 0)
-			end
-			return result
+		local function fits(prefix: string, following: string?): boolean
+			return shown(prefix, following) <= limit
 		end
 		if mode == "AtEnd" then
 			local best: string? = nil
@@ -186,7 +226,7 @@ local function create(face: Face): Model
 					best = prefix
 				end
 			end
-			if best then
+			if best and shown(best) >= limit / 2 then
 				return shown(best)
 			end
 		end
@@ -196,8 +236,15 @@ local function create(face: Face): Model
 		end
 		for index = #offsets, 2, -1 do
 			local prefix = text:sub(1, offsets[index] - 1)
-			if fits(prefix) then
-				return shown(prefix)
+			local following = text:sub(offsets[index], (offsets[index + 1] or #text + 1) - 1)
+			if fits(prefix, following) then
+				if mode == "SplitWord" then
+					local gap = text:sub(offsets[index]):match "^ +"
+					if gap then
+						return width(prefix .. gap, size)
+					end
+				end
+				return shown(prefix, following)
 			end
 		end
 		return if mark * pixelScale <= limit then shown "" else 0
@@ -213,14 +260,14 @@ local function create(face: Face): Model
 		if text:find "\n" or lines < 1 then
 			error("unsupported_text_metrics: truncated multi-paragraph text", 0)
 		end
-		if not wrapped or lines == 1 then
+		if not wrapped then
 			return cut(text, size, limit, mode)
 		end
 		local kept: { string } = {}
 		local line = text:match "^ *" or ""
 		local cursor = #line + 1
 		local rest = 1
-		while cursor <= #text do
+		while lines > 1 and cursor <= #text do
 			local word, spaces = text:match("^([^ ]+)( *)", cursor)
 			assert(word and spaces)
 			if width(word, size) > limit then
@@ -245,30 +292,38 @@ local function create(face: Face): Model
 		if last == nil then
 			return nil
 		end
-		if mode == "AtEnd" then
-			local natural = remainder:match "^[^ ]+" or ""
-			for gap, word in remainder:sub(#natural + 1):gmatch "( *)([^ ]+)" do
-				local next = natural .. assert(gap) .. assert(word)
-				if width(next, size) > limit then
-					break
-				end
-				natural = next
+		local natural = remainder:match "^ *" or ""
+		for word, spaces in remainder:gmatch "([^ ]+)( *)" do
+			if width(natural .. word, size) > limit then
+				break
 			end
-			if last < width(natural, size) then
-				error("unsupported_text_metrics: wrapped truncation shorter than its line", 0)
-			end
+			natural ..= word .. assert(spaces)
 		end
+		if mode == "AtEnd" or width(natural, size) > limit then
+			natural = natural:gsub(" +$", "")
+		end
+		last = math.max(last, width(natural, size))
 		local widest = last
 		for _, entry in kept do
 			widest = math.max(widest, width(entry, size))
 		end
 		return widest
 	end
-	local function height(size: number): number
+	local function height(size: number, lines: number?, spacing: number?): number
 		local index = math.clamp(math.floor(size), 1, 100)
-		return face.sizes[index].height or index
+		local strut = face.sizes[index].height or index
+		if lines == nil then
+			return strut
+		end
+		local pixels = math.round(strut / pixelScale)
+		local step = rounded(pixels * rounded(spacing or 1))
+		local total = pixels
+		for _ = 2, lines do
+			total = rounded(total + step)
+		end
+		return scaled(total)
 	end
-	return table.freeze { width = width, wrap = wrap, height = height, truncate = truncate }
+	return table.freeze { width = width, fit = fit, wrap = wrap, height = height, truncate = truncate }
 end
 
 return table.freeze { create = create }

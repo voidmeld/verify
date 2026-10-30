@@ -64,4 +64,33 @@ it("Guru period-prefixed ligatures preserve native kerning and text boundaries",
 	end
 end)
 
+it("BuilderSans arrow ligatures retain native spacing around punctuation", function()
+	local face =
+		Wire.parse(fs.readFileToString "src/lute/fixtures/text/BuilderSans-Regular-Normal.json") :: Metrics.Face
+	local model = Metrics.create(face)
+	for _, row in
+		{
+			{ text = ",<-", size = 14, width = 11.333333969116211 },
+			{ text = "->7", size = 19, width = 18 },
+			{ text = "-^/", size = 23, width = 18 },
+			{ text = "->>", size = 24, width = 24 },
+			{ text = "—.R-", size = 14, width = 22 },
+		}
+	do
+		expect(model.width(row.text, row.size)):toBe(row.width)
+	end
+end)
+
+it("truncation rounds the combined raster width once at a fractional boundary", function()
+	local row = { advances = { 4, 2 }, adjustments = {} }
+	local model = Metrics.create {
+		tokens = { "A", "…" },
+		pairs = {},
+		sizes = table.create(100, row),
+		pixelScale = 2 / 3,
+	}
+	expect(model.truncate("AAAA", 1, 4, 1, "SplitWord", false)):toBe(4)
+	expect(model.truncate("AAAA", 1, 3.9, 1, "SplitWord", false)):toBe(model.width("…", 1))
+end)
+
 return nil

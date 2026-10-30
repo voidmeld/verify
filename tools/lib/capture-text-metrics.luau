@@ -37,8 +37,16 @@ harness:case("native font metrics", function(check)
   local value = utf8.char(codepoint)
   table.insert(tokens, value)
  end
- for _, value in {".D", ".H", ".L", ".M", ".N", ".R", ".S", ".T", ".d", ".h", ".l", ".m", ".n", ".r", ".s", ".t", ".LL", ".RR", ".ll", ".rr"} do table.insert(tokens, value) end
+ if params.Font.Family == "rbxasset://fonts/families/Guru.json" then
+  for _, value in {".D", ".H", ".L", ".M", ".N", ".R", ".S", ".T", ".d", ".h", ".l", ".m", ".n", ".r", ".s", ".t", ".LL", ".RR", ".ll", ".rr"} do table.insert(tokens, value) end
+ end
  for _, value in {"…", "•", "—", "–", "×", "·", "’", "“", "”", "°", "→", "−", "★", "é", "á", "í", "ó", "ú", "ñ", "ü", "ö", "ä", "ç", "è", "à", "ê", "ô", "ë", "ß", "É", "ð", "ĝ", "ş", "Ş", "ţ"} do table.insert(tokens, value) end
+ for _, value in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do table.insert(tokens, value) end
+ for _, value in {"þ", "ṽ", "ĥ", "東", "京", "速", "度", "制", "限", "標", "識", "と", "設", "定", "画", "面"} do table.insert(tokens, value) end
+ for _, value in {"⇧", "⌘", "⌫", "〜", "◎", "⚡", "⛓", "▣", "□", "▢", "☰", "◉", "◩", "≡", "⬡", "■"} do table.insert(tokens, value) end
+ if params.Font.Family == "rbxasset://fonts/families/BuilderSans.json" then
+  for _, value in {"->", "-^", "–>", "–^", "—>", "—^", "<-", "<–", "<—", "^-", "^–", "^—"} do table.insert(tokens, value) end
+ end
  for _, value in {"ff", "fi", "fl", "ffi", "ffl"} do table.insert(tokens, value) end
  local minimum = math.huge
  for _, value in tokens do
@@ -91,21 +99,48 @@ harness:case("native font metrics", function(check)
  local model = require(root.src.roblox["text-metrics"]).create({tokens = tokens, pairs = pairs, sizes = sizes, pixelScale = pixelScale})
  local random = Random.new(527)
  local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+ local randomTokens = {"ffl", "ffi", "fl", "fi", "ff", "✓", "♦", "♥", "♡", "☆"}
  local strings = {"Hello world", "Office staff affiliation", "affluent waffle", "A very fine office staff", "The quick brown fox jumps over the lazy dog", "Never store expected test geometry as a font measurement", "Score: 1,250 (+15%) — ready…", "“Quoted” • 3×4 · 90°"}
+ for _, symbol in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do
+  table.insert(strings, symbol)
+  table.insert(strings, "Layering " .. symbol .. " Makeup")
+  table.insert(strings, "A" .. symbol .. "V" .. symbol .. "To")
+ end
  for index = 1, 200 do
   local characters = {}
   for cursor = 1, random:NextInteger(1, 80) do
-   local at = random:NextInteger(1, #alphabet + 10)
-   characters[cursor] = if at <= #alphabet then alphabet:sub(at, at) else tokens[#tokens - (at - #alphabet) + 1]
+   local at = random:NextInteger(1, #alphabet + #randomTokens)
+   characters[cursor] = if at <= #alphabet then alphabet:sub(at, at) else randomTokens[at - #alphabet]
   end
   table.insert(strings, table.concat(characters))
  end
+ for _, text in {",<-", "->7", "-^/", "->>", "—.R-"} do
+  table.insert(strings, text)
+  table.insert(strings, "A" .. text .. "V")
+ end
+ for _, sequence in {"->", "-^", "–>", "–^", "—>", "—^", "<-", "<–", "<—", "^-", "^–", "^—"} do
+  for _, prefix in {"", "A", ",", "☆"} do
+   for _, suffix in {"", "V", "/7>", "♥"} do
+    table.insert(strings, prefix .. sequence .. suffix)
+   end
+  end
+ end
  local differences = {}
+ for _, symbol in {"⇧", "⌘", "⌫", "〜", "◎", "⚡", "⛓", "▣", "□", "▢", "☰", "◉", "◩", "≡", "⬡", "■"} do
+  table.insert(strings, symbol)
+  table.insert(strings, "Layering " .. symbol .. " Makeup")
+  table.insert(strings, "A" .. symbol .. "V" .. symbol .. "To")
+ end
+ for _, text in {"þ", "ṽ", "ĥ", "ṽþĥ", "東京", "速度制限", "標識と設定画面", "東京速度制限標識と設定画面"} do
+  table.insert(strings, text)
+  table.insert(strings, "A" .. text .. "V")
+  table.insert(strings, text .. " A " .. text)
+ end
  for size = 1, 100 do
   for _, text in strings do
    local modeled, actual = pcall(model.width, text, size)
-   local expected = if modeled then boundsWidth(text, size) else actual
-   if modeled and actual ~= expected then table.insert(differences, {size = size, text = text, native = expected, actual = actual}) end
+   local expected = boundsWidth(text, size)
+   if not modeled or actual ~= expected then table.insert(differences, {size = size, text = text, native = expected, actual = actual}) end
   end
  end
  captured.attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))

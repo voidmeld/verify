@@ -57,7 +57,7 @@ local lsp: { string } = {
 	"--ignore=**/.lute/**",
 	"--ignore=**/build/**",
 }
-local lint: { string } = { "lute", "lint", "-c", "lint.config.luau" }
+local lint: { string } = { "lute", "run", "tools/lint.luau", "-c", "lint.config.luau" }
 local format: { string } = { "stylua", "--check" }
 for _, source in SOURCES do
 	table.insert(lsp, source)
