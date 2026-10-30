@@ -285,6 +285,25 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end
 	local bases: { [Instance]: { width: number, height: number } } = {}
 	setmetatable(bases, { __mode = "k" })
+	type BasisWrite = { object: Instance, value: { width: number, height: number } }
+	type Measurement = {
+		width: number,
+		height: number,
+		scale: number,
+		override: number?,
+		value: Rectangle,
+		first: number,
+		last: number,
+	}
+	local measurements: { [Instance]: { Measurement } }? = nil
+	local basisWrites: { BasisWrite } = {}
+	local function setBasis(object: Instance, width: number, height: number)
+		local value = { width = width, height = height }
+		bases[object] = value
+		if measurements then
+			table.insert(basisWrites, { object = object, value = value })
+		end
+	end
 	local size: (Instance, Rectangle, number?) -> Rectangle
 	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
 		local authored = Values.dimensions(read(object, "Size"))
@@ -464,7 +483,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				rectangle.height = math.max(basis.height, second.height + paddingY)
 			end
 			if rectangle.width ~= reference.width or rectangle.height ~= reference.height then
-				bases[object] = { width = reference.width, height = reference.height }
+				setBasis(object, reference.width, reference.height)
 			end
 			return rectangle
 		end
@@ -531,7 +550,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			local secondX, secondY = reach(reference, true)
 			rectangle.width = if autoX then math.max(basis.width, secondX) else basis.width
 			rectangle.height = if autoY then math.max(basis.height, secondY) else basis.height
-			bases[object] = { width = reference.width, height = reference.height }
+			setBasis(object, reference.width, reference.height)
 			return rectangle
 		end
 		for _, child in object:GetChildren() do
@@ -572,6 +591,46 @@ local function attach(environment: Environment.Environment, options: Options): C
 			end
 		end
 		return rectangle
+	end
+	local calculateSize = size
+	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
+		local cache = measurements
+		if cache == nil then
+			return calculateSize(object, parent, widthOverride)
+		end
+		local entries = cache[object]
+		if entries then
+			for _, entry in entries do
+				if
+					entry.width == parent.width
+					and entry.height == parent.height
+					and entry.scale == parent.scale
+					and entry.override == widthOverride
+				then
+					for index = entry.first, entry.last do
+						local write = basisWrites[index]
+						bases[write.object] = write.value
+						table.insert(basisWrites, write)
+					end
+					return table.clone(entry.value)
+				end
+			end
+		else
+			entries = {}
+			cache[object] = entries
+		end
+		local first = #basisWrites + 1
+		local value = calculateSize(object, parent, widthOverride)
+		table.insert(entries, {
+			width = parent.width,
+			height = parent.height,
+			scale = parent.scale,
+			override = widthOverride,
+			value = table.clone(value),
+			first = first,
+			last = #basisWrites,
+		})
+		return value
 	end
 	local turns: { [Instance]: { Turn } } = {}
 	setmetatable(turns, { __mode = "k" })
@@ -796,8 +855,16 @@ local function attach(environment: Environment.Environment, options: Options): C
 				measureTree(child, content, placements[child])
 			end
 		end
-		for _, root in roots do
-			measureTree(root, screen, nil)
+		measurements = {}
+		local measured, failure = pcall(function()
+			for _, root in roots do
+				measureTree(root, screen, nil)
+			end
+		end)
+		measurements = nil
+		table.clear(basisWrites)
+		if not measured then
+			error(failure, 0)
 		end
 		local function publish(object: Instance, rectangle: Rectangle, around: { Turn })
 			local bounds = textBounds(object, rectangle)

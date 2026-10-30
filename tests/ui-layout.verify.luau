@@ -33,6 +33,50 @@ local function controller(env: Environment.Environment, root: Environment.Instan
 end
 
 describe("simulated GUI layout", function()
+	it("publication callbacks and later steps use current sizes", function()
+		local env = fixture()
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(100, 100) })
+		local child = env.createInstance("Frame", { Parent = root, Size = Types.UDim2.fromScale(0.5, 0.5) })
+		local layout = controller(env, root)
+		local connection = root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			child.Size = Types.UDim2.fromScale(0.75, 0.5)
+		end)
+		layout.step()
+		expect(child.AbsoluteSize):toEqual(Types.Vector2.new(75, 50))
+		connection:Disconnect()
+		root.Size = Types.UDim2.fromOffset(200, 80)
+		child.Size = Types.UDim2.fromScale(0.25, 0.5)
+		layout.step()
+		expect(child.AbsoluteSize):toEqual(Types.Vector2.new(50, 40))
+	end)
+
+	it("a failed measurement does not retain sizes for the next step", function()
+		local env = fixture()
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(100, 100) })
+		local child = env.createInstance("Frame", { Parent = root, Size = Types.UDim2.fromScale(0.5, 0.5) })
+		local fail = true
+		local layout = Layout.attach(env, {
+			roots = function()
+				return { root }
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+			read = function(object, property)
+				if fail and object == child and property == "Size" then
+					error("measurement failed", 0)
+				end
+				return env.propertyOf(object, property)
+			end,
+		})
+		expect(layout.step):toThrow "measurement failed"
+		expect(env.propertyOf(root, "AbsoluteSize")):toBe(nil)
+		fail = false
+		root.Size = Types.UDim2.fromOffset(200, 80)
+		layout.step()
+		expect(child.AbsoluteSize):toEqual(Types.Vector2.new(100, 40))
+	end)
+
 	it("wrapped and aligned spacing is modeled and overflowing spacing fails before publishing geometry", function()
 		for _, scenario in { "overflow", "non-leading", "wrap" } do
 			local env = fixture()
