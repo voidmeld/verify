@@ -997,7 +997,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		measuring = true
 		repeat
 			pending = false
-			measure()
+			local ok, problem = pcall(measure)
+			if not ok then
+				measuring = false
+				error(problem, 0)
+			end
 		until not pending
 		measuring = false
 	end
