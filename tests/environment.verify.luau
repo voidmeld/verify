@@ -1558,4 +1558,31 @@ describe("roblox test environment", function()
 	end)
 end)
 
+it("descendant registration order survives moves within an ancestor and advances after reentry", function()
+	local env = Environment.create()
+	local root = env.createInstance "Folder"
+	local first = env.createInstance("Folder", { Parent = root })
+	local second = env.createInstance("Folder", { Parent = root })
+	local child = env.createInstance("Folder", { Parent = first })
+	local peer = env.createInstance("Folder", { Parent = second })
+	local registered = assert(env.descendantOrderOf(root, child))
+	expect(registered < assert(env.descendantOrderOf(root, peer))):toBe(true)
+	child.Parent = second
+	expect(env.descendantOrderOf(root, child)):toBe(registered)
+	expect(env.descendantOrderOf(first, child)):toBe(nil)
+	expect(assert(env.descendantOrderOf(second, child)) > assert(env.descendantOrderOf(second, peer))):toBe(true)
+	env.failNext "setParent"
+	expect(function()
+		child.Parent = first
+	end):toThrow()
+	expect(env.descendantOrderOf(root, child)):toBe(registered)
+	second.Parent = nil
+	expect(env.descendantOrderOf(root, child)):toBe(nil)
+	second.Parent = root
+	expect(assert(env.descendantOrderOf(root, child)) > registered):toBe(true)
+	child:Destroy()
+	expect(env.descendantOrderOf(root, child)):toBe(nil)
+	root:Destroy()
+end)
+
 return nil

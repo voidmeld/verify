@@ -71,6 +71,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local raising = handlerErrors == "raise"
 	local scheduler = Scheduler.create()
 	local alive = 0
+	local ancestryOrder = 0
 
 	local environment = {}
 	local inputActions: InputActionFakes.Controller? = nil
@@ -284,6 +285,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			stateOf(descendant).removing = true
 		end
 		local leaving = without(before, after)
+		local joining = without(after, before)
 		for _, descendant in objects do
 			for _, ancestor in leaving do
 				fireSignal(stateOf(ancestor), "DescendantRemoving", descendant)
@@ -301,7 +303,17 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			table.insert(stateOf(parent).children, object)
 		end
 		for _, descendant in objects do
-			stateOf(descendant).removing = false
+			local descendantState = stateOf(descendant)
+			descendantState.removing = false
+			for _, ancestor in leaving do
+				descendantState.ancestryOrders[ancestor] = nil
+			end
+			if #joining > 0 then
+				ancestryOrder += 1
+				for _, ancestor in joining do
+					descendantState.ancestryOrders[ancestor] = ancestryOrder
+				end
+			end
 		end
 		if previous ~= nil then
 			fireSignal(stateOf(previous), "ChildRemoved", object)
@@ -309,7 +321,6 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if parent ~= nil then
 			fireSignal(stateOf(parent), "ChildAdded", object)
 		end
-		local joining = without(after, before)
 		for _, descendant in objects do
 			for _, ancestor in joining do
 				fireSignal(stateOf(ancestor), "DescendantAdded", descendant)
@@ -613,6 +624,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			class = class,
 			values = values,
 			children = {},
+			ancestryOrders = {},
 			attributes = {},
 			tags = {},
 			signals = {},
@@ -768,6 +780,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 	environment.parentOf = function(object: Instance): Instance?
 		return stateOf(object).parent
+	end
+	environment.descendantOrderOf = function(ancestor: Instance, object: Instance): number?
+		return stateOf(object).ancestryOrders[ancestor]
 	end
 	environment.propertyOf = function(object: Object, key: string): unknown
 		local state = stateOf(object)

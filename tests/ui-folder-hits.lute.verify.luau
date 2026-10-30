@@ -87,6 +87,7 @@ it("Folder children hit-test in their GuiObject ancestor at the Folder position 
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-folder-hits" }, function()
 		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+			and Lute.chunk.load(require "./fixtures/ui-screen-order", { environment = runtime.globals })() == true
 	end)
 	own(function()
 		scheduler.cancel(thread)

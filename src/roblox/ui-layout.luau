@@ -985,7 +985,6 @@ local function attach(environment: Environment.Environment, options: Options): C
 		}
 		local hits: { Hit } = {}
 		local index = 0
-		local displays: { [number]: Instance } = {}
 		local function contains(object: Instance): boolean
 			local frame = frames[object]
 			local around = turns[object]
@@ -1023,12 +1022,6 @@ local function attach(environment: Environment.Environment, options: Options): C
 				end
 				screen = object
 				path = {}
-				local display = number(object, "DisplayOrder", 0)
-				local prior = displays[display]
-				if prior and prior ~= object then
-					unsupported(object, "equal DisplayOrder across ScreenGuis")
-				end
-				displays[display] = object
 			elseif object:IsA "LayerCollector" then
 				unsupported(object, object.ClassName .. " hit testing")
 			end
@@ -1080,7 +1073,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 				return a.display > b.display
 			end
 			if a.screen ~= b.screen then
-				unsupported(a.screen, "equal DisplayOrder across ScreenGuis")
+				return assert(environment.descendantOrderOf(root, a.screen))
+					> assert(environment.descendantOrderOf(root, b.screen))
 			end
 			if a.mode == "Global" then
 				return if a.z ~= b.z then a.z > b.z else a.index > b.index
