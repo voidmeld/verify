@@ -4,7 +4,9 @@ export type Callback<A... = ...unknown, R... = ...unknown> = (A...) -> R...
 export type Task<A... = ...unknown, R... = ...unknown> = Callback<A..., R...> | thread
 
 type Arguments = { [number]: unknown, n: number }
-type Ready = { thread: thread, arguments: Arguments }
+type Ready = { thread: thread, arguments: Arguments, depth: number }
+
+local MAX_DEFER_DEPTH = 80
 
 export type Scheduler = {
 	clock: () -> number,
@@ -30,6 +32,7 @@ local WEAK_KEYS = table.freeze { __mode = "k" }
 local function create(): Scheduler
 	local now = 0
 	local ready: { Ready } = {}
+	local running = 0
 	local timers: { { at: number, thread: thread } } = {}
 	local failures: { string } = {}
 	local tags: { [thread]: unknown } = {}
@@ -89,8 +92,8 @@ local function create(): Scheduler
 		return tostring(message)
 	end
 
-	local function push<A...>(thread: thread, ...: A...)
-		ready[#ready + 1] = { thread = thread, arguments = table.pack(...) }
+	local function push<A...>(thread: thread, depth: number, ...: A...)
+		ready[#ready + 1] = { thread = thread, arguments = table.pack(...), depth = depth }
 	end
 
 	local function step()
@@ -100,7 +103,10 @@ local function create(): Scheduler
 			if coroutine.status(entry.thread) == "dead" then
 				continue
 			end
+			local outer = running
+			running = entry.depth
 			local results = table.pack(withTag(entry.thread, table.unpack(entry.arguments, 1, entry.arguments.n)))
+			running = outer
 			if not results[1] then
 				local message = describe(entry.thread, results[2])
 				failures[#failures + 1] = message
@@ -115,7 +121,7 @@ local function create(): Scheduler
 
 	function scheduler.resume(thread: thread, ...: unknown)
 		release(thread)
-		push(thread, ...)
+		push(thread, 0, ...)
 	end
 
 	function scheduler.spawn<A..., R...>(callback: Task<A..., R...>, ...: A...): thread
@@ -136,10 +142,14 @@ local function create(): Scheduler
 
 	function scheduler.defer<A..., R...>(callback: Task<A..., R...>, ...: A...): thread
 		local thread = if type(callback) == "thread" then callback else coroutine.create(callback)
+		local depth = running + 1
+		if depth > MAX_DEFER_DEPTH then
+			error(("Maximum re-entrancy depth (%d) exceeded calling task.defer"):format(MAX_DEFER_DEPTH), 2)
+		end
 		if tags[thread] == nil then
 			tags[thread] = active
 		end
-		push(thread, ...)
+		push(thread, depth, ...)
 		return thread
 	end
 
@@ -211,7 +221,7 @@ local function create(): Scheduler
 			end
 		)
 		for _, entry in due do
-			push(entry.thread)
+			push(entry.thread, 0)
 		end
 	end
 

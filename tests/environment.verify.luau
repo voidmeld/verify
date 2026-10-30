@@ -1389,6 +1389,26 @@ describe("roblox test environment", function()
 		expect(env.scheduler.failures[1]):toContain "deferred broke"
 	end)
 
+	it("a chain of nested defers stops at the engine re-entrancy depth of 80", function()
+		local env = environment()
+		local reached = 0
+		local function chain(level: number)
+			reached = level
+			env.task.defer(chain, level + 1)
+		end
+		env.task.defer(chain, 1)
+		env.step(0)
+		expect(reached):toEqual(80)
+		expect(#env.scheduler.failures):toEqual(1)
+		expect(env.scheduler.failures[1]):toContain "Maximum re-entrancy depth (80) exceeded calling task.defer"
+		local later = false
+		env.task.defer(function()
+			later = true
+		end)
+		env.step(0)
+		expect(later):toEqual(true)
+	end)
+
 	it("heartbeat fires once per step with the step length", function()
 		local env = environment()
 		local deltas: { number } = {}
