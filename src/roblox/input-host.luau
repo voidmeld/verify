@@ -597,20 +597,6 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		end
 	end
-	local gamepad = Gamepad.create(env, library, input, function(event, object)
-		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
-		if guiService and Environment.isInstance(env.propertyOf(guiService, "SelectedObject")) then
-			unsupported "virtual controller GUI selection"
-		end
-		if lastInput ~= inputTypes.Gamepad1 then
-			lastInput = inputTypes.Gamepad1
-			env.fire(service, "LastInputTypeChanged", lastInput)
-		end
-		env.fire(service, event, object, false)
-		if event ~= "InputChanged" then
-			deliverActions(codeName(env.propertyOf(object, "KeyCode")), event == "InputBegan")
-		end
-	end)
 	local directions: { [string]: { x: number, y: number, name: string } } = {
 		Up = { x = 0, y = -1, name = "Up" },
 		Down = { x = 0, y = 1, name = "Down" },
@@ -765,6 +751,57 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		env.scheduler.delay(0.12, repeatSelection, code, token)
 	end
+	local controllerPress: Instance? = nil
+	local gamepad = Gamepad.create(env, library, input, function(event, object)
+		local code = codeName(env.propertyOf(object, "KeyCode"))
+		local direction = code:match "^DPad(.+)$"
+		if event == "InputEnded" and direction then
+			selectionRepeats[direction] = nil
+		end
+		if lastInput ~= inputTypes.Gamepad1 then
+			lastInput = inputTypes.Gamepad1
+			env.fire(service, "LastInputTypeChanged", lastInput)
+		end
+		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
+		if guiService and Environment.isInstance(selected) then
+			local target = Environment.assertInstance(selected)
+			if code:match "^Thumbstick" then
+				unsupported "virtual controller thumbstick selection"
+			end
+			if direction and directions[direction] then
+				if event == "InputBegan" then
+					local nextTarget = navigate(target, directions[direction])
+					if nextTarget then
+						env.poke(guiService, "SelectedObject", nextTarget)
+					end
+					local token = {}
+					selectionRepeats[direction] = token
+					env.scheduler.delay(0.5, repeatSelection, direction, token)
+				end
+				env.fire(service, event, object, true)
+				return
+			elseif code == "ButtonA" then
+				if event == "InputBegan" then
+					controllerPress = target
+				elseif event == "InputEnded" then
+					if controllerPress == target and button(target) and interactable(target) then
+						env.fire(target, "Activated", object, 1)
+					end
+					controllerPress = nil
+				end
+				env.fire(service, event, object, true)
+				return
+			end
+		end
+		if event == "InputEnded" and code == "ButtonA" then
+			controllerPress = nil
+		end
+		env.fire(service, event, object, false)
+		if event ~= "InputChanged" then
+			deliverActions(code, event == "InputBegan")
+		end
+	end)
 	local function deliverKey(value: Key)
 		if options.virtualController then
 			gamepad.key(value.code, value.down)

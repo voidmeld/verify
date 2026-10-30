@@ -7,6 +7,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local virtualControllerProbe = require "./fixtures/input-virtual-controller"
+local controllerSelectionProbe = require "./fixtures/input-controller-selection"
 
 local probe = [==[
 local RS = game:GetService("RunService")
@@ -54,6 +55,7 @@ return true
 
 for _, case in
 	{
+		{ name = "controller selection routes activation and DPad repeats", source = controllerSelectionProbe },
 		{
 			name = "virtual controller events match native button trigger and stick traces",
 			source = virtualControllerProbe,
@@ -98,7 +100,7 @@ do
 		local playerGui = assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui")
 		table.insert(roots, playerGui)
 		local input = Roblox.inputHost.simulated(bridge.environment, {
-			virtualController = case.source == virtualControllerProbe,
+			virtualController = case.source == virtualControllerProbe or case.source == controllerSelectionProbe,
 			playerGui = playerGui,
 			inputService = engine.service "UserInputService",
 			layout = assert(bridge.layout),
