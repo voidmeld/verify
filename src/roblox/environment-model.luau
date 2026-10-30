@@ -27,6 +27,7 @@ local function create(settings: Types.Options)
 	local resolved: { [string]: Resolved } = {}
 	local computedLookups: { [string]: { [string]: { get: ((object: Instance) -> unknown)?, writable: boolean } } } = {}
 	local ancestry: { [string]: { [string]: boolean } } = {}
+	local plainReads: { [string]: { [string]: boolean } } = {}
 	local function defineClass<P, M>(className: string, spec: ClassSpec<P, M>, defineOptions: DefineOptions?)
 		if type(className) ~= "string" or className == "" then
 			error("class name must be a non-empty string", 2)
@@ -38,6 +39,7 @@ local function create(settings: Types.Options)
 		table.clear(resolved)
 		table.clear(computedLookups)
 		table.clear(ancestry)
+		table.clear(plainReads)
 	end
 
 	if settings.builtins ~= false then
@@ -206,6 +208,7 @@ local function create(settings: Types.Options)
 	return {
 		specs = specs,
 		resolved = resolved,
+		plainReads = plainReads,
 		defineClass = defineClass,
 		resolve = resolve,
 		isA = isA,

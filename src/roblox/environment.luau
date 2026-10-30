@@ -456,8 +456,13 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end,
 	}
 
+	local plainReads = model.plainReads
 	local function readMember(object: Instance, key: string): unknown
 		local state = stateOf(object)
+		local plain = plainReads[state.className]
+		if plain ~= nil and plain[key] and state.doubles[key] == nil then
+			return state.values[key]
+		end
 		if not state.class.instance and (key == "Name" or key == "Archivable") then
 			memberError(state, key)
 		end
@@ -486,6 +491,14 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			and class.methods[key] == nil
 			and computedFor(state.className, key) == nil
 		then
+			if settings.computed == nil or table.isfrozen(settings.computed) then
+				local known = plainReads[state.className]
+				if known == nil then
+					known = {}
+					plainReads[state.className] = known
+				end
+				known[key] = true
+			end
 			return state.values[key]
 		end
 		local double = doubleHandler(state.doubles[key])
