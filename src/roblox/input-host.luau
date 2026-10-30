@@ -603,6 +603,43 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local function selectable(object: Instance): boolean
 		return object:IsA "GuiObject" and read(object, "Selectable") == true and shown(object) and interactable(object)
 	end
+	local function onScreen(object: Instance): boolean
+		local at = Values.vector(read(object, "AbsolutePosition"))
+		local size = Values.vector(read(object, "AbsoluteSize"))
+		local left, top, right, bottom = at.X, at.Y, at.X + size.X, at.Y + size.Y
+		local parent = object.Parent
+		while parent and parent ~= gui do
+			if parent:IsA "ScreenGui" or parent:IsA "GuiObject" and read(parent, "ClipsDescendants") == true then
+				local origin = Values.vector(read(parent, "AbsolutePosition"))
+				local extent = Values.vector(read(parent, "AbsoluteSize"))
+				left, top = math.max(left, origin.X), math.max(top, origin.Y)
+				right, bottom = math.min(right, origin.X + extent.X), math.min(bottom, origin.Y + extent.Y)
+			end
+			parent = parent.Parent
+		end
+		return right > left and bottom > top
+	end
+	local selectionService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+	if selectionService then
+		install(selectionService, "Select", function(self: Instance, scope: Instance)
+			ensureOpen()
+			assert(scope == gui or scope:IsDescendantOf(gui), "selection parent must belong to this PlayerGui")
+			layout.step()
+			local chosen: Instance? = nil
+			local order = math.huge
+			for _, object in scope:GetDescendants() do
+				if selectable(object) and onScreen(object) then
+					local candidateOrder = Values.number(read(object, "SelectionOrder"))
+					if candidateOrder < order then
+						chosen, order = object, candidateOrder
+					end
+				end
+			end
+			if chosen then
+				env.poke(self, "SelectedObject", chosen)
+			end
+		end)
+	end
 	local function center(object: Instance): Position
 		local at = Values.vector(read(object, "AbsolutePosition"))
 		local size = Values.vector(read(object, "AbsoluteSize"))

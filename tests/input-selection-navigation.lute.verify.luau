@@ -56,6 +56,10 @@ for _, case in
 		{ name = "arrow keys move GuiService selection and Return activates it as Studio 0.744 does", source = probe },
 		{ name = "held selection repeats and stops on release", source = require "./fixtures/input-selection-repeat" },
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
+		{
+			name = "GuiService Select chooses eligible descendants by order",
+			source = require "./fixtures/input-gui-select",
+		},
 	}
 do
 	it(case.name, function(own)

@@ -718,6 +718,8 @@ The engine refuses a write to a property that the class does not have. The defau
 
 ### Held selection navigation
 
+`GuiService:Select(parent)` chooses the eligible descendant with the lowest SelectionOrder inside the input host's PlayerGui. It excludes hidden, nonselectable, noninteractable and off-screen objects. Active does not affect eligibility. A parent with no eligible descendants leaves SelectedObject unchanged. A parent outside the PlayerGui raises an error.
+
 The simulated input host repeats held arrow-key selection after 0.5 seconds, then at intervals of at least 0.12 seconds. Release stops the repeats. A repeat moves the current selection without another `InputBegan` event. A focused TextBox prevents selection movement. The shared Studio case checks the initial delay, repeat movement, release, key events and the end of a collection.
 
 `UserInputService:GetGamepadState()` returns the 24 idle controls for each Gamepad1–Gamepad8 slot, including disconnected slots. Each InputObject identifies its slot and key, with End state and zero position. Other UserInputType values return an empty array. Each call returns a separate array. This initial-state model does not inject gamepad input.
