@@ -68,15 +68,13 @@ local function attach(environment: Environment.Environment, options: Options): C
 			unsupported(object, object.ClassName)
 		end
 		if object:IsA "GuiObject" then
+			number(object, "Rotation", 0)
 			if enum(object, "AutomaticSize", "None") ~= "None" then
 				if isText(object) then
 					if options.measureBounds == nil then
 						unsupported(object, "AutomaticSize text measurement")
 					end
 				end
-			end
-			if number(object, "Rotation", 0) ~= 0 and optional(object, "ClipsDescendants") == true then
-				unsupported(object, "Rotation with ClipsDescendants")
 			end
 			if enum(object, "SizeConstraint", "RelativeXY") ~= "RelativeXY" then
 				unsupported(object, "SizeConstraint")
@@ -1052,7 +1050,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 						path = path,
 					})
 				end
-				clipped = clipped or optional(object, "ClipsDescendants") == true and not inside
+				local around = turns[object]
+				local rotated = number(object, "Rotation", 0) ~= 0 or around ~= nil and #around > 0
+				clipped = clipped or optional(object, "ClipsDescendants") == true and not rotated and not inside
 			end
 			local folder = object:IsA "Folder"
 			for ordinal, child in object:GetChildren() do
