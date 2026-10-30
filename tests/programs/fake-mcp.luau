@@ -12,7 +12,7 @@ end
 while true do
 	local line = input.read()
 	local id = string.match(line, '"id":(%d+)')
-	if id ~= nil then
+	if id ~= nil and string.find(line, "hold_reply", 1, true) == nil then
 		if string.find(line, "die_now", 1, true) ~= nil then
 			process.exit(0)
 		end

@@ -69,6 +69,43 @@ describe("Studio MCP lifetime", function()
 		expect(#self.calls):toBe(2)
 	end)
 
+	it("reopens on the next call after a reset, and a close stays final", function()
+		local self, _ = world()
+		local connection = Reconnect.wrap(nil, {
+			open = function(_deadline): Reconnect.Connection
+				self.opens += 1
+				return {
+					alive = function(): boolean
+						return true
+					end,
+					close = function()
+						self.closes += 1
+					end,
+					callRaw = function(): Reconnect.Exchange
+						return self.reply
+					end,
+				}
+			end,
+			now = function(): number
+				return 0
+			end,
+			wait = function() end,
+		})
+		local before = self.opens
+		expect(connection.callRaw("read", "{}", 10).status):toBe "answered"
+		connection.reset()
+		expect(self.closes):toBe(1)
+		expect(connection.alive()):toBe(false)
+		expect(connection.callRaw("read", "{}", 10).status):toBe "answered"
+		expect(self.opens):toBe(before + 2)
+		expect(connection.alive()):toBe(true)
+		connection.close()
+		connection.reset()
+		expect(connection.callRaw("read", "{}", 10).status):toBe "unsent"
+		expect(self.opens):toBe(before + 2)
+		expect(self.closes):toBe(2)
+	end)
+
 	it("recovers a failed initial handshake before sending a tool", function()
 		local self, primary = world()
 		local attempts = 0

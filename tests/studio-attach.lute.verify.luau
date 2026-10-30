@@ -810,6 +810,7 @@ describe("a Studio MCP child that exits", function()
 		"  id=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\([0-9]*\\).*/\\1/p')",
 		'  [ -n "$id" ] || continue',
 		"  case $line in *die_now*) exit 0 ;; esac",
+		"  case $line in *hold_reply*) continue ;; esac",
 		"  case $line in",
 		'    *list_roblox_studios*) printf \'{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"[{\\\\"id\\\\":\\\\"studio-a\\\\",\\\\"name\\\\":\\\\"A\\\\"}]"}]}}\\n\' "$id" ;;',
 		'    *) printf \'{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"ok"}]}}\\n\' "$id" ;;',
@@ -870,6 +871,26 @@ describe("a Studio MCP child that exits", function()
 		local again = session.call("echo", ARGS)
 		expect(again.ok):toBe(true)
 		expect(os.clock() - began < 5):toBe(true)
+		session.close()
+	end)
+
+	it("reopens the session for the next call after a call passes its deadline", function(_, caseContext)
+		local script, root = child(caseContext)
+		local session = attached(fake(ONE), function(options)
+			options.transport = nil
+			options.mcpExecutable = script
+			options.directory = root .. "/slow"
+			options.callSeconds = 3
+			options.runSeconds = 30
+		end)
+		expect(session.call("echo", ARGS).ok):toBe(true)
+		local held = session.call("hold_reply", ARGS)
+		expect(held.ok):toBe(false)
+		expect(held.delivery):toBe "possibly_sent"
+		expect(held.expired):toBe(true)
+		local again = session.call("echo", ARGS)
+		expect(again.ok == true):toBeTrueWith(again.detail or "no detail")
+		expect(fs.exists(root .. "/slow/reconnect-2/pid")):toBe(true)
 		session.close()
 	end)
 

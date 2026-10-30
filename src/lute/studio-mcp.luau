@@ -19,6 +19,7 @@ export type Connection = {
 	call: (name: string, arguments: { [string]: unknown }) -> unknown,
 	callRaw: (name: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Exchange,
 	close: () -> (),
+	reset: () -> (),
 	alive: () -> boolean,
 }
 
@@ -293,6 +294,7 @@ local function connect(executable: string, directory: string, deadline: number):
 	end
 	return {
 		close = recovered.close,
+		reset = recovered.reset,
 		alive = recovered.alive,
 		callRaw = callRaw,
 		call = function(name, arguments)
