@@ -935,7 +935,7 @@ A `validateProperty` function that returns `false` vetoes the write or `poke` si
 - Path-point storage.
 - Instant page navigation.
 
-Measurement providers are required for measurement claims. Keep the controller and call `close()` to release focus resources. The simulator does not simulate curve evaluation, rendered text, animated navigation, playback quality or style rendering. A declared method that is unsupported needs an explicit injected implementation. `attach` registers `environment.onClone`. `Clone()` then copies style, transition, derive and path state, and remaps in-tree derive references. Focus is never copied. `environment.observe` and `pendingFailures` expose operation observation and unfired fault injection.
+Measurement providers are required for measurement claims. Keep the controller and call `close()` to release focus resources. The simulator does not simulate curve evaluation, rendered text, animated navigation, playback quality or style rendering. A declared method that is unsupported needs an explicit injected implementation. `attach` registers `environment.onClone`. `Clone()` then copies style, transition, derive and path state, and remaps in-tree derive references. Focus is never copied. `environment.observe` and `pendingFailures` expose operation observation and unfired fault injection. `environment.observe(listener, filter)` takes an optional filter with `operations` and `members` lists. A filtered observer receives only events whose operation is in `operations` and whose member is in `members`. An event without a member does not match a `members` filter. When no observer matches, the environment builds no event.
 
 ### Engine seam
 

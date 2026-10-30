@@ -118,6 +118,11 @@ export type Event = {
 	value: unknown,
 }
 
+export type ObserveFilter = {
+	operations: { Operation }?,
+	members: { string }?,
+}
+
 export type CloneHook = (source: Instance, copy: Instance, remap: (Instance) -> Instance) -> ()
 export type CreateHook = (object: Object) -> ()
 
@@ -168,7 +173,7 @@ export type Environment = {
 	failNext: (operation: Operation, times: number?) -> (),
 	clearFailures: () -> (),
 	pendingFailures: () -> number,
-	observe: (listener: (event: Event) -> ()) -> Connection,
+	observe: (listener: (event: Event) -> (), filter: ObserveFilter?) -> Connection,
 	onClone: (hook: CloneHook) -> Connection,
 	onCreate: (hook: CreateHook) -> Connection,
 	signalOf: (object: Instance, event: string) -> SignalHandle,

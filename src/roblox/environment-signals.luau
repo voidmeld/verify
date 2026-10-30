@@ -13,6 +13,22 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 	local meters: { [unknown]: { connections: () -> number, fires: () -> number } } = {}
 	setmetatable(meters, { __mode = "k" })
 
+	local function finish<R...>(thread: thread, start: number, ok: boolean, ...: R...): R...
+		running[thread] = nil
+		if not ok then
+			error(table.pack(...)[1], 0)
+		end
+		if #errors > start then
+			local parts: { string } = {}
+			for index = start + 1, #errors do
+				table.insert(parts, errors[index])
+				errors[index] = nil
+			end
+			error(table.concat(parts, "\n"), 0)
+		end
+		return ...
+	end
+
 	local function operation<A..., R...>(body: (A...) -> R...): (A...) -> R...
 		if not raising then
 			return body
@@ -23,33 +39,18 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 				return body(...)
 			end
 			running[thread] = true
-			local start = #errors
-			local function finish(ok: boolean, ...: R...): R...
-				running[thread] = nil
-				if not ok then
-					error(table.pack(...)[1], 0)
-				end
-				if #errors > start then
-					local parts: { string } = {}
-					for index = start + 1, #errors do
-						table.insert(parts, errors[index])
-						errors[index] = nil
-					end
-					error(table.concat(parts, "\n"), 0)
-				end
-				return ...
-			end
-			return finish(pcall(body, ...))
+			return finish(thread, #errors, pcall(body, ...))
 		end
 	end
 
 	local function newSignal<A...>(initialFires: number?): Signal<A...>
-		local live: { { handler: (A...) -> (), connected: boolean, connection: Connection } } = {}
+		type Record = { run: (A...) -> (), connected: boolean, connection: Connection }
+		local live: { Record } = {}
 		local fired = initialFires or 0
 		local signal: Signal<A...>
 		local function connect(_self: Signal<A...>, handler: (A...) -> ()): Connection
 			local connection: Connection
-			local record: { handler: (A...) -> (), connected: boolean, connection: Connection }
+			local record: Record
 			connection = {
 				Connected = true,
 				Disconnect = function(_self: Connection)
@@ -66,7 +67,16 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 				end,
 			}
 			Names.register(connection, "RBXScriptConnection")
-			record = { handler = handler, connected = true, connection = connection }
+			record = {
+				run = function(...: A...)
+					local ok, thrown: unknown = pcall(handler, ...)
+					if not ok then
+						table.insert(errors, tostring(thrown))
+					end
+				end,
+				connected = true,
+				connection = connection,
+			}
 			table.insert(live, record)
 			connections += 1
 			return connection
@@ -95,14 +105,13 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 			if #live == 0 then
 				return
 			end
+			if #live == 1 then
+				scheduler.spawn(live[1].run, ...)
+				return
+			end
 			for _, record in table.clone(live) do
 				if record.connected then
-					scheduler.spawn(function(...: A...)
-						local ok, thrown: unknown = pcall(record.handler, ...)
-						if not ok then
-							table.insert(errors, tostring(thrown))
-						end
-					end, ...)
+					scheduler.spawn(record.run, ...)
 				end
 			end
 		end

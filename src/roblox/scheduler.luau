@@ -38,6 +38,7 @@ local function create(): Scheduler
 	setmetatable(tags, WEAK_KEYS)
 	setmetatable(owners, WEAK_KEYS)
 	local active: unknown = nil
+	local describe: (thread, unknown) -> string
 	local scheduler = {}
 	local onFailure: (string) -> () = function() end
 	local function release(thread: thread)
@@ -65,7 +66,20 @@ local function create(): Scheduler
 		return table.unpack(results, 1, results.n)
 	end
 
-	local function describe(thread: thread, message: unknown): string
+	local function start<A...>(thread: thread, ...: A...)
+		release(thread)
+		local previous = active
+		active = tags[thread]
+		local ok, message = coroutine.resume(thread, ...)
+		active = previous
+		if not ok then
+			local described = describe(thread, message)
+			failures[#failures + 1] = described
+			onFailure(described)
+		end
+	end
+
+	function describe(thread: thread, message: unknown): string
 		local ok, trace = pcall(function(): unknown
 			return debug.traceback(thread)
 		end)
@@ -109,24 +123,14 @@ local function create(): Scheduler
 		if tags[thread] == nil then
 			tags[thread] = active
 		end
-		local results = table.pack(withTag(thread, ...))
-		if not results[1] then
-			local message = describe(thread, results[2])
-			failures[#failures + 1] = message
-			onFailure(message)
-		end
+		start(thread, ...)
 		return thread
 	end
 
 	function scheduler.spawnTagged<A..., R...>(tag: unknown, callback: Callback<A..., R...>, ...: A...): thread
 		local thread = coroutine.create(callback)
 		tags[thread] = tag
-		local results = table.pack(withTag(thread, ...))
-		if not results[1] then
-			local message = describe(thread, results[2])
-			failures[#failures + 1] = message
-			onFailure(message)
-		end
+		start(thread, ...)
 		return thread
 	end
 
