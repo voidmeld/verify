@@ -9,6 +9,7 @@ local Datatypes = require "./datatypes"
 local Values = require "./ui-values"
 local EnumTypes = require "./datatypes/enum"
 local Gamepad = require "./input-gamepad"
+local Touch = require "./input-touch"
 
 export type Key = { code: string, down: boolean }
 export type Pointer = { x: number, y: number, button: "left" | "right" | "middle", down: boolean }
@@ -934,11 +935,46 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		error(problem, 0)
 	end
+	local function touchMode(): boolean
+		return env.propertyOf(service, "TouchEnabled") == true and env.propertyOf(service, "MouseEnabled") == false
+	end
+	local function touchPoint(at: Position): Position
+		local root = gui:FindFirstAncestorWhichIsA "DataModel"
+		local guiService = root and root:FindFirstChildOfClass "GuiService"
+		assert(guiService, "touch input requires GuiService")
+		local getArea = guiService.GetInsetArea :: (Instance, unknown) -> { Min: Position }
+		local area = getArea(guiService, library.Enum.ScreenInsets.None)
+		return { X = at.X + area.Min.X, Y = at.Y + area.Min.Y }
+	end
+	local touch = Touch.create(env, {
+		service = service,
+		activationWindowSeconds = activationWindow,
+		library = library,
+		createInput = input,
+		targets = function(at)
+			local inset = options.inset()
+			return recipients(hits({ X = at.X + inset.X, Y = at.Y + inset.Y }, "button"))
+		end,
+		processed = processed,
+		detector = detectorFor,
+		read = read,
+		changed = function()
+			if lastInput ~= inputTypes.Touch then
+				lastInput = inputTypes.Touch
+				env.fire(service, "LastInputTypeChanged", lastInput)
+			end
+		end,
+	})
 	local function createDevice(): Environment.Object
 		local device = env.createEngineObject "VirtualInput"
 		table.insert(owned, device)
 		install(device, "SendMousePosition", function(_self: Environment.Object, at: Position)
-			move(at, hits(at, "movement"))
+			if touchMode() then
+				position = at
+				touch.move(touchPoint(at))
+			else
+				move(at, hits(at, "movement"))
+			end
 		end)
 		install(
 			device,
@@ -953,7 +989,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if at.X ~= position.X or at.Y ~= position.Y then
 					unsupported "button coordinates without prior pointer movement"
 				end
-				send(at, down)
+				if touchMode() then
+					touch.press(touchPoint(at), down)
+				else
+					send(at, down)
+				end
 			end
 		)
 		install(device, "SendKey", function(_self: Environment.Object, down: boolean, code: unknown, _repeat: boolean)
@@ -1041,7 +1081,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if current.button ~= "left" then
 				unsupported "non-left mouse button"
 			end
-			send({ X = current.x, Y = current.y }, current.down, true)
+			local at = { X = current.x, Y = current.y }
+			if touchMode() then
+				position = at
+				local point = touchPoint(at)
+				touch.move(point)
+				touch.press(point, current.down)
+			else
+				send(at, current.down, true)
+			end
 		end,
 		close = function()
 			if closed then
@@ -1049,6 +1097,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 			closed = true
 			frame:Disconnect()
+			touch.close()
 			if options.virtualController then
 				env.poke(service, "GamepadEnabled", previousGamepad)
 				env.poke(service, "PreferredInput", previousPreferred)

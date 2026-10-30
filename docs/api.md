@@ -1440,6 +1440,8 @@ Bridge reflection facts and behavior adapters into a fixture.
 
 Host adapter for explicit input observations.
 
+When `TouchEnabled` is true and `MouseEnabled` is false, virtual mouse input creates touch contacts. Each press creates one InputObject that persists through movement and release. The host emits GUI contact events, the general input events, and TouchStarted, TouchMoved and TouchEnded. It uses the device's `GetInsetArea(None)` origin for touch coordinates. Shared native cases check entry, movement, exit, release, button activation and UIDragDetector capture with TranslatePlane and CustomOffset. This does not yet model native touch scrolling, gestures or simultaneous contacts.
+
 `simulated` accepts `virtualController = true` to route keyboard keys through the default Studio controller mappings. Button, trigger and stick events update the same objects returned by `GetGamepadState`. Trigger changes precede button transitions. Opposing stick keys cancel an axis. Unmapped keys produce no keyboard events in this mode. The default keeps keyboard input.
 
 With a selected GuiObject, D-pad input moves selection and repeats while held. Button A activates the selected button on release. These inputs report `gameProcessedEvent = true`; activation precedes the release event. Button B leaves selection unchanged and reports an unprocessed event. The left thumbstick moves selection once per cardinal direction until released. The right thumbstick leaves selection unchanged and reports an unprocessed event. Diagonal thumbstick selection remains unsupported. The shared `tests/fixtures/input-controller-selection.luau` case checks these events in the double and in Studio with Controller Emulator enabled.

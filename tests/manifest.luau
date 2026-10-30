@@ -51,6 +51,7 @@ return table.freeze {
 	"tests/input-keyboard.lute.verify.luau",
 	"tests/input-selection-navigation.lute.verify.luau",
 	"tests/input-textbox-focus.lute.verify.luau",
+	"tests/input-touch.lute.verify.luau",
 	"tests/instance-host.lute.verify.luau",
 	"tests/loader.lute.verify.luau",
 	"tests/lute-gate.lute.verify.luau",
