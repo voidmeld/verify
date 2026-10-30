@@ -39,6 +39,7 @@ harness:case("native font metrics", function(check)
  end
  for _, value in {".D", ".H", ".L", ".M", ".N", ".R", ".S", ".T", ".d", ".h", ".l", ".m", ".n", ".r", ".s", ".t", ".LL", ".RR", ".ll", ".rr"} do table.insert(tokens, value) end
  for _, value in {"…", "•", "—", "–", "×", "·", "’", "“", "”", "°", "→", "−", "★", "é", "á", "í", "ó", "ú", "ñ", "ü", "ö", "ä", "ç", "è", "à", "ê", "ô", "ë", "ß", "É", "ð", "ĝ", "ş", "Ş", "ţ"} do table.insert(tokens, value) end
+ for _, value in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do table.insert(tokens, value) end
  for _, value in {"ff", "fi", "fl", "ffi", "ffl"} do table.insert(tokens, value) end
  local minimum = math.huge
  for _, value in tokens do
@@ -92,6 +93,11 @@ harness:case("native font metrics", function(check)
  local random = Random.new(527)
  local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
  local strings = {"Hello world", "Office staff affiliation", "affluent waffle", "A very fine office staff", "The quick brown fox jumps over the lazy dog", "Never store expected test geometry as a font measurement", "Score: 1,250 (+15%) — ready…", "“Quoted” • 3×4 · 90°"}
+ for _, symbol in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do
+  table.insert(strings, symbol)
+  table.insert(strings, "Layering " .. symbol .. " Makeup")
+  table.insert(strings, "A" .. symbol .. "V" .. symbol .. "To")
+ end
  for index = 1, 200 do
   local characters = {}
   for cursor = 1, random:NextInteger(1, 80) do
@@ -104,8 +110,8 @@ harness:case("native font metrics", function(check)
  for size = 1, 100 do
   for _, text in strings do
    local modeled, actual = pcall(model.width, text, size)
-   local expected = if modeled then boundsWidth(text, size) else actual
-   if modeled and actual ~= expected then table.insert(differences, {size = size, text = text, native = expected, actual = actual}) end
+   local expected = boundsWidth(text, size)
+   if not modeled or actual ~= expected then table.insert(differences, {size = size, text = text, native = expected, actual = actual}) end
   end
  end
  captured.attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))
