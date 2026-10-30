@@ -33,7 +33,7 @@ it("default text measurements use captured native font facts", function(own)
 	expect(call(service, "GetTextBoundsAsync", parameters) == previous):toBe(false)
 end)
 
-it("text measurements refuse unmodeled shaping and narrow word splitting", function(own)
+it("text measurements refuse unmodeled shaping and split narrow words", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(bridge.close)
 	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
@@ -57,6 +57,18 @@ it("text measurements refuse unmodeled shaping and narrow word splitting", funct
 			parameters.Font = library.Font.new "rbxasset://fonts/families/Unknown.json"
 		else
 			parameters.Width = 1
+		end
+		if scenario == "narrow" then
+			local actual = call(service, "GetTextBoundsAsync", parameters)
+			parameters.Width = 0
+			local widest = 0
+			for _, codepoint in utf8.codes "Hello" do
+				parameters.Text = utf8.char(codepoint)
+				local measured = call(service, "GetTextBoundsAsync", parameters) :: { X: number, Y: number }
+				widest = math.max(widest, measured.X)
+			end
+			expect(actual):toEqual(library.Vector2.new(widest, 6 * 14))
+			continue
 		end
 		expect(function()
 			call(service, "GetTextBoundsAsync", parameters)
