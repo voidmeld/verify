@@ -72,8 +72,9 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
     params.Text, params.Width = text, minimum + random:NextInteger(0, 150)
     local native = game.TextService:GetTextBoundsAsync(params)
     local width, lines = model.wrap(text, size, params.Width)
-    if width ~= native.X or lines * lineHeight ~= native.Y then
-     table.insert(differences, {text = text, size = size, width = params.Width, actual = {width, lines * lineHeight}, native = {native.X, native.Y}})
+    local height = model.height(size, lines)
+    if width ~= native.X or height ~= native.Y then
+     table.insert(differences, {text = text, size = size, width = params.Width, actual = {width, height}, native = {native.X, native.Y}})
     end
    end
   end
