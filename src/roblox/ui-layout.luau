@@ -647,8 +647,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 	local turns: { [Instance]: { Turn } } = {}
 	setmetatable(turns, { __mode = "k" })
 	local frames: { [Instance]: Rectangle } = {}
+	local step: () -> ()
 	local selectionScroll = SelectionScroll.attach(environment, read, vector, function(object)
 		return frames[object] ~= nil
+	end, function()
+		step()
 	end)
 	setmetatable(frames, { __mode = "k" })
 	local scrollingProperties = { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" }
@@ -668,7 +671,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local dx, dy = x - turn.x, y - turn.y
 		return turn.x + dx * cosine - dy * sine, turn.y + dx * sine + dy * cosine
 	end
-	local function step()
+	local function measure()
 		local roots = options.roots()
 		for _, root in roots do
 			selectionScroll.watch(root)
@@ -983,6 +986,20 @@ local function attach(environment: Environment.Environment, options: Options): C
 		for _, root in roots do
 			visit(root, screen, nil, {})
 		end
+	end
+	local measuring = false
+	local pending = false
+	step = function()
+		pending = true
+		if measuring then
+			return
+		end
+		measuring = true
+		repeat
+			pending = false
+			measure()
+		until not pending
+		measuring = false
 	end
 	local function objectsAtPosition(root: Instance, rawX: number, rawY: number): { Instance }
 		assert(

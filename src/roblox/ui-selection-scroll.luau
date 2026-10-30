@@ -10,7 +10,8 @@ local function attach(
 	environment: Environment.Environment,
 	read: (Instance, string) -> unknown,
 	vector: (number, number) -> unknown,
-	measured: (Instance) -> boolean
+	measured: (Instance) -> boolean,
+	refresh: () -> ()
 )
 	local connections: { [Instance]: Environment.Connection } = {}
 	local closed = false
@@ -26,6 +27,7 @@ local function attach(
 		local at, size = Values.vector(read(target, "AbsolutePosition")), Values.vector(read(target, "AbsoluteSize"))
 		local x, y = at.X, at.Y
 		local parent = target.Parent
+		local changed = false
 		while parent do
 			if parent:IsA "ScrollingFrame" and read(parent, "ScrollingEnabled") ~= false and measured(parent) then
 				local origin = Values.vector(read(parent, "AbsolutePosition"))
@@ -57,9 +59,15 @@ local function attach(
 					0,
 					math.max(0, canvas.Y - visibleY)
 				)
-				environment.poke(parent, "CanvasPosition", vector(nextX, nextY))
+				if nextX ~= position.X or nextY ~= position.Y then
+					changed = true
+					environment.poke(parent, "CanvasPosition", vector(nextX, nextY))
+				end
 			end
 			parent = parent.Parent
+		end
+		if changed then
+			refresh()
 		end
 	end
 	local function watch(object: Instance)
