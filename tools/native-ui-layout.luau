@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native selection assignment", source = require "../tests/fixtures/ui-selection-assignment" },
 	{ name = "native text content", source = require "../tests/fixtures/ui-content-text" },
 	{ name = "native selection scrolling", source = require "../tests/fixtures/ui-selection-scroll" },
 	{ name = "native text focus events", source = require "../tests/fixtures/input-focus-events" },

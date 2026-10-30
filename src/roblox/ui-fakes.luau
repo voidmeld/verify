@@ -18,7 +18,7 @@ export type Options = {
 	truncateBounds: ((parameters: Values.TextParameters, mode: string, lines: number, wrapped: boolean) -> number?)?,
 	methods: { [string]: Environment.Method }?,
 	validate: (((className: string, property: string) -> boolean) | false)?,
-	selection: ("raise" | "ignore")?,
+	selection: ("raise" | "ignore" | "native")?,
 	requirePlayerGui: boolean?,
 }
 export type Rejection = { target: Instance, reason: string }
@@ -140,9 +140,10 @@ end
 local function selection(options: Options?): Selection
 	local settings: Options = options or {}
 	local ignoring = settings.selection == "ignore"
+	local native = settings.selection == "native"
 	assert(
-		settings.selection == nil or settings.selection == "raise" or ignoring,
-		'selection must be "raise" or "ignore"'
+		settings.selection == nil or settings.selection == "raise" or ignoring or native,
+		'selection must be "raise", "ignore" or "native"'
 	)
 	local rejected: { Rejection } = {}
 	local function validate(_className: string, property: string, value: unknown, _operation: "set" | "poke"): boolean?
@@ -152,11 +153,14 @@ local function selection(options: Options?): Selection
 		assert(Environment.isInstance(value), "SelectedObject requires a simulated instance")
 		local object = Environment.assertInstance(value)
 		assert(object:IsA "GuiObject", "SelectedObject requires a GuiObject")
-		if settings.requirePlayerGui == true then
+		if native or settings.requirePlayerGui == true then
 			assert(
 				object:FindFirstAncestorWhichIsA "PlayerGui" ~= nil,
 				"SelectedObject requires a descendant of a PlayerGui"
 			)
+		end
+		if native then
+			return nil
 		end
 		local reason: string? = nil
 		if not visible(object) then

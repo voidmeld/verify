@@ -552,8 +552,8 @@ The simulator proves Luau logic over the declared surface, ordering and disposal
 | A handler error only prints, so the environment collects it | Engine-true. | `handlerErrors = "raise"` is a test convenience. |
 | A signal count for any signal | Added metering. | None. |
 | An unknown member raises | Engine-true. | `fakeOn` and `functionDoubles = true` are test doubles. |
-| A write that targets a rejected selection is ignored | `"raise"` is a test convenience. | `ui.selection = "ignore"` is engine-true. |
-| A selection outside a `PlayerGui` is allowed | Engine-true. | `ui.requirePlayerGui = true` is a test convenience. |
+| Selection of a hidden or unselectable control | `"raise"` is a test convenience; `"ignore"` drops the write. | `ui.selection = "native"` accepts the write, as Studio does. |
+| Selection outside a `PlayerGui` | Allowed as a test convenience. | `ui.selection = "native"` or `ui.requirePlayerGui = true` rejects the write. |
 | `TweenInfo`, `FloatCurveKey` and `Path2DControlPoint` fields | Engine-true values and defaults. | None. |
 | A property with no stored default reads `nil` | Engine metadata only. | `defaultProperty` gives the engine value. |
 | A derived property such as `TextBounds` | Reads as stored. | `computed` is a test convenience. A computed property is read-only unless it declares `writable = true`. |
@@ -762,7 +762,7 @@ The default environment has no haptic motors. `HapticService:IsVibrationSupporte
 - `ui.validate(className, property)` keeps UI property validation for the pairs that it accepts. It relaxes the rest while every fake stays installed.
 - `ui = { validate = false }` installs no UI validator.
 - UI validation acts only on `SelectedObject`. Every other write makes no extra call.
-- `ui.selection` is `"raise"` (default) or `"ignore"`. See [rejected selection](#rejected-selection).
+- `ui.selection` is `"raise"` (default), `"ignore"` or `"native"`. See [rejected selection](#rejected-selection).
 - `ui.requirePlayerGui = true` requires the target to descend from a `PlayerGui`.
 - `GuiService.GetGuiInset` requires an explicit `ui.methods["GuiService.GetGuiInset"]` handler that returns both current inset vectors. There is no inferred inset or relationship to `TopbarInset`. A provider provides representative host state; it does not establish native inset or safe-area coverage.
 
@@ -939,9 +939,11 @@ Relevant nested rules, state selectors and query selectors raise `unsupported_ui
 
 #### Rejected selection
 
-When the real engine gets `GuiService.SelectedObject = target` for a hidden, disabled or unselectable control, it ignores the write. The default `ui.selection = "raise"` raises instead, so a test finds the mistake. `ui = { selection = "ignore" }` is the engine-true mode. It drops the write with no error, no signal and no change. `controller.rejectedSelections()` lists each `{ target, reason }` in order. A hidden ancestor, a disabled `ScreenGui` and `Selectable == false` reject. A value that is not a `GuiObject` still raises in both modes.
+`ui = { selection = "native" }` accepts explicit `GuiService.SelectedObject` writes to hidden, inactive and unselectable controls, including controls under a disabled `ScreenGui`. It raises if the target is outside a `PlayerGui`. Shared Studio and double cases check immediate and settled selection. This contract concerns explicit assignment; input navigation chooses eligible controls separately.
 
-`ui.requirePlayerGui = true` makes a target outside a `PlayerGui` raise in both modes. It is an opt-in test convenience.
+The default `ui.selection = "raise"` is a test convenience that rejects hidden and unselectable targets. `ui.selection = "ignore"` drops those writes with no error, no signal and no change. `controller.rejectedSelections()` lists each ignored `{ target, reason }` in order. A hidden ancestor, a disabled `ScreenGui` and `Selectable == false` reject in these two modes. Neither mode represents native explicit assignment. A value that is not a `GuiObject` raises in all modes.
+
+`ui.requirePlayerGui = true` also requires `PlayerGui` ancestry in the `"raise"` and `"ignore"` modes. Native mode always requires this ancestry.
 
 A `validateProperty` function that returns `false` vetoes the write or `poke` silently, with no change and no signal. Any other return value accepts it. This applies to `Parent` too.
 
