@@ -18,10 +18,17 @@ for _,scale in {0.5,1,2} do
    button.Position,button.Parent=UDim2.fromOffset(400,500),scroll
    task.wait(0.1)
    local before=button.AbsolutePosition
+   local observed
+   local connection=game.GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+    if game.GuiService.SelectedObject==button then observed=button.AbsolutePosition end
+   end)
    game.GuiService.SelectedObject=button
    local expected=if enabled then Vector2.new(240,370)*scale else Vector2.zero
    assert(scroll.CanvasPosition==expected,"immediate selection scroll: "..tostring(scroll.CanvasPosition))
+   assert((before-button.AbsolutePosition-expected).Magnitude<0.75,"selection publishes immediate geometry")
    task.wait(0.1)
+   assert(observed and (before-observed-expected).Magnitude<0.75,"selection observers see revealed geometry")
+   connection:Disconnect()
    assert((before-button.AbsolutePosition-expected).Magnitude<0.75,"canvas offsets use screen pixels")
    game.GuiService.SelectedObject=nil
    button.Position=UDim2.fromOffset(0,0)
