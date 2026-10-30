@@ -722,6 +722,10 @@ The engine refuses a write to a property that the class does not have. The defau
 
 An action must belong to a DataModel and be enabled. Its nearest InputContext must also be enabled. Disabling either resets the state. A parent change resets affected actions, and a type change publishes the new zero state. Clones start at zero. The shared Studio sequence checks these transitions, duplicate suppression and destruction. This model does not establish physical input delivery.
 
+### Haptic requests without motor hardware
+
+The default environment has no haptic motors. `HapticService:IsVibrationSupported()` and `IsMotorSupported()` return false. `HapticEffect:Play()` and `Stop()` accept requests but produce no motor output or `Ended` event. This matches the observed Studio host without haptic hardware. `SetWaveformKeys()` accepts FloatCurveKey arrays only when the effect type is Custom. Native request validation also accepts empty arrays, negative key times, repeated times and values outside 0–1. This model does not simulate waveform playback on supported hardware.
+
 ---
 
 ## Reflection and explicit UI fakes
