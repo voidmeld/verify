@@ -809,10 +809,10 @@ local function attach(environment: Environment.Environment, options: Options): C
 			then
 				local list = if object.Parent then object.Parent:FindFirstChildWhichIsA "UIListLayout" else nil
 				local reflowed = list ~= nil
-					and optional(list, "Wraps") ~= true
 					and (
 						(
 							enum(list, "FillDirection", "Vertical") == "Vertical"
+							and optional(list, "Wraps") ~= true
 							and enum(list, "HorizontalFlex", "None") == "Fill"
 						) or enum(list, "FillDirection", "Vertical") == "Horizontal"
 					)

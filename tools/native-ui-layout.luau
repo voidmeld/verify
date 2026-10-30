@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native wrapped text flex", source = require "../tests/fixtures/ui-wrapped-text-flex" },
 	{ name = "native scroll bar gutters", source = require "../tests/fixtures/ui-scroll-gutter" },
 	{ name = "native wrapped grid text", source = require "../tests/fixtures/ui-grid-text" },
 	{ name = "native constrained grid cells", source = require "../tests/fixtures/ui-grid-constraints" },

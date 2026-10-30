@@ -28,7 +28,7 @@ assert(#failures == 0, table.concat(failures, "\n"))
 return true
 ]==]
 
-it("wrapped text flexed in a horizontal list wraps at its flexed width as Studio 0.744 does", function(own)
+it("wrapped text flexed in horizontal lists reflows at its assigned width", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
 		layout = {
@@ -73,7 +73,10 @@ it("wrapped text flexed in a horizontal list wraps at its flexed width as Studio
 	local complete = false
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-list-text-reflow" }, function()
-		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+		for _, source in { probe, require "./fixtures/ui-wrapped-text-flex" } do
+			assert(Lute.chunk.load(source, { environment = runtime.globals })() == true)
+		end
+		complete = true
 	end)
 	own(function()
 		scheduler.cancel(thread)
