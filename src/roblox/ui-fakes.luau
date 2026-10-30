@@ -187,15 +187,27 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 	local selected = rule or selection(options)
 	local focused: Instance? = nil
 	local focusConnection: Environment.Connection? = nil
-	local function release(enterPressed: boolean?, cause: Instance?)
+	local function focusEvent(object: Instance, event: string)
+		local root = object:FindFirstAncestorWhichIsA "DataModel"
+		local input = if root then root:FindFirstChildOfClass "UserInputService" else nil
+		if input then
+			env.fire(input, event, object)
+		end
+	end
+	local function release(enterPressed: boolean?, cause: Instance?, transfer: boolean?)
 		local previous = focused
-		focused = nil
+		if not transfer then
+			focused = nil
+		end
 		if focusConnection then
 			focusConnection:Disconnect()
 			focusConnection = nil
 		end
 		if previous and env.isAlive(previous) then
 			env.fire(previous, "FocusLost", enterPressed == true, cause)
+			if not transfer then
+				focusEvent(previous, "TextBoxFocusReleased")
+			end
 		end
 	end
 	env.fake("TextBox.CaptureFocus", function(object: Instance)
@@ -203,7 +215,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		if focused == object then
 			return
 		end
-		release(false)
+		release(false, nil, true)
 		focused = object
 		focusConnection = object.Destroying:Connect(function()
 			release(false)
@@ -214,6 +226,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		local text = tostring(object.Text)
 		pcall(env.poke, object, "CursorPosition", (utf8.len(text) or #text) + 1)
 		env.fire(object, "Focused")
+		focusEvent(object, "TextBoxFocused")
 	end)
 	env.fake("TextBox.ReleaseFocus", function(object: Instance, enterPressed: boolean?, cause: Instance?)
 		if focused == object then

@@ -45,6 +45,7 @@ return table.freeze {
 	"tests/hierarchy-experience.verify.luau",
 	"tests/input-action.lute.verify.luau",
 	"tests/input-drag-detector.lute.verify.luau",
+	"tests/input-focus-events.lute.verify.luau",
 	"tests/input-gui-state.lute.verify.luau",
 	"tests/input-host.verify.luau",
 	"tests/input-keyboard.lute.verify.luau",
