@@ -25,6 +25,7 @@ local result = Lute.studio.run {
 	worker = "tools/studio-worker.luau",
 	code = [[
 assert(game.PlaceId == 123 and game.GameId == 456, 'configured Studio identity must reach the server')
+assert(game:GetService('TextChatService').ChatVersion == Enum.ChatVersion.TextChatService, 'generated places must use TextChatService')
 local root = game:GetService('ReplicatedStorage').VerifySemanticFixture
 local Core = require(root.src.core)
 local Roblox = require(root.src.roblox)

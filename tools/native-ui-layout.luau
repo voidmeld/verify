@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native text content", source = require "../tests/fixtures/ui-content-text" },
 	{ name = "native text focus events", source = require "../tests/fixtures/input-focus-events" },
 	{ name = "native HTTP JSON values", source = require "../tests/fixtures/http-json-values" },
 	{ name = "native screen display order", source = require "../tests/fixtures/ui-screen-order" },

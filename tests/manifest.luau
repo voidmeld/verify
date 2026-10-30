@@ -106,6 +106,7 @@ return table.freeze {
 	"tests/ui-automatic-parent.lute.verify.luau",
 	"tests/ui-automatic-relative-children.lute.verify.luau",
 	"tests/ui-automatic-scaled-padding.lute.verify.luau",
+	"tests/ui-content-text.lute.verify.luau",
 	"tests/ui-fakes.verify.luau",
 	"tests/ui-folder-hits.lute.verify.luau",
 	"tests/ui-grid-layout.lute.verify.luau",

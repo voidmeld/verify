@@ -43,6 +43,7 @@ harness:case("native font metrics", function(check)
  for _, value in {"…", "•", "—", "–", "×", "·", "’", "“", "”", "°", "→", "−", "★", "é", "á", "í", "ó", "ú", "ñ", "ü", "ö", "ä", "ç", "è", "à", "ê", "ô", "ë", "ß", "É", "ð", "ĝ", "ş", "Ş", "ţ"} do table.insert(tokens, value) end
  for _, value in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do table.insert(tokens, value) end
  for _, value in {"þ", "ṽ", "ĥ", "東", "京", "速", "度", "制", "限", "標", "識", "と", "設", "定", "画", "面"} do table.insert(tokens, value) end
+ for _, value in {"⇧", "⌘", "⌫", "〜", "◎", "⚡", "⛓", "▣", "□", "▢", "☰", "◉", "◩", "≡", "⬡", "■"} do table.insert(tokens, value) end
  if params.Font.Family == "rbxasset://fonts/families/BuilderSans.json" then
   for _, value in {"->", "-^", "–>", "–^", "—>", "—^", "<-", "<–", "<—", "^-", "^–", "^—"} do table.insert(tokens, value) end
  end
@@ -125,6 +126,11 @@ harness:case("native font metrics", function(check)
   end
  end
  local differences = {}
+ for _, symbol in {"⇧", "⌘", "⌫", "〜", "◎", "⚡", "⛓", "▣", "□", "▢", "☰", "◉", "◩", "≡", "⬡", "■"} do
+  table.insert(strings, symbol)
+  table.insert(strings, "Layering " .. symbol .. " Makeup")
+  table.insert(strings, "A" .. symbol .. "V" .. symbol .. "To")
+ end
  for _, text in {"þ", "ṽ", "ĥ", "ṽþĥ", "東京", "速度制限", "標識と設定画面", "東京速度制限標識と設定画面"} do
   table.insert(strings, text)
   table.insert(strings, "A" .. text .. "V")
