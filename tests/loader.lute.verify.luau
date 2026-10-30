@@ -93,6 +93,18 @@ return { child = Child, shared = Shared, sibling = Sibling }
 		expect(Lute.loader.new().require(root .. "/shared/value") == app.shared):toBe(false)
 	end)
 
+	it("requires a module on first use without yielding the caller", function()
+		local root = ROOT .. "/deferred"
+		write(root .. "/app.luau", 'return function()\n\treturn require("./later")\nend\n')
+		write(root .. "/later.luau", 'return "later"\n')
+		local deferred = Lute.loader.new().require(root .. "/app") :: () -> string
+		local thread = coroutine.create(deferred)
+		local ok, value = coroutine.resume(thread)
+		expect(ok):toBe(true)
+		expect(coroutine.status(thread)):toBe "dead"
+		expect(value):toBe "later"
+	end)
+
 	it("gives each module the engine typeof, warn and its own environment", function()
 		local root = ROOT .. "/engine"
 		write(
