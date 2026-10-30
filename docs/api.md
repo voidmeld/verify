@@ -717,6 +717,7 @@ The engine refuses a write to a property that the class does not have. The defau
 - A same-parent assignment emits no events.
 - Reparenting the removing instance from its removal callback fails.
 - The simulator dispatches immediately. A native deferred signal mode can expose different callback timing and observed state.
+- `task.defer` keeps the engine re-entrancy limit. A thread deferred from a deferred thread is one level deeper. Deferring past 80 levels in one resumption raises `Maximum re-entrancy depth (80) exceeded calling task.defer`.
 - The order across events beyond these guarantees is not a contract.
 
 ### Held selection navigation
