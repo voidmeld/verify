@@ -45,6 +45,8 @@ local fixtures = {
 	{ name = "native grid layout", source = require "../tests/fixtures/ui-grid-layout" },
 	{ name = "native style properties", source = require "../tests/fixtures/ui-style-properties" },
 	{ name = "native list flex", source = require "../tests/fixtures/ui-list-flex" },
+	{ name = "native touch contacts", source = require "../tests/fixtures/input-touch-button" },
+	{ name = "native touch drag capture", source = require "../tests/fixtures/input-touch-drag" },
 }
 
 return function()
