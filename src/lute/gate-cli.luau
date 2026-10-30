@@ -205,9 +205,49 @@ local function shard(draft: Gate.Draft, slot: Shard, weights: Weights, tiers: { 
 			end
 		end
 	end
-	local byRoot: { [string]: Item } = {}
+	local suite: { [string]: string } = {}
+	local function suiteOf(id: string): string
+		local parent = suite[id] or id
+		if parent == id then
+			return id
+		end
+		local found = suiteOf(parent)
+		suite[id] = found
+		return found
+	end
 	for _, producer in selected do
 		if producer.kind == "tests" and producer.locators ~= nil then
+			suite[producer.id] = suite[producer.id] or producer.id
+		end
+	end
+	local linked: { [string]: boolean } = {}
+	for _, producer in selected do
+		local dependencies: { string } = producer.after or {}
+		if suite[producer.id] ~= nil then
+			for _, dependency in dependencies do
+				if suite[dependency] ~= nil then
+					suite[suiteOf(producer.id)] = suiteOf(dependency)
+					linked[producer.id], linked[dependency] = true, true
+				end
+			end
+		end
+	end
+	local byRoot: { [string]: Item } = {}
+	local bySuite: { [string]: Item } = {}
+	for _, producer in selected do
+		if producer.kind == "tests" and producer.locators ~= nil and linked[producer.id] then
+			local key = suiteOf(producer.id)
+			local item = bySuite[key]
+			if item == nil then
+				item = { files = {}, producers = {}, weight = 0 }
+				bySuite[key] = item
+				table.insert(items, item)
+			end
+			for _, locator in producer.locators do
+				table.insert(item.files, locator)
+				item.weight += weights.files[locator] or fileDefault
+			end
+		elseif producer.kind == "tests" and producer.locators ~= nil then
 			for _, locator in producer.locators do
 				table.insert(
 					items,

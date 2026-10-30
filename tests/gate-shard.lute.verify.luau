@@ -119,4 +119,35 @@ it("keeps a producer with the producers it runs after", function()
 	end
 end)
 
+it("keeps spec files with the spec files of the producers they run after", function()
+	local linked: Gate.Draft = {
+		id = "linked",
+		producers = {
+			{ id = "check-a", kind = "tests", argv = { "a" }, locators = { "check:a" } },
+			{ id = "time-a", kind = "tests", argv = { "a" }, locators = { "time:a" }, after = { "check-a" } },
+			{ id = "check-b", kind = "tests", argv = { "b" }, locators = { "check:b" } },
+			{ id = "time-b", kind = "tests", argv = { "b" }, locators = { "time:b" }, after = { "check-b" } },
+			{ id = "loose", kind = "tests", argv = { "loose" }, locators = { "loose:1", "loose:2" } },
+		},
+	}
+	local measured: Cli.Weights = {
+		producers = {},
+		files = { ["check:a"] = 5, ["time:a"] = 40, ["check:b"] = 5, ["time:b"] = 30, ["loose:1"] = 1, ["loose:2"] = 1 },
+	}
+	local owner: { [string]: number } = {}
+	local total = 0
+	for index = 1, 2 do
+		local share = Cli.shard(linked, { index = index, count = 2 }, measured, {})
+		for _, file in share.files do
+			owner[file] = index
+		end
+		total += share.load
+	end
+	expect(total):toBe(82)
+	expect(owner["check:a"]):toBe(owner["time:a"])
+	expect(owner["check:b"]):toBe(owner["time:b"])
+	expect(owner["check:a"] ~= owner["check:b"]):toBe(true)
+	expect(owner["loose:1"] ~= nil and owner["loose:2"] ~= nil):toBe(true)
+end)
+
 return nil
