@@ -542,8 +542,6 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local heldKeys: { [string]: true } = {}
 	local heldInputs: { [string]: Instance } = {}
-	local actionStates: { [Instance]: boolean } = {}
-	setmetatable(actionStates, { __mode = "k" })
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
 	end
@@ -745,11 +743,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if sunk and priority < sunk then
 				break
 			end
-			if actionStates[entry.action] ~= value.down then
-				actionStates[entry.action] = value.down
-				env.fire(entry.action, if value.down then "Pressed" else "Released")
-				env.fire(entry.action, "StateChanged", value.down)
-			end
+			local fire = entry.action.Fire :: (Instance, boolean) -> ()
+			fire(entry.action, value.down)
 			if env.propertyOf(entry.context, "Sink") == true then
 				sunk = priority
 			end

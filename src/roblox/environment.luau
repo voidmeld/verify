@@ -12,6 +12,7 @@ local createSignals = require "./environment-signals"
 local Types = require "./environment-types"
 local SpatialFakes = require "./spatial-fakes"
 local AudioFakes = require "./audio-fakes"
+local InputActionFakes = require "./input-action-fakes"
 local TweenFakes = require "./tween-fakes"
 local SpatialQueryFakes = require "./spatial-query-fakes"
 
@@ -70,6 +71,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local alive = 0
 
 	local environment = {}
+	local inputActions: InputActionFakes.Controller? = nil
 	local root: Instance
 	local setTag: (Instance, string, boolean) -> ()
 	local states: { [unknown]: State } = {}
@@ -163,6 +165,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function changed(object: Instance, state: State, property: string)
+		if inputActions then
+			inputActions.changed(object, property)
+		end
 		fireSignal(state, "prop:" .. property)
 		fireSignal(state, "Changed", property)
 	end
@@ -947,6 +952,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return stateOf(object).worldPivotSet == true
 	end)
 	AudioFakes.attach(environment)
+	inputActions = InputActionFakes.attach(environment)
 	TweenFakes.attach(environment)
 	SpatialQueryFakes.attach(environment)
 	for member, handler in initialFakes do

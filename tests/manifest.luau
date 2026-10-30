@@ -42,6 +42,7 @@ return table.freeze {
 	"tests/gate-shard.lute.verify.luau",
 	"tests/gate.verify.luau",
 	"tests/hierarchy-experience.verify.luau",
+	"tests/input-action.lute.verify.luau",
 	"tests/input-drag-detector.lute.verify.luau",
 	"tests/input-gui-state.lute.verify.luau",
 	"tests/input-host.verify.luau",
