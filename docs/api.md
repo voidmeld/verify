@@ -1442,7 +1442,7 @@ Host adapter for explicit input observations.
 
 With a selected GuiObject, D-pad input moves selection and repeats while held. Button A activates the selected button on release. These inputs report `gameProcessedEvent = true`; activation precedes the release event. Button B leaves selection unchanged and reports an unprocessed event. The shared `tests/fixtures/input-controller-selection.luau` case checks these events in the double and in Studio with Controller Emulator enabled. Thumbstick navigation with a selected GuiObject is not supported yet.
 
-Controller GUI selection and the system menu remain unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
+Repeated thumbstick key presses accumulate axis values, including values outside -1 to 1. Each release subtracts one press. The system menu remains unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
 
 ### `Roblox.instanceHost`
 

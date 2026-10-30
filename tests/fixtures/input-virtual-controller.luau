@@ -32,6 +32,11 @@ local steps={
  {"S",false,"InputChanged/Thumbstick1/Change/0, 1, 0/0, 1, 0"},
  {"W",false,"InputEnded/Thumbstick1/End/0, 0, 0/0, -1, 0"},
  {"Z",true,""},{"Z",false,""},
+ {"S",true,"InputChanged/Thumbstick1/Change/0, -1, 0/0, -1, 0"},
+ {"S",true,"InputChanged/Thumbstick1/Change/0, -2, 0/0, -1, 0"},
+ {"S",false,"InputChanged/Thumbstick1/Change/0, -1, 0/0, 1, 0"},
+ {"W",true,"InputEnded/Thumbstick1/End/0, 0, 0/0, 1, 0"},
+ {"W",false,"InputChanged/Thumbstick1/Change/0, -1, 0/0, -1, 0"},
 }
 for _,step in steps do
  table.clear(trace)
@@ -44,5 +49,6 @@ assert(u.GamepadEnabled and u:GetGamepadConnected(Enum.UserInputType.Gamepad1),"
 assert(#u:GetConnectedGamepads()==1,"one virtual controller")
 assert(u:GetLastInputType()==Enum.UserInputType.Gamepad1,"last controller input")
 for _,c in connections do c:Disconnect() end
+v:SendKey(false,Enum.KeyCode.S,false)
 return true
 ]==]
