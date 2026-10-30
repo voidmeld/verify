@@ -11,6 +11,7 @@ local Datatypes = require "./datatypes"
 local ContentFakes = require "./content-fakes"
 local LocalizationFakes = require "./localization-fakes"
 local LogFakes = require "./log-fakes"
+local TextContent = require "./text-content"
 
 local SERVICE_DEFAULTS: { [string]: { [string]: unknown } } = {
 	GuiService = {
@@ -129,6 +130,18 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 			if computed[key] == nil then
 				computed[key] = function(): Environment.Instance?
 					return if resolveService then resolveService(name) else nil
+				end
+			end
+		end
+	end
+	if settings.ui ~= false then
+		for _, className in { "TextLabel", "TextButton", "TextBox" } do
+			local key = className .. ".ContentText"
+			if computed[key] == nil then
+				computed[key] = function(object: Environment.Instance): string
+					local text = object.Text
+					assert(type(text) == "string", "text content requires a string")
+					return if object.RichText == true then TextContent.plain(text) else text
 				end
 			end
 		end
