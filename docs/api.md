@@ -720,6 +720,8 @@ The engine refuses a write to a property that the class does not have. The defau
 
 The simulated input host repeats held arrow-key selection after 0.5 seconds, then at intervals of at least 0.12 seconds. Release stops the repeats. A repeat moves the current selection without another `InputBegan` event. A focused TextBox prevents selection movement. The shared Studio case checks the initial delay, repeat movement, release, key events and the end of a collection.
 
+`UserInputService:GetGamepadState()` returns the 24 idle controls for each Gamepad1–Gamepad8 slot, including disconnected slots. Each InputObject identifies its slot and key, with End state and zero position. Other UserInputType values return an empty array. Each call returns a separate array. This initial-state model does not inject gamepad input.
+
 ### Input action state
 
 `InputAction:Fire(value)` and `GetState()` share state with simulated keyboard dispatch. The value must match the action type: boolean, number, Vector2 or Vector3. Repeated values emit no event. Boolean transitions emit `Pressed` or `Released` before `StateChanged`. Other types emit only `StateChanged`.

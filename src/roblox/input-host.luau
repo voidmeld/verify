@@ -861,6 +861,54 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		ensureOpen()
 		return heldKeys[codeName(code)] == true
 	end)
+	local gamepadStates: { [string]: { Instance } } = {}
+	install(service, "GetGamepadState", function(_self: Instance, kind: unknown): { Instance }
+		ensureOpen()
+		assert(EnumTypes.isItem(kind) and EnumTypes.enumType(kind) == "UserInputType", "expected Enum.UserInputType")
+		local name = codeName(kind)
+		if not name:match "^Gamepad[1-8]$" or kind ~= inputTypes:FromName(name) then
+			return {}
+		end
+		local entries = gamepadStates[name]
+		if entries == nil then
+			entries = {}
+			for _, keyName in
+				{
+					"ButtonStart",
+					"ButtonA",
+					"ButtonSelect",
+					"ButtonB",
+					"ButtonX",
+					"ButtonY",
+					"ButtonL1",
+					"ButtonR1",
+					"ButtonL2",
+					"ButtonR2",
+					"ButtonL3",
+					"ButtonUp",
+					"ButtonR3",
+					"ButtonLeft",
+					"DPadUp",
+					"DPadDown",
+					"DPadLeft",
+					"DPadRight",
+					"Thumbstick1",
+					"Thumbstick2",
+					"ButtonCenter",
+					"ButtonBack",
+					"ButtonDown",
+					"ButtonRight",
+				}
+			do
+				local object = input(kind)
+				env.poke(object, "KeyCode", library.Enum.KeyCode:FromName(keyName))
+				env.poke(object, "UserInputState", states.End)
+				table.insert(entries, object)
+			end
+			gamepadStates[name] = entries
+		end
+		return table.clone(entries)
+	end)
 	install(service, "GetKeysPressed", function(): { Instance }
 		ensureOpen()
 		local pressedKeys: { Instance } = {}

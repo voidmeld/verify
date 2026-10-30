@@ -55,6 +55,7 @@ for _, case in
 	{
 		{ name = "arrow keys move GuiService selection and Return activates it as Studio 0.744 does", source = probe },
 		{ name = "held selection repeats and stops on release", source = require "./fixtures/input-selection-repeat" },
+		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
 	}
 do
 	it(case.name, function(own)
@@ -94,7 +95,7 @@ do
 			inset = function()
 				return { X = 0, Y = 0 }
 			end,
-			library = Roblox.reflectionSnapshot.library(Lute.fixture.load()),
+			library = (engine.datatypes :: unknown) :: Roblox.DatatypeLibrary,
 			activationWindowSeconds = 0.5,
 			read = assert(bridge.ui).styled,
 		})

@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native idle gamepad state", source = require "../tests/fixtures/input-gamepad-state" },
 	{ name = "native held selection navigation", source = require "../tests/fixtures/input-selection-repeat" },
 	{ name = "native haptic effect requests", source = require "../tests/fixtures/haptic-effect" },
 	{ name = "native input action lifecycle", source = require "../tests/fixtures/input-action-probe" },
