@@ -364,6 +364,8 @@ Project `emitLegacyScripts` defaults to true. Set it to false to mount client an
 
 The place runtime accepts `debug.profilebegin`, `debug.profileend` and `debug.setmemorycategory`. These calls collect no performance or memory measurements. The debug table keeps the host inspection functions. It does not change the host table.
 
+The runtime's `HttpService.JSONEncode` writes engine datatypes, Instances, functions and threads as JSON null. Tables with an array part encode that part and ignore dictionary entries. Holes inside the array part become null. Empty tables become empty arrays. Numeric dictionary keys become integer strings. Cyclic tables fail. The host still encodes strings and numbers. The default host does not model buffer and nonfinite-number encodings, and dictionary keys other than strings and numbers remain unsupported.
+
 `ReplicatedFirst:RemoveDefaultLoadingScreen()` is accepted without rendering a loading screen. Arrival logic can continue, but native loading-screen visibility requires a Studio or Player observation.
 
 The scheduler applies explicit Humanoid state changes. It then emits `StateChanged`. A detached Humanoid reports `None`. A Humanoid in a Model in Workspace starts in `Running`. This behavior does not simulate automatic movement, state physics or network ownership.

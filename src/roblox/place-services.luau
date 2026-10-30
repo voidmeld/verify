@@ -4,6 +4,7 @@ local Types = require "./place-types"
 local Environment = require "./environment"
 local DeviceCatalog = require "./device-catalog"
 local Datatypes = require "./datatypes"
+local HttpJson = require "./http-json"
 type Instance = Environment.Instance
 
 local function install<B>(
@@ -406,7 +407,7 @@ local function install<B>(
 				return "{" .. body .. "}"
 			end,
 			JSONEncode = function(_service: Instance, value: unknown): string
-				return if value == nil then "null" else host.encodeJson(value)
+				return HttpJson.encode(value, host.encodeJson, engine.typeName)
 			end,
 			JSONDecode = function(_service: Instance, text: string): unknown
 				return host.decodeJson(text)
