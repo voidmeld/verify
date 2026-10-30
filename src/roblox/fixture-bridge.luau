@@ -408,6 +408,9 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		placeEngine = placeEngine,
 		accounting = accounting,
 		close = function(): Accounting
+			if layout ~= nil then
+				layout.close()
+			end
 			if controller ~= nil then
 				controller.close()
 			end

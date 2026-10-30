@@ -123,6 +123,7 @@ return table.freeze {
 	"tests/ui-screen-insets.lute.verify.luau",
 	"tests/ui-scrolling-flex.lute.verify.luau",
 	"tests/ui-scrolling-frame.lute.verify.luau",
+	"tests/ui-selection-scroll.lute.verify.luau",
 	"tests/ui-style-boundaries.verify.luau",
 	"tests/ui-style-properties.lute.verify.luau",
 	"tests/ui-style-selectors.lute.verify.luau",

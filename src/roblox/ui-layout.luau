@@ -6,6 +6,7 @@ local Grid = require "./ui-grid-layout"
 local List = require "./ui-list-layout"
 local Float = require "./datatypes/float"
 local Values = require "./ui-values"
+local SelectionScroll = require "./ui-selection-scroll"
 
 type Instance = Environment.Instance
 type Vector = { X: number, Y: number }
@@ -29,6 +30,7 @@ export type Options = {
 export type Controller = {
 	step: () -> (),
 	objectsAtPosition: (root: Instance, x: number, y: number) -> { Instance },
+	close: () -> (),
 }
 
 local function attach(environment: Environment.Environment, options: Options): Controller
@@ -645,6 +647,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 	local turns: { [Instance]: { Turn } } = {}
 	setmetatable(turns, { __mode = "k" })
 	local frames: { [Instance]: Rectangle } = {}
+	local selectionScroll = SelectionScroll.attach(environment, read, vector, function(object)
+		return frames[object] ~= nil
+	end)
 	setmetatable(frames, { __mode = "k" })
 	local scrollingProperties = { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" }
 	local scrollingGeometry: { [Instance]: { [string]: Vector } } = {}
@@ -665,6 +670,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end
 	local function step()
 		local roots = options.roots()
+		for _, root in roots do
+			selectionScroll.watch(root)
+		end
 		for _, root in roots do
 			validate(root)
 		end
@@ -756,12 +764,12 @@ local function attach(environment: Environment.Environment, options: Options): C
 			local maxY = math.max(0, canvasY - (rectangle.height - reserve(insetY, showX)))
 			local requested = Values.vector(read(object, "CanvasPosition"))
 			local position = {
-				X = math.clamp(requested.X, 0, maxX / scale),
-				Y = math.clamp(requested.Y, 0, maxY / scale),
+				X = math.clamp(requested.X, 0, maxX),
+				Y = math.clamp(requested.Y, 0, maxY),
 			}
 			local content = inset(object, {
-				x = rectangle.x - position.X * scale,
-				y = rectangle.y - position.Y * scale,
+				x = rectangle.x - position.X,
+				y = rectangle.y - position.Y,
 				width = canvasX,
 				height = canvasY,
 				scale = scale,
@@ -1108,7 +1116,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return result
 	end
-	return { step = step, objectsAtPosition = objectsAtPosition }
+	return { step = step, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
 end
 
 return { attach = attach }
