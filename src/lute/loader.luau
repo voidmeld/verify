@@ -80,7 +80,33 @@ end
 
 local function new(options: Options?): Loader
 	local settings: Options = options or {}
-	local files: Files = settings.files or { exists = fs.exists, readFile = fs.readFileToString }
+	local sources: { [string]: string } = {}
+	local prefetched: { [string]: boolean } = {}
+	local function exists(path: string): boolean
+		return sources[path] ~= nil or fs.exists(path)
+	end
+	local function readFile(path: string): string
+		return sources[path] or fs.readFileToString(path)
+	end
+	local files: Files = settings.files or { exists = exists, readFile = readFile }
+	local function prefetch(directory: string)
+		if settings.files ~= nil or directory == "" or directory == "." or prefetched[directory] then
+			return
+		end
+		prefetched[directory] = true
+		local listed, entries = pcall(fs.listDirectory, directory)
+		if not listed then
+			return
+		end
+		for _, entry in entries do
+			local child = directory .. "/" .. entry.name
+			if entry.type == "dir" and string.sub(entry.name, 1, 1) ~= "." then
+				prefetch(child)
+			elseif entry.type == "file" and string.sub(entry.name, -5) == ".luau" then
+				sources[child] = fs.readFileToString(child)
+			end
+		end
+	end
 	local aliases: { [string]: string } = settings.aliases or {}
 	local hostPaths: { string } = settings.hostPaths or {}
 	local resolved: { [string]: string } = {}
@@ -134,6 +160,9 @@ local function new(options: Options?): Loader
 			return cached
 		end
 		local module = moduleOf(path)
+		if next(loading) == nil and not hosted(path) then
+			prefetch(parent(path))
+		end
 		if hosted(path) then
 			local requireHost = settings.requireHost
 			assert(requireHost ~= nil, "a loader with hostPaths needs requireHost")
