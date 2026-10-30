@@ -215,6 +215,15 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		fireSignal(state, "prop:" .. property)
 		fireSignal(state, "Changed", property)
+		local dependents = if settings.computedDependents then settings.computedDependents[property] else nil
+		if dependents then
+			for _, dependent in dependents do
+				if computedFor(state.className, dependent) then
+					fireSignal(state, "prop:" .. dependent)
+					fireSignal(state, "Changed", dependent)
+				end
+			end
+		end
 	end
 
 	local function assign(object: Instance, state: State, key: string, value: unknown)
