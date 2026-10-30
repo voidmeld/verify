@@ -20,17 +20,42 @@ it("default text measurements use captured native font facts", function(own)
 		Width = 100,
 	})
 	local service = bridge.placeEngine().service "TextService"
-	expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(61, 14))
+	expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(59.333335876464844, 14))
 	expect(call(service, "GetTextSize", "Hello world", 14, library.Enum.Font.BuilderSans, library.Vector2.new(100, 0))):toEqual(
-		library.Vector2.new(61, 14)
+		library.Vector2.new(59.333335876464844, 14)
 	)
 	parameters.Width = 40
-	expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(30, 28))
+	expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(29.33333396911621, 28))
 	parameters.Text = "Office staff affiliation"
 	parameters.Width = 0
 	local previous = call(service, "GetTextBoundsAsync", parameters)
 	parameters.Size = 28
 	expect(call(service, "GetTextBoundsAsync", parameters) == previous):toBe(false)
+end)
+
+it("captured Latin and Japanese text preserves service widths and wrapping", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
+		Font = library.Font.new "rbxasset://fonts/families/BuilderSans.json",
+		Size = 14,
+	})
+	local service = bridge.placeEngine().service "TextService"
+	for _, row in
+		{
+			{ text = "þṽĥ", width = 0, x = 20, y = 14 },
+			{ text = "þṽĥ", width = 40, x = 20, y = 14 },
+			{ text = "東京", width = 0, x = 20, y = 14 },
+			{ text = "東京", width = 40, x = 20, y = 14 },
+			{ text = "速度制限標識と設定画面", width = 0, x = 110, y = 14 },
+			{ text = "速度制限標識と設定画面", width = 40, x = 40, y = 42 },
+			{ text = "速度制限標識と設定画面", width = 100, x = 100, y = 28 },
+		}
+	do
+		parameters.Text, parameters.Width = row.text, row.width
+		expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(row.x, row.y))
+	end
 end)
 
 it("text measurements refuse unmodeled shaping and split narrow words", function(own)
@@ -129,12 +154,12 @@ it("automatic text shrinks after edits and rejects unmodeled text before publish
 	label.Text = "Hello"
 	layout.step()
 	expect(label.AbsoluteSize):toEqual(library.Vector2.new(100, 14))
-	expect(label.TextBounds):toEqual(library.Vector2.new(28, 14))
+	expect(label.TextBounds):toEqual(library.Vector2.new(26.666667938232422, 14))
 	label.AutomaticSize = library.Enum.AutomaticSize.None
 	label.Size = library.UDim2.fromOffset(100, 14)
 	label.Text = string.rep("Wrapped text ", 6)
 	layout.step()
-	expect(label.TextBounds):toEqual(library.Vector2.new(75, 14))
+	expect(label.TextBounds):toEqual(library.Vector2.new(73.33333587646484, 14))
 	expect(label.TextFits):toBe(false)
 	label.TextWrapped = false
 	label.Text = "Hello\nworld"
@@ -162,14 +187,16 @@ it("native boundary corrections and Legacy Arial line metrics", function(own)
 	local service = bridge.placeEngine().service "TextService"
 	for _, entry in
 		{
-			{ text = "A", width = 13 },
+			{ text = "A", width = 12.666666984558105 },
 			{ text = " A", width = 18 },
-			{ text = "H A", width = 31 },
-			{ text = "K2A", width = 37 },
+			{ text = "H A", width = 30.666667938232422 },
+			{ text = "K2A", width = 36 },
 		}
 	do
 		parameters.Text = entry.text
-		expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(entry.width, 21))
+		expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(
+			library.Vector2.new(entry.width, 20.666667938232422)
+		)
 	end
 	expect(
 		call(
@@ -180,7 +207,7 @@ it("native boundary corrections and Legacy Arial line metrics", function(own)
 			library.Enum.Font.Legacy,
 			library.Vector2.new(100, 50)
 		)
-	):toEqual(library.Vector2.new(80, 42))
+	):toEqual(library.Vector2.new(78, 41.333335876464844))
 end)
 
 return nil

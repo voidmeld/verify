@@ -60,6 +60,29 @@ end
 
 local DIRECTORY = Path.format(Path.join(Path.dirname(Path.resolve(debug.info(1, "s"))), "fixtures/text"))
 local models: { [string]: Metrics.Model }? = nil
+local richModels: { [string]: Metrics.Model } = {}
+local faces: { [string]: Metrics.Face } = {}
+
+local function richFace(face: Metrics.Face): Metrics.Face
+	local scalar = buffer.create(4)
+	local function rounded(value: number): number
+		buffer.writef32(scalar, 0, value)
+		return buffer.readf32(scalar, 0)
+	end
+	local originalScale = face.pixelScale or 1
+	local scale = 1 / rounded(1 / originalScale)
+	local result = table.clone(face)
+	result.pixelScale = scale
+	result.sizes = {}
+	for _, row in face.sizes do
+		local converted = table.clone(row)
+		if row.height then
+			converted.height = rounded(math.round(row.height / originalScale) * scale)
+		end
+		table.insert(result.sizes, converted)
+	end
+	return result
+end
 
 local function load(): { [string]: Metrics.Model }
 	if models then
@@ -72,6 +95,7 @@ local function load(): { [string]: Metrics.Model }
 		end
 		local face, key = decode(fs.readFileToString(DIRECTORY .. "/" .. entry.name))
 		loaded[key] = Metrics.create(face)
+		faces[key] = face
 	end
 	models = loaded
 	return loaded
@@ -125,20 +149,29 @@ local function modelFor(parameters: Values.TextParameters): (Metrics.Model, numb
 		.. Values.enumName(font.Weight, "FontWeight")
 		.. "/"
 		.. Values.enumName(font.Style, "FontStyle")
-	local model = load()[key]
+	local plainModels = load()
+	if parameters.RichText and richModels[key] == nil and faces[key] then
+		richModels[key] = Metrics.create(richFace(faces[key]))
+	end
+	local model = (if parameters.RichText then richModels else plainModels)[key]
 	if model == nil then
 		error("unsupported_text_metrics: font " .. key, 0)
 	end
 	return model, math.clamp(math.floor(parameters.Size), 1, 100)
 end
 
-local function create(): (Values.TextParameters) -> unknown
+local function create(): (Values.TextParameters, number?) -> unknown
 	load()
-	return function(parameters: Values.TextParameters): unknown
+	return function(parameters: Values.TextParameters, unwrappedWidth: number?): unknown
 		local model, size = modelFor(parameters)
 		local text = if parameters.RichText then plain(parameters.Text) else parameters.Text
-		local width, lines = model.wrap(text, size, parameters.Width)
-		return Datatypes.Vector2.new(width, lines * model.height(size))
+		local width, lines
+		if unwrappedWidth ~= nil and not parameters.RichText then
+			width, lines = model.fit(text, size, unwrappedWidth)
+		else
+			width, lines = model.wrap(text, size, parameters.Width, parameters.RichText)
+		end
+		return Datatypes.Vector2.new(width, model.height(size, lines))
 	end
 end
 
@@ -151,4 +184,12 @@ local function truncator(): (Values.TextParameters, string, number, boolean) -> 
 	end
 end
 
-return { create = create, truncator = truncator }
+local function heights(): (Values.TextParameters, number, number) -> number
+	load()
+	return function(parameters: Values.TextParameters, lines: number, spacing: number): number
+		local model, size = modelFor(parameters)
+		return model.height(size, lines, spacing)
+	end
+end
+
+return { create = create, truncator = truncator, heights = heights }

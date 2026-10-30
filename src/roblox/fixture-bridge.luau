@@ -221,6 +221,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		and type(ui.measureBounds) == "function"
 	then
 		layoutOptions.measureBounds = ui.measureBounds
+		layoutOptions.measureLineHeight = layoutOptions.measureLineHeight or ui.measureLineHeight
 		layoutOptions.truncateBounds = ui.truncateBounds
 	end
 	local layout = if layoutOptions then UiLayout.attach(environment, layoutOptions) else nil

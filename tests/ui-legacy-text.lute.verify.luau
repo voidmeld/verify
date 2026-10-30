@@ -40,7 +40,10 @@ it("legacy text matches the same native conformance assertions", function(own)
 	local complete = false
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "ui-legacy-text" }, function()
-		complete = Lute.chunk.load(probe, { environment = runtime.globals })() == true
+		for _, source in { probe, require "./fixtures/ui-text-height-limits" } do
+			assert(Lute.chunk.load(source, { environment = runtime.globals })() == true)
+		end
+		complete = true
 	end)
 	own(function()
 		scheduler.cancel(thread)

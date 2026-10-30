@@ -34,6 +34,14 @@ for _, mode in {Enum.TextTruncate.AtEnd, Enum.TextTruncate.SplitWord} do
 		end
 	end
 end
+label.TextSize, label.Text = 16, "Automatic transmission mode"
+label.TextTruncate = Enum.TextTruncate.AtEnd
+for _, row in {{60, 89}, {100, 103}, {140, 208}} do
+ label.Size = UDim2.fromOffset(row[1], 24)
+ game.RunService.RenderStepped:Wait()
+ assert(math.abs(label.TextBounds.X - row[2] * 2 / 3) < 0.00002, "word boundary " .. row[1] .. ": " .. tostring(label.TextBounds))
+ assert(not label.TextFits, "word boundary overflow")
+end
 label:Destroy()
 params:Destroy()
 screen:Destroy()

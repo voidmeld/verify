@@ -20,7 +20,7 @@ for _, cfg in { {"Fill", UDim2.fromOffset(0, 0), Enum.AutomaticSize.Y}, {"Fill",
 	local f = Instance.new("UIFlexItem"); f.FlexMode = Enum.UIFlexMode[cfg[1]]; f.Parent = t
 	task.wait(); task.wait()
 	local got = `{t.AbsoluteSize} {t.TextBounds} {row.AbsoluteSize}`
-	if got ~= "260, 32 251, 32 300, 40" then table.insert(failures, `{cfg[1]} {cfg[2]} {cfg[3].Name}: {got}`) end
+	if got ~= "260, 32 236.666672, 32 300, 40" then table.insert(failures, `{cfg[1]} {cfg[2]} {cfg[3].Name}: {got}`) end
 	row:Destroy()
 end
 g:Destroy()

@@ -23,7 +23,7 @@ local result = Lute.studio.run {
 	place = place,
 	worker = "tools/studio-worker.luau",
 	context = "Client",
-	deadlineSeconds = 600,
+	deadlineSeconds = 1800,
 	code = 'local descriptor = game:GetService("HttpService"):JSONDecode(' .. string.format(
 		"%q",
 		Lute.encode(descriptor)

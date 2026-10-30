@@ -13,7 +13,8 @@ end
 
 export type Options = {
 	measureText: (((text: string, size: number, font: Enum.EnumItem, bounds: Values.Vector) -> unknown) | false)?,
-	measureBounds: (((parameters: Values.TextParameters) -> unknown) | false)?,
+	measureBounds: (((parameters: Values.TextParameters, unwrappedWidth: number?) -> unknown) | false)?,
+	measureLineHeight: ((Values.TextParameters, number, number) -> number)?,
 	truncateBounds: ((parameters: Values.TextParameters, mode: string, lines: number, wrapped: boolean) -> number?)?,
 	methods: { [string]: Environment.Method }?,
 	validate: (((className: string, property: string) -> boolean) | false)?,
