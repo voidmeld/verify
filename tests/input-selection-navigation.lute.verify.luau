@@ -99,6 +99,9 @@ do
 		end)
 		local playerGui = assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui")
 		table.insert(roots, playerGui)
+		local inputService = engine.service "UserInputService"
+		local priorGamepad, priorPreferred = inputService.GamepadEnabled, inputService.PreferredInput
+		local priorKeyboard, priorMouse = inputService.KeyboardEnabled, inputService.MouseEnabled
 		local input = Roblox.inputHost.simulated(bridge.environment, {
 			virtualController = case.source == virtualControllerProbe or case.source == controllerSelectionProbe,
 			playerGui = playerGui,
@@ -112,6 +115,8 @@ do
 			read = assert(bridge.ui).styled,
 		})
 		own(input.close)
+		expect(inputService.KeyboardEnabled):toBe(priorKeyboard)
+		expect(inputService.MouseEnabled):toBe(priorMouse)
 		local complete = false
 		local scheduler = bridge.environment.scheduler
 		local thread = scheduler.spawnTagged({ context = "client", source = "input-selection-navigation" }, function()
@@ -129,6 +134,9 @@ do
 		expect(scheduler.failures):toEqual {}
 		expect(engine.diagnostics):toEqual {}
 		expect(complete):toBe(true)
+		input.close()
+		expect(inputService.GamepadEnabled):toBe(priorGamepad)
+		expect(inputService.PreferredInput):toBe(priorPreferred)
 	end)
 end
 

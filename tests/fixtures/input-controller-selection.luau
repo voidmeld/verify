@@ -3,6 +3,7 @@
 return [==[
 local input, gui = game.UserInputService, game.GuiService
 local virtual = input:CreateVirtualInput()
+assert(input.PreferredInput == Enum.PreferredInput.Gamepad, "controller emulator prefers gamepad input")
 local screen = Instance.new("ScreenGui")
 screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
 local buttons, connections, trace = {}, {}, {}
@@ -16,7 +17,7 @@ for index = 1, 4 do
   table.insert(trace, "Activated/" .. button.Name .. "/" .. object.KeyCode.Name .. "/" .. count)
  end))
 end
-for _, event in {"InputBegan", "InputEnded"} do
+for _, event in {"InputBegan", "InputChanged", "InputEnded"} do
  table.insert(connections, input[event]:Connect(function(object, processed)
   if object.UserInputType == Enum.UserInputType.Gamepad1 then
    table.insert(trace, event .. "/" .. object.KeyCode.Name .. "/" .. tostring(processed) .. "/" .. selection())
@@ -42,6 +43,21 @@ task.wait(0.1)
 virtual:SendKey(false, Enum.KeyCode.Zero, false)
 task.wait(0.1)
 assert(gui.SelectedObject == buttons[4], "ButtonB leaves selection unchanged")
+virtual:SendKey(true, Enum.KeyCode.W, false)
+task.wait(0.8)
+assert(gui.SelectedObject == buttons[3], "held left stick moves once")
+virtual:SendKey(false, Enum.KeyCode.W, false)
+task.wait(0.1)
+virtual:SendKey(true, Enum.KeyCode.W, false)
+task.wait(0.1)
+assert(gui.SelectedObject == buttons[2], "left stick moves again after release")
+virtual:SendKey(false, Enum.KeyCode.W, false)
+task.wait(0.1)
+virtual:SendKey(true, Enum.KeyCode.I, false)
+task.wait(0.1)
+virtual:SendKey(false, Enum.KeyCode.I, false)
+task.wait(0.1)
+assert(gui.SelectedObject == buttons[2], "right stick does not change selection")
 local expected = {
  "InputBegan/ButtonA/true/B1",
  "Activated/B1/ButtonA/1",
@@ -50,6 +66,12 @@ local expected = {
  "InputEnded/DPadDown/true/B4",
  "InputBegan/ButtonB/false/B4",
  "InputEnded/ButtonB/false/B4",
+ "InputChanged/Thumbstick1/true/B3",
+ "InputEnded/Thumbstick1/true/B3",
+ "InputChanged/Thumbstick1/true/B2",
+ "InputEnded/Thumbstick1/true/B2",
+ "InputChanged/Thumbstick2/false/B2",
+ "InputEnded/Thumbstick2/false/B2",
 }
 gui.SelectedObject = nil
 for _, connection in connections do connection:Disconnect() end

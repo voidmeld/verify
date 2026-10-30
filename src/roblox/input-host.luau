@@ -752,11 +752,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		env.scheduler.delay(0.12, repeatSelection, code, token)
 	end
 	local controllerPress: Instance? = nil
+	local stickDirection: string? = nil
 	local gamepad = Gamepad.create(env, library, input, function(event, object)
 		local code = codeName(env.propertyOf(object, "KeyCode"))
 		local direction = code:match "^DPad(.+)$"
 		if event == "InputEnded" and direction then
 			selectionRepeats[direction] = nil
+		end
+		if event == "InputEnded" and code == "Thumbstick1" then
+			stickDirection = nil
 		end
 		if lastInput ~= inputTypes.Gamepad1 then
 			lastInput = inputTypes.Gamepad1
@@ -766,8 +770,26 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
 		if guiService and Environment.isInstance(selected) then
 			local target = Environment.assertInstance(selected)
-			if code:match "^Thumbstick" then
-				unsupported "virtual controller thumbstick selection"
+			if code == "Thumbstick1" then
+				local position = env.propertyOf(object, "Position") :: { X: number, Y: number, Z: number }
+				if position.X ~= 0 and position.Y ~= 0 then
+					unsupported "virtual controller diagonal thumbstick selection"
+				end
+				local current = if position.X > 0
+					then "Right"
+					elseif position.X < 0 then "Left"
+					elseif position.Y > 0 then "Up"
+					elseif position.Y < 0 then "Down"
+					else nil
+				if current and current ~= stickDirection then
+					local nextTarget = navigate(target, directions[current])
+					if nextTarget then
+						env.poke(guiService, "SelectedObject", nextTarget)
+					end
+				end
+				stickDirection = current
+				env.fire(service, event, object, true)
+				return
 			end
 			if direction and directions[direction] then
 				if event == "InputBegan" then
@@ -963,8 +985,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		return gamepad.state(kind)
 	end)
 	local previousGamepad = env.propertyOf(service, "GamepadEnabled")
+	local previousPreferred = env.propertyOf(service, "PreferredInput")
 	if options.virtualController then
 		env.poke(service, "GamepadEnabled", true)
+		env.poke(service, "PreferredInput", library.Enum.PreferredInput.Gamepad)
 		install(service, "GetConnectedGamepads", function(): { unknown }
 			ensureOpen()
 			return { inputTypes.Gamepad1 }
@@ -1027,6 +1051,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			frame:Disconnect()
 			if options.virtualController then
 				env.poke(service, "GamepadEnabled", previousGamepad)
+				env.poke(service, "PreferredInput", previousPreferred)
 			end
 			for ordinal = #registrations, 1, -1 do
 				registrations[ordinal]()
