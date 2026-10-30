@@ -29,6 +29,7 @@ export type Options = {
 }
 export type Controller = {
 	step: () -> (),
+	busy: (() -> boolean)?,
 	objectsAtPosition: (root: Instance, x: number, y: number) -> { Instance },
 	close: () -> (),
 }
@@ -648,6 +649,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 	setmetatable(turns, { __mode = "k" })
 	local frames: { [Instance]: Rectangle } = {}
 	local step: () -> ()
+	local attached: Controller
 	local selectionScroll = SelectionScroll.attach(environment, read, vector, function(object)
 		return frames[object] ~= nil
 	end, function()
@@ -891,8 +893,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local function publish(object: Instance, rectangle: Rectangle, around: { Turn })
 			local bounds = textBounds(object, rectangle)
 			if bounds then
-				environment.poke(object, "TextBounds", vector(bounds.X, bounds.Y))
-				environment.poke(object, "TextFits", bounds.fits)
+				environment.publish(object, "TextBounds", vector(bounds.X, bounds.Y))
+				environment.publish(object, "TextFits", bounds.fits)
 			end
 			local x, y = rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2
 			local angle = 0
@@ -901,10 +903,10 @@ local function attach(environment: Environment.Environment, options: Options): C
 				angle += turn.angle
 			end
 			frames[object], turns[object] = rectangle, around
-			environment.poke(object, "AbsolutePosition", vector(x - rectangle.width / 2, y - rectangle.height / 2))
-			environment.poke(object, "AbsoluteSize", vector(rectangle.width, rectangle.height))
+			environment.publish(object, "AbsolutePosition", vector(x - rectangle.width / 2, y - rectangle.height / 2))
+			environment.publish(object, "AbsoluteSize", vector(rectangle.width, rectangle.height))
 			if object:IsA "GuiObject" then
-				environment.poke(object, "AbsoluteRotation", angle + number(object, "Rotation", 0))
+				environment.publish(object, "AbsoluteRotation", angle + number(object, "Rotation", 0))
 			end
 		end
 		local visit: (Instance, Rectangle, Rectangle?, { Turn }) -> ()
@@ -952,11 +954,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 			if object:IsA "ScrollingFrame" then
 				local scrolled = canvasOf(object, rectangle, parent)
 				content = scrolled.content
-				environment.poke(object, "AbsoluteWindowSize", vector(scrolled.window.X, scrolled.window.Y))
-				environment.poke(object, "AbsoluteCanvasSize", vector(scrolled.canvas.X, scrolled.canvas.Y))
+				environment.publish(object, "AbsoluteWindowSize", vector(scrolled.window.X, scrolled.window.Y))
+				environment.publish(object, "AbsoluteCanvasSize", vector(scrolled.canvas.X, scrolled.canvas.Y))
 				local requested = Values.vector(read(object, "CanvasPosition"))
 				if requested.X ~= scrolled.position.X or requested.Y ~= scrolled.position.Y then
-					environment.poke(object, "CanvasPosition", vector(scrolled.position.X, scrolled.position.Y))
+					environment.publish(object, "CanvasPosition", vector(scrolled.position.X, scrolled.position.Y))
 				end
 				scrollingGeometry[object] = scrollingBounds(object)
 			end
@@ -969,15 +971,15 @@ local function attach(environment: Environment.Environment, options: Options): C
 				for _, item in measured.items do
 					placements[item.object] = item.rectangle
 				end
-				environment.poke(grid, "AbsoluteContentSize", vector(measured.width, measured.height))
-				environment.poke(grid, "AbsoluteCellSize", vector(measured.cellWidth, measured.cellHeight))
-				environment.poke(grid, "AbsoluteCellCount", vector(measured.columns, measured.rows))
+				environment.publish(grid, "AbsoluteContentSize", vector(measured.width, measured.height))
+				environment.publish(grid, "AbsoluteCellSize", vector(measured.cellWidth, measured.cellHeight))
+				environment.publish(grid, "AbsoluteCellCount", vector(measured.columns, measured.rows))
 			elseif list then
 				local measured = List.measure(list, content, read, size, size)
 				for _, item in measured.items do
 					placements[item.object] = item.rectangle
 				end
-				environment.poke(list, "AbsoluteContentSize", vector(measured.width, measured.height))
+				environment.publish(list, "AbsoluteContentSize", vector(measured.width, measured.height))
 			end
 			for _, child in children do
 				visit(child, content, placements[child], around)
@@ -989,11 +991,28 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end
 	local measuring = false
 	local pending = false
+	local settledAt: number? = nil
+	local settledX, settledY, settledRoots = 0, 0, 0
 	step = function()
 		pending = true
 		if measuring then
 			return
 		end
+		local viewport = options.viewport()
+		local rootCount = #options.roots()
+		local before, publishedBefore = environment.revision()
+		local busy = attached.busy ~= nil and attached.busy()
+		if
+			not busy
+			and settledAt == before
+			and settledX == viewport.X
+			and settledY == viewport.Y
+			and settledRoots == rootCount
+		then
+			pending = false
+			return
+		end
+		settledAt = nil
 		measuring = true
 		repeat
 			pending = false
@@ -1004,6 +1023,10 @@ local function attach(environment: Environment.Environment, options: Options): C
 			end
 		until not pending
 		measuring = false
+		local after, publishedAfter = environment.revision()
+		if not busy and after == before and publishedAfter == publishedBefore then
+			settledAt, settledX, settledY, settledRoots = after, viewport.X, viewport.Y, rootCount
+		end
 	end
 	local function objectsAtPosition(root: Instance, rawX: number, rawY: number): { Instance }
 		assert(
@@ -1137,7 +1160,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return result
 	end
-	return { step = step, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
+	attached = { step = step, busy = nil, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
+	return attached
 end
 
 return { attach = attach }

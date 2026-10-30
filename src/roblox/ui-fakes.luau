@@ -28,6 +28,7 @@ export type Controller = {
 	component: (Instance, string, string) -> unknown,
 	step: () -> (),
 	cached: (() -> ()) -> (),
+	animating: () -> boolean,
 	rejectedSelections: () -> { Rejection },
 	close: () -> (),
 }
@@ -398,6 +399,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		component = style.component,
 		step = style.step,
 		cached = style.cached,
+		animating = style.animating,
 		focused = function(): Instance?
 			return focused
 		end,

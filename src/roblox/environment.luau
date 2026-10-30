@@ -165,6 +165,13 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		return states[object]
 	end
 
+	local mutations, published = 0, 0
+	local publishing = false
+
+	local function touch()
+		mutations += 1
+	end
+
 	local function isObject(value: unknown): boolean
 		return type(value) == "table" and rawget(value :: { [string]: unknown }, "__state") ~= nil
 	end
@@ -197,6 +204,12 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function changed(object: Instance, state: State, property: string)
+		if publishing then
+			publishing = false
+			published += 1
+		else
+			mutations += 1
+		end
 		if inputActions then
 			inputActions.changed(object, property)
 		end
@@ -333,6 +346,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function setParent(object: Instance, state: State, parent: Instance?)
+		touch()
 		if injecting "setParent" then
 			inject("setParent", state, nil, object, nil, parent)
 		end
@@ -362,6 +376,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if state.destroyed or state.destroying then
 			return
 		end
+		touch()
 		if state.removing then
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
 		end
@@ -432,6 +447,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		newObject = function(...)
 			return newObject(...)
 		end,
+		touch = touch,
 		setTag = function(...)
 			return setTag(...)
 		end,
@@ -814,6 +830,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		if (state.tags[tag] == true) == present then
 			return
 		end
+		touch()
 		if present then
 			state.tags[tag] = true
 		else
@@ -861,6 +878,15 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		assign(object, state, key, value)
 	end)
+	environment.publish = function(object: Instance, key: string, value: unknown)
+		publishing = true
+		environment.poke(object, key, value)
+		publishing = false
+	end
+	environment.touch = touch
+	environment.revision = function(): (number, number)
+		return mutations, published
+	end
 	environment.fire = operation(function(object: Instance, event: string, ...: unknown)
 		local state = stateOf(object)
 		if not state.class.events[event] then

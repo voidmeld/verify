@@ -242,6 +242,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		local step = layout.step
 		local stepStyles = controller.step
 		local cached = controller.cached
+		layout.busy = controller.animating
 		layout.step = function()
 			stepStyles()
 			cached(step)

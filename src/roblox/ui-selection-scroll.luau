@@ -61,7 +61,7 @@ local function attach(
 				)
 				if nextX ~= position.X or nextY ~= position.Y then
 					changed = true
-					environment.poke(parent, "CanvasPosition", vector(nextX, nextY))
+					environment.publish(parent, "CanvasPosition", vector(nextX, nextY))
 				end
 			end
 			parent = parent.Parent

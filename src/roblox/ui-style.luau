@@ -15,6 +15,7 @@ export type Controller = {
 	cached: (() -> ()) -> (),
 	close: () -> (),
 	invalidate: () -> (),
+	animating: () -> boolean,
 }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
@@ -110,6 +111,7 @@ local function create(
 		end
 	end
 	local function invalidate()
+		env.touch()
 		for sheet in indexes do
 			forget(sheet)
 		end
@@ -574,6 +576,19 @@ local function create(
 		end,
 		close = close,
 		invalidate = invalidate,
+		animating = function(): boolean
+			if next(stale) ~= nil then
+				return true
+			end
+			local now = env.now()
+			for entry in pairs(timed) do
+				local timing = entry.motion.timing
+				if timing ~= nil and now - entry.motion.started - timing.delay < timing.time then
+					return true
+				end
+			end
+			return false
+		end,
 	}
 end
 
