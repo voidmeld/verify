@@ -672,7 +672,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		type Canvas = { content: Rectangle, window: Vector, canvas: Vector, position: Vector }
 		local function canvasOf(object: Instance, rectangle: Rectangle, parent: Rectangle): Canvas
 			local scale = rectangle.scale
-			local thickness = (number(object, "ScrollBarThickness", 12) + 1) * scale
+			local thickness = (number(object, "ScrollBarThickness", 12) + number(object, "BorderSizePixel", 1)) * scale
 			local direction = enum(object, "ScrollingDirection", "XY")
 			local alongX, alongY = direction ~= "Y", direction ~= "X"
 			local authored = Values.dimensions(read(object, "CanvasSize"))
