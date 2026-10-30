@@ -33,6 +33,7 @@ export type Options<P = { [string]: unknown }, M = { [string]: unknown }, F = { 
 export type Computed = Types.Computed
 export type Operation = Types.Operation
 export type Event = Types.Event
+export type ObserveFilter = Types.ObserveFilter
 export type CloneHook = Types.CloneHook
 export type CreateHook = Types.CreateHook
 export type SignalHandle = Types.SignalHandle
@@ -92,29 +93,58 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local defaultOf = model.defaultOf
 	local defaultsOf = model.defaultsOf
 
-	local observers: { { callback: (event: Event) -> (), connected: boolean } } = {}
+	type Observer = {
+		callback: (event: Event) -> (),
+		connected: boolean,
+		operations: { [string]: boolean }?,
+		members: { [string]: boolean }?,
+	}
+	local observers: { Observer } = {}
+	local observing: { [Operation]: number } = {}
+	local OPERATIONS: { Operation } = { "create", "setProperty", "setAttribute", "setParent", "destroy" }
 	local cloneHooks: { { callback: CloneHook, connected: boolean } } = {}
 	local createHooks: { { callback: CreateHook, connected: boolean } } = {}
 
 	local function injecting(operation: Operation): boolean
-		return #observers > 0 or (failures[operation] or 0) > 0
+		return (observing[operation] or 0) > 0 or (failures[operation] or 0) > 0
 	end
 
-	local function inject(operation: Operation, subject: string, object: Instance, member: string?, value: unknown)
+	local describe: (State) -> string
+
+	local function inject(
+		operation: Operation,
+		state: State?,
+		subject: string?,
+		object: Instance,
+		member: string?,
+		value: unknown
+	)
 		local remaining = failures[operation]
 		local failing = remaining ~= nil and remaining > 0
 		local current: typeof(observers) = if #observers > 1 then table.clone(observers) else observers
+		local event: Event? = nil
 		for _, observer in current do
-			if observer.connected then
-				observer.callback {
+			if not observer.connected then
+				continue
+			end
+			local operations, members = observer.operations, observer.members
+			if operations ~= nil and not operations[operation] then
+				continue
+			end
+			if members ~= nil and (member == nil or not members[member]) then
+				continue
+			end
+			if event == nil then
+				event = {
 					operation = operation,
-					subject = subject,
+					subject = subject or describe(assert(state)),
 					member = member,
 					injected = failing,
 					object = object,
 					value = value,
 				}
 			end
+			observer.callback(assert(event))
 		end
 		if failing then
 			failures[operation] = (remaining or 0) - 1
@@ -154,7 +184,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 	end
 
-	local function describe(state: State): string
+	function describe(state: State): string
 		return ("%s %q"):format(state.className, tostring(state.values.Name))
 	end
 
@@ -287,7 +317,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 
 	local function setParent(object: Instance, state: State, parent: Instance?)
 		if injecting "setParent" then
-			inject("setParent", describe(state), object, nil, parent)
+			inject("setParent", state, nil, object, nil, parent)
 		end
 		if state.destroyed or state.destroying or state.removing then
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
@@ -319,7 +349,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			error(("The Parent property of %s is locked"):format(describe(state)), 4)
 		end
 		if injecting "destroy" then
-			inject("destroy", describe(state), object, nil, nil)
+			inject("destroy", state, nil, object, nil, nil)
 		end
 		state.destroying = true
 		fireSignal(state, "Destroying")
@@ -372,7 +402,6 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		isObject = isObject,
 		signalFor = signalFor,
 		fireSignal = fireSignal,
-		describe = describe,
 		injecting = injecting,
 		inject = inject,
 		memberError = memberError,
@@ -529,7 +558,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			end
 		end
 		if injecting "setProperty" then
-			inject("setProperty", describe(state), object, key, value)
+			inject("setProperty", state, nil, object, key, value)
 		end
 		if
 			settings.validateProperty ~= nil
@@ -591,7 +620,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		states[object] = state
 		rawset(object, "__state", state)
 		if injecting "create" then
-			inject("create", className, object, nil, nil)
+			inject("create", nil, className, object, nil, nil)
 		end
 		if not isRoot then
 			alive += 1
@@ -897,8 +926,48 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		return connection
 	end
-	environment.observe = function(listener: (event: Event) -> ()): Connection
-		return subscribe(observers, listener)
+	environment.observe = function(listener: (event: Event) -> (), filter: ObserveFilter?): Connection
+		local operations: { [string]: boolean }? = nil
+		local members: { [string]: boolean }? = nil
+		if filter ~= nil and filter.operations ~= nil then
+			local chosen: { [string]: boolean } = {}
+			for _, operation in filter.operations do
+				chosen[operation] = true
+			end
+			operations = chosen
+		end
+		if filter ~= nil and filter.members ~= nil then
+			local chosen: { [string]: boolean } = {}
+			for _, member in filter.members do
+				chosen[member] = true
+			end
+			members = chosen
+		end
+		local entry: Observer = { callback = listener, connected = true, operations = operations, members = members }
+		table.insert(observers, entry)
+		for _, operation: Operation in OPERATIONS do
+			if operations == nil or operations[operation] then
+				observing[operation] = (observing[operation] or 0) + 1
+			end
+		end
+		local connection = { Connected = true }
+		function connection.Disconnect(_self: Connection)
+			if not entry.connected then
+				return
+			end
+			entry.connected = false
+			connection.Connected = false
+			local index = table.find(observers, entry)
+			if index ~= nil then
+				table.remove(observers, index)
+			end
+			for _, operation: Operation in OPERATIONS do
+				if operations == nil or operations[operation] then
+					observing[operation] = (observing[operation] or 0) - 1
+				end
+			end
+		end
+		return connection
 	end
 	environment.onClone = function(hook: CloneHook): Connection
 		return subscribe(cloneHooks, hook)

@@ -34,6 +34,7 @@ export type CaseHostName = CaseEntry.Host
 export type MultiplayerConnection = Multiplayer.Connection
 export type MultiplayerPlayer = Multiplayer.Player
 export type EnvironmentEvent = Environment.Event
+export type EnvironmentObserveFilter = Environment.ObserveFilter
 export type EnvironmentClass<P = { [string]: unknown }, M = { [string]: unknown }> = Environment.ClassSpec<P, M>
 export type MultiplayerRemote = Multiplayer.Remote
 export type InputGuiTarget = InputHost.GuiTarget

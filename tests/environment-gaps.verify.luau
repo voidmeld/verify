@@ -904,6 +904,32 @@ describe("observation identity", function()
 		expect(events[1].subject):toBe "Widget"
 	end)
 
+	it("a filtered observer receives only its operations and members", function()
+		local env = plain()
+		local destroys: { Environment.Event } = {}
+		local counts: { Environment.Event } = {}
+		env.observe(function(event: Environment.Event)
+			table.insert(destroys, event)
+		end, { operations = { "destroy" :: Environment.Operation } })
+		local counting = env.observe(function(event: Environment.Event)
+			table.insert(counts, event)
+		end, { operations = { "setProperty" :: Environment.Operation }, members = { "Count" } })
+		local widget = env.createInstance "Widget"
+		widget.Count = 1
+		widget.Name = "Renamed"
+		widget:SetAttribute("mark", "a")
+		counting:Disconnect()
+		widget.Count = 2
+		widget:Destroy()
+		expect(#counts):toBe(1)
+		expect(counts[1].member):toBe "Count"
+		expect(counts[1].value):toBe(1)
+		expect(counts[1].subject):toBe 'Widget "Widget"'
+		expect(#destroys):toBe(1)
+		expect(destroys[1].operation):toBe "destroy"
+		expect(destroys[1].object == widget):toBe(true)
+	end)
+
 	it("a clone create event carries the copy and an injected failure keeps the object", function()
 		local built = bridge()
 		local recorder = built.record()

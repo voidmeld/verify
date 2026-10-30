@@ -20,9 +20,8 @@ export type Dependencies = {
 	isObject: (unknown) -> boolean,
 	signalFor: (State, string) -> Signal,
 	fireSignal: (State, string, ...unknown) -> (),
-	describe: (State) -> string,
 	injecting: (Types.Operation) -> boolean,
-	inject: (Types.Operation, string, Instance, string?, unknown) -> (),
+	inject: (Types.Operation, State?, string?, Instance, string?, unknown) -> (),
 	memberError: (State, string) -> never,
 	changed: (Instance, State, string) -> (),
 	destroy: (Instance, State) -> (),
@@ -44,7 +43,6 @@ local function create(dependencies: Dependencies)
 	local isObject = dependencies.isObject
 	local signalFor = dependencies.signalFor
 	local fireSignal = dependencies.fireSignal
-	local describe = dependencies.describe
 	local injecting = dependencies.injecting
 	local inject = dependencies.inject
 	local memberError = dependencies.memberError
@@ -349,7 +347,7 @@ local function create(dependencies: Dependencies)
 		elseif key == "SetAttribute" then
 			return function(_self: Instance, name: string, value: unknown)
 				if injecting "setAttribute" then
-					inject("setAttribute", describe(state), object, name, value)
+					inject("setAttribute", state, nil, object, name, value)
 				end
 				validAttribute(name, value)
 				if state.attributes[name] == value then
@@ -395,7 +393,7 @@ local function create(dependencies: Dependencies)
 				end
 				local value = defaultOf(state.className, state.class, property)
 				if injecting "setProperty" then
-					inject("setProperty", describe(state), object, property, value)
+					inject("setProperty", state, nil, object, property, value)
 				end
 				if state.values[property] == value then
 					return

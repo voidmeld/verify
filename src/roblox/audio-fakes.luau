@@ -3,6 +3,10 @@
 local Environment = require "./environment-types"
 
 type Instance = Environment.Instance
+
+local destroyed: Environment.ObserveFilter = { operations = { "destroy" :: Environment.Operation } }
+local seeking: Environment.ObserveFilter =
+	{ operations = { "setProperty" :: Environment.Operation }, members = { "TimePosition" } }
 type Curve = { [number]: number }
 
 local function attach(environment: Environment.Environment)
@@ -58,21 +62,16 @@ local function attach(environment: Environment.Environment)
 	end
 	environment.observe(function(event)
 		local object = event.object
-		if not object:IsA "Sound" then
-			return
-		end
-		if
-			event.operation == "setProperty"
-			and event.member == "TimePosition"
-			and type(event.value) == "number"
-			and not event.injected
-		then
+		if object:IsA "Sound" and type(event.value) == "number" and not event.injected then
 			seeks[object] = event.value
-		elseif event.operation == "destroy" then
-			active[object] = nil
+		end
+	end, seeking)
+	environment.observe(function(event)
+		if active[event.object] ~= nil then
+			active[event.object] = nil
 			idle()
 		end
-	end)
+	end, destroyed)
 	environment.fake("Sound.Play", function(sound: Instance)
 		environment.poke(sound, "TimePosition", seeks[sound] or 0)
 		start(sound)
