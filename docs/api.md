@@ -1319,6 +1319,8 @@ Font faces without captured facts still raise errors. Give measured `ui.measureB
 
 Truncation compares the rendered prefix and ellipsis with the available width, including fractional widths. An exact fit is accepted. The combined raster width is converted to a float32 result once. The shared Studio case checks widths on both sides of these boundaries.
 
+Wrapping splits an oversized word across measured characters. It prefers whitespace between words and preserves explicit paragraph breaks. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
+
 ### `Lute.gate`
 
 Run the gate command line with bounded producer processes.

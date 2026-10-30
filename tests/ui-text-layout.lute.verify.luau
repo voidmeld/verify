@@ -62,6 +62,12 @@ local function mountProbe(caseContext: Core.Context, source: string): (boolean, 
 	return complete, messages
 end
 
+it("oversized words wrap across glyph boundaries", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-word-wrap")
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("truncation accepts exact and fractional width boundaries", function(_, caseContext)
 	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-truncation-boundary")
 	expect(table.concat(messages, "\n")):toBe ""

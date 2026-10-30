@@ -140,20 +140,36 @@ local function create(face: Face): Model
 				continue
 			end
 			local line = paragraph:match "^ *" or ""
+			local started = false
 			local function finish(trim: boolean)
 				local measured = width(line, size)
-				if (trim or measured > limit) and line:match "[^ ]" then
+				if (trim or measured > limit and width(line:gsub(" +$", ""), size) <= limit) and line:match "[^ ]" then
 					measured = width(line:gsub(" +$", ""), size)
 				end
 				maximum = math.max(maximum, measured)
 				count += 1
+				started = true
 			end
 			local cursor = #line + 1
 			while cursor <= #paragraph do
 				local word, spaces = paragraph:match("^([^ ]+)( *)", cursor)
 				assert(word and spaces)
 				if width(word, size) > limit then
-					error("unsupported_text_metrics: word exceeds wrap width", 0)
+					if line ~= "" then
+						finish(false)
+						line = ""
+					end
+					for _, codepoint in utf8.codes(word) do
+						local character = utf8.char(codepoint)
+						if width(line .. character, size) > limit and (line ~= "" or not started) then
+							finish(false)
+							line = ""
+						end
+						line ..= character
+					end
+					line ..= spaces
+					cursor += #word + #spaces
+					continue
 				end
 				if line ~= "" and width(line .. word, size) > limit then
 					finish(true)

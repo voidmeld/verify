@@ -143,6 +143,12 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local spacing = Float.f32(number(object, "LineHeight", 1))
 		for points = largest, smallest, -1 do
 			local fitted, measured = pcall(function(): Vector
+				for word in text:gmatch "[^ \n]+" do
+					local bounds = Values.vector(measure { Text = word, Font = font, Size = points, Width = 0 })
+					if bounds.X > content.width then
+						return { X = bounds.X, Y = math.huge }
+					end
+				end
 				return Values.vector(measure { Text = text, Font = font, Size = points, Width = content.width })
 			end)
 			if fitted then
