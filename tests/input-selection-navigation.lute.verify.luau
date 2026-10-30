@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
+local virtualControllerProbe = require "./fixtures/input-virtual-controller"
 
 local probe = [==[
 local RS = game:GetService("RunService")
@@ -53,6 +54,10 @@ return true
 
 for _, case in
 	{
+		{
+			name = "virtual controller events match native button trigger and stick traces",
+			source = virtualControllerProbe,
+		},
 		{ name = "arrow keys move GuiService selection and Return activates it as Studio 0.744 does", source = probe },
 		{ name = "held selection repeats and stops on release", source = require "./fixtures/input-selection-repeat" },
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
@@ -93,6 +98,7 @@ do
 		local playerGui = assert(assert(runtime.localPlayer):FindFirstChild "PlayerGui")
 		table.insert(roots, playerGui)
 		local input = Roblox.inputHost.simulated(bridge.environment, {
+			virtualController = case.source == virtualControllerProbe,
 			playerGui = playerGui,
 			inputService = engine.service "UserInputService",
 			layout = assert(bridge.layout),

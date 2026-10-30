@@ -8,6 +8,7 @@ local Layout = require "./ui-layout"
 local Datatypes = require "./datatypes"
 local Values = require "./ui-values"
 local EnumTypes = require "./datatypes/enum"
+local Gamepad = require "./input-gamepad"
 
 export type Key = { code: string, down: boolean }
 export type Pointer = { x: number, y: number, button: "left" | "right" | "middle", down: boolean }
@@ -20,6 +21,7 @@ export type SimulatedOptions = {
 	library: Datatypes.Library,
 	activationWindowSeconds: number,
 	read: ((Environment.Instance, string) -> unknown)?,
+	virtualController: boolean?,
 }
 local function fields(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "expected input record")
@@ -581,6 +583,34 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end)
 		return found
 	end
+	local function deliverActions(code: string, down: boolean)
+		local sunk: number? = nil
+		for _, entry in boundActions(code) do
+			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
+			if sunk and priority < sunk then
+				break
+			end
+			local fire = entry.action.Fire :: (Instance, boolean) -> ()
+			fire(entry.action, down)
+			if env.propertyOf(entry.context, "Sink") == true then
+				sunk = priority
+			end
+		end
+	end
+	local gamepad = Gamepad.create(env, library, input, function(event, object)
+		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+		if guiService and Environment.isInstance(env.propertyOf(guiService, "SelectedObject")) then
+			unsupported "virtual controller GUI selection"
+		end
+		if lastInput ~= inputTypes.Gamepad1 then
+			lastInput = inputTypes.Gamepad1
+			env.fire(service, "LastInputTypeChanged", lastInput)
+		end
+		env.fire(service, event, object, false)
+		if event ~= "InputChanged" then
+			deliverActions(codeName(env.propertyOf(object, "KeyCode")), event == "InputBegan")
+		end
+	end)
 	local directions: { [string]: { x: number, y: number, name: string } } = {
 		Up = { x = 0, y = -1, name = "Up" },
 		Down = { x = 0, y = 1, name = "Down" },
@@ -736,6 +766,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		env.scheduler.delay(0.12, repeatSelection, code, token)
 	end
 	local function deliverKey(value: Key)
+		if options.virtualController then
+			gamepad.key(value.code, value.down)
+			return
+		end
 		local code = value.code
 		local keyboard = inputTypes.Keyboard
 		local member = library.Enum.KeyCode:FromName(code)
@@ -795,18 +829,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			return
 		end
 		env.fire(service, if value.down then "InputBegan" else "InputEnded", object, false)
-		local sunk: number? = nil
-		for _, entry in boundActions(code) do
-			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
-			if sunk and priority < sunk then
-				break
-			end
-			local fire = entry.action.Fire :: (Instance, boolean) -> ()
-			fire(entry.action, value.down)
-			if env.propertyOf(entry.context, "Sink") == true then
-				sunk = priority
-			end
-		end
+		deliverActions(code, value.down)
 	end
 	local function deliverText(value: string)
 		local box = focusedBox()
@@ -898,54 +921,22 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		ensureOpen()
 		return heldKeys[codeName(code)] == true
 	end)
-	local gamepadStates: { [string]: { Instance } } = {}
 	install(service, "GetGamepadState", function(_self: Instance, kind: unknown): { Instance }
 		ensureOpen()
-		assert(EnumTypes.isItem(kind) and EnumTypes.enumType(kind) == "UserInputType", "expected Enum.UserInputType")
-		local name = codeName(kind)
-		if not name:match "^Gamepad[1-8]$" or kind ~= inputTypes:FromName(name) then
-			return {}
-		end
-		local entries = gamepadStates[name]
-		if entries == nil then
-			entries = {}
-			for _, keyName in
-				{
-					"ButtonStart",
-					"ButtonA",
-					"ButtonSelect",
-					"ButtonB",
-					"ButtonX",
-					"ButtonY",
-					"ButtonL1",
-					"ButtonR1",
-					"ButtonL2",
-					"ButtonR2",
-					"ButtonL3",
-					"ButtonUp",
-					"ButtonR3",
-					"ButtonLeft",
-					"DPadUp",
-					"DPadDown",
-					"DPadLeft",
-					"DPadRight",
-					"Thumbstick1",
-					"Thumbstick2",
-					"ButtonCenter",
-					"ButtonBack",
-					"ButtonDown",
-					"ButtonRight",
-				}
-			do
-				local object = input(kind)
-				env.poke(object, "KeyCode", library.Enum.KeyCode:FromName(keyName))
-				env.poke(object, "UserInputState", states.End)
-				table.insert(entries, object)
-			end
-			gamepadStates[name] = entries
-		end
-		return table.clone(entries)
+		return gamepad.state(kind)
 	end)
+	local previousGamepad = env.propertyOf(service, "GamepadEnabled")
+	if options.virtualController then
+		env.poke(service, "GamepadEnabled", true)
+		install(service, "GetConnectedGamepads", function(): { unknown }
+			ensureOpen()
+			return { inputTypes.Gamepad1 }
+		end)
+		install(service, "GetGamepadConnected", function(_self: Instance, kind: unknown): boolean
+			ensureOpen()
+			return kind == inputTypes.Gamepad1
+		end)
+	end
 	install(service, "GetKeysPressed", function(): { Instance }
 		ensureOpen()
 		local pressedKeys: { Instance } = {}
@@ -997,6 +988,9 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 			closed = true
 			frame:Disconnect()
+			if options.virtualController then
+				env.poke(service, "GamepadEnabled", previousGamepad)
+			end
 			for ordinal = #registrations, 1, -1 do
 				registrations[ordinal]()
 			end

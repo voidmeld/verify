@@ -1417,6 +1417,10 @@ Bridge reflection facts and behavior adapters into a fixture.
 
 Host adapter for explicit input observations.
 
+`simulated` accepts `virtualController = true` to route keyboard keys through the default Studio controller mappings. Button, trigger and stick events update the same objects returned by `GetGamepadState`. Trigger changes precede button transitions. Opposing stick keys cancel an axis. Unmapped keys produce no keyboard events in this mode. The default keeps keyboard input.
+
+Controller GUI selection and the system menu remain unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
+
 ### `Roblox.instanceHost`
 
 Host adapter for instance observations.
