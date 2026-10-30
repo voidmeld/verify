@@ -542,6 +542,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local heldKeys: { [string]: true } = {}
 	local heldInputs: { [string]: Instance } = {}
+	local selectionRepeats: { [string]: {} } = {}
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
 	end
@@ -683,6 +684,20 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		Return = true,
 		Escape = true,
 	}
+	local function repeatSelection(code: string, token: {})
+		if closed or selectionRepeats[code] ~= token then
+			return
+		end
+		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
+		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
+		if guiService and Environment.isInstance(selected) and not focusedBox() then
+			local target = navigate(Environment.assertInstance(selected), directions[code])
+			if target then
+				env.poke(guiService, "SelectedObject", target)
+			end
+		end
+		env.scheduler.delay(0.12, repeatSelection, code, token)
+	end
 	local function deliverKey(value: Key)
 		local code = value.code
 		local keyboard = inputTypes.Keyboard
@@ -701,6 +716,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		else
 			heldKeys[code] = nil
 			heldInputs[code] = nil
+			selectionRepeats[code] = nil
 		end
 		if box then
 			if value.down and code == "Backspace" then
@@ -733,6 +749,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
 		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
 		if guiService and Environment.isInstance(selected) and (directions[code] or navigationKeys[code]) then
+			if value.down and directions[code] and selectionRepeats[code] == nil then
+				local token = {}
+				selectionRepeats[code] = token
+				env.scheduler.delay(0.5, repeatSelection, code, token)
+			end
 			deliverSelection(guiService, Environment.assertInstance(selected), code, object, value.down)
 			return
 		end

@@ -716,6 +716,10 @@ The engine refuses a write to a property that the class does not have. The defau
 - The simulator dispatches immediately. A native deferred signal mode can expose different callback timing and observed state.
 - The order across events beyond these guarantees is not a contract.
 
+### Held selection navigation
+
+The simulated input host repeats held arrow-key selection after 0.5 seconds, then at intervals of at least 0.12 seconds. Release stops the repeats. A repeat moves the current selection without another `InputBegan` event. A focused TextBox prevents selection movement. The shared Studio case checks the initial delay, repeat movement, release, key events and the end of a collection.
+
 ### Input action state
 
 `InputAction:Fire(value)` and `GetState()` share state with simulated keyboard dispatch. The value must match the action type: boolean, number, Vector2 or Vector3. Repeated values emit no event. Boolean transitions emit `Pressed` or `Released` before `StateChanged`. Other types emit only `StateChanged`.

@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native held selection navigation", source = require "../tests/fixtures/input-selection-repeat" },
 	{ name = "native haptic effect requests", source = require "../tests/fixtures/haptic-effect" },
 	{ name = "native input action lifecycle", source = require "../tests/fixtures/input-action-probe" },
 	{ name = "native bounded automatic parents", source = require "../tests/fixtures/ui-automatic-parent" },
