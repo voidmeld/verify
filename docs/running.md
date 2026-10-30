@@ -156,6 +156,8 @@ An ordinary `a/b.luau` resolves `./c` to `a/c`, `../c` to `c` and `@self/c` to `
 
 With `basePlace`, Verify copies the XML base to output and adds the module root and entry scripts. The root is in ReplicatedStorage. VerifyClient is in StarterPlayerScripts. VerifyServer is in ServerScriptService. It adds missing services and preserves other instances. It never changes the base file. Existing names that conflict with new roots or scripts fail. Binary bases fail. Save them as `.rbxlx` first. The merge scans Item tags and does not parse other XML. `Lute.platform.run({ basePlace })` uses this merge. The `place` option keeps its existing meaning. Lower-level hosts and workers support custom discovery and launch systems.
 
+New generated places use TextChatService. A supplied base place keeps its chat configuration.
+
 ## Platform support
 
 Core, gate, evidence, benchmark and simulator layers assume no operating system. The Lute layer supports macOS, Linux and Windows.
