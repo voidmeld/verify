@@ -6,7 +6,11 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
-local probes = { require "./fixtures/ui-grid-layout", require "./fixtures/ui-grid-constraints" }
+local probes = {
+	require "./fixtures/ui-grid-layout",
+	require "./fixtures/ui-grid-constraints",
+	require "./fixtures/ui-grid-text",
+}
 
 it("grid layout matches the same native conformance assertions", function(own)
 	local roots: { Roblox.Instance } = {}
@@ -48,13 +52,14 @@ it("grid layout matches the same native conformance assertions", function(own)
 	own(function()
 		scheduler.cancel(thread)
 	end)
-	for _ = 1, 240 do
+	for _ = 1, 360 do
 		if complete or #scheduler.failures > 0 then
 			break
 		end
 		runtime.step(1 / 60)
 	end
 	expect(engine.diagnostics):toEqual {}
+	expect(scheduler.failures):toEqual {}
 	expect(complete):toBe(true)
 end)
 

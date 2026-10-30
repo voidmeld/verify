@@ -805,6 +805,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				and (isText(object))
 				and optional(object, "TextWrapped") == true
 				and enum(object, "AutomaticSize", "None") ~= "None"
+				and not (object.Parent and object.Parent:FindFirstChildWhichIsA "UIGridLayout")
 			then
 				local list = if object.Parent then object.Parent:FindFirstChildWhichIsA "UIListLayout" else nil
 				local reflowed = list ~= nil
