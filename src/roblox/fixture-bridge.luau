@@ -198,6 +198,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		defaultProperty = settings.defaultProperty,
 		handlerErrors = settings.handlerErrors,
 		computed = table.freeze(computed),
+		computedDependents = table.freeze { Text = { "ContentText" } },
 		undeclaredWrites = settings.undeclaredWrites,
 		undeclaredReads = settings.undeclaredReads,
 		functionDoubles = settings.functionDoubles,

@@ -27,6 +27,32 @@ for _, class in { "TextLabel", "TextButton", "TextBox" } do
  end
  object.RichText = false
  assert(object.ContentText == object.Text, class .. " rich text disabled")
+ local fired = 0
+ local connection = object:GetPropertyChangedSignal("ContentText"):Connect(function()
+  fired += 1
+ end)
+ object.Text = "Signal"
+ task.wait()
+ assert(fired == 1, class .. " text change fires ContentText: " .. fired)
+ local counts = {}
+ object.RichText = true
+ task.wait()
+ table.insert(counts, fired)
+ object.Text = "<b>Signal</b>"
+ task.wait()
+ table.insert(counts, fired)
+ object.Text = "<i>Signal</i>"
+ task.wait()
+ table.insert(counts, fired)
+ object.Text = "<i>Signal</i>"
+ task.wait()
+ table.insert(counts, fired)
+ object.RichText = false
+ task.wait()
+ table.insert(counts, fired)
+ assert(table.concat(counts, ",") == "1,2,3,3,3", class .. " ContentText signal follows Text writes: " .. table.concat(counts, ","))
+ connection:Disconnect()
+ object.RichText = false
  object:Destroy()
 end
 return true

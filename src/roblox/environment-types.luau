@@ -96,6 +96,7 @@ export type Options<P = { [string]: unknown }, M = { [string]: unknown }, F = { 
 	validateProperty: ((className: string, property: string, value: unknown, operation: "set" | "poke") -> ...unknown)?,
 	handlerErrors: HandlerErrors?,
 	computed: { [string]: Computed }?,
+	computedDependents: { [string]: { string } }?,
 	undeclaredWrites: boolean?,
 	undeclaredReads: ("raise" | "nil")?,
 	functionDoubles: boolean?,
