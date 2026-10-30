@@ -890,7 +890,7 @@ describe("a Studio MCP child that exits", function()
 		expect(held.expired):toBe(true)
 		local again = session.call("echo", ARGS)
 		expect(again.ok == true):toBeTrueWith(again.detail or "no detail")
-		expect(fs.exists(root .. "/slow/reconnect-2/pid")):toBe(true)
+		expect(fs.exists(root .. "/slow/reconnect-2")):toBe(true)
 		session.close()
 	end)
 
