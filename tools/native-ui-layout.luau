@@ -4,6 +4,11 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native text service height limits", source = require "../tests/fixtures/ui-text-height-limits" },
+	{ name = "native rich text raster bounds", source = require "../tests/fixtures/ui-rich-text-raster" },
+	{ name = "native text line heights", source = require "../tests/fixtures/ui-text-line-height" },
+	{ name = "native truncation line bounds", source = require "../tests/fixtures/ui-truncation-lines" },
+	{ name = "native unwrapped text spacing", source = require "../tests/fixtures/ui-text-space-fit" },
 	{ name = "native wrapped text flex", source = require "../tests/fixtures/ui-wrapped-text-flex" },
 	{ name = "native scroll bar gutters", source = require "../tests/fixtures/ui-scroll-gutter" },
 	{ name = "native wrapped grid text", source = require "../tests/fixtures/ui-grid-text" },

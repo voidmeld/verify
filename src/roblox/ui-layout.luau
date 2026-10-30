@@ -22,7 +22,8 @@ export type Options = {
 	read: ((Instance, string) -> unknown)?,
 	component: ((Instance, string, string) -> unknown)?,
 	vector: ((number, number) -> unknown)?,
-	measureBounds: ((Values.TextParameters) -> unknown)?,
+	measureBounds: ((Values.TextParameters, number?) -> unknown)?,
+	measureLineHeight: ((Values.TextParameters, number, number) -> number)?,
 	truncateBounds: ((Values.TextParameters, string, number, boolean) -> number?)?,
 }
 export type Controller = {
@@ -151,10 +152,16 @@ local function attach(environment: Environment.Environment, options: Options): C
 				end
 				return Values.vector(measure { Text = text, Font = font, Size = points, Width = content.width })
 			end)
-			if fitted then
+			if fitted and measured.Y < math.huge then
 				local strut = Values.vector(measure { Text = "", Font = font, Size = points, Width = 0 }).Y
-				local lines = measured.Y / strut
-				local height = Float.f32(strut + Float.f32(Float.f32(spacing * strut) * (lines - 1)))
+				local lines = math.round(measured.Y / strut)
+				local height = if options.measureLineHeight
+					then options.measureLineHeight(
+						{ Text = text, Font = font, Size = points, Width = content.width },
+						lines,
+						spacing
+					)
+					else Float.f32(strut + Float.f32(spacing * strut) * (lines - 1))
 				if measured.X <= content.width and height <= content.height then
 					return { X = measured.X, Y = height, intrinsicX = measured.X, intrinsicY = height, fits = true }
 				end
@@ -208,7 +215,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local strut =
 			Values.vector(options.measureBounds { Text = "", Font = parameters.Font, Size = rendered, Width = 0 })
 		local truncation = enum(object, "TextTruncate", "None")
-		local fitted, attempt = pcall(options.measureBounds, parameters)
+		local fitted, attempt =
+			pcall(options.measureBounds, parameters, if not wrapped and not intrinsic then content.width else nil)
 		if
 			not fitted
 			and wrapped
@@ -235,10 +243,13 @@ local function attach(environment: Environment.Environment, options: Options): C
 			error(attempt, 0)
 		end
 		local measured = Values.vector(attempt)
-		local lines = measured.Y / strut.Y
+		local lines = math.round(measured.Y / strut.Y)
 		local step = Float.f32(Float.f32(number(object, "LineHeight", 1)) * strut.Y)
 		local function height(count: number): number
-			return Float.f32(strut.Y + Float.f32(step * (count - 1)))
+			if options.measureLineHeight then
+				return options.measureLineHeight(parameters, count, number(object, "LineHeight", 1))
+			end
+			return Float.f32(strut.Y + step * (count - 1))
 		end
 		local fullHeight = height(lines)
 		local availableHeight = if intrinsic and autoY then maximumY else content.height
@@ -277,10 +288,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return {
 			X = shownX,
-			Y = height(visible),
+			Y = if wrapped and parameters.RichText and truncation == "None" then fullHeight else height(visible),
 			intrinsicX = if intrinsic and autoX then intrinsicX else measured.X,
 			intrinsicY = fullHeight,
-			fits = measured.X <= content.width and fullHeight <= content.height,
+			fits = measured.X <= content.width
+				and (not wrapped and not parameters.RichText and automatic == "None" or fullHeight <= content.height),
 		}
 	end
 	local bases: { [Instance]: { width: number, height: number } } = {}
