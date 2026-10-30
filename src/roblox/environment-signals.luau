@@ -44,7 +44,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 	end
 
 	local function newSignal<A...>(initialFires: number?): Signal<A...>
-		type Record = { run: (A...) -> (), connected: boolean, connection: Connection }
+		type Record = { run: (A...) -> (), connected: boolean, connection: Connection, context: unknown }
 		local live: { Record } = {}
 		local fired = initialFires or 0
 		local signal: Signal<A...>
@@ -76,6 +76,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 				end,
 				connected = true,
 				connection = connection,
+				context = scheduler.context(),
 			}
 			table.insert(live, record)
 			connections += 1
@@ -106,12 +107,21 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 				return
 			end
 			if #live == 1 then
-				scheduler.spawn(live[1].run, ...)
+				local record = live[1]
+				if record.context ~= nil then
+					scheduler.spawnTagged(record.context, record.run, ...)
+				else
+					scheduler.spawn(record.run, ...)
+				end
 				return
 			end
 			for _, record in table.clone(live) do
 				if record.connected then
-					scheduler.spawn(record.run, ...)
+					if record.context ~= nil then
+						scheduler.spawnTagged(record.context, record.run, ...)
+					else
+						scheduler.spawn(record.run, ...)
+					end
 				end
 			end
 		end

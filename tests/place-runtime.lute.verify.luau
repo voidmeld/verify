@@ -398,6 +398,35 @@ return "client-ready"
 	end
 	bridge.close()
 end)
+it("a signal callback requires modules in the context of the script that connected it", function()
+	local bridge = Lute.fixture.bridge(nil, { handlerErrors = "raise" })
+	local fixture = sourceFixture({
+		["fixture/shared.luau"] = "return {}",
+		["fixture/client.luau"] = [[
+local first = require("./shared")
+local result = { same = nil }
+game:GetService("RunService").RenderStepped:Connect(function()
+	result.same = require("./shared") == first
+end)
+return result
+]],
+	}, { "DataModel", "RunService", "Players", "HttpService" }, {
+		engine = bridge.placeEngine(),
+		client = { name = "Fixture", userId = 7, viewport = { x = 640, y = 480 } },
+	})
+	fixture.module("shared", "fixture/shared.luau")
+	local module = fixture.module("Client", "fixture/client.luau")
+	local result: { same: boolean? }? = nil
+	bridge.environment.scheduler.spawnTagged({ context = "client", source = "fixture/client.luau" }, function()
+		result = fixture.runtime.requireInstance(module) :: { same: boolean? }
+	end)
+	fixture.runtime.step(1 / 60)
+	expect(assert(result).same):toBe(true)
+	for _, close in fixture.runtime.closeHandlers do
+		close()
+	end
+	bridge.close()
+end)
 it("place frame readers fail closed before publishing render events", function()
 	local frames = 0
 	local fixture = sourceFixture({}, nil, {
