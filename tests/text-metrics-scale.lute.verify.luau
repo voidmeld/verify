@@ -64,4 +64,16 @@ it("Guru period-prefixed ligatures preserve native kerning and text boundaries",
 	end
 end)
 
+it("truncation rounds the combined raster width once at a fractional boundary", function()
+	local row = { advances = { 4, 2 }, adjustments = {} }
+	local model = Metrics.create {
+		tokens = { "A", "…" },
+		pairs = {},
+		sizes = table.create(100, row),
+		pixelScale = 2 / 3,
+	}
+	expect(model.truncate("AAAA", 1, 4, 1, "SplitWord", false)):toBe(4)
+	expect(model.truncate("AAAA", 1, 3.9, 1, "SplitWord", false)):toBe(model.width("…", 1))
+end)
+
 return nil

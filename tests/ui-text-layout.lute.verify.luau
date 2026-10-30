@@ -62,6 +62,12 @@ local function mountProbe(caseContext: Core.Context, source: string): (boolean, 
 	return complete, messages
 end
 
+it("truncation accepts exact and fractional width boundaries", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-truncation-boundary")
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("single-line truncated text reports the Studio ellipsis width", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,
@@ -354,10 +360,10 @@ it("rich text with tags that change metrics is refused", function(_, caseContext
 	end
 end)
 
-it("truncation the text model cannot place exactly is refused", function(_, caseContext)
+it("wrapped truncation retains unsupported diagnostics and accepts a width boundary", function(_, caseContext)
 	local rows: { { mode: string, width: number, height: number, message: string } } = {
 		{ mode = "AtEnd", width = 100, height = 40, message = "wrapped truncation shorter than its line" },
-		{ mode = "SplitWord", width = 140, height = 40, message = "truncation within a pixel of the limit" },
+		{ mode = "SplitWord", width = 140, height = 40, message = "" },
 	}
 	for _, row in rows do
 		local complete, messages = mountProbe(
@@ -379,8 +385,12 @@ it("truncation the text model cannot place exactly is refused", function(_, case
 				row.mode
 			)
 		)
-		expect(complete):toBe(false)
-		expect(table.concat(messages, "\n")):toContain(row.message)
+		expect(complete):toBe(row.message == "")
+		if row.message == "" then
+			expect(table.concat(messages, "\n")):toBe ""
+		else
+			expect(table.concat(messages, "\n")):toContain(row.message)
+		end
 	end
 end)
 

@@ -1315,6 +1315,8 @@ TextChatService.OnIncomingMessage uses write-only callback storage. A host can i
 
 Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 
+Truncation compares the rendered prefix and ellipsis with the available width, including fractional widths. An exact fit is accepted. The combined raster width is converted to a float32 result once. The shared Studio case checks widths on both sides of these boundaries.
+
 ### `Lute.gate`
 
 Run the gate command line with bounded producer processes.

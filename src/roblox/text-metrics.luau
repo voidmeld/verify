@@ -168,15 +168,11 @@ local function create(face: Face): Model
 	end
 	local function cut(text: string, size: number, limit: number, mode: string): number?
 		local mark = exact("…", size)
-		local function fits(prefix: string): boolean
-			return (exact(prefix, size) + mark) * pixelScale <= limit
-		end
 		local function shown(prefix: string): number
-			local result = width(prefix, size) + scaled(math.ceil(mark))
-			if result >= limit - 1 then
-				error("unsupported_text_metrics: truncation within a pixel of the limit", 0)
-			end
-			return result
+			return scaled(math.ceil(exact(prefix, size)) + math.ceil(mark))
+		end
+		local function fits(prefix: string): boolean
+			return shown(prefix) <= limit
 		end
 		if mode == "AtEnd" then
 			local best: string? = nil
