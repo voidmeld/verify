@@ -105,6 +105,19 @@ return { child = Child, shared = Shared, sibling = Sibling }
 		expect(value):toBe "later"
 	end)
 
+	it("reads a nested dependency's directory before its deferred require", function()
+		local root = ROOT .. "/nested"
+		write(root .. "/app/main.luau", 'return require("../lib/entry")\n')
+		write(root .. "/lib/entry.luau", 'return function()\n\treturn require("./later")\nend\n')
+		write(root .. "/lib/later.luau", 'return "later"\n')
+		local deferred = Lute.loader.new().require(root .. "/app/main") :: () -> string
+		local thread = coroutine.create(deferred)
+		local ok, value = coroutine.resume(thread)
+		expect(ok):toBe(true)
+		expect(coroutine.status(thread)):toBe "dead"
+		expect(value):toBe "later"
+	end)
+
 	it("gives each module the engine typeof, warn and its own environment", function()
 		local root = ROOT .. "/engine"
 		write(
