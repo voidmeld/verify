@@ -29,6 +29,7 @@ export type Authorization = { ok: boolean, reason: string? }
 export type Transport = {
 	call: (tool: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Mcp.Exchange,
 	close: () -> (),
+	reset: (() -> ())?,
 }
 
 export type Options = {
@@ -140,6 +141,7 @@ local function mcpTransport(executable: string, directory: string): Transport
 			return exchange
 		end,
 		close = connection.close,
+		reset = connection.reset,
 	}
 end
 local function discovered(text: string): { StudioInfo }
@@ -254,7 +256,7 @@ local function attach(options: Options): (Session?, Refusal?)
 		end
 		local exchange = slot.exchange
 		if not slot.done or exchange == nil then
-			pcall(transport.close)
+			pcall(transport.reset or transport.close)
 			return {
 				ok = false,
 				delivery = "possibly_sent",

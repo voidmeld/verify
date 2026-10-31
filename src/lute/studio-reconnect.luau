@@ -13,13 +13,20 @@ export type Connection = {
 	alive: () -> boolean,
 }
 
+export type Recovering = {
+	callRaw: (name: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Exchange,
+	close: () -> (),
+	alive: () -> boolean,
+	reset: () -> (),
+}
+
 export type Deps = {
 	open: (deadline: number) -> Connection,
 	now: () -> number,
 	wait: (seconds: number) -> (),
 }
 
-local function wrap(initial: Connection?, deps: Deps): Connection
+local function wrap(initial: Connection?, deps: Deps): Recovering
 	local active: Connection? = initial
 	local closed = false
 	local function drop()
@@ -37,6 +44,7 @@ local function wrap(initial: Connection?, deps: Deps): Connection
 			closed = true
 			drop()
 		end,
+		reset = drop,
 		callRaw = function(name, argumentsJson, deadline, replaySafe): Exchange
 			local last: Exchange = {
 				status = "unsent",
