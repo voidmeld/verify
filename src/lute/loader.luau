@@ -160,7 +160,7 @@ local function new(options: Options?): Loader
 			return cached
 		end
 		local module = moduleOf(path)
-		if next(loading) == nil and not hosted(path) then
+		if not hosted(path) then
 			prefetch(parent(path))
 		end
 		if hosted(path) then
