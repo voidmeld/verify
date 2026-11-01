@@ -132,13 +132,14 @@ local function visible(object: Instance): boolean
 	local current: Instance? = object
 	while current ~= nil do
 		local node: Instance = current
+		local parent = node.Parent
 		if hasClass(node, "GuiObject") and node.Visible == false then
 			return false
 		end
 		if hasClass(node, "ScreenGui") and node.Enabled == false then
 			return false
 		end
-		current = node.Parent
+		current = parent
 	end
 	return true
 end
