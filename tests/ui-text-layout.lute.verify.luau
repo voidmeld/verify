@@ -74,6 +74,26 @@ it("truncation accepts exact and fractional width boundaries", function(_, caseC
 	expect(complete):toBe(true)
 end)
 
+it("measures only bundled font faces and rejects others", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
+			local p = Instance.new("GetTextBoundsParams")
+			p.Text, p.Size, p.Width = "Hello", 14, 100000
+			p.Font = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold)
+			assert(game.TextService:GetTextBoundsAsync(p).X > 0, "bundled face measures")
+			p.Font = Font.new("rbxasset://fonts/families/NoSuchFace.json")
+			local ok, failure = pcall(function()
+				return game.TextService:GetTextBoundsAsync(p)
+			end)
+			assert(not ok and tostring(failure):find("unsupported_text_metrics", 1, true), "unknown face is rejected")
+			return true
+		]=]
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("single-line truncated text reports the Studio ellipsis width", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,

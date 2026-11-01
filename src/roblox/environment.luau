@@ -213,7 +213,7 @@ local function create(options: Options?): Environment
 			mutations += 1
 		end
 		if inputActions then
-			inputActions.changed(object, property)
+			inputActions.changed(object, property, next(state.children) ~= nil)
 		end
 		fireSignal(state, "prop:" .. property)
 		fireSignal(state, "Changed", property)
@@ -402,6 +402,9 @@ local function create(options: Options?): Environment
 		end
 		state.destroyed = true
 		alive -= 1
+		if inputActions then
+			inputActions.released(object)
+		end
 		for _, signal in state.signals do
 			signal:DisconnectAll()
 		end

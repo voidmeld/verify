@@ -108,4 +108,37 @@ it("input action lifecycle matches the shared Studio sequence", function(own)
 	expect(result):toBe(true)
 end)
 
+it("reparenting a container resets its pressed actions and ignores destroyed ones", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(function()
+		bridge.close()
+	end)
+	local env = bridge.environment
+	local root = bridge.placeEngine().game
+	local folder = env.createInstance "Folder"
+	folder.Parent = root
+	local pressed = env.createInstance "InputAction"
+	pressed.Parent = folder
+	local destroyed = env.createInstance "InputAction"
+	destroyed.Parent = folder
+	local state = env.method(pressed, "GetState")
+	local fire = env.method(pressed, "Fire")
+	expect(state(pressed)):toBe(false)
+	fire(pressed, true)
+	expect(state(pressed)):toBe(true)
+	local released = 0
+	env.event(destroyed, "Released"):Connect(function()
+		released += 1
+	end)
+	env.method(destroyed, "Fire")(destroyed, true)
+	local destroy = env.method(destroyed, "Destroy")
+	destroy(destroyed)
+	env.step(0)
+	local settled = released
+	folder.Parent = nil
+	env.step(0)
+	expect(state(pressed)):toBe(false)
+	expect(released):toBe(settled)
+end)
+
 return nil

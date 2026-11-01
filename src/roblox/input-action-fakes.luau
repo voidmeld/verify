@@ -5,7 +5,10 @@ local Datatypes = require "./datatypes"
 
 type Instance = Environment.Instance
 type State = { kind: string, value: unknown }
-export type Controller = { changed: (Instance, string) -> () }
+export type Controller = {
+	changed: (Instance, string, boolean) -> (),
+	released: (Instance) -> (),
+}
 
 local function attach(environment: Environment.Environment)
 	local states: { [Instance]: State } = {}
@@ -66,7 +69,7 @@ local function attach(environment: Environment.Environment)
 		end
 		update(action, current, value)
 	end)
-	local function changed(object: Instance, property: string)
+	local function changed(object: Instance, property: string, hasChildren: boolean)
 		if property == "Type" and object:IsA "InputAction" then
 			local current = state(object)
 			current.value = defaults[current.kind]
@@ -82,14 +85,22 @@ local function attach(environment: Environment.Environment)
 				end
 			end
 		elseif property == "Parent" then
-			for action in pairs(states) do
-				if action == object or action:IsDescendantOf(object) then
-					reset(action)
+			if states[object] ~= nil then
+				reset(object)
+			end
+			if hasChildren then
+				for action in pairs(states) do
+					if action ~= object and action:IsDescendantOf(object) then
+						reset(action)
+					end
 				end
 			end
 		end
 	end
-	return { changed = changed }
+	local function released(action: Instance)
+		states[action] = nil
+	end
+	return { changed = changed, released = released }
 end
 
 return { attach = attach }
