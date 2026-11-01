@@ -366,6 +366,30 @@ describe("roblox test environment", function()
 		expect(#env.scheduler.failures):toBe(1)
 		expect(env.scheduler.failures[1]):toContain "cleanup fixture failure"
 	end)
+	it("cancels a delayed task before its timer fires", function()
+		local env = environment()
+		local ran = false
+		local delayed = env.task.delay(5, function()
+			ran = true
+		end)
+		expect(env.scheduler.pending()):toBe(1)
+		env.task.cancel(delayed)
+		expect(env.scheduler.pending()):toBe(0)
+		env.step(10)
+		expect(ran):toBe(false)
+	end)
+	it("releases finished delayed tasks from the scheduler", function()
+		local env = environment()
+		local ran = 0
+		for _ = 1, 200 do
+			env.task.delay(1, function()
+				ran += 1
+			end)
+		end
+		env.step(1)
+		expect(ran):toBe(200)
+		expect(env.scheduler.pending()):toBe(0)
+	end)
 	it("propertyOf inspects declared callbacks while instance reads remain forbidden", function()
 		local env = environment()
 		local callbackProperties: { [string]: unknown } = { OnInvoke = false }

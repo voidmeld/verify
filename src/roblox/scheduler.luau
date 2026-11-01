@@ -4,6 +4,7 @@ export type Callback<A... = ...unknown, R... = ...unknown> = (A...) -> R...
 export type Task<A... = ...unknown, R... = ...unknown> = Callback<A..., R...> | thread
 
 type Arguments = { [number]: unknown, n: number }
+type Timer = { at: number, thread: thread, owner: thread? }
 type Ready = { thread: thread, arguments: Arguments, depth: number }
 local pack: (...unknown) -> Arguments = table.pack
 
@@ -34,13 +35,11 @@ local function create(): Scheduler
 	local now = 0
 	local ready: { Ready } = {}
 	local running = 0
-	local timers: { { at: number, thread: thread } } = {}
+	local timers: { Timer } = {}
 	local failures: { string } = {}
 	local tags: { [thread]: unknown } = {}
-	local owners: { [thread]: thread } = {}
 	local cleanups: { [thread]: () -> () } = {}
 	setmetatable(tags, WEAK_KEYS)
-	setmetatable(owners, WEAK_KEYS)
 	local active: unknown = nil
 	local describe: (thread, unknown) -> string
 	local scheduler = {}
@@ -163,9 +162,7 @@ local function create(): Scheduler
 		local waiter = coroutine.create(function()
 			withTag(thread, table.unpack(arguments, 1, arguments.n))
 		end)
-		tags[waiter] = active
-		owners[waiter] = thread
-		timers[#timers + 1] = { at = now + math.max(seconds, 0), thread = waiter }
+		timers[#timers + 1] = { at = now + math.max(seconds, 0), thread = waiter, owner = thread }
 		return thread
 	end
 
@@ -200,7 +197,7 @@ local function create(): Scheduler
 	function scheduler.advance(seconds: number)
 		now += seconds
 		local due: { { at: number, thread: thread, order: number } } = {}
-		local keep: { { at: number, thread: thread } } = {}
+		local keep: { Timer } = {}
 		for order, timer in timers do
 			if timer.at <= now then
 				due[#due + 1] = { at = timer.at, thread = timer.thread, order = order }
@@ -243,9 +240,9 @@ local function create(): Scheduler
 			end
 		end
 		ready = keptReady
-		local keptTimers: { { at: number, thread: thread } } = {}
+		local keptTimers: { Timer } = {}
 		for _, timer in timers do
-			if timer.thread ~= thread and owners[timer.thread] ~= thread then
+			if timer.thread ~= thread and timer.owner ~= thread then
 				table.insert(keptTimers, timer)
 			end
 		end
