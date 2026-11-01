@@ -72,8 +72,8 @@ describe("Player launcher", function()
 		local address = Player.url(123, "run&+#")
 		expect(address):toContain "roblox://placeId=123&launchData="
 		expect(address):toContain "run%26%2B%23"
-		expect((pcall(Player.url, 0, "run"))):toBe(false)
-		expect((pcall(Player.url, 1, ""))):toBe(false)
+		expect((pcall(Player.url, 0, "run", nil))):toBe(false)
+		expect((pcall(Player.url, 1, "", nil))):toBe(false)
 	end)
 	it("forwards explicit case and entry selection", function()
 		local address = Player.url(123, "run", { caseIds = { "motion" }, entry = "tests/shared" })
@@ -81,8 +81,10 @@ describe("Player launcher", function()
 		expect(address):toContain "motion"
 		expect(address):toContain "verifyEntry"
 		expect(address):toContain "tests%2Fshared"
-		expect((pcall(Player.url, 123, "run", { caseIds = {} }))):toBe(false)
-		expect((pcall(Player.url, 123, "run", { caseIds = { "x", "x" } }))):toBe(false)
+		local empty: Player.Selection = { caseIds = {} }
+		expect((pcall(Player.url, 123, "run", empty))):toBe(false)
+		local repeated: Player.Selection = { caseIds = { "x", "x" } }
+		expect((pcall(Player.url, 123, "run", repeated))):toBe(false)
 	end)
 	it("collects a bound report and closes its client", function()
 		local backend, state = fixture(reportBytes "new")
@@ -133,7 +135,7 @@ describe("Player launcher", function()
 	end)
 	it("reports launch failure without inventing a session", function()
 		local backend, state = fixture ""
-		backend.launch = function()
+		backend.launch = function(_address: string, _deadline: number): Player.Session
 			error("launch failed", 0)
 		end
 		expect(Player.run({ placeId = 123, runId = "new", backend = backend }).status):toBe "faulted"

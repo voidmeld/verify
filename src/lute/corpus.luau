@@ -46,7 +46,7 @@ end
 
 local function walk(root: string, rule: Rule, listDir: ListDir, compare: Compare, into: { string })
 	local entries: { DirEntry } = table.clone(listDir(root))
-	table.sort(entries, function(left, right)
+	table.sort(entries, function(left: DirEntry, right: DirEntry)
 		return compare(left.name, right.name)
 	end)
 	for _, entry in entries do
@@ -105,7 +105,7 @@ local function groupByRequire(files: { string }, readFile: ReadFile, aliasPatter
 		indexOf[file] = index
 	end
 
-	local parent: { number } = table.create(#files)
+	local parent = table.create<<number>>(#files)
 	for index = 1, #files do
 		parent[index] = index
 	end
@@ -154,7 +154,7 @@ local function groupByRequire(files: { string }, readFile: ReadFile, aliasPatter
 		table.sort(group)
 		table.insert(groups, group)
 	end
-	table.sort(groups, function(left, right)
+	table.sort(groups, function(left: { string }, right: { string })
 		return left[1] < right[1]
 	end)
 	return groups

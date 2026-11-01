@@ -6,22 +6,21 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Lute = require "../src/lute"
 local Datatypes = require "../src/roblox/datatypes"
+local Queries = require "../src/roblox/spatial-query-fakes"
 
 it("block raycasts preserve rotated hit geometry and reject inside origins", function()
 	local engine = Lute.fixture.bridge().placeEngine()
 	local types = engine.datatypes
 	local world = engine.service "Workspace"
-	local ray = world.Raycast :: (
-		typeof(world),
-		Datatypes.Vector3Value,
-		Datatypes.Vector3Value,
-		Datatypes.RaycastParamsValue?
-	) -> {
-		Instance: typeof(world),
-		Position: Datatypes.Vector3Value,
-		Normal: Datatypes.Vector3Value,
-		Distance: number,
-	}?
+	local function ray(
+		self: typeof(world),
+		origin: Datatypes.Vector3Value,
+		direction: Datatypes.Vector3Value,
+		params: Datatypes.RaycastParamsValue?
+	)
+		local value = engine.environment.method(world, "Raycast")(self, origin, direction, params)
+		return if value == nil then nil else Queries.expectResult(value)
+	end
 	local part = engine.newInstance "Part"
 	part.Size = types.Vector3.new(10, 2, 10)
 	part.CFrame = types.CFrame.new(0, 100, 0) * types.CFrame.Angles(0, 0, math.rad(30))
@@ -29,6 +28,8 @@ it("block raycasts preserve rotated hit geometry and reject inside origins", fun
 	local origin, down = types.Vector3.new(0, 110, 0), types.Vector3.new(0, -20, 0)
 	local hit = assert(ray(world, origin, down))
 	expect(engine.typeName(hit)):toBe "RaycastResult"
+	expect(Queries.expectResult(hit)):toBe(hit)
+	expect(pcall(Queries.expectResult, {})):toBe(false)
 	expect(hit.Instance):toBe(part)
 	expect(math.abs(hit.Distance - 8.845298767089844) < 0.00001):toBe(true)
 	expect((hit.Normal - types.Vector3.new(-0.5, math.sqrt(3) / 2, 0)).Magnitude < 0.00001):toBe(true)
@@ -41,12 +42,15 @@ it("ray filters select the closest eligible block and refuse unknown collision g
 	local engine = Lute.fixture.bridge().placeEngine()
 	local types = engine.datatypes
 	local world = engine.service "Workspace"
-	local ray = world.Raycast :: (
-		typeof(world),
-		Datatypes.Vector3Value,
-		Datatypes.Vector3Value,
-		Datatypes.RaycastParamsValue?
-	) -> { Instance: typeof(world) }?
+	local function ray(
+		self: typeof(world),
+		origin: Datatypes.Vector3Value,
+		direction: Datatypes.Vector3Value,
+		params: Datatypes.RaycastParamsValue?
+	)
+		local value = engine.environment.method(world, "Raycast")(self, origin, direction, params)
+		return if value == nil then nil else Queries.expectResult(value)
+	end
 	local group = engine.newInstance "Folder"
 	group.Parent = world
 	local near = engine.newInstance "Part"

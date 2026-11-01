@@ -187,8 +187,10 @@ sequenceKind(NumberSequenceKind, "NumberSequence")
 sequenceKind(ColorSequenceKind, "ColorSequence")
 
 local function keypointList(value: unknown, kind: Names.Behavior, owner: string): { Keypoint }
+	assert(type(value) == "table")
 	local list: { Keypoint } = {}
-	for index, keypoint in value :: { unknown } do
+	for index, keypoint in value do
+		assert(type(index) == "number")
 		if not Names.is(keypoint, kind) then
 			error(("%s: expected keypoint at index %d"):format(owner, index), 3)
 		end

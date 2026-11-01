@@ -12,10 +12,10 @@ local case: Core.NamedCase = {
 		local start = context:perform("client", Player.inspect, nil)
 		context:expect(start.health > 0):toBe(true)
 		context:perform("client", Player.jump, nil)
-		context:await("client", Player.inspect, nil, function(state)
+		context:await("client", Player.inspect, nil, function(state: Player.State)
 			return state.position.y > start.position.y + 1
 		end, 0.05)
-		context:await("client", Player.inspect, nil, function(state)
+		context:await("client", Player.inspect, nil, function(state: Player.State)
 			return math.abs(state.position.y - start.position.y) < 0.5 and math.abs(state.velocity.y) < 1
 		end, 0.05)
 	end,

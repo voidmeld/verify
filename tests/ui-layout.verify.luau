@@ -10,13 +10,13 @@ local Types = require "../src/roblox/datatypes"
 local function fixture(): Environment.Environment
 	local options: Environment.Options = {
 		undeclaredWrites = true,
-		classes = ({
+		classes = {
 			UIScale = { super = "Instance", properties = { Scale = 1 } },
 			UISizeConstraint = {
 				super = "Instance",
 				properties = { MinSize = Types.Vector2.new(0, 0), MaxSize = Types.Vector2.new(math.huge, math.huge) },
 			},
-		} :: unknown) :: { [string]: Environment.ClassSpec },
+		},
 	}
 	return Environment.create(options)
 end
@@ -398,11 +398,14 @@ describe("simulated GUI layout", function()
 	it("rejects world-space LayerCollectors before publishing any root geometry", function()
 		for _, className in { "BillboardGui", "SurfaceGui" } do
 			local env = fixture()
-			env.defineClass("LayerCollector", { super = "Instance", creatable = false })
-			env.defineClass("SurfaceGuiBase", { super = "LayerCollector", creatable = false })
-			env.defineClass(className, {
+			local layer: Environment.ClassSpec = { super = "Instance", creatable = false }
+			env.defineClass("LayerCollector", layer)
+			local base: Environment.ClassSpec = { super = "LayerCollector", creatable = false }
+			env.defineClass("SurfaceGuiBase", base)
+			local spec: Environment.ClassSpec = {
 				super = if className == "SurfaceGui" then "SurfaceGuiBase" else "LayerCollector",
-			})
+			}
+			env.defineClass(className, spec)
 			local screen = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(200, 100) })
 			local world = env.createInstance(className)
 			local child = env.createInstance("Frame", { Parent = world, Size = Types.UDim2.fromScale(1, 1) })

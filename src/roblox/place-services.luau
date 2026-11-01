@@ -1,4 +1,5 @@
 --!strict
+local Vm = require "./value"
 
 local Types = require "./place-types"
 local Environment = require "./environment"
@@ -41,7 +42,7 @@ local function install<B>(
 		end
 		local button = engine.newInstance "ImageButton"
 		button.Name = name
-		button.Parent = (contextActionGui :: Instance):FindFirstChild "ContextButtonFrame"
+		button.Parent = assert(contextActionGui):FindFirstChild "ContextButtonFrame"
 		local title = engine.newInstance "TextLabel"
 		title.Name = "ActionTitle"
 		title.Parent = button
@@ -187,9 +188,9 @@ local function install<B>(
 				return scheduler.clock()
 			end,
 		}
-		local lastInput = engine.datatypes.Enum.UserInputType.None
+		local lastInput: unknown = engine.datatypes.Enum.UserInputType.None
 		overrides.UserInputService = {
-			GetLastInputType = function(): Datatypes.EnumMember
+			GetLastInputType = function(): unknown
 				return lastInput
 			end,
 			GetMouseButtonsPressed = function(): { Instance }
@@ -327,7 +328,10 @@ local function install<B>(
 				return out
 			end,
 			GetPlayerFromCharacter = function(service: Instance, character: Instance): unknown
-				for _, player in ((service.GetPlayers :: unknown) :: (Instance) -> { Instance })(service) do
+				local players = environment.method(service, "GetPlayers")(service)
+				assert(type(players) == "table", "GetPlayers must return a table")
+				for _, candidate in players do
+					local player = environment.assertInstance(candidate)
 					if player.Character == character then
 						return player
 					end
@@ -335,7 +339,10 @@ local function install<B>(
 				return nil
 			end,
 			GetPlayerByUserId = function(service: Instance, userId: number): unknown
-				for _, player in ((service.GetPlayers :: unknown) :: (Instance) -> { Instance })(service) do
+				local players = environment.method(service, "GetPlayers")(service)
+				assert(type(players) == "table", "GetPlayers must return a table")
+				for _, candidate in players do
+					local player = environment.assertInstance(candidate)
 					if player.UserId == userId then
 						return player
 					end
@@ -344,10 +351,10 @@ local function install<B>(
 			end,
 		}
 		local function signalOn(object: Instance, name: string): Environment.Signal
-			return object[name] :: Environment.Signal
+			return environment.event(object, name)
 		end
-		local function callbackOf(object: Instance, name: string): unknown
-			return environment.propertyOf(object, name)
+		local function callbackOf(object: Instance, name: string): Vm.Value
+			return Vm.value(environment.propertyOf(object, name))
 		end
 		overrides.RemoteEvent = {
 			FireServer = function(object: Instance, ...: unknown)
@@ -364,23 +371,23 @@ local function install<B>(
 		overrides.RemoteFunction = {
 			InvokeServer = function(object: Instance, ...: unknown): ...unknown
 				local callback = callbackOf(object, "OnServerInvoke")
-				if callback == nil then
+				if type(callback) ~= "function" then
 					error(
 						("Attempt to call a RemoteFunction %s with no OnServerInvoke"):format(object:GetFullName()),
 						2
 					)
 				end
-				return (callback :: (Instance?, ...unknown) -> ...unknown)(runtime.localPlayer, ...)
+				return callback(runtime.localPlayer, ...)
 			end,
 			InvokeClient = function(object: Instance, _player: unknown, ...: unknown): ...unknown
 				local callback = callbackOf(object, "OnClientInvoke")
-				if callback == nil then
+				if type(callback) ~= "function" then
 					error(
 						("Attempt to call a RemoteFunction %s with no OnClientInvoke"):format(object:GetFullName()),
 						2
 					)
 				end
-				return (callback :: (...unknown) -> ...unknown)(...)
+				return callback(...)
 			end,
 		}
 		overrides.BindableEvent = {
@@ -391,10 +398,10 @@ local function install<B>(
 		overrides.BindableFunction = {
 			Invoke = function(object: Instance, ...: unknown): ...unknown
 				local callback = callbackOf(object, "OnInvoke")
-				if callback == nil then
+				if type(callback) ~= "function" then
 					error(("Attempt to call a BindableFunction %s with no OnInvoke"):format(object:GetFullName()), 2)
 				end
-				return (callback :: (...unknown) -> ...unknown)(...)
+				return callback(...)
 			end,
 		}
 		overrides.HttpService = {
@@ -406,7 +413,7 @@ local function install<B>(
 				end
 				return "{" .. body .. "}"
 			end,
-			JSONEncode = function(_service: Instance, value: unknown): string
+			JSONEncode = function(_service: Instance, value: Vm.Value): string
 				return HttpJson.encode(value, host.encodeJson, engine.typeName)
 			end,
 			JSONDecode = function(_service: Instance, text: string): unknown
@@ -503,29 +510,6 @@ local function install<B>(
 				return existing
 			end,
 		}
-		overrides.TweenService = {
-			Create = function(
-				_service: Instance,
-				target: Instance,
-				_info: unknown,
-				goal: { [string]: unknown }
-			): unknown
-				local tween = engine.newInstance("Tween", true)
-				environment.poke(tween, "Instance", target)
-				environment.fakeOn(tween, "Play", function(instance: Environment.Instance)
-					for key, value in goal do
-						target[key] = value
-					end
-					environment.fire(instance, "Completed", engine.datatypes.Enum.PlaybackState.Completed)
-				end)
-				environment.fakeOn(tween, "Cancel", function() end)
-				environment.fakeOn(tween, "Pause", function() end)
-				return tween
-			end,
-			GetValue = function(_service: Instance, alpha: number): number
-				return alpha
-			end,
-		}
 		overrides.Debris = {
 			AddItem = function(_service: Instance, object: Instance, lifetime: number?)
 				scheduler.delay(lifetime or 10, function()
@@ -561,7 +545,9 @@ local function install<B>(
 						end
 						local face = environment.propertyOf(object, "FontFace")
 						if engine.datatypes.typeName(face) == "Font" then
-							fetched((face :: Datatypes.FontValue).Family)
+							local family = Environment.read(face, "Family")
+							assert(type(family) == "string", "font family must be a string")
+							fetched(family)
 						end
 					end
 				end
@@ -570,7 +556,7 @@ local function install<B>(
 		overrides.AssetService = {
 			CreateMeshPartAsync = function(_service: Instance, content: unknown): unknown
 				local uri = if engine.datatypes.typeName(content) == "Content"
-					then (content :: Datatypes.ContentValue).Uri
+					then Environment.read(content, "Uri")
 					else content
 				assert(type(uri) == "string" and uri ~= "", "mesh content must have a non-empty URI")
 				local part = engine.newInstance("MeshPart", true)
@@ -638,19 +624,17 @@ local function install<B>(
 			if methods and (allowed == nil or allowed[object.ClassName]) then
 				for name, method in methods do
 					if not environment.hasFake(Environment.assertInstance(object), name) then
-						table.insert(
-							runtime.closeHandlers,
-							environment.fakeOn(object, name, method :: Environment.Method)
-						)
+						local handler = Vm.value(method)
+						assert(type(handler) == "function", "method override must be a function")
+						table.insert(runtime.closeHandlers, environment.fakeOn(object, name, handler))
 					end
 				end
 				if object.ClassName == "UserInputService" then
 					local service = Environment.assertInstance(object)
 					for _, event in { "InputBegan", "InputChanged", "InputEnded" } do
-						local connection = (service[event] :: Environment.Signal):Connect(function(input: unknown)
+						local connection = environment.event(service, event):Connect(function(input: unknown)
 							assert(engine.isInstance(input), "input event requires an InputObject")
-							local inputType =
-								environment.propertyOf(Environment.assertInstance(input), "UserInputType") :: Datatypes.EnumMember
+							local inputType = environment.propertyOf(Environment.assertInstance(input), "UserInputType")
 							if inputType ~= lastInput then
 								lastInput = inputType
 								environment.fire(service, "LastInputTypeChanged", inputType)

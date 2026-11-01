@@ -1,6 +1,7 @@
 --!strict
 
 local Scheduler = require "./scheduler"
+local Vm = require "./value"
 
 export type Connection = {
 	Connected: boolean,
@@ -15,6 +16,7 @@ export type Signal<A... = ...unknown> = {
 }
 
 export type Method<A... = ...unknown, R... = ...unknown> = (A...) -> R...
+export type InstanceMethod = (Object, ...unknown) -> ...unknown
 export type Object = {
 	ClassName: string,
 	IsA: (Object, string) -> boolean,
@@ -146,7 +148,7 @@ export type Environment = {
 		cancel: (thread: thread) -> (),
 	},
 	errors: { string },
-	defineClass: <P, M>(className: string, spec: ClassSpec<P, M>, options: DefineOptions?) -> (),
+	defineClass: (className: string, spec: ClassSpec, options: DefineOptions?) -> (),
 	fake: <A..., R...>(member: string, handler: (Instance, A...) -> R...) -> (),
 	hasFake: (object: Instance, member: string) -> boolean,
 	fakeOn: <O, A..., R...>(object: O, name: string, handler: (O, A...) -> R...) -> () -> (),
@@ -156,12 +158,17 @@ export type Environment = {
 	releaseObject: (object: Object) -> (),
 	snapshot: (object: Instance) -> Snapshot,
 	newSignal: <A...>() -> Signal<A...>,
+	connect: (signal: unknown, handler: (...unknown) -> ()) -> Connection,
 	step: (seconds: number) -> (),
 	now: () -> number,
 	childrenOf: (object: Instance) -> { Instance },
 	parentOf: (object: Instance) -> Instance?,
 	descendantOrderOf: (ancestor: Instance, object: Instance) -> number?,
 	propertyOf: (object: Object, key: string) -> unknown,
+	method: (object: Object, name: string) -> InstanceMethod,
+	event: (object: Object, name: string) -> Signal,
+	assertInstance: (unknown) -> Instance,
+	assertObject: (unknown) -> Object,
 	defaultPropertyOf: (object: Instance, key: string) -> unknown,
 	defaultClassProperty: (className: string, key: string) -> unknown,
 	tagsOf: (object: Instance) -> { string },
@@ -182,8 +189,8 @@ export type Environment = {
 	onClone: (hook: CloneHook) -> Connection,
 	onCreate: (hook: CreateHook) -> Connection,
 	signalOf: (object: Instance, event: string) -> SignalHandle,
-	connectionsOf: (signal: Signal) -> number,
-	firesOf: (signal: Signal) -> number,
+	connectionsOf: <A...>(signal: Signal<A...>) -> number,
+	firesOf: <A...>(signal: Signal<A...>) -> number,
 	connectionsOfInstance: (object: Instance) -> number,
 }
 
@@ -195,6 +202,8 @@ export type Resolved = {
 	events: { [string]: true },
 	methods: { [string]: unknown },
 }
+
+export type Override = { handler: Vm.Value?, previous: Override?, active: boolean }
 
 export type State = {
 	worldPivotSet: boolean?,
@@ -209,7 +218,7 @@ export type State = {
 	signals: { [string]: Signal },
 	signalFires: { [string]: number },
 	extras: { [string]: boolean },
-	doubles: { [string]: unknown },
+	doubles: { [string]: Override },
 	bound: { [string]: unknown }?,
 	destroyed: boolean,
 	destroying: boolean,

@@ -1,6 +1,7 @@
 --!strict
 --!nolint DeprecatedApi
 
+local Shape = require "../core/shape"
 local Operations = require "../core/operations"
 local Native = require "./experience-host"
 
@@ -14,7 +15,7 @@ local function finite(value: unknown): number
 end
 local function vector(value: unknown): Vector
 	assert(type(value) == "table", "expected vector record")
-	local fields = value :: { [string]: unknown }
+	local fields = Shape.record(value, "player state")
 	return { x = finite(fields.x), y = finite(fields.y), z = finite(fields.z) }
 end
 local function empty(value: unknown): nil
@@ -27,7 +28,7 @@ local function text(value: unknown): string
 end
 local function state(value: unknown): State
 	assert(type(value) == "table", "expected player state")
-	local fields = value :: { [string]: unknown }
+	local fields = Shape.record(value, "player state")
 	assert(fields.equipped == nil or type(fields.equipped) == "string", "invalid equipped tool")
 	return {
 		position = vector(fields.position),
@@ -37,10 +38,13 @@ local function state(value: unknown): State
 		equipped = if type(fields.equipped) == "string" then fields.equipped else nil,
 	}
 end
-local move = Operations.operation { kind = "action", name = "player.move", input = vector, output = empty }
+local move =
+	Operations.operation<<Vector, nil>> { kind = "action", name = "player.move", input = vector, output = empty }
 local jump = Operations.operation { kind = "action", name = "player.jump", input = empty, output = empty }
-local equip = Operations.operation { kind = "action", name = "player.equip", input = text, output = empty }
-local inspect = Operations.operation { kind = "query", name = "player.state", input = empty, output = state }
+local equip =
+	Operations.operation<<string, nil>> { kind = "action", name = "player.equip", input = text, output = empty }
+local inspect =
+	Operations.operation<<nil, State>> { kind = "query", name = "player.state", input = empty, output = state }
 
 local function registry(backend: Backend): Native.Registry
 	return {

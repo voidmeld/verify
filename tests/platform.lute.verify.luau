@@ -144,12 +144,13 @@ describe("single platform execution", function()
 				calls += 1
 			end,
 		}
+		local options: Core.RunOptions = { executor = "selection" }
 		local selections: { { string } } = { { "missing" }, { "known", "known" }, {} }
 		for _, ids in selections do
-			local ok = pcall(Core.runCases, { spec }, { executor = "selection" }, os.clock, ids)
+			local ok = pcall(Core.runCases, { spec }, options, os.clock, ids)
 			expect(ok):toEqual(false)
 		end
-		local duplicate = pcall(Core.runCases, { spec, spec }, { executor = "selection" }, os.clock)
+		local duplicate = pcall(Core.runCases, { spec, spec }, options, os.clock, nil)
 		expect(duplicate):toEqual(false)
 		expect(calls):toEqual(0)
 	end)

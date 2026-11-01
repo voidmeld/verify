@@ -306,7 +306,7 @@ end
 local function decoded(exchange: Exchange): { [string]: unknown }?
 	local parsed, value = pcall(Wire.parse, exchange.body or "")
 	if parsed and type(value) == "table" then
-		return value :: { [string]: unknown }
+		return Wire.record(value)
 	end
 	return nil
 end
@@ -372,10 +372,10 @@ local function collectLogs(config: Config, handle: Handle, diagnostics: { string
 		end
 		local chunks = page.luauExecutionSessionTaskLogs
 		if type(chunks) == "table" then
-			for _, chunk in chunks :: { unknown } do
-				local messages = if type(chunk) == "table" then (chunk :: { [string]: unknown }).messages else nil
+			for _, chunk in chunks do
+				local messages = if type(chunk) == "table" then Wire.record(chunk).messages else nil
 				if type(messages) == "table" then
-					for _, message in messages :: { unknown } do
+					for _, message in messages do
 						if type(message) == "string" then
 							table.insert(lines, message)
 						end
@@ -409,7 +409,7 @@ local function boundReport(results: unknown, runId: string): (Core.Report?, stri
 				visit(inner)
 			end
 		elseif type(value) == "table" then
-			local object = value :: { [unknown]: unknown }
+			local object = Wire.record(value)
 			if object.runId ~= nil then
 				if object.runId == runId then
 					local received, report = pcall(Channel.receive, value, runId)
@@ -423,7 +423,7 @@ local function boundReport(results: unknown, runId: string): (Core.Report?, stri
 				end
 				return
 			end
-			for _, child in object do
+			for _, child in value do
 				visit(child)
 			end
 		end
@@ -458,7 +458,7 @@ local function finish(
 	assert(type(state) == "string")
 	local logs = if collect then collectLogs(config, handle, diagnostics) else ""
 	local output = terminal.output
-	local results = if type(output) == "table" then (output :: { [string]: unknown }).results else nil
+	local results = if type(output) == "table" then Wire.record(output).results else nil
 	local function done(
 		status: "returned" | "faulted" | "timed_out" | "refused",
 		detail: string?,
@@ -472,7 +472,7 @@ local function finish(
 			state = state,
 			handle = handle,
 			report = report,
-			results = if type(results) == "table" then results :: { unknown } else nil,
+			results = if type(results) == "table" then Wire.array(results) else nil,
 			task = terminal,
 			detail = detail,
 			logs = logs,
@@ -483,8 +483,8 @@ local function finish(
 		local failure = terminal.error
 		local text = if type(failure) == "table"
 			then ("%s: %s"):format(
-				tostring((failure :: { [string]: unknown }).code or "ERROR"),
-				tostring((failure :: { [string]: unknown }).message or "")
+				tostring(Wire.record(failure).code or "ERROR"),
+				tostring(Wire.record(failure).message or "")
 			)
 			else "task ended " .. state
 		return done("faulted", "task " .. state .. ": " .. text, nil)
@@ -583,7 +583,9 @@ local function configure(options: Options): Config
 		logPages = math.floor(finiteSeconds(options.logPages, 20)),
 		logBytes = math.floor(finiteSeconds(options.logBytes, 65536)),
 		now = options.now or os.clock,
-		sleep = options.sleep or task.wait,
+		sleep = options.sleep or function(seconds: number)
+			task.wait(seconds)
+		end,
 	}
 end
 

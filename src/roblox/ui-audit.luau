@@ -210,7 +210,11 @@ local function analyze(dump: Dump, options: Options?): Report
 	local function add(rule: string, element: Element?, detail: string, value: number?)
 		local severity: Severity = RULES[rule]
 		counts[rule] = (counts[rule] or 0) + 1
-		penalties[rule] = (penalties[rule] or 0) + resolved.weights[severity]
+		local weight = if severity == "high"
+			then resolved.weights.high
+			elseif severity == "medium" then resolved.weights.medium
+			else resolved.weights.low
+		penalties[rule] = (penalties[rule] or 0) + weight
 		local violation: Violation = {
 			rule = rule,
 			severity = severity,

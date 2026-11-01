@@ -65,7 +65,7 @@ local function strings(value: unknown): { string }
 		error("batch wire string list must be an array", 3)
 	end
 	local result: { string } = {}
-	for _, item in value :: { unknown } do
+	for _, item in value do
 		if type(item) == "string" then
 			table.insert(result, item)
 		end
@@ -81,7 +81,7 @@ local function decode(encoded: string): PlanBatch
 	if type(value) ~= "table" then
 		error("a batch must decode to a table", 2)
 	end
-	local raw = value :: { [string]: unknown }
+	local raw = Wire.record(value)
 	if raw.wireVersion ~= WIRE_VERSION then
 		error(("unsupported batch wire version %s; expected %d"):format(tostring(raw.wireVersion), WIRE_VERSION), 2)
 	end
@@ -90,9 +90,9 @@ local function decode(encoded: string): PlanBatch
 	end
 	assert(type(raw.units) == "table", "batch wire units must be an array")
 	local units: { PlanUnit } = {}
-	for _, rawUnit in raw.units :: { unknown } do
+	for _, rawUnit in raw.units do
 		assert(type(rawUnit) == "table", "batch unit must be a table")
-		local item = rawUnit :: { [string]: unknown }
+		local item = Wire.record(rawUnit)
 		table.insert(units, {
 			id = requiredString(item.id, "unit id"),
 			locator = requiredString(item.locator, "unit locator"),

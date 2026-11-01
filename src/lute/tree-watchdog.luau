@@ -59,7 +59,7 @@ local function watch(seconds: number, argv: { string })
 	local finished: process.ProcessResult? = nil
 	local failure: string? = nil
 	task.spawn(function()
-		local ran, value = pcall(process.run, reporter)
+		local ran, value = pcall(process.run, reporter, nil)
 		if ran then
 			finished = value
 		else
@@ -89,7 +89,7 @@ local function watch(seconds: number, argv: { string })
 	local detail = ""
 	local pid = readIfPresent(pidPath)
 	if pid ~= nil and string.match(pid, "^%d+$") ~= nil then
-		local killed, result = pcall(process.run, { "taskkill", "/T", "/F", "/PID", pid })
+		local killed, result = pcall(process.run, { "taskkill", "/T", "/F", "/PID", pid }, nil)
 		if not killed then
 			detail = "taskkill could not be started: " .. tostring(result)
 		elseif (result).exitcode ~= 0 then

@@ -109,25 +109,23 @@ local function statusOf(report: Report, producer: Producer): (Status, string?)
 	if own == nil then
 		return "failed", "the producer case is missing from its report"
 	end
-	local status: Status = "failed"
-	local detail: string? = nil
-	if own.status == "passed" then
-		status = "passed"
-	elseif own.status == "timed_out" then
-		status = "timed_out"
-	elseif own.status == "unsupported" then
-		status = "unsupported"
-	elseif own.status == "skipped" then
-		status = if own.skipReason ~= nil and string.sub(own.skipReason, 1, 9) == "deferred:"
-			then "deferred"
-			else "failed"
-	end
-	if status ~= "passed" then
-		detail = if #own.failures > 0 then own.failures[1].message else own.skipReason
+	if own.status ~= "passed" then
+		local detail = if #own.failures > 0 then own.failures[1].message else own.skipReason
 		if detail == nil and #own.missingCapabilities > 0 then
 			detail = "missing " .. table.concat(own.missingCapabilities, ", ")
 		end
-		return status, detail
+		if own.status == "timed_out" then
+			return "timed_out", detail
+		elseif own.status == "unsupported" then
+			return "unsupported", detail
+		elseif
+			own.status == "skipped"
+			and own.skipReason ~= nil
+			and string.sub(own.skipReason, 1, 9) == "deferred:"
+		then
+			return "deferred", detail
+		end
+		return "failed", detail
 	end
 	local notPassed = 0
 	local adopted = 0
@@ -170,7 +168,12 @@ local function receive(producer: Producer, document: unknown, ctx: Context, bare
 		if type(document) ~= "table" then
 			return nil, "the report file is not a run-bound envelope"
 		end
-		local fields = document :: { [string]: unknown }
+		local fields: { [string]: unknown } = {}
+		for key, item in document do
+			if type(key) == "string" then
+				fields[key] = item
+			end
+		end
 		if fields.runId ~= ctx.runId then
 			return nil,
 				("the report belongs to run %s, not the current run %s"):format(tostring(fields.runId), ctx.runId)

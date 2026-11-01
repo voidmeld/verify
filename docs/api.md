@@ -157,6 +157,8 @@ The [one case model](experience.md#one-case-model) owns typed operations, host b
 
 Cleanup runs once, newest first. Setup, case, teardown and cleanup failures stay visible independently. A later failure does not erase an earlier one. Hooks and cleanup use the same invocation contract as the case. An artifact reference records a location. It does not save or authenticate bytes.
 
+`Artifact` and `Judgment` fields are read-only. Checkpoints retain frozen copies of captured artifacts and judgments. Report processing replaces an artifact or judgment when its data changes.
+
 #### Inline attachments
 
 `context:attach(name, mediaType, text)` records text that the case produced in the engine. The text travels in the report. The host then writes it to a file and replaces it with an ordinary artifact entry. The entry has `reference`, `mediaType`, `size` and `sha256`. `Evidence.seal` stores it like any other artifact. Attachments are data. They never prove that a case passed.
@@ -211,7 +213,7 @@ The surface contains `describe`, `it`, `itSkip`, `beforeEach`, `afterEach`, `exp
 
 `createSession(options) -> Session`
 
-`Core.createSession` keeps the type of the factory surface in `verbs` and `current()`. It owns one registry per source. Use it when modules register their cases as they load. The options require `executor` and `environment`. Optional fields are `capabilities`, `now`, `surface`, `runtimeVerbs`, `prefixCaseIds` and `selection`. With solver v2, declare factory options as `Core.SessionProvidedOptions<YourSurface>` before you call the overloaded constructor.
+`Core.createSession` owns one harness per source. Use it when modules register their cases as they load. The options require `executor` and `environment`. Optional fields are `capabilities`, `now`, `bind`, `cancelled`, `prefixCaseIds` and `selection`.
 
 ```luau
 local session = Core.createSession {
@@ -232,13 +234,19 @@ local report = session:run()
 | --- | --- |
 | `open(source)` / `close()` | Enter and leave the registration scope of a source. |
 | `harness()` / `current()` | Access the harness or the given surface of the active source. |
-| `verbs` | Route calls through the surface of the active source. |
+| `active()` | Access the running surface, or the registering surface outside a run. |
 | `adoptReport(source, report)` | Include an existing source report. |
 | `sourceReport(id, source, status, detail)` | Construct a source-level failed or skipped report. |
 | `setSelection(selection?)` | Set which cases to run. |
 | `run()` / `reset()` | Execute the queued sources or reset the session state. |
 
-Call session methods with `:`. A `surface` factory maps registration verbs to each harness. `runtimeVerbs` routes verbs such as `skip` while cases run. A reset or a reentry during a run fails and keeps the queued sources. The [worker examples](execution.md#lute-workers) show module-loading integration.
+Call session methods with `:`. A `surface` factory maps registration functions to each harness. Use `current()` for registration and `active()` for operations such as `skip` that also run inside cases. A reset or a reentry during a run fails and keeps the queued sources. The [worker examples](execution.md#lute-workers) show module-loading integration.
+
+### `Core.createSurfaceSession`
+
+`createSurfaceSession(options) -> Session`
+
+`Core.createSurfaceSession` takes the options of `Core.createSession` and also requires a `surface` factory. It preserves the return type of the factory. Declare its options as `Core.SessionProvidedOptions<YourSurface>` when needed.
 
 ---
 
@@ -894,6 +902,7 @@ Each module runs in its own environment:
 - `warn(...)` prints the arguments with the prefix `[warn]`.
 - `getfenv(0)` returns the environment of the module. `getfenv(f)` returns the environment of a function that a module returned.
 - `require` resolves `./` and `../` paths, `@self/` children and the aliases in `options.aliases`. `@std/` and `@lute/` load from the runtime.
+- Alias names can contain path segments. The longest matching alias wins at a path boundary. An exact alias loads its root module. Aliases and relative paths to the same file share one module instance.
 - Each name in `options.globals` is a global, for example `game`, `Instance` or `Enum` from an engine fixture. A name in `options.globals` replaces `typeof` and `warn`.
 - `options.transform(path, source)` returns the source to load for a file. Use it to change one module in a test.
 - `options.files = { exists(path), readFile(path) }` provides the module files. Without this option, the loader uses the host filesystem. Use an in-memory file table when module loads must complete without filesystem waits. Both functions receive normalized paths relative to the working directory.
@@ -1158,9 +1167,13 @@ Compose reports with validated provenance.
 
 Decode unknown data as a validated report.
 
+Report records must be plain tables. Records with metatables fail validation before their fields are read.
+
 ### `Core.execute`
 
 Execute an explicit plan with given executors.
+
+A host must return a plain batch outcome. Verify records a malformed outcome as an execution fault.
 
 ### `Core.extract`
 
@@ -1537,7 +1550,7 @@ Check Git-selected repository files against configured leakage rules.
 
 ### `Checks.noAny`
 
-Require strict maintained Luau and reject explicit dynamic type escapes.
+Require strict maintained `.luau` and `.lua` files and reject explicit `any` and every type assertion (`::`), including concrete casts. Malformed source fails closed.
 
 ### `Checks.specStyle`
 

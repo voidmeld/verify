@@ -1,4 +1,5 @@
 --!strict
+local Vm = require "./value"
 
 local Types = require "./place-types"
 local installServices = require "./place-services"
@@ -15,7 +16,7 @@ export type Cache<B = unknown, C = Chunk> = Types.Cache<B, C>
 export type Mounted = Types.Mounted
 export type Client = Types.Client
 export type Options<B = unknown> = Types.Options<B>
-type Entry = { status: string, waiters: { thread }, value: unknown, failure: unknown }
+type Entry = { status: string, waiters: { thread }, value: Vm.Value, failure: unknown }
 
 local function createCache<B, C>(host: Host<B, C>): Cache<B, C>
 	local texts: { [string]: string } = {}
@@ -73,14 +74,24 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	local fileModules: { [string]: Entry } = {}
 	local globals: { [string]: unknown } = {}
 
-	local function context(): string
+	local function tagField(name: string, fallback: string): string
 		local tag = scheduler.context()
-		return if type(tag) == "table" then (tag :: { context: string }).context else "server"
+		if type(tag) == "table" then
+			for key, value in tag do
+				if key == name then
+					assert(type(value) == "string", "scheduler context fields require strings")
+					return value
+				end
+			end
+		end
+		return fallback
+	end
+	local function context(): string
+		return tagField("context", "server")
 	end
 
 	local function source(): string
-		local tag = scheduler.context()
-		return if type(tag) == "table" then (tag :: { source: string }).source else "engine"
+		return tagField("source", "engine")
 	end
 
 	engine.setSourceResolver(source)
@@ -88,7 +99,8 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		engine.record("error", message, source())
 	end)
 
-	local resolveInstanceRequire: (Instance, string) -> unknown
+	local resolveInstanceRequire: (Instance, string) -> Vm.Value
+	local requireInstance: (unknown) -> Vm.Value
 
 	local function inherit(values: { [string]: unknown })
 		setmetatable(values, { __index = globals })
@@ -108,15 +120,14 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			if type(target) == "string" then
 				return resolveInstanceRequire(scriptInstance, target)
 			end
-			return (globals.require :: (unknown) -> unknown)(target)
+			return requireInstance(target)
 		end
 		return environment
 	end
 
-	local requireInstance: (unknown) -> unknown
-	local requirePath: (string) -> unknown
+	local requirePath: (string) -> Vm.Value
 
-	local function awaitEntry(entry: Entry): unknown
+	local function awaitEntry(entry: Entry): Vm.Value
 		if entry.status == "loading" then
 			scheduler.block(function(thread: thread)
 				table.insert(entry.waiters, thread)
@@ -128,7 +139,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		return entry.value
 	end
 
-	local function settle(entry: Entry, status: string, value: unknown)
+	local function settle(entry: Entry, status: string, value: Vm.Value)
 		entry.status = status
 		if status == "done" then
 			entry.value = value
@@ -142,7 +153,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		end
 	end
 
-	function requirePath(path: string): unknown
+	function requirePath(path: string): Vm.Value
 		local cached = fileModules[path]
 		if cached ~= nil then
 			return awaitEntry(cached)
@@ -155,7 +166,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		end
 		local entry: Entry = { status = "loading", waiters = {}, value = nil, failure = nil }
 		fileModules[path] = entry
-		local ok, value = pcall(function(): unknown
+		local ok, value = pcall(function(): Vm.Value
 			return cache.load(path, environment)()
 		end)
 		settle(entry, if ok then "done" else "failed", value)
@@ -165,7 +176,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		return value
 	end
 
-	function resolveInstanceRequire(scriptInstance: Instance, target: string): unknown
+	function resolveInstanceRequire(scriptInstance: Instance, target: string): Vm.Value
 		local selfPath = string.match(target, "^@self/(.+)$")
 		local base: Instance? = nil
 		local rest: string? = nil
@@ -176,7 +187,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			local container = scriptInstance.Parent
 			local upward = string.match(target, "^%.%./(.+)$")
 			if upward ~= nil then
-				base = (container :: Instance).Parent
+				base = assert(container).Parent
 				rest = upward
 			else
 				local sibling = string.match(target, "^%./(.+)$")
@@ -190,7 +201,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			return requireInstance(target)
 		end
 		local walk = base
-		for segment in string.gmatch(rest :: string, "[^/]+") do
+		for segment in string.gmatch(assert(rest), "[^/]+") do
 			local child = if segment == ".."
 				then walk.Parent
 				elseif segment == "." then walk
@@ -206,7 +217,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		return requireInstance(walk)
 	end
 
-	function requireInstance(target: unknown): unknown
+	function requireInstance(target: unknown): Vm.Value
 		if type(target) == "string" then
 			local resolved = resolveAlias(aliases, target)
 			if resolved == nil then
@@ -232,7 +243,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		end
 		local entry: Entry = { status = "loading", waiters = {}, value = nil, failure = nil }
 		moduleCache[object] = entry
-		local ok, value = pcall(function(): unknown
+		local ok, value = pcall(function(): Vm.Value
 			return cache.load(path, environmentFor(object))()
 		end)
 		local failure = "Requested module experienced an error while loading"
@@ -246,7 +257,8 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 
 	runtime.localPlayer = nil
 	runtime.closeHandlers = {}
-	runtime.renderSteps = {} :: { [string]: (number) -> () }
+	local renderSteps: { [string]: (number) -> () } = {}
+	runtime.renderSteps = renderSteps
 	runtime.tagAdded = {}
 	runtime.tagRemoved = {}
 	runtime.guidCount = 0
@@ -286,7 +298,10 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			return template:Clone()
 		end,
 	}
-	for name, value in (engine.datatypes :: unknown) :: { [string]: unknown } do
+	local datatypeGlobals: unknown = engine.datatypes
+	assert(type(datatypeGlobals) == "table", "expected datatype globals")
+	for name, value in datatypeGlobals do
+		assert(type(name) == "string", "expected datatype global name")
 		globals[name] = value
 	end
 	globals.typeof = engine.typeName
@@ -333,11 +348,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	globals.bit32 = bit32
 	globals.utf8 = utf8
 	globals.buffer = buffer
-	local runtimeDebug: { [string]: unknown } = {}
-	for name, value in debug do
-		assert(type(name) == "string")
-		runtimeDebug[name] = value
-	end
+	local runtimeDebug: { [string]: unknown } = { info = debug.info, traceback = debug.traceback }
 	runtimeDebug.profilebegin = function(label: string)
 		assert(type(label) == "string", "profile label must be a string")
 	end
@@ -379,7 +390,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	function runtime.runScript(scriptInstance: Instance, scriptContext: string): thread?
 		local path = mounted.sources[scriptInstance]
 		if path == nil then
-			return
+			return nil
 		end
 		local name = scriptInstance:GetFullName()
 		local thread = coroutine.create(function()
@@ -403,6 +414,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 		local run = engine.service "RunService"
 		scheduler.advance(seconds)
 		scheduler.drain(64)
+		environment.heartbeat:Fire(seconds)
 		if options.beforeRender then
 			options.beforeRender()
 		end

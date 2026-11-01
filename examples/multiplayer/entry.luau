@@ -1,6 +1,7 @@
 --!strict
 --!nolint DeprecatedApi
 
+local Shape = require "../../src/core/shape"
 local Core = require "../../src/core"
 local Roblox = require "../../src/roblox"
 local Multi = Roblox.multiplayer
@@ -14,9 +15,7 @@ type Object = {
 	GetAttribute: (Object, string) -> unknown,
 	SetAttribute: (Object, string, unknown) -> (),
 }
-type Remote = Object & Roblox.MultiplayerRemote & {
-	OnServerEvent: { Connect: (unknown, (Roblox.MultiplayerPlayer) -> ()) -> Roblox.MultiplayerConnection },
-}
+type Remote = Object & Roblox.MultiplayerRemote
 type Globals = {
 	game: { GetService: ((unknown, "ReplicatedStorage") -> Object) & ((unknown, "Players") -> unknown) },
 	Instance: { new: (("RemoteEvent") -> Remote) & (("IntValue") -> Object) },
@@ -62,7 +61,8 @@ local factory: Roblox.CaseEntryFactory = function(host)
 								return { x = 320, y = 250 }
 							end
 							assert(request.name == "input.pointer", "unknown operation")
-							local pointer = request.payload :: { x: number, y: number, down: boolean }
+							local pointer = Shape.record(request.payload, "pointer")
+							assert(type(pointer) == "table" and type(pointer.down) == "boolean")
 							assert(pointer.x == 320 and pointer.y == 250, "pointer missed button")
 							if pressed and not pointer.down then
 								count += 1
@@ -70,7 +70,7 @@ local factory: Roblox.CaseEntryFactory = function(host)
 							pressed = pointer.down
 							return nil
 						end,
-						capture = function(actor, checkpoint)
+						capture = function(actor: string, checkpoint: string): { Core.Artifact }
 							return {
 								{
 									name = checkpoint,
@@ -114,11 +114,13 @@ local factory: Roblox.CaseEntryFactory = function(host)
 					click:Destroy()
 					counter:Destroy()
 				end)
-				local connection = click.OnServerEvent:Connect(function(player)
-					if player.Parent == players then
-						counter.Value += 1
+				local connection = click.OnServerEvent:Connect(
+					function(player: Roblox.MultiplayerPlayer, _payload: unknown)
+						if player.Parent == players then
+							counter.Value += 1
+						end
 					end
-				end)
+				)
 				context:defer(function()
 					connection:Disconnect()
 				end)

@@ -12,12 +12,12 @@ end
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 
-local function scale(model: Roblox.Instance, value: number)
-	(model.ScaleTo :: (Roblox.Instance, number) -> ())(model, value)
+local function scale(environment: Roblox.Environment, model: Roblox.Instance, value: number)
+	environment.method(model, "ScaleTo")(model, value)
 end
 
-local function factor(model: Roblox.Instance): number
-	return (model.GetScale :: (Roblox.Instance) -> number)(model)
+local function factor(environment: Roblox.Environment, model: Roblox.Instance): number
+	return asNumber(environment.method(model, "GetScale")(model))
 end
 
 it("model scaling preserves pivot, nested factors, edits and clone scale", function()
@@ -32,23 +32,23 @@ it("model scaling preserves pivot, nested factors, edits and clone scale", funct
 	local child = engine.newInstance "Part"
 	child.Size, child.CFrame, child.Parent = types.Vector3.new(2, 2, 2), types.CFrame.new(20, 0, 0), nested
 	nested.PrimaryPart = child
-	scale(nested, 3)
+	scale(engine.environment, nested, 3)
 	nested.Parent = model
-	scale(model, 2)
-	expect(factor(model)):toBe(2)
-	expect(factor(nested)):toBe(6)
+	scale(engine.environment, model, 2)
+	expect(factor(engine.environment, model)):toBe(2)
+	expect(factor(engine.environment, nested)):toBe(6)
 	expect(part.Size):toBe(types.Vector3.new(4, 8, 12))
 	expect(part.Position):toBe(types.Vector3.new(9, 0, 0))
 	expect(child.Position):toBe(types.Vector3.new(29, 0, 0))
 	expect(child.Size):toBe(types.Vector3.new(12, 12, 12))
-	expect(factor(assert(model:Clone()))):toBe(2)
+	expect(factor(engine.environment, assert(model:Clone()))):toBe(2)
 	part.Size = types.Vector3.new(10, 10, 10)
-	scale(model, 4)
+	scale(engine.environment, model, 4)
 	expect(part.Size):toBe(types.Vector3.new(20, 20, 20))
-	scale(model, 1)
+	scale(engine.environment, model, 1)
 	expect(part.Size):toBe(types.Vector3.new(5, 5, 5))
-	expect(factor(nested)):toBe(3)
-	scale(nested, 1)
+	expect(factor(engine.environment, nested)):toBe(3)
+	scale(engine.environment, nested, 1)
 	expect(child.Size):toBe(types.Vector3.new(2, 2, 2))
 end)
 it("model scaling distinguishes constraint geometry from motor transforms and light range", function()
@@ -71,7 +71,7 @@ it("model scaling distinguishes constraint geometry from motor transforms and li
 	humanoid.WalkSpeed, humanoid.JumpPower, humanoid.Parent = 16, 50, model
 	local emitter = engine.newInstance "ParticleEmitter"
 	emitter.Size, emitter.Speed, emitter.Parent = types.NumberSequence.new(2), types.NumberRange.new(2, 4), model
-	scale(model, 2)
+	scale(engine.environment, model, 2)
 	expect(attachment.CFrame):toBe(types.CFrame.new(2, 4, 6))
 	expect(motor.C0):toBe(types.CFrame.new(2, 4, 6))
 	expect(motor.Transform):toBe(types.CFrame.new(3, 4, 5))
@@ -89,9 +89,9 @@ it("model scaling distinguishes constraint geometry from motor transforms and li
 	local constraint = engine.newInstance "HingeConstraint"
 	constraint.Parent = model
 	expect((pcall(function()
-		scale(model, 4)
+		scale(engine.environment, model, 4)
 	end))):toBe(false)
-	expect(factor(model)):toBe(2)
+	expect(factor(engine.environment, model)):toBe(2)
 	expect(attachment.CFrame):toBe(types.CFrame.new(2, 4, 6))
 end)
 

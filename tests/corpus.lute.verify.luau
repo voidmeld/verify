@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Plan = require "../src/core/plan"
 local Corpus = require "../src/lute/corpus"
 local Verify = require "../src/core"
+local Lute = require "../src/lute"
 
 type Tree = { [string]: { Corpus.DirEntry } }
 
@@ -112,12 +113,12 @@ describe("corpus discovery", function()
 	end)
 
 	it("refuses a rule with no root or no pattern rather than walking nothing quietly", function()
-		local noRoot, rootThrown: unknown =
-			pcall(Corpus.discover, { listDir = listDir {}, rules = { { root = "", pattern = "x" } } })
+		local rootless: Corpus.Discovery = { listDir = listDir {}, rules = { { root = "", pattern = "x" } } }
+		local noRoot, rootThrown: unknown = pcall(Corpus.discover, rootless)
 		expect(noRoot):toEqual(false)
 		expect((tostring(rootThrown))):toContain "has no root"
-		local noPattern, patternThrown: unknown =
-			pcall(Corpus.discover, { listDir = listDir {}, rules = { { root = "units", pattern = "" } } })
+		local patternless: Corpus.Discovery = { listDir = listDir {}, rules = { { root = "units", pattern = "" } } }
+		local noPattern, patternThrown: unknown = pcall(Corpus.discover, patternless)
 		expect(noPattern):toEqual(false)
 		expect((tostring(patternThrown))):toContain "has no pattern"
 	end)
@@ -190,8 +191,9 @@ describe("corpus fixture grouping", function()
 		for _, file in files do
 			table.insert(units, { id = file, locator = file, group = groupOf[file] })
 		end
+		local plan: Verify.PlanDraft = { id = "corpus", units = units }
 		for batchCount = 1, 5 do
-			local batches = Plan.partition({ id = "corpus", units = units }, batchCount)
+			local batches = Plan.partition(plan, batchCount)
 			local home: { [string]: number } = {}
 			for _, batch in batches do
 				for _, unit in batch.units do
@@ -266,7 +268,10 @@ describe("corpus selection", function()
 	end)
 
 	it("refuses a query naming both a pattern and a literal name", function()
-		local asked, thrown: unknown = pcall(Corpus.selection, FILES, { name = "a", pattern = "b" })
+		local asked, thrown: unknown =
+			pcall(Lute.chunk.load('return Corpus.selection(files, { name = "a", pattern = "b" })', {
+				environment = { Corpus = Corpus, files = FILES },
+			}))
 		expect(asked):toEqual(false)
 		expect((tostring(thrown))):toContain "never both"
 	end)
@@ -304,8 +309,10 @@ describe("corpus lock bytes", function()
 
 	it("refuses a field that is neither a number nor a string", function()
 		local emitted, thrown: unknown = pcall(
-			Corpus.lockText,
-			{ { name = "s", fields = { { name = "f", value = (true :: unknown) :: string | number } } } }
+			Lute.chunk.load(
+				'return Corpus.lockText { { name = "s", fields = { { name = "f", value = true } } } }',
+				{ environment = { Corpus = Corpus } }
+			)
 		)
 		expect(emitted):toEqual(false)
 		expect((tostring(thrown))):toContain "neither a number nor a string"
@@ -372,12 +379,19 @@ describe("corpus discovery order", function()
 	end)
 
 	it("refuses an unknown order and a comparison that is not a function", function()
-		local notFunction: unknown = 3
-		local unknownOrder: unknown = "random"
-		local badOrder =
-			pcall(Corpus.discover, { listDir = listDir(tree), rules = rules, order = unknownOrder :: Corpus.Order })
-		local badCompare =
-			pcall(Corpus.discover, { listDir = listDir(tree), rules = rules, compare = notFunction :: Corpus.Compare })
+		local environment = { Corpus = Corpus, listDir = listDir(tree), rules = rules }
+		local badOrder = pcall(
+			Lute.chunk.load(
+				'return Corpus.discover { listDir = listDir, rules = rules, order = "random" }',
+				{ environment = environment }
+			)
+		)
+		local badCompare = pcall(
+			Lute.chunk.load(
+				"return Corpus.discover { listDir = listDir, rules = rules, compare = 3 }",
+				{ environment = environment }
+			)
+		)
 		expect(badOrder):toEqual(false)
 		expect(badCompare):toEqual(false)
 	end)

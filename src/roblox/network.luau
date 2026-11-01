@@ -50,7 +50,7 @@ type Cloned = { ok: true, value: Payload } | Refusal
 type Queued = { target: "server" | "client", client: string, message: Message, at: number, sequence: number }
 type ClientState = { connected: boolean, signal: Environment.Signal<Message> }
 
-local getMetatable = (getmetatable :: unknown) :: (unknown) -> unknown
+local getMetatable = getmetatable
 
 local function refuse(reason: RefusalReason, detail: string): Refusal
 	return { ok = false, reason = reason, detail = detail }
@@ -74,7 +74,7 @@ local function clonePayload(value: unknown, active: { [unknown]: boolean }, dept
 	elseif type(value) ~= "table" then
 		return refuse("invalid_payload", "payload supports only booleans, finite numbers, strings and plain tables")
 	end
-	local entries = value :: { [unknown]: unknown }
+	local entries = value
 	if getMetatable(entries) ~= nil then
 		return refuse("invalid_payload", "payload tables must not have metatables")
 	elseif active[value] then

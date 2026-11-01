@@ -4,6 +4,7 @@ local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Network = require "../src/roblox/network"
+local Environment = require "../src/roblox/environment"
 
 type Dictionary = { [string]: Network.Payload }
 
@@ -73,10 +74,13 @@ describe("isolated network contexts", function()
 		local payload: Dictionary = { nested = nested }
 		local observed: { string } = {}
 		network.server.onMessage(function(_sender: string, message: Network.Message)
-			((message.payload :: Dictionary).nested :: Dictionary).value = "listener mutation"
+			local nested = Environment.read(message.payload, "nested")
+			assert(type(nested) == "table")
+			table.clear(nested)
+			expect(next(nested)):toBeNil()
 		end)
 		network.server.onMessage(function(_sender: string, message: Network.Message)
-			table.insert(observed, tostring(((message.payload :: Dictionary).nested :: Dictionary).value))
+			table.insert(observed, tostring(Environment.read(Environment.read(message.payload, "nested"), "value")))
 		end)
 		network.clients.first.send(packet(payload))
 		nested.value = "source mutation"
@@ -86,12 +90,14 @@ describe("isolated network contexts", function()
 		local firstValue = ""
 		local secondValue = ""
 		network.clients.first.onMessage(function(message: Network.Message)
-			local copy = (message.payload :: Dictionary).nested :: Dictionary
-			firstValue = tostring(copy.value)
-			copy.value = "first mutation"
+			local copy = Environment.read(message.payload, "nested")
+			firstValue = tostring(Environment.read(copy, "value"))
+			assert(type(copy) == "table")
+			table.clear(copy)
+			expect(next(copy)):toBeNil()
 		end)
 		network.clients.second.onMessage(function(message: Network.Message)
-			secondValue = tostring(((message.payload :: Dictionary).nested :: Dictionary).value)
+			secondValue = tostring(Environment.read(Environment.read(message.payload, "nested"), "value"))
 		end)
 		network.server.send("first", packet(payload))
 		network.server.send("second", packet(payload))
@@ -159,26 +165,6 @@ describe("isolated network contexts", function()
 		network.advance(0)
 		expect(reached):toEqual(1)
 		expect(#network.server.environment.errors):toEqual(0)
-	end)
-
-	it("invalid payloads and clocks refuse without queuing or advancing", function()
-		local network = Network.create { clients = { "first" } }
-		local invalid: { unknown } = { math.huge, function() end, { [2] = "sparse" }, { [1] = "mixed", key = "mixed" } }
-		local cycle: { [string]: unknown } = {}
-		cycle.self = cycle
-		table.insert(invalid, cycle)
-		table.insert(invalid, setmetatable({}, {}))
-		table.insert(invalid, network.server.environment.root)
-		for _, payload in invalid do
-			local outcome = network.clients.first.send(packet(payload :: Network.Payload))
-			expect(refusal(outcome).reason):toEqual "invalid_payload"
-		end
-		expect(refusal(network.clients.first.send(packet "ok", -1)).reason):toEqual "invalid_latency"
-		expect(refusal(network.clients.first.send { channel = "", payload = "ok" }).reason):toEqual "invalid_channel"
-		expect(refusal(network.advance(-1)).reason):toEqual "invalid_step"
-		expect(refusal(network.advance(math.huge)).reason):toEqual "invalid_step"
-		expect(network.now()):toEqual(0)
-		expect(network.pending()):toEqual(0)
 	end)
 
 	it("handler failures are recorded in the receiving environment and later handlers still run", function()

@@ -77,13 +77,13 @@ local function check(config: Config): { string }
 		return false
 	end
 	local paths: { string } = {}
-	if config.root ~= nil then
-		for _, path in
-			Walk.pathsSkipping(config.root, { "" }, function(relative, kind)
-				return kind == "dir" and skipped(relative .. "/")
-			end)
-		do
-			local relative = string.sub(path, #config.root + 2)
+	local root = config.root
+	if root ~= nil then
+		local function skipDirectory(relative: string, kind: string): boolean
+			return kind == "dir" and skipped(relative .. "/")
+		end
+		for _, path in Walk.pathsSkipping(root, { "" }, skipDirectory) do
+			local relative = string.sub(path, #root + 2)
 			if skipped(relative) then
 				continue
 			end
@@ -105,7 +105,7 @@ local function check(config: Config): { string }
 		end
 	end
 	for _, path in paths do
-		local relative = string.sub(path, #(config.root :: string) + 2)
+		local relative = string.sub(path, #assert(root) + 2)
 		local basename = string.match(relative, "([^/]+)$") or relative
 		for _, name in descriptors do
 			if basename == name then

@@ -4,9 +4,8 @@ local Environment = require "./environment-types"
 
 type Instance = Environment.Instance
 
-local destroyed: Environment.ObserveFilter = { operations = { "destroy" :: Environment.Operation } }
-local seeking: Environment.ObserveFilter =
-	{ operations = { "setProperty" :: Environment.Operation }, members = { "TimePosition" } }
+local destroyed: Environment.ObserveFilter = { operations = { "destroy" } }
+local seeking: Environment.ObserveFilter = { operations = { "setProperty" }, members = { "TimePosition" } }
 type Curve = { [number]: number }
 
 local function attach(environment: Environment.Environment)
@@ -37,8 +36,9 @@ local function attach(environment: Environment.Environment)
 					active[object] = nil
 					continue
 				end
-				local position = (object.TimePosition :: number) + seconds * (object.PlaybackSpeed :: number)
-				local length = object.TimeLength :: number
+				local current, speed, length = object.TimePosition, object.PlaybackSpeed, object.TimeLength
+				assert(type(current) == "number" and type(speed) == "number" and type(length) == "number")
+				local position = current + seconds * speed
 				if length > 0 and position >= length then
 					if object.Looped == true then
 						local count = math.floor(position / length)

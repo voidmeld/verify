@@ -7,14 +7,35 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local PlaceRuntime = require "../src/roblox/place-runtime"
 local Environment = require "../src/roblox/environment"
+local VM = require "../src/roblox/value"
 local luau = require "@std/luau"
 local json = require "@std/json"
 local Lute = require "../src/lute"
 type Instance = PlaceRuntime.Instance
+
+local field = Environment.vm.read
+
+local function method(value: VM.Value): (...unknown) -> ...VM.Value
+	return function(...: unknown): ...VM.Value
+		return Environment.invoke(value, ...)
+	end
+end
+
+local function record(value: unknown)
+	assert(type(value) == "table")
+	return value
+end
+
+local function number(value: unknown): number
+	assert(type(value) == "number")
+	return value
+end
+
 local function engine(): Roblox.PlaceBootEngine
-	local environment = Roblox.testEnvironment { undeclaredWrites = true, undeclaredReads = "nil" }
+	local options: Environment.Options = { undeclaredWrites = true, undeclaredReads = "nil" }
+	local environment = Roblox.testEnvironment(options)
 	local declared: { [string]: boolean } = { Animator = true, Animation = true, AnimationTrack = true }
-	local events = {
+	local events: { [string]: { string } } = {
 		RunService = { "PreRender", "RenderStepped", "Heartbeat", "Stepped", "PreSimulation", "PostSimulation" },
 		Players = { "PlayerAdded" },
 		Player = { "CharacterAdded" },
@@ -22,7 +43,8 @@ local function engine(): Roblox.PlaceBootEngine
 	local function make(kind: string): Instance
 		if not declared[kind] then
 			if Environment.BASIC_CLASSES[kind] == nil then
-				environment.defineClass(kind, { super = "Instance", events = events[kind] })
+				local spec: Environment.ClassSpec = { super = "Instance", events = events[kind] }
+				environment.defineClass(kind, spec)
 			end
 			declared[kind] = true
 		end
@@ -86,7 +108,7 @@ local function sourceFixture(
 		or {}
 	local binding = settings.engine or engine()
 	local compilations = 0
-	local host: Roblox.PlaceBootHost<luau.Bytecode> = {
+	local host: PlaceRuntime.Host<luau.Bytecode> = {
 		readFile = function(path: string): string
 			return assert(sources[path], path)
 		end,
@@ -94,7 +116,7 @@ local function sourceFixture(
 			compilations += 1
 			return luau.compile(source)
 		end,
-		load = function(code: luau.Bytecode, name: string, globals: { [string]: unknown }): () -> unknown
+		load = function(code: luau.Bytecode, name: string, globals: { [string]: unknown }): () -> VM.Value
 			return luau.load(code, name, globals)
 		end,
 		encodeJson = function(value: unknown): string
@@ -127,6 +149,40 @@ local function sourceFixture(
 		end,
 	}
 end
+
+it("place tweens share progressive interpolation and easing with the engine", function()
+	local binding = Lute.fixture.bridge().placeEngine()
+	local fixture = sourceFixture({
+		["tween.luau"] = [[
+local service = game:GetService("TweenService")
+local frame = Instance.new("Frame")
+local tween = service:Create(frame, TweenInfo.new(1, Enum.EasingStyle.Linear), {Position = UDim2.fromOffset(100, 200)})
+tween:Play()
+return {
+    position = function() return frame.Position.X.Offset end,
+    ease = service:GetValue(0.5, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out),
+    cancel = function() tween:Cancel() end,
+    dispose = function() tween:Destroy() frame:Destroy() end,
+}
+]],
+	}, { "DataModel", "RunService", "TweenService" }, { engine = binding })
+	local loaded, result = pcall(fixture.runtime.requireInstance, fixture.module("Tween", "tween.luau"))
+	assert(loaded, Lute.encode(binding.diagnostics))
+	local resultRecord = result
+	local position, cancel, dispose =
+		method(field(resultRecord, "position")),
+		method(field(resultRecord, "cancel")),
+		method(field(resultRecord, "dispose"))
+	expect(position()):toBe(0)
+	expect(field(resultRecord, "ease")):toBe(0.875)
+	fixture.runtime.step(0.5)
+	expect(position()):toBe(50)
+	cancel()
+	fixture.runtime.step(0.5)
+	expect(position()):toBe(50)
+	dispose()
+	expect(binding.environment.scheduler.failures):toEqual {}
+end)
 
 it("MemoryStore handles preserve names without simulating backend operations", function()
 	local binding = Lute.fixture.bridge().placeEngine()
@@ -181,26 +237,20 @@ return {
 }
 ]],
 	}, { "DataModel", "Humanoid", "RunService" }, { engine = binding })
-	local subject = fixture.runtime.requireInstance(fixture.module("State", "state.luau")) :: {
-		state: () -> string,
-		parent: () -> (),
-		change: () -> (),
-		detach: () -> (),
-		changes: { { string } },
-	}
-	expect(subject.state()):toBe "None"
-	subject.change()
+	local subject = fixture.runtime.requireInstance(fixture.module("State", "state.luau"))
+	expect(method(field(subject, "state"))()):toBe "None"
+	method(field(subject, "change"))()
 	fixture.runtime.step(0.1)
-	expect(subject.state()):toBe "None"
-	subject.parent()
-	expect(subject.state()):toBe "Running"
-	subject.change()
-	expect(subject.state()):toBe "Running"
+	expect(method(field(subject, "state"))()):toBe "None"
+	method(field(subject, "parent"))()
+	expect(method(field(subject, "state"))()):toBe "Running"
+	method(field(subject, "change"))()
+	expect(method(field(subject, "state"))()):toBe "Running"
 	fixture.runtime.step(0.1)
-	expect(subject.state()):toBe "Physics"
-	expect(subject.changes):toEqual { { "Running", "Physics" } }
-	subject.detach()
-	expect(subject.state()):toBe "None"
+	expect(method(field(subject, "state"))()):toBe "Physics"
+	expect(field(subject, "changes")):toEqual { { "Running", "Physics" } }
+	method(field(subject, "detach"))()
+	expect(method(field(subject, "state"))()):toBe "None"
 	expect(binding.environment.scheduler.failures):toEqual {}
 end)
 
@@ -241,7 +291,7 @@ end)
 return function() return ready end
 ]],
 	}, { "DataModel", "ReplicatedFirst" }, { engine = binding })
-	local ready = fixture.runtime.requireInstance(fixture.module("Arrival", "arrival.luau")) :: () -> boolean
+	local ready = method(fixture.runtime.requireInstance(fixture.module("Arrival", "arrival.luau")))
 	binding.environment.scheduler.drain(64)
 	expect(binding.environment.scheduler.failures):toEqual {}
 	expect(ready()):toBe(true)
@@ -278,7 +328,7 @@ it("place defaults preserve configured service behavior and release their own ov
 	local fixture = sourceFixture({
 		["services.luau"] = "return function() return {game:GetService('DataStoreService'):GetDataStore('isolated'), game:GetService('RunService'):IsStudio(), workspace:GetServerTimeNow()} end",
 	}, { "DataModel", "DataStoreService", "RunService", "Workspace" }, { engine = binding })
-	local read = fixture.runtime.requireInstance(fixture.module("Services", "services.luau")) :: () -> unknown
+	local read = method(fixture.runtime.requireInstance(fixture.module("Services", "services.luau")))
 	local expected: { unknown } = { "configured store", true, 0 }
 	expect(read()):toEqual(expected)
 	refuse = true
@@ -289,9 +339,9 @@ it("place defaults preserve configured service behavior and release their own ov
 	for _, close in fixture.runtime.closeHandlers do
 		close()
 	end
-	expect((run.IsStudio :: (Instance) -> boolean)(run)):toBe(true)
+	expect(binding.environment.method(run, "IsStudio")(run)):toBe(true)
 	local store = binding.service "DataStoreService"
-	expect((store.GetDataStore :: (Instance, string) -> string)(store, "isolated")):toBe "configured store"
+	expect(binding.environment.method(store, "GetDataStore")(store, "isolated")):toBe "configured store"
 	expect((pcall(function()
 		return binding.service("Workspace").GetServerTimeNow
 	end))):toBe(false)
@@ -306,11 +356,11 @@ it("place services follow virtual time and input while retaining content URIs", 
 		["mesh.luau"] = "return game:GetService('AssetService'):CreateMeshPartAsync(Content.fromUri('rbxassetid://123')).MeshId",
 		["empty.luau"] = "return game:GetService('AssetService'):CreateMeshPartAsync(Content.none)",
 	}, { "DataModel", "RunService", "Workspace", "UserInputService", "AssetService" }, { engine = binding })
-	local clock = fixture.runtime.requireInstance(fixture.module("Clock", "clock.luau")) :: () -> number
-	local input = fixture.runtime.requireInstance(fixture.module("Input", "input.luau")) :: () -> unknown
-	local start = clock()
+	local clock = method(fixture.runtime.requireInstance(fixture.module("Clock", "clock.luau")))
+	local input = method(fixture.runtime.requireInstance(fixture.module("Input", "input.luau")))
+	local start = number(clock())
 	fixture.runtime.step(0.25)
-	expect(clock() - start):toBe(0.25)
+	expect(number(clock()) - start):toBe(0.25)
 	expect(input()):toBe(binding.datatypes.Enum.UserInputType.None)
 	local service = binding.service "UserInputService"
 	local event = binding.newInstance("InputObject", true)
@@ -346,7 +396,7 @@ it("project paths resolve beside the project and retain absolute source paths", 
 				fileType = function(): string
 					return "file"
 				end,
-				listDirectory = function()
+				listDirectory = function(): { { name: string, type: string } }
 					return {}
 				end,
 			},
@@ -378,9 +428,9 @@ return "client-ready"
 		end,
 	})
 	local module = fixture.module("Client", "fixture/client.luau")
-	local result: unknown = nil
+	local result: VM.Value = nil
 	local env = bridge.environment
-	local render = fixture.engine.service("RunService").RenderStepped :: Environment.Signal
+	local render = fixture.engine.environment.event(fixture.engine.service "RunService", "RenderStepped")
 	render:Connect(function()
 		table.insert(order, "render")
 	end)
@@ -416,12 +466,12 @@ return result
 	})
 	fixture.module("shared", "fixture/shared.luau")
 	local module = fixture.module("Client", "fixture/client.luau")
-	local result: { same: boolean? }? = nil
+	local result: VM.Value = nil
 	bridge.environment.scheduler.spawnTagged({ context = "client", source = "fixture/client.luau" }, function()
-		result = fixture.runtime.requireInstance(module) :: { same: boolean? }
+		result = fixture.runtime.requireInstance(module)
 	end)
 	fixture.runtime.step(1 / 60)
-	expect(assert(result).same):toBe(true)
+	expect(field(result, "same")):toBe(true)
 	for _, close in fixture.runtime.closeHandlers do
 		close()
 	end
@@ -434,7 +484,7 @@ it("place frame readers fail closed before publishing render events", function()
 			error "layout reader failure"
 		end,
 	})
-	local render = fixture.engine.service("RunService").RenderStepped :: Environment.Signal
+	local render = fixture.engine.environment.event(fixture.engine.service "RunService", "RenderStepped")
 	render:Connect(function()
 		frames += 1
 	end)
@@ -452,7 +502,7 @@ end)
 it("modeled preload reports every requested content as fetched", function()
 	local fixture = sourceFixture({}, { "DataModel", "ContentProvider" })
 	local service = fixture.engine.service "ContentProvider"
-	local preload = service.PreloadAsync :: (Instance, { unknown }, (string, unknown) -> ()) -> ()
+	local preload = fixture.engine.environment.method(service, "PreloadAsync")
 	local seen: { string } = {}
 	local statuses: { unknown } = {}
 	local function callback(asset: string, status: unknown)
@@ -551,18 +601,18 @@ it("the device simulator applies captured Studio device facts", function()
 	local desktop = fixture.runtime.requireInstance(fixture.module("Desktop", "desktop.luau"))
 	local expectedDesktop: { unknown } = { "KeyboardAndMouse", false, true, true, false }
 	expect(desktop):toEqual(expectedDesktop)
-	local pads = fixture.runtime.requireInstance(fixture.module("Pads", "pads.luau")) :: (string) -> { unknown }
+	local pads = method(fixture.runtime.requireInstance(fixture.module("Pads", "pads.luau")))
 	local xboxPads: { unknown } = { 8, "Gamepad1", true, false }
 	local phonePads: { unknown } = { 8, "", false, false }
 	expect(pads "xbox"):toEqual(xboxPads)
 	expect(pads "iphone_14"):toEqual(phonePads)
-	local switch = fixture.runtime.requireInstance(fixture.module("Switch", "switch.luau")) :: (string) -> { unknown }
+	local switch = method(fixture.runtime.requireInstance(fixture.module("Switch", "switch.luau")))
 	local xbox: { unknown } = { true, "Gamepad", false, true, 58, 1919, 0, 1919, 1080 }
 	local phone: { unknown } = { false, "Touch", true, false, 58, 749, -47, 749, 389 }
 	expect(switch "xbox"):toEqual(xbox)
 	expect(switch "iphone_14"):toEqual(phone)
 	expect((pcall(switch, "unknown_device"))):toBe(false)
-	local shape = fixture.runtime.requireInstance(fixture.module("Shape", "shape.luau")) :: () -> { unknown }
+	local shape = method(fixture.runtime.requireInstance(fixture.module("Shape", "shape.luau")))
 	local captured: { unknown } = {
 		"389,762 [0,-105,389,738] [0,0,389,704] Portrait",
 		"295,843 [-47,-58,342,785] [0,0,295,785] LandscapeLeft",
@@ -600,15 +650,13 @@ it("CollectionService shares Instance tags and matches native DataModel entry an
 	local fixture = sourceFixture({}, { "DataModel", "RunService", "HttpService", "CollectionService" })
 	local env, game = fixture.engine.environment, fixture.engine.game
 	local service = fixture.engine.service "CollectionService"
-	local get = service.GetTagged :: (Instance, string) -> { Instance }
-	local added = (service.GetInstanceAddedSignal :: (Instance, string) -> Environment.Signal<Instance>)(service, "Hot")
-	local removed = (service.GetInstanceRemovedSignal :: (Instance, string) -> Environment.Signal<Instance>)(
-		service,
-		"Hot"
-	)
+	local get = env.method(service, "GetTagged")
+	local added = env.method(service, "GetInstanceAddedSignal")(service, "Hot")
+	local removed = env.method(service, "GetInstanceRemovedSignal")(service, "Hot")
 	local events: { string } = {}
-	local function subscribe(signal: Environment.Signal<Instance>, name: string)
-		signal:Connect(function(object)
+	local function subscribe(signal: Environment.Signal, name: string)
+		signal:Connect(function(value: unknown)
+			local object = Environment.assertInstance(value)
 			table.insert(
 				events,
 				name
@@ -617,19 +665,23 @@ it("CollectionService shares Instance tags and matches native DataModel entry an
 					.. ":"
 					.. tostring(object:IsDescendantOf(game))
 					.. ":"
-					.. #get(service, "Hot")
+					.. #record(get(service, "Hot"))
 			)
 		end)
 	end
-	subscribe(added, "added")
-	subscribe(removed, "removed")
+	local addedSignal = assert(fixture.runtime.tagAdded.Hot)
+	local removedSignal = assert(fixture.runtime.tagRemoved.Hot)
+	expect(added == addedSignal):toBe(true)
+	expect(removed == removedSignal):toBe(true)
+	subscribe(addedSignal, "added")
+	subscribe(removedSignal, "removed")
 	local object = fixture.engine.newInstance "Folder"
 	object:AddTag "Hot"
 	expect(get(service, "Hot")):toEqual {}
 	object.Parent = game
 	object:AddTag "Hot"
-	local addTag = (service.AddTag :: unknown) :: (Instance, Instance, string) -> ()
-	local removeTag = (service.RemoveTag :: unknown) :: (Instance, Instance, string) -> ()
+	local addTag = env.method(service, "AddTag")
+	local removeTag = env.method(service, "RemoveTag")
 	removeTag(service, object, "Hot")
 	addTag(service, object, "Hot")
 	addTag(service, object, "Hot")
@@ -678,12 +730,12 @@ it("ModuleScript type and typeof preserve native identities without classifying 
 		["fixture/Kinds.luau"] = "return {type(script),typeof(script),type(shared.object),typeof(shared.object),type(shared.signal),typeof(shared.signal),type(shared.connection),typeof(shared.connection),type({__state={class={instance=true}}}),typeof({__state={class={instance=true}}})}",
 	}
 	local env = fixture.engine.environment
-	env.defineClass("VirtualInput", { super = "Object", creatable = false })
+	local spec: Environment.ClassSpec = { super = "Object", creatable = false }
+	env.defineClass("VirtualInput", spec)
 	local object = env.createEngineObject "VirtualInput"
 	local signal = env.newSignal()
 	local connection = signal:Connect(function() end)
-	local shared = fixture.runtime.globals.shared :: { [string]: unknown }
-	shared.object, shared.signal, shared.connection = object, signal, connection
+	fixture.runtime.globals.shared = { object = object, signal = signal, connection = connection }
 	local module = fixture.module("Kinds", "fixture/Kinds.luau")
 	expect(fixture.runtime.requireInstance(module)):toEqual {
 		"userdata",
@@ -709,7 +761,7 @@ it("ModuleScript caches by instance identity while sharing source bytecode", fun
 	local firstValue = fixture.runtime.requireInstance(first)
 	expect(fixture.runtime.requireInstance(first) == firstValue):toBe(true)
 	expect(firstValue == fixture.runtime.requireInstance(second)):toBe(false)
-	expect((fixture.runtime.globals.shared :: { executions: number }).executions):toBe(2)
+	expect(Environment.read(fixture.runtime.globals.shared, "executions")):toBe(2)
 	expect(fixture.compilations()):toBe(1)
 end)
 
@@ -724,12 +776,12 @@ it("ModuleScript resolves init children sibling paths and parent paths on the mo
 	fixture.module("Value", "package/value.luau", package)
 	local main = fixture.module("Main", "package/main.luau", package)
 	fixture.module("Shared", "shared.luau")
-	local packageValue = fixture.runtime.requireInstance(package) :: { relative: number, own: number }
-	expect(packageValue.relative):toBe(7)
-	expect(packageValue.own):toBe(42)
-	local mainValue = fixture.runtime.requireInstance(main) :: { sibling: number, parent: number }
-	expect(mainValue.sibling):toBe(42)
-	expect(mainValue.parent):toBe(7)
+	local packageValue = fixture.runtime.requireInstance(package)
+	expect(field(packageValue, "relative")):toBe(7)
+	expect(field(packageValue, "own")):toBe(42)
+	local mainValue = fixture.runtime.requireInstance(main)
+	expect(field(mainValue, "sibling")):toBe(42)
+	expect(field(mainValue, "parent")):toBe(7)
 end)
 
 it("mounted relative requires traverse repeated parent and current segments without changing identity", function()
@@ -743,7 +795,7 @@ it("mounted relative requires traverse repeated parent and current segments with
 	local deep = fixture.module("Deep", "deep.luau", inner)
 	local shared = fixture.module("Shared", "value.luau")
 	local expected = fixture.runtime.requireInstance(shared)
-	local values = fixture.runtime.requireInstance(deep) :: { unknown }
+	local values = record(fixture.runtime.requireInstance(deep))
 	expect(#values):toBe(3)
 	for _, value in values do
 		expect(value == expected):toBe(true)
@@ -764,7 +816,9 @@ end)
 
 it("HttpService preserves native null values and table encoding rules", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local fixture = sourceFixture({
 		["json-values.luau"] = require "./fixtures/http-json-values",
 	}, nil, { engine = bridge.placeEngine() })
@@ -801,7 +855,7 @@ end)
 
 it("place runtime installs only selected method doubles on existing and new service instances", function()
 	local fixture = sourceFixture {}
-	local get = fixture.engine.game.GetService :: (Instance, string) -> Instance
+	local get = fixture.engine.environment.method(fixture.engine.game, "GetService")
 	expect(get(fixture.engine.game, "RunService") == fixture.engine.service "RunService"):toBe(true)
 	expect(fixture.engine.service("ContentProvider").PreloadAsync):toBe(nil)
 	for _, close in fixture.runtime.closeHandlers do
@@ -845,14 +899,24 @@ it("mounts implicit project datatype values and attributes on roots, services an
 			},
 		},
 	}
-	local host = table.clone(Lute.fixture.host)
-	host.readFile = function(): string
-		return json.serialize(project)
-	end
+	local fixtureHost = Lute.fixture.host
+	local host: PlaceRuntime.Host<luau.Bytecode> = {
+		readFile = function(): string
+			return json.serialize(project)
+		end,
+		compile = fixtureHost.compile,
+		load = fixtureHost.load,
+		encodeJson = fixtureHost.encodeJson,
+		decodeJson = fixtureHost.decodeJson,
+	}
 	Roblox.buildPlaceTree(engine, "fixture.project.json", {
 		host = host,
 		cache = Roblox.createPlaceCache(host),
-		files = Lute.fixture.files,
+		files = {
+			exists = Lute.fixture.files.exists,
+			fileType = Lute.fixture.files.fileType,
+			listDirectory = Lute.fixture.files.listDirectory,
+		},
 	})
 	local library = engine.datatypes
 	expect(engine.game:GetAttribute "rootMarker"):toBe "root"
@@ -902,12 +966,14 @@ it("boots mounted scripts and requires modules without accepting invalid targets
 		["main.server.luau"] = 'shared.answer = require("./Value")',
 		["value.luau"] = "return 42",
 	}
-	local host: Roblox.PlaceBootHost<luau.Bytecode> = {
+	local host: PlaceRuntime.Host<luau.Bytecode> = {
 		readFile = function(path: string): string
-			return assert(files[path])
+			local contents = files[path]
+			assert(type(contents) == "string")
+			return contents
 		end,
 		compile = luau.compile,
-		load = function(code: luau.Bytecode, name: string, environment: { [string]: unknown }): () -> unknown
+		load = function(code: luau.Bytecode, name: string, environment: { [string]: unknown }): () -> VM.Value
 			return luau.load(code, name, environment)
 		end,
 		encodeJson = function(): string
@@ -937,13 +1003,13 @@ it("boots mounted scripts and requires modules without accepting invalid targets
 			fileType = function(): string
 				return "file"
 			end,
-			listDirectory = function()
+			listDirectory = function(): { { name: string, type: string } }
 				return {}
 			end,
 		},
 	})
 	expect(#report.diagnostics):toBe(0)
-	expect((report.runtime.globals.shared :: { answer: number }).answer):toBe(42)
+	expect(Environment.read(report.runtime.globals.shared, "answer")):toBe(42)
 	expect(report.engine.game.PlaceId):toBe(2)
 	local types = report.engine.datatypes
 	expect(report.engine.service("Lighting").Ambient):toBe(types.Color3.new(0.2, 0.3, 0.4))
@@ -972,7 +1038,7 @@ it("boots mounted scripts and requires modules without accepting invalid targets
 			fileType = function()
 				return "file"
 			end,
-			listDirectory = function()
+			listDirectory = function(): { { name: string, type: string } }
 				return {}
 			end,
 		},

@@ -129,17 +129,18 @@ local function validate(report: Types.Report, policy: Policy): Result
 		then policy.runId
 		elseif policy.from ~= nil then policy.from.runId
 		else nil
-	local expected: Expected? = policy.build
-	if expected == nil and policy.from ~= nil and policy.from.build ~= nil then
+	local declared: Expected? = policy.build
+	if declared == nil and policy.from ~= nil and policy.from.build ~= nil then
 		local subject = Provenance.copyBuild(policy.from.build, "from.build")
-		expected = {
+		declared = {
 			digest = subject.digest,
 			commit = subject.commit,
 			tree = subject.tree,
 			requireClean = policy.requireClean ~= false,
 		}
 	end
-	assert(expected ~= nil, "validation needs the expected build, directly or from an outcome that carries one")
+	local expected =
+		assert(declared, "validation needs the expected build, directly or from an outcome that carries one")
 	assert(expected.digest ~= "", "the expected build needs a digest")
 	local requireClean = if expected.requireClean ~= nil then expected.requireClean else policy.requireClean ~= false
 	assert(#policy.required > 0, "required coverage must not be empty")
@@ -341,10 +342,11 @@ local function validate(report: Types.Report, policy: Policy): Result
 						refuse("missing_observation", subject, "no checkpoint was recorded for this actor and name")
 						continue
 					end
-					scan(checkpoint, subject)
+					local observed = assert(checkpoint)
+					scan(observed, subject)
 					local matching: { Artifact } = {}
 					local otherDevices: { string } = {}
-					for _, artifact in checkpoint.artifacts do
+					for _, artifact in observed.artifacts do
 						local provenance = artifact.provenance
 						if requirement.mediaType ~= nil and artifact.mediaType ~= requirement.mediaType then
 							continue
@@ -425,7 +427,7 @@ local function validate(report: Types.Report, policy: Policy): Result
 						end
 						for digest in covered do
 							local present = false
-							for _, artifact in checkpoint.artifacts do
+							for _, artifact in observed.artifacts do
 								if artifact.sha256 == digest then
 									present = true
 								end

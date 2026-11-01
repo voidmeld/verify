@@ -55,12 +55,13 @@ export type TweenInfoConstructor = {
 		delayTime: number?
 	) -> TweenInfoValue,
 }
-export type ContentConstructor = {
+local ContentConstructorFields: {
 	fromUri: (uri: string) -> ContentValue,
 	fromAssetId: (id: number | string) -> ContentValue,
 	fromObject: (object: unknown) -> ContentValue,
-	none: ContentValue,
 }
+local ContentConstructorMeta: { __index: ({ [string]: unknown }, unknown) -> ContentValue }
+export type ContentConstructor = typeof(setmetatable(ContentConstructorFields, ContentConstructorMeta))
 export type FloatCurveKeyConstructor = {
 	new: (time: number, value: number, interpolation: EnumItem) -> FloatCurveKeyValue,
 }
@@ -215,17 +216,14 @@ local function content(enums: Enums): ContentConstructor
 			return make("Object", nil, object)
 		end,
 	}
-	setmetatable(constructor, {
-		__index = function(self: { [string]: unknown }, key: unknown): unknown
-			if key ~= "none" then
-				return nil
-			end
+	return setmetatable(constructor, {
+		__index = function(self: { [string]: unknown }, key: unknown): ContentValue
+			assert(key == "none", "unknown Content member: " .. tostring(key))
 			local none = make("None", nil, nil)
 			rawset(self, "none", none)
 			return none
 		end,
 	})
-	return (constructor :: unknown) :: ContentConstructor
 end
 
 local function floatCurveKey(): FloatCurveKeyConstructor

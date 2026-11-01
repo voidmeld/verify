@@ -183,7 +183,7 @@ local function record(text: string?): { [string]: unknown }?
 	end
 	local parsed, value = pcall(Wire.parse, text)
 	if parsed and type(value) == "table" then
-		return value :: { [string]: unknown }
+		return Wire.record(value)
 	end
 	return nil
 end
@@ -245,7 +245,11 @@ local function fetch(options: Options, prefix: string, status: { [string]: unkno
 		end
 		table.insert(segments, fields)
 	end
-	local whole, reason = Core.reassembleSegments(segments)
+	local rawSegments: { unknown } = {}
+	for _, segment in segments do
+		table.insert(rawSegments, segment)
+	end
+	local whole, reason = Core.reassembleSegments(rawSegments)
 	if whole == nil then
 		return { status = "failed", detail = "transport: " .. tostring(reason) }
 	end

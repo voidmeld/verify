@@ -3,6 +3,7 @@
 export type Context = { environment: string, signal: string, timing: "observed" | "simulated" }
 export type Series = { [string]: { { number } } }
 export type Input = {
+	[string]: unknown,
 	samples: { number },
 	unit: string,
 	context: Context,
@@ -29,6 +30,7 @@ export type Summary = {
 	aboveThresholdRatio: number?,
 }
 export type Limits = {
+	[string]: unknown,
 	unit: string,
 	minimumSamples: number,
 	p50: number?,

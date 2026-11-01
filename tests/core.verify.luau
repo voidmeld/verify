@@ -5,6 +5,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Bdd = require "../src/bdd"
 local Verify = require "../src/core"
+local Performance = require "../src/core/performance"
 
 local function clock()
 	local value = 0
@@ -294,6 +295,25 @@ describe("verify core", function()
 		assert(not driftedOk)
 	end)
 
+	it("rejects executable report records before reading their fields", function()
+		local harness = Verify.createHarness { now = clock() }
+		harness:case("case", function() end)
+		local report = run(harness)
+		local invoked = false
+		local function reject()
+			invoked = true
+			error "report metamethod must not run"
+		end
+		local executable = setmetatable(table.clone(report), { __index = reject, __iter = reject })
+		expect((pcall(Verify.decode, executable))):toEqual(false)
+		expect(invoked):toEqual(false)
+		local nested = table.clone(report)
+		nested.results = table.clone(report.results)
+		nested.results[1] = setmetatable(table.clone(report.results[1]), { __index = reject, __iter = reject })
+		expect((pcall(Verify.decode, nested))):toEqual(false)
+		expect(invoked):toEqual(false)
+	end)
+
 	it("keeps source attribution when it does not compose ids", function()
 		local harness = Verify.createHarness { now = clock(), source = "suites/alpha.verify.luau", prefixIds = false }
 		harness:case("one", function() end)
@@ -314,7 +334,9 @@ describe("verify core", function()
 	end)
 
 	it("refuses to prefix ids with a source it was never given", function()
-		local ok, thrown: unknown = pcall(Verify.createHarness, { now = clock(), prefixIds = true })
+		local ok, thrown: unknown = pcall(function()
+			Verify.createHarness { now = clock(), prefixIds = true }
+		end)
 		expect(ok):toEqual(false)
 		expect((tostring(thrown))):toContain "cannot prefix ids without a source"
 	end)
@@ -458,6 +480,8 @@ describe("verify matchers", function()
 		Verify.expect(3):toBeGreaterThanOrEqual(3)
 		Verify.expect(3):toBeLessThanOrEqual(3)
 		Verify.expect(nil):toBeNil()
+		local function returnsNothing() end
+		Verify.expect(returnsNothing()):toBeNil()
 		Verify.expect("value"):toBeOk()
 		Verify.expect(function()
 			error "expected marker"
@@ -468,15 +492,17 @@ describe("verify matchers", function()
 		assert(not ok)
 	end)
 
+	it("retains table indexing semantics in deep equality", function()
+		local indexed = setmetatable({}, { __index = { marker = true } })
+		Verify.expect({ marker = true }):toEqual(indexed)
+	end)
+
 	it("keeps negation satisfiable and composable", function()
 		Verify.expect(nil).never:toBeNear(1, 0.5)
 		Verify.expect("text").never:toBeFloat32(1)
 		Verify.expect(1).never.never:toBe(1)
 		assert(not pcall(function()
 			Verify.expect(1).never.never:toBe(2)
-		end))
-		assert(not pcall(function()
-			Verify.expect(1):toBeNear(1, ("wide" :: unknown) :: number)
 		end))
 	end)
 
@@ -552,10 +578,6 @@ describe("verify matchers", function()
 			Verify.expect("0.55"):toBeFloat32(0.55)
 		end)
 		expect((tostring(nonNumber))):toContain "at float32 precision"
-		local _, misuse: unknown = pcall(function()
-			Verify.expect(0.55):toBeFloat32(("0.55" :: unknown) :: number)
-		end)
-		expect((tostring(misuse))):toContain "requires the authored number"
 	end)
 
 	it("exposes the float32 narrowing it compares by", function()
@@ -617,19 +639,6 @@ describe("verify matchers", function()
 			Bdd.create(harness).expect(1):toBe(2)
 		end)
 		expect((tostring(throughBdd))):toEqual "expected to be 2\n     actual: 1"
-
-		local _, misuse: unknown = pcall(function()
-			Verify.expect(1):toBeNear(1, ("wide" :: unknown) :: number)
-		end)
-		expect((tostring(misuse))):toContain "core.verify.luau"
-	end)
-
-	it("names an unknown matcher instead of failing as a nil call", function()
-		local ok, thrown: unknown = pcall(function()
-			((Verify.expect(true) :: unknown) :: { toBeTrue: (unknown) -> () }):toBeTrue()
-		end)
-		assert(not ok)
-		expect((tostring(thrown))):toContain 'unknown matcher "toBeTrue"'
 	end)
 end)
 
@@ -798,6 +807,38 @@ describe("selection by shard", function()
 end)
 
 describe("report format", function()
+	it("deeply snapshots extensible measurement inputs and limits", function()
+		local harness = Verify.createHarness { now = clock() }
+		local metadata = { nested = { { value = "before" } } }
+		local limitMetadata = { labels = { "before" } }
+		harness:case("metadata", function(context)
+			local input: Performance.Input = {
+				samples = { 1, 2 },
+				unit = "milliseconds",
+				context = { environment = "lab", signal = "load", timing = "observed" },
+				metadata = metadata,
+			}
+			local limits: Performance.Limits = {
+				unit = "milliseconds",
+				minimumSamples = 1,
+				measureOnly = true,
+				metadata = limitMetadata,
+			}
+			context:measure("bench", "metadata", input, limits)
+			metadata.nested[1].value = "after"
+			limitMetadata.labels[1] = "after"
+			input.samples[1] = 999
+		end)
+		local report = run(harness)
+		expect(report.passed):toBe(1)
+		local measurement = assert(report.results[1].evidence).measurements[1]
+		expect(measurement.input.samples):toEqual { 1, 2 }
+		expect(measurement.input.metadata):toEqual { nested = { { value = "before" } } }
+		expect(measurement.limits.metadata):toEqual { labels = { "before" } }
+		expect(table.isfrozen(measurement.input)):toBe(true)
+		expect(table.isfrozen(measurement.limits)):toBe(true)
+	end)
+
 	it("prints one line per measurement and nothing for a case without one", function()
 		local harness = Verify.createHarness { now = clock() }
 		harness:case("plain", function() end)

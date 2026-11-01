@@ -207,7 +207,7 @@ describe("agent evaluation Lute binding", function()
 		files.write(root .. "/tree/a/b/c.txt", "c")
 		files.write(root .. "/tree/top.txt", "t")
 		local listed = files.list(root .. "/tree")
-		table.sort(listed, function(left, right)
+		table.sort(listed, function(left: { name: string }, right: { name: string }): boolean
 			return left.name < right.name
 		end)
 		expect(listed):toEqual {

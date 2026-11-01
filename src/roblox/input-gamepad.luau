@@ -5,7 +5,6 @@ local Datatypes = require "./datatypes"
 local EnumTypes = require "./datatypes/enum"
 
 type Instance = Environment.Instance
-type Vector = { X: number, Y: number, Z: number }
 local buttons = {
 	Two = "DPadLeft",
 	Three = "DPadDown",
@@ -113,18 +112,21 @@ local function create(
 			end
 		end
 		local target = assert(object)
-		local before = env.propertyOf(target, "Position") :: Vector
+		local before = env.propertyOf(target, "Position")
+		local beforeX, beforeY, beforeZ =
+			Environment.read(before, "X"), Environment.read(before, "Y"), Environment.read(before, "Z")
+		assert(type(beforeX) == "number" and type(beforeY) == "number" and type(beforeZ) == "number")
 		local x, y, z = 0, 0, if down then 1 else 0
 		if control == "Thumbstick1" then
 			x, y, z = axis("D", "A"), axis("W", "S"), 0
 		elseif control == "Thumbstick2" then
 			x, y, z = axis("L", "J"), axis("I", "K"), 0
 		end
-		if before.X == x and before.Y == y and before.Z == z then
+		if beforeX == x and beforeY == y and beforeZ == z then
 			return
 		end
 		env.poke(target, "Position", library.Vector3.new(x, y, z))
-		env.poke(target, "Delta", library.Vector3.new(x - before.X, y - before.Y, z - before.Z))
+		env.poke(target, "Delta", library.Vector3.new(x - beforeX, y - beforeY, z - beforeZ))
 		local analog = sticks[code] ~= nil
 		local trigger = control == "ButtonL2" or control == "ButtonR2"
 		if trigger then

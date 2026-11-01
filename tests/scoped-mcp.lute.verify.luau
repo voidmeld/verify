@@ -13,6 +13,10 @@ local Eval = require "../src/agent-eval"
 local Files = require "../src/lute/files"
 local json = require "@std/json"
 local Lute = require "../src/lute"
+local Wire = require "../src/lute/wire"
+local function content(value: unknown): { [string]: unknown }
+	return Wire.record(Wire.array(Wire.record(value).content)[1])
+end
 
 for _, mode in { "unanswered", "unsent", "raised", "normal-error", "run-deadline", "override" } do
 	it("scoped MCP bounds and drains queued requests after " .. mode, function()
@@ -32,6 +36,7 @@ for _, mode in { "unanswered", "unsent", "raised", "normal-error", "run-deadline
 			callSeconds = if mode == "override" then 5 else nil,
 		}
 		local imports: { [string]: unknown } = {
+			["../src/core/shape"] = require "../src/core/shape",
 			["@std/fs"] = {
 				readFileToString = function()
 					return config
@@ -50,7 +55,7 @@ for _, mode in { "unanswered", "unsent", "raised", "normal-error", "run-deadline
 				end,
 			},
 			["../src/agent-eval"] = Eval,
-			["../src/lute/wire"] = { encode = Lute.encode },
+			["../src/lute/wire"] = Wire,
 			["../src/lute/files"] = {
 				claimDirectory = function(): string
 					claimed += 1
@@ -124,20 +129,22 @@ for _, mode in { "unanswered", "unsent", "raised", "normal-error", "run-deadline
 			name = "scoped-deadline-" .. mode,
 		})()
 		expect(#responses):toBe(3)
-		local first = Eval.lute.decode(responses[1]) :: { error: { message: string } }
-		expect((string.find(first.error.message, "secret-other", 1, true))):toBe(nil)
+		local first = Wire.record(Eval.lute.decode(responses[1]))
+		expect((string.find(asString(Wire.record(first.error).message), "secret-other", 1, true))):toBe(nil)
 		local uncertain = mode ~= "unsent" and mode ~= "normal-error"
-		expect(string.find(first.error.message, "may have been applied", 1, true) ~= nil):toBe(uncertain)
+		expect(string.find(asString(Wire.record(first.error).message), "may have been applied", 1, true) ~= nil):toBe(
+			uncertain
+		)
 		expect(calls[1].limit):toBe(if mode == "override" then 5 else if mode == "run-deadline" then 10 else 60)
 		expect(calls[1].name):toBe "screen_capture"
-		local second = Eval.lute.decode(responses[2]) :: { error: unknown?, result: { content: { { text: string } } }? }
+		local second = Wire.record(Eval.lute.decode(responses[2]))
 		if mode == "run-deadline" then
 			expect(second.error ~= nil):toBe(true)
 			expect(#calls):toBe(1)
 			expect(opened):toBe(1)
 		else
 			expect(second.error):toBe(nil)
-			expect(assert(second.result).content[1].text):toBe "new-response"
+			expect(content(assert(second.result)).text):toBe "new-response"
 			expect(#calls):toBe(2)
 			expect(calls[2].name):toBe "execute_luau"
 			expect(string.find(calls[2].arguments, '"studio_id":"own"', 1, true) ~= nil):toBe(true)
@@ -268,11 +275,11 @@ it("scoped MCP stdio frames several requests from one read", function()
 	expect(result.exitcode):toBe(0)
 	local count = 0
 	for line in string.gmatch(result.stdout, "[^\r\n]+") do
-		local response = Eval.lute.decode(line) :: { id: number, result: { content: { { text: string } } } }
+		local response = Wire.record(Eval.lute.decode(line))
 		count += 1
 		expect(response.id):toBe(count)
-		local listing = Eval.lute.decode(response.result.content[1].text) :: { studios: { { id: string } } }
-		expect(listing.studios[1].id):toBe "own"
+		local listing = Wire.record(Eval.lute.decode(asString(content(response.result).text)))
+		expect(Wire.record(Wire.array(listing.studios)[1]).id):toBe "own"
 	end
 	expect(count):toBe(2)
 	services.files.remove(directory)
@@ -320,11 +327,10 @@ it("scoped MCP lists one Studio without consulting the global server", function(
 		end,
 	}, Eval.lute.encode)
 	studio.id = "changed"
-	local listing =
-		scope.dispatch("tools/call", { name = "list_roblox_studios", arguments = {} }) :: { content: { { text: string } } }
-	local raw = Eval.lute.decode(listing.content[1].text) :: { studios: { { id: string } } }
-	expect(#raw.studios):toBe(1)
-	expect(raw.studios[1].id):toBe "own"
+	local listing = scope.dispatch("tools/call", { name = "list_roblox_studios", arguments = {} })
+	local raw = Wire.record(Eval.lute.decode(asString(content(listing).text)))
+	expect(#Wire.array(raw.studios)):toBe(1)
+	expect(Wire.record(Wire.array(raw.studios)[1]).id):toBe "own"
 	expect(calls):toBe(0)
 end)
 it("scoped MCP advertises only each operation's accepted arguments", function()
@@ -335,8 +341,7 @@ it("scoped MCP advertises only each operation's accepted arguments", function()
 			return {}
 		end,
 	}, Eval.lute.encode)
-	local listing =
-		scope.dispatch("tools/list", {}) :: { tools: { { name: string, inputSchema: { [string]: unknown } } } }
+	local listing = Wire.record(scope.dispatch("tools/list", {}))
 	local examples: { [string]: { [string]: unknown } } = {
 		list_roblox_studios = {},
 		start_stop_play = { is_start = true },
@@ -345,11 +350,13 @@ it("scoped MCP advertises only each operation's accepted arguments", function()
 		get_console_output = {},
 		input = { code = "return 1" },
 	}
-	expect(#listing.tools):toBe(6)
-	for _, tool in listing.tools do
-		local example = assert(examples[tool.name])
-		local schema = tool.inputSchema
-		local properties = schema.properties :: { [string]: unknown }
+	expect(#Wire.array(listing.tools)):toBe(6)
+	for _, value in Wire.array(listing.tools) do
+		local tool = Wire.record(value)
+		local name = asString(tool.name)
+		local example = assert(examples[name])
+		local schema = Wire.record(tool.inputSchema)
+		local properties = Wire.record(schema.properties)
 		expect(schema.additionalProperties):toBe(false)
 		for key in properties do
 			expect(key == "studio_id" or example[key] ~= nil):toBe(true)
@@ -358,7 +365,8 @@ it("scoped MCP advertises only each operation's accepted arguments", function()
 			expect(properties[key] ~= nil):toBe(true)
 		end
 		expect((pcall(scope.dispatch, "tools/call", { name = tool.name, arguments = example }))):toBe(true)
-		for _, key in (schema.required or {}) :: { string } do
+		for _, field in Wire.array(schema.required or {}) do
+			local key = asString(field)
 			local missing = table.clone(example)
 			missing[key] = nil
 			expect((pcall(scope.dispatch, "tools/call", { name = tool.name, arguments = missing }))):toBe(false)
@@ -408,11 +416,10 @@ it("two MCP scopes cannot steer one another and preserve tool results", function
 	local a = Eval.scopedMcp.create({ id = "a", name = "A" }, backend, Eval.lute.encode)
 	local b = Eval.scopedMcp.create({ id = "b", name = "B" }, backend, Eval.lute.encode)
 	local args = {}
-	local response =
-		a.dispatch("tools/call", { name = "screen_capture", arguments = args }) :: { content: { { data: string } } }
+	local response = a.dispatch("tools/call", { name = "screen_capture", arguments = args })
 	b.dispatch("tools/call", { name = "screen_capture", arguments = {} })
 	expect(ids):toEqual { "a", "b" }
-	expect(response.content[1].data):toBe "image-bytes"
+	expect(content(response).data):toBe "image-bytes"
 	expect((next(args))):toBe(nil)
 	a.close()
 	expect((pcall(a.dispatch, "tools/call", { name = "get_console_output", arguments = {} }))):toBe(false)

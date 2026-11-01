@@ -91,7 +91,12 @@ local function parse(selector: string): Selector
 	return branches
 end
 
+local function nativeHasTag(object: Instance, tag: string): boolean
+	return object:HasTag(tag)
+end
+
 local function matches(branch: Branch, object: Instance, hasTag: ((Instance, string) -> boolean)?): boolean
+	local tagTest = hasTag or nativeHasTag
 	local function at(index: number, candidate: Instance): boolean
 		local segment = branch.segments[index]
 		if segment.className and not candidate:IsA(segment.className) then
@@ -101,7 +106,7 @@ local function matches(branch: Branch, object: Instance, hasTag: ((Instance, str
 			return false
 		end
 		for _, tag in segment.tags do
-			local tagged = if hasTag then hasTag(candidate, tag) else candidate:HasTag(tag)
+			local tagged = tagTest(candidate, tag)
 			if not tagged then
 				return false
 			end

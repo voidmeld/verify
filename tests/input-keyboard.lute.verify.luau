@@ -152,7 +152,14 @@ it("simulated keyboard input matches the Studio event order", function(own)
 	local log: { string }? = nil
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "input-keyboard" }, function()
-		log = Lute.chunk.load(probe, { environment = runtime.globals })() :: { string }
+		local result = Lute.chunk.load(probe, { environment = runtime.globals })()
+		assert(type(result) == "table")
+		local captured: { string } = {}
+		for _, item in result do
+			assert(type(item) == "string")
+			table.insert(captured, item)
+		end
+		log = captured
 	end)
 	own(function()
 		scheduler.cancel(thread)

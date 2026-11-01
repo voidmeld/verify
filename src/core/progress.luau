@@ -1,5 +1,7 @@
 --!strict
 
+local Shape = require "./shape"
+
 export type Phase = "started" | "finished"
 export type Event = {
 	runId: string,
@@ -18,13 +20,14 @@ export type Progress = {
 local function create(runId: string, emit: (Event) -> ()): Progress
 	assert(type(runId) == "string" and runId ~= "", "progress needs a run identity")
 	assert(type(emit) == "function", "progress needs an emit function")
+	local identity: string = runId
 	local sequence = 0
 	return {
 		runId = runId,
 		publish = function(caseId: string, actor: string, step: string, phase: Phase, status: string?)
 			sequence += 1
 			local ok = pcall(emit, {
-				runId = runId,
+				runId = identity,
 				sequence = sequence,
 				actor = actor,
 				caseId = caseId,
@@ -41,7 +44,7 @@ end
 
 local function valid(value: unknown, runId: string): Event
 	assert(type(value) == "table", "progress event must be a record")
-	local fields = value :: { [string]: unknown }
+	local fields = Shape.record(value, "progress event")
 	assert(fields.runId == runId, "progress run identity mismatch")
 	assert(type(fields.sequence) == "number" and fields.sequence >= 1 and fields.sequence % 1 == 0, "progress sequence")
 	assert(

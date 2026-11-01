@@ -310,9 +310,29 @@ describe("noise across stored runs", function()
 			Benchmark.spread({ one, stored("two", { a = { 1 } }, "seconds") }, nil)
 		end)):toEqual(true)
 		expect(fails(function()
-			Benchmark.spread({ one, one }, { metric = ("p10" :: unknown) :: Benchmark.SpreadMetric })
+			Lute.chunk.load('return Benchmark.spread(runs, { metric = "p10" })', {
+				environment = { Benchmark = Benchmark, runs = { one, one } },
+			})()
 		end)):toEqual(true)
 	end)
+end)
+
+it("rejects an unknown yardstick drift base", function()
+	expect(Lute.chunk.load(
+		[[
+		return Benchmark.run {
+			name = "workload", unit = "milliseconds", warmup = 2, samples = 8,
+			workload = function() end, clock = function() return 0 end,
+			budget = { p95 = 10 },
+			environment = { observed = "lab-a", accepted = { "lab-a" } },
+			yardstick = {
+				run = function() end, samples = 1, maxSpread = 1,
+				maxDrift = 1, driftBase = "last",
+			},
+		}
+	]],
+		{ environment = { Benchmark = Benchmark } }
+	)):toThrow "driftBase must be first or mean"
 end)
 
 return nil

@@ -61,9 +61,14 @@ end
 
 local XS, XO, YS, YO = {}, {}, {}, {}
 
+local function fieldParts(fields: Names.Fields): (number, number, number, number)
+	local xs, xo, ys, yo = fields[XS], fields[XO], fields[YS], fields[YO]
+	assert(type(xs) == "number" and type(xo) == "number" and type(ys) == "number" and type(yo) == "number")
+	return xs, xo, ys, yo
+end
+
 local function parts(value: UDim2Value): (number, number, number, number)
-	local fields = Names.fields(value)
-	return fields[XS] :: number, fields[XO] :: number, fields[YS] :: number, fields[YO] :: number
+	return fieldParts(Names.fields(value))
 end
 
 local function compose(xs: number, xo: number, ys: number, yo: number): UDim2Value
@@ -124,18 +129,18 @@ local udim2Methods: { [unknown]: unknown } = {
 	end,
 }
 
-UDim2Kind.fields.__index = function(value: UDim2Value, key: unknown): unknown
+UDim2Kind.fields.__index = function(fields: Names.Fields, key: unknown): unknown
 	local method = udim2Methods[key]
 	if method ~= nil then
 		return method
 	elseif key == "X" or key == "Width" then
-		local fields = (value :: unknown) :: Names.Fields
-		local made = rawget(fields, "X") or udim(fields[XS] :: number, fields[XO] :: number)
+		local xs, xo = fieldParts(fields)
+		local made = rawget(fields, "X") or udim(xs, xo)
 		rawset(fields, "X", made)
 		return made
 	elseif key == "Y" or key == "Height" then
-		local fields = (value :: unknown) :: Names.Fields
-		local made = rawget(fields, "Y") or udim(fields[YS] :: number, fields[YO] :: number)
+		local _, _, ys, yo = fieldParts(fields)
+		local made = rawget(fields, "Y") or udim(ys, yo)
 		rawset(fields, "Y", made)
 		return made
 	end

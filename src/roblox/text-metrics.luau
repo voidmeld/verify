@@ -9,11 +9,18 @@ export type Row = {
 }
 export type Face = { tokens: { string }, pairs: { { number } }, sizes: { Row }, pixelScale: number? }
 export type Model = {
-	width: (text: string, size: number) -> number,
-	fit: (text: string, size: number, limit: number) -> (number, number),
-	height: (size: number, lines: number?, spacing: number?) -> number,
-	wrap: (text: string, size: number, limit: number, trimOversized: boolean?) -> (number, number),
-	truncate: (text: string, size: number, limit: number, lines: number, mode: string, wrapped: boolean) -> number?,
+	read width: (text: string, size: number) -> number,
+	read fit: (text: string, size: number, limit: number) -> (number, number),
+	read height: (size: number, lines: number?, spacing: number?) -> number,
+	read wrap: (text: string, size: number, limit: number, trimOversized: boolean?) -> (number, number),
+	read truncate: (
+		text: string,
+		size: number,
+		limit: number,
+		lines: number,
+		mode: string,
+		wrapped: boolean
+	) -> number?,
 }
 
 local ACCENTED = {}
@@ -74,7 +81,7 @@ local function create(face: Face): Model
 		sequences[first] = entries
 	end
 	for _, entries in sequences do
-		table.sort(entries, function(left, right): boolean
+		table.sort(entries, function(left: string, right: string): boolean
 			return #left > #right
 		end)
 	end
@@ -101,7 +108,7 @@ local function create(face: Face): Model
 				end
 			end
 			if token == nil then
-				local ok, code = pcall(utf8.codepoint, text, cursor)
+				local ok, code = pcall(utf8.codepoint, text, cursor, cursor)
 				error(
 					string.format(
 						"unsupported_text_metrics: character U+%04X at byte %d",
@@ -231,8 +238,15 @@ local function create(face: Face): Model
 			end
 		end
 		local offsets: { number } = {}
-		for position in utf8.codes(text) do
+		local iterate, state = utf8.codes(text)
+		local previous = 0
+		while true do
+			local position = iterate(state, previous)
+			if position == nil then
+				break
+			end
 			table.insert(offsets, position)
+			previous = position
 		end
 		for index = #offsets, 2, -1 do
 			local prefix = text:sub(1, offsets[index] - 1)

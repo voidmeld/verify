@@ -19,7 +19,8 @@ export type Options = {
 	failureAttributes: { string }?,
 }
 
-type Object = { [string]: unknown }
+type Members = { [string]: unknown }
+type Methods = { [string]: (unknown, ...unknown) -> (unknown, unknown) }
 
 local DIRECTIONS = { "Up", "Down", "Left", "Right" }
 
@@ -28,7 +29,8 @@ local function read(object: unknown, key: string): unknown
 		return nil
 	end
 	local ok, value = pcall(function(): unknown
-		return (object :: Object)[key]
+		local members: Members = setmetatable({}, { __index = object })
+		return members[key]
 	end)
 	if ok then
 		return value
@@ -41,8 +43,8 @@ local function call(object: unknown, method: string, ...: unknown): (boolean, un
 	if type(callback) ~= "function" then
 		return false, nil, nil
 	end
-	local fn = callback :: (...unknown) -> (unknown, unknown)
-	local ok, first, second = pcall(fn, object, ...)
+	local methods: Methods = setmetatable({}, { __index = object })
+	local ok, first, second = pcall(methods[method], object, ...)
 	if not ok then
 		return false, nil, nil
 	end
@@ -93,10 +95,10 @@ local function textOf(value: unknown): string?
 	return nil
 end
 
-local function children(object: unknown): { unknown }
+local function children(object: unknown)
 	local ok, list = call(object, "GetChildren")
 	if ok and type(list) == "table" then
-		return list :: { unknown }
+		return list
 	end
 	return {}
 end
@@ -201,7 +203,7 @@ local function collect(options: Options?): Audit.Dump
 		if given.world == true then
 			local ok, descendants = call(workspace, "GetDescendants")
 			if ok and type(descendants) == "table" then
-				for _, item in descendants :: { unknown } do
+				for _, item in descendants do
 					if isA(item, "SurfaceGui") or isA(item, "BillboardGui") then
 						table.insert(roots, item)
 					end
@@ -377,6 +379,7 @@ local function collect(options: Options?): Audit.Dump
 		local world = not isA(root, "ScreenGui")
 		local index = #dumpRoots + 1
 		local enabled = read(root, "Enabled") ~= false
+		local ignoreGuiInset = read(root, "IgnoreGuiInset")
 		local rect = rectOf(root, world)
 		table.insert(dumpRoots, {
 			index = index,
@@ -387,9 +390,7 @@ local function collect(options: Options?): Audit.Dump
 			world = world,
 			zIndexBehavior = enumName(read(root, "ZIndexBehavior")),
 			screenInsets = enumName(read(root, "ScreenInsets")),
-			ignoreGuiInset = if type(read(root, "IgnoreGuiInset")) == "boolean"
-				then read(root, "IgnoreGuiInset") :: boolean
-				else nil,
+			ignoreGuiInset = if type(ignoreGuiInset) == "boolean" then ignoreGuiInset else nil,
 			rect = rect,
 		})
 		instances += 1
@@ -415,8 +416,10 @@ local function collect(options: Options?): Audit.Dump
 		for _, root in roots do
 			local _, descendants = call(root, "GetDescendants")
 			local scanned: { unknown } = { root }
-			for _, descendant in (if type(descendants) == "table" then descendants else {}) :: { unknown } do
-				table.insert(scanned, descendant)
+			if type(descendants) == "table" then
+				for _, descendant in descendants do
+					table.insert(scanned, descendant)
+				end
 			end
 			for _, instance in scanned do
 				local ok, value = call(instance, "GetAttribute", name)

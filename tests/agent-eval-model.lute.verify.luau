@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local AgentEval = require "../src/agent-eval"
 local Fakes = require "./agent-eval-fakes"
 local Lute = require "../src/lute"
+local Wire = require "../src/lute/wire"
 
 type Object = { [string]: unknown }
 
@@ -252,7 +253,7 @@ describe("agent evaluation transcripts", function()
 
 	it("prefers per-model usage and drops latencies when a line has no time", function()
 		local lines = Fakes.stream { session = "s", turns = 1, output = 10 }
-		local result = Lute.parse(lines[#lines].text) :: Object
+		local result = Wire.record(Lute.parse(lines[#lines].text))
 		result.modelUsage = {
 			["claude-opus-5-5"] = {
 				inputTokens = 5,

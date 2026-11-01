@@ -180,14 +180,15 @@ function Start-Process {
 		end
 		Processes.defaults().signal(pid, "KILL")
 		expect(seen):toBe(true)
-		local missing, refusal = pcall(Processes.spawn, { "verify-no-such-program" }, "x", os.clock() + 5)
+		local missing, refusal = pcall(Processes.spawn, { "verify-no-such-program" }, "x", os.clock() + 5, nil)
 		expect(missing):toBe(false)
 		expect(tostring(refusal)):toContain "was not observed"
 		local quick, early = pcall(
 			Processes.spawn,
 			{ lute, "run", "tests/programs/exit-with.luau", "0" },
 			"verify-never-listed",
-			os.clock() + 20
+			os.clock() + 20,
+			nil
 		)
 		expect(quick):toBe(false)
 		expect(tostring(early)):toContain "it exited first"

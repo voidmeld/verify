@@ -402,7 +402,12 @@ local function field(value: unknown, key: string): unknown
 	if type(value) ~= "table" then
 		return nil
 	end
-	return (value :: { [string]: unknown })[key]
+	for name, item in value do
+		if name == key then
+			return item
+		end
+	end
+	return nil
 end
 
 local function anthropic(options: AnthropicOptions): Transport
@@ -480,7 +485,7 @@ local function anthropic(options: AnthropicOptions): Transport
 		local texts: { string } = {}
 		local blocks = field(value, "content")
 		if type(blocks) == "table" then
-			for _, block in ipairs(blocks :: { unknown }) do
+			for _, block in blocks do
 				if field(block, "type") == "text" and type(field(block, "text")) == "string" then
 					table.insert(texts, checkedString(field(block, "text")))
 				end

@@ -177,11 +177,12 @@ local function armSetup(value: unknown, label: string, directory: string, files:
 	if not Schema.absent(raw.studio) then
 		local config = Schema.record(raw.studio, label .. ".studio")
 		Schema.only(config, label .. ".studio", { "place", "build", "keep" })
-		studio = {
+		local configured: { place: string, build: { string }, keep: boolean? } = {
 			place = Schema.text(config.place, label .. ".studio.place"),
 			build = Schema.texts(config.build, label .. ".studio.build"),
 			keep = Schema.flag(config.keep, label .. ".studio.keep", false),
 		}
+		studio = configured
 	end
 	local overlay: { string } = {}
 	for index, path in Schema.texts(raw.overlay, label .. ".overlay") do
@@ -352,7 +353,7 @@ local function manifest(files: Services.Files, hash: (string) -> string, root: s
 	local entries: { string } = {}
 	local function walk(directory: string, prefix: string)
 		local listed = files.list(directory)
-		table.sort(listed, function(left, right)
+		table.sort(listed, function(left: Services.Entry, right: Services.Entry)
 			return left.name < right.name
 		end)
 		for _, entry in listed do

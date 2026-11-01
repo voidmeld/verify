@@ -13,7 +13,9 @@ type Violation = {
 	sourcepath: path.Path?,
 }
 
-type Global = { name: { text: string }, location: syntax.Span }
+type Global = syntax.CstExprGlobal
+
+local WARNING: "warning" = "warning"
 
 local NAME = "global_table_usage"
 
@@ -31,7 +33,7 @@ local function isAllowed(sourcepath: path.Path?, options: { [string]: unknown })
 	end
 
 	local actual = toSlashes(tostring(sourcepath))
-	for _, entry in allow :: { unknown } do
+	for _, entry in allow do
 		if type(entry) == "string" then
 			local wanted = toSlashes(entry)
 			if actual == wanted or string.sub(actual, -(#wanted + 1)) == "/" .. wanted then
@@ -43,14 +45,18 @@ local function isAllowed(sourcepath: path.Path?, options: { [string]: unknown })
 end
 
 local function asGlobal(node: syntax.CstNode): Global?
-	return (utils.isExprGlobal(node) :: unknown) :: Global?
+	return utils.isExprGlobal(node)
 end
 
 local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, context: unknown): { Violation }
-	local options: { [string]: unknown } = if type(context) == "table"
-			and type((context :: { options: unknown }).options) == "table"
-		then (context :: { options: { [string]: unknown } }).options
-		else {}
+	local options: { [string]: unknown } = {}
+	if type(context) == "table" and type(context.options) == "table" then
+		for key, value in context.options do
+			if type(key) == "string" then
+				options[key] = value
+			end
+		end
+	end
 
 	if isAllowed(sourcepath, options) then
 		return {}
@@ -68,7 +74,7 @@ local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, context: u
 				message = ("`%s` is process-wide mutable state: it outlives every owner and is invisible to the inspector. Pass the value, or put it under an owner."):format(
 					node.name.text
 				),
-				severity = "warning" :: "warning",
+				severity = WARNING,
 				sourcepath = sourcepath,
 			}
 		end)

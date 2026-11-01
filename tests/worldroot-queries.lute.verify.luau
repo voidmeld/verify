@@ -6,19 +6,43 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Lute = require "../src/lute"
 local D = require "../src/roblox/datatypes"
 local E = require "../src/roblox/environment"
+local Frames = require "../src/roblox/datatypes/cframe"
+local Vectors = require "../src/roblox/datatypes/vector"
+local Queries = require "../src/roblox/spatial-query-fakes"
 
 type Instance = E.Instance
 type Vector = D.Vector3Value
 type Frame = D.CFrameValue
 type Hit = { Instance: Instance, Position: Vector, Normal: Vector, Distance: number, Material: unknown }
-type Ray = (Instance, Vector, Vector, D.RaycastParamsValue?) -> Hit?
-type Block = (Instance, Frame, Vector, Vector, D.RaycastParamsValue?) -> Hit?
-type Sphere = (Instance, Vector, number, Vector, D.RaycastParamsValue?) -> Hit?
-type Shape = (Instance, Instance, Vector, D.RaycastParamsValue?, Frame?, Vector?) -> Hit?
-type Bounds = (Instance, Frame, Vector, D.OverlapParamsValue?) -> { Instance }
-type Radius = (Instance, Vector, number, D.OverlapParamsValue?) -> { Instance }
-type Parts = (Instance, Instance, D.OverlapParamsValue?) -> { Instance }
 local V, CF = D.Vector3, D.CFrame
+
+local function cast(environment: E.Environment, object: Instance, name: string): (Instance, ...unknown) -> Hit?
+	local method = environment.method(object, name)
+	return function(self: Instance, ...: unknown): Hit?
+		local value = method(self, ...)
+		if value == nil then
+			return nil
+		end
+		return Queries.expectResult(value)
+	end
+end
+
+local function overlap(
+	environment: E.Environment,
+	object: Instance,
+	name: string
+): (Instance, ...unknown) -> { Instance }
+	local method = environment.method(object, name)
+	return function(self: Instance, ...: unknown): { Instance }
+		local value = method(self, ...)
+		assert(type(value) == "table", "expected query parts")
+		local result: { Instance } = {}
+		for _, item in value do
+			table.insert(result, E.assertInstance(item))
+		end
+		return result
+	end
+end
 
 local function close(actual: number, expected: number)
 	expect(math.abs(actual - expected) < 0.0001):toBe(true)
@@ -47,13 +71,30 @@ for _, method in { "Raycast", "Blockcast", "Spherecast", "Shapecast" } do
 			local function query(params: D.RaycastParamsValue?, direction: Vector?): Hit?
 				local d = direction or V.new(0, -20, 0)
 				if method == "Raycast" then
-					return (world.Raycast :: Ray)(world, (source.CFrame :: Frame).Position, d, params)
+					return cast(engine.environment, world, "Raycast")(
+						world,
+						Frames.expect(source.CFrame, 1).Position,
+						d,
+						params
+					)
 				elseif method == "Blockcast" then
-					return (world.Blockcast :: Block)(world, source.CFrame :: Frame, source.Size :: Vector, d, params)
+					return cast(engine.environment, world, "Blockcast")(
+						world,
+						Frames.expect(source.CFrame, 1),
+						Vectors.expect3(source.Size, 1),
+						d,
+						params
+					)
 				elseif method == "Spherecast" then
-					return (world.Spherecast :: Sphere)(world, (source.CFrame :: Frame).Position, 1, d, params)
+					return cast(engine.environment, world, "Spherecast")(
+						world,
+						Frames.expect(source.CFrame, 1).Position,
+						1,
+						d,
+						params
+					)
 				end
-				return (world.Shapecast :: Shape)(world, source, d, params)
+				return cast(engine.environment, world, "Shapecast")(world, source, d, params)
 			end
 			local params = D.RaycastParams.new()
 			params.ExcludeInstances = { source }
@@ -73,7 +114,7 @@ for _, method in { "Raycast", "Blockcast", "Spherecast", "Shapecast" } do
 				elseif method == "Spherecast" then 10 - 4 / math.sqrt(3)
 				else 10 - (2 + 1 + math.sqrt(3)) / math.sqrt(3)
 			close(hit.Distance, expected)
-			close((target.CFrame :: Frame):PointToObjectSpace(hit.Position).Y, 1)
+			close(Frames.expect(target.CFrame, 1):PointToObjectSpace(hit.Position).Y, 1)
 			expect(source.CFrame):toEqual(CF.new(0, 10, 0))
 		end)
 		it("honors descendant filters, empty inclusion, exclusions, and query flags", function()
@@ -148,16 +189,21 @@ for _, method in { "GetPartBoundsInBox", "GetPartBoundsInRadius", "GetPartsInPar
 				V.new(8, 1, 1), CF.new(4, 0, 0) * CF.Angles(0, 0, math.pi / 2), folder
 			local function query(params: D.OverlapParamsValue?): { Instance }
 				if method == "GetPartBoundsInBox" then
-					return (world.GetPartBoundsInBox :: Bounds)(
+					return overlap(engine.environment, world, "GetPartBoundsInBox")(
 						world,
-						source.CFrame :: Frame,
-						source.Size :: Vector,
+						Frames.expect(source.CFrame, 1),
+						Vectors.expect3(source.Size, 1),
 						params
 					)
 				elseif method == "GetPartBoundsInRadius" then
-					return (world.GetPartBoundsInRadius :: Radius)(world, (source.CFrame :: Frame).Position, 2, params)
+					return overlap(engine.environment, world, "GetPartBoundsInRadius")(
+						world,
+						Frames.expect(source.CFrame, 1).Position,
+						2,
+						params
+					)
 				end
-				return (world.GetPartsInPart :: Parts)(world, source, params)
+				return overlap(engine.environment, world, "GetPartsInPart")(world, source, params)
 			end
 			local params = D.OverlapParams.new()
 			params.ExcludeInstances = { source }
@@ -234,8 +280,8 @@ do
 		local engine = Lute.fixture.bridge().placeEngine()
 		local world = engine.service "Workspace"
 		local physics = engine.service "PhysicsService"
-		local register = physics.RegisterCollisionGroup :: (Instance, string) -> ()
-		local set = physics.CollisionGroupSetCollidable :: (Instance, string, string, boolean) -> ()
+		local register = engine.environment.method(physics, "RegisterCollisionGroup")
+		local set = engine.environment.method(physics, "CollisionGroupSetCollidable")
 		register(physics, "Sensor")
 		register(physics, "Hidden")
 		set(physics, "Sensor", "Hidden", false)
@@ -253,20 +299,45 @@ do
 		local function query(): number
 			local direction = V.new(0, -20, 0)
 			if method == "Raycast" then
-				return if (world.Raycast :: Ray)(world, V.new(0, 10, 0), direction, rayParams) then 1 else 0
+				return if cast(engine.environment, world, "Raycast")(world, V.new(0, 10, 0), direction, rayParams)
+					then 1
+					else 0
 			elseif method == "Blockcast" then
-				return if (world.Blockcast :: Block)(world, CF.new(0, 10, 0), V.one, direction, rayParams) then 1 else 0
+				return if cast(engine.environment, world, "Blockcast")(
+						world,
+						CF.new(0, 10, 0),
+						V.one,
+						direction,
+						rayParams
+					)
+					then 1
+					else 0
 			elseif method == "Spherecast" then
-				return if (world.Spherecast :: Sphere)(world, V.new(0, 10, 0), 1, direction, rayParams) then 1 else 0
+				return if cast(engine.environment, world, "Spherecast")(
+						world,
+						V.new(0, 10, 0),
+						1,
+						direction,
+						rayParams
+					)
+					then 1
+					else 0
 			elseif method == "Shapecast" then
-				return if (world.Shapecast :: Shape)(world, source, direction, rayParams) then 1 else 0
+				return if cast(engine.environment, world, "Shapecast")(world, source, direction, rayParams)
+					then 1
+					else 0
 			elseif method == "GetPartBoundsInBox" then
-				return #(world.GetPartBoundsInBox :: Bounds)(world, CF.identity, V.one, overlapParams)
+				return #overlap(engine.environment, world, "GetPartBoundsInBox")(
+					world,
+					CF.identity,
+					V.one,
+					overlapParams
+				)
 			elseif method == "GetPartBoundsInRadius" then
-				return #(world.GetPartBoundsInRadius :: Radius)(world, V.zero, 1, overlapParams)
+				return #overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.zero, 1, overlapParams)
 			end
 			source.CFrame = CF.identity
-			return #(world.GetPartsInPart :: Parts)(world, source, overlapParams)
+			return #overlap(engine.environment, world, "GetPartsInPart")(world, source, overlapParams)
 		end
 		expect(query()):toBe(0)
 		set(physics, "Hidden", "Sensor", true)
@@ -277,11 +348,11 @@ do
 		rayParams.BruteForceAllSlow, overlapParams.BruteForceAllSlow = false, false
 		rayParams.CollisionGroup, overlapParams.CollisionGroup = "Unregistered", "Unregistered"
 		expect(query()):toBe(1)
-		local nestedRay = model.Raycast :: Ray
+		local nestedRay = cast(engine.environment, model, "Raycast")
 		expect(assert(nestedRay(model, V.new(0, 10, 0), V.new(0, -20, 0))).Instance):toBe(nested)
 		local independent = Lute.fixture.bridge().placeEngine()
 		local otherPhysics = independent.service "PhysicsService"
-		expect((otherPhysics.IsCollisionGroupRegistered :: (Instance, string) -> boolean)(otherPhysics, "Hidden")):toBe(
+		expect(independent.environment.method(otherPhysics, "IsCollisionGroupRegistered")(otherPhysics, "Hidden")):toBe(
 			false
 		)
 	end)
@@ -293,29 +364,33 @@ it("ball volume differs from bounds and casts resolve sphere corners rather than
 	local target = engine.newInstance "Part"
 	target.Size, target.Shape, target.Parent = V.one * 2, D.Enum.PartType.Ball, world
 	local origin, direction = V.new(0.9, 5, 0.9), V.new(0, -10, 0)
-	expect((world.Raycast :: Ray)(world, origin, direction)):toBe(nil)
-	local hit = assert((world.Raycast :: Ray)(world, V.new(0, 5, 0), direction))
+	expect(cast(engine.environment, world, "Raycast")(world, origin, direction)):toBe(nil)
+	local hit = assert(cast(engine.environment, world, "Raycast")(world, V.new(0, 5, 0), direction))
 	close(hit.Distance, 4)
 	expect(hit.Normal):toEqual(V.yAxis)
-	local sphereHit = assert((world.Spherecast :: Sphere)(world, V.new(0, 5, 0), 1, direction))
+	local sphereHit = assert(cast(engine.environment, world, "Spherecast")(world, V.new(0, 5, 0), 1, direction))
 	close(sphereHit.Distance, 3)
-	local blockHit = assert((world.Blockcast :: Block)(world, CF.new(0, 5, 0), V.one * 2, direction))
+	local blockHit = assert(cast(engine.environment, world, "Blockcast")(world, CF.new(0, 5, 0), V.one * 2, direction))
 	close(blockHit.Distance, 3)
 	target.Shape = D.Enum.PartType.Block
-	local corner = assert((world.Spherecast :: Sphere)(world, V.new(1.6, 5, 1.6), 1, direction))
+	local corner = assert(cast(engine.environment, world, "Spherecast")(world, V.new(1.6, 5, 1.6), 1, direction))
 	close(corner.Distance, 4 - math.sqrt(0.28))
 	expect((corner.Position - V.new(1, 1, 1)).Magnitude < 0.0001):toBe(true)
-	expect((world.Spherecast :: Sphere)(world, V.new(1.8, 5, 1.8), 1, direction)):toBe(nil)
+	expect(cast(engine.environment, world, "Spherecast")(world, V.new(1.8, 5, 1.8), 1, direction)):toBe(nil)
 	local source = engine.newInstance "Part"
 	source.Size, source.Shape, source.CFrame, source.Parent = V.one * 2, D.Enum.PartType.Ball, CF.new(0, 5, 0), world
-	close(assert((world.Shapecast :: Shape)(world, source, direction)).Distance, 3)
+	close(assert(cast(engine.environment, world, "Shapecast")(world, source, direction)).Distance, 3)
 	source.CFrame, source.Size = CF.new(1.8, 1.8, 1.8), V.one * 0.2
 	target.Shape = D.Enum.PartType.Ball
-	expect(#(world.GetPartsInPart :: Parts)(world, source)):toBe(0)
+	expect(#overlap(engine.environment, world, "GetPartsInPart")(world, source)):toBe(0)
 	local params = D.OverlapParams.new()
 	params.ExcludeInstances = { source }
-	expect(#(world.GetPartBoundsInBox :: Bounds)(world, CF.new(0.95, 0.95, 0.95), V.one * 0.1, params)):toBe(1)
-	expect(#(world.GetPartBoundsInRadius :: Radius)(world, V.new(0.95, 0.95, 0.95), 0.1, params)):toBe(1)
+	expect(
+		#overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.new(0.95, 0.95, 0.95), V.one * 0.1, params)
+	):toBe(1)
+	expect(#overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.new(0.95, 0.95, 0.95), 0.1, params)):toBe(
+		1
+	)
 end)
 
 it("rotates the query box and source shape, including oblique box edge contacts", function()
@@ -324,23 +399,33 @@ it("rotates the query box and source shape, including oblique box edge contacts"
 	local target = engine.newInstance "Part"
 	target.Size, target.CFrame, target.Parent = V.one * 0.2, CF.new(3, 0, 0), world
 	local size = V.new(8, 1, 1)
-	expect(#(world.GetPartBoundsInBox :: Bounds)(world, CF.identity, size)):toBe(1)
-	expect(#(world.GetPartBoundsInBox :: Bounds)(world, CF.Angles(0, 0, math.pi / 2), size)):toBe(0)
+	expect(#overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.identity, size)):toBe(1)
+	expect(#overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.Angles(0, 0, math.pi / 2), size)):toBe(0)
 	local source = engine.newInstance "Part"
 	source.CFrame, source.Size, source.Parent = CF.Angles(0, 0, math.pi / 2), size, world
-	expect(#(world.GetPartsInPart :: Parts)(world, source)):toBe(0)
+	expect(#overlap(engine.environment, world, "GetPartsInPart")(world, source)):toBe(0)
 	source.CFrame = CF.identity
-	expect(#(world.GetPartsInPart :: Parts)(world, source)):toBe(1)
+	expect(#overlap(engine.environment, world, "GetPartsInPart")(world, source)):toBe(1)
 	source.CFrame = CF.new(0, 10, 0) * CF.Angles(0, 0, math.pi / 2)
 	local params = D.RaycastParams.new()
 	params.ExcludeInstances = { source }
-	expect((world.Blockcast :: Block)(world, source.CFrame :: Frame, size, V.new(0, -20, 0), params)):toBe(nil)
-	expect((world.Shapecast :: Shape)(world, source, V.new(0, -20, 0), params)):toBe(nil)
+	expect(
+		cast(engine.environment, world, "Blockcast")(
+			world,
+			Frames.expect(source.CFrame, 1),
+			size,
+			V.new(0, -20, 0),
+			params
+		)
+	):toBe(nil)
+	expect(cast(engine.environment, world, "Shapecast")(world, source, V.new(0, -20, 0), params)):toBe(nil)
 	source.CFrame = CF.new(0, 10, 0)
-	expect(assert((world.Shapecast :: Shape)(world, source, V.new(0, -20, 0), params)).Instance):toBe(target)
+	expect(assert(cast(engine.environment, world, "Shapecast")(world, source, V.new(0, -20, 0), params)).Instance):toBe(
+		target
+	)
 	target.Size, target.CFrame = V.new(5, 1, 2), CF.Angles(0.2, 0.5, 0.3)
 	local result = assert(
-		(world.Blockcast :: Block)(
+		cast(engine.environment, world, "Blockcast")(
 			world,
 			CF.new(0, 10, 0) * CF.Angles(0.1, 0.7, 0.4),
 			V.new(2, 1, 3),
@@ -366,11 +451,13 @@ it("cylinder mesh union and terrain proxies use authored bounds and water filter
 		end
 		target.Parent = world
 		local params = D.RaycastParams.new()
-		expect(assert((world.Raycast :: Ray)(world, origin, direction, params), class).Instance):toBe(target)
+		expect(assert(cast(engine.environment, world, "Raycast")(world, origin, direction, params), class).Instance):toBe(
+			target
+		)
 		params.IgnoreWater = true
-		local hit = (world.Raycast :: Ray)(world, origin, direction, params)
+		local hit = cast(engine.environment, world, "Raycast")(world, origin, direction, params)
 		expect(if hit then hit.Instance else nil):toBe(if class == "Terrain" then nil else target)
-		expect(#(world.GetPartBoundsInRadius :: Radius)(world, V.zero, 1)):toBe(1)
+		expect(#overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.zero, 1)):toBe(1)
 		target:Destroy()
 	end
 end)
@@ -380,38 +467,38 @@ it("refuses invalid cast geometry and unsupported source content before returnin
 	local world = engine.service "Workspace"
 	local direction = V.new(0, -20, 0)
 	refused(function()
-		(world.Blockcast :: Block)(world, CF.identity, V.one * 513, direction)
+		cast(engine.environment, world, "Blockcast")(world, CF.identity, V.one * 513, direction)
 	end, "maximum size")
 	refused(function()
-		(world.Blockcast :: Block)(world, CF.identity, V.new(-1, 1, 1), direction)
+		cast(engine.environment, world, "Blockcast")(world, CF.identity, V.new(-1, 1, 1), direction)
 	end, "positive")
 	refused(function()
-		(world.Spherecast :: Sphere)(world, V.zero, 257, direction)
+		cast(engine.environment, world, "Spherecast")(world, V.zero, 257, direction)
 	end, "maximum size")
 	refused(function()
-		(world.Spherecast :: Sphere)(world, V.zero, -1, direction)
+		cast(engine.environment, world, "Spherecast")(world, V.zero, -1, direction)
 	end, "positive")
 	refused(function()
-		(world.GetPartBoundsInRadius :: Radius)(world, V.zero, -1)
+		overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.zero, -1)
 	end, "nonnegative")
 	local source = engine.newInstance "WedgePart"
 	source.Parent = world
 	refused(function()
-		(world.Shapecast :: Shape)(world, source, direction)
+		cast(engine.environment, world, "Shapecast")(world, source, direction)
 	end, "unsupported_content")
 	refused(function()
-		(world.GetPartsInPart :: Parts)(world, source)
+		overlap(engine.environment, world, "GetPartsInPart")(world, source)
 	end, "unsupported_content")
 	source:Destroy()
 	refused(function()
-		(world.Shapecast :: Shape)(world, source, direction)
+		cast(engine.environment, world, "Shapecast")(world, source, direction)
 	end, "live BasePart")
 	local part = engine.newInstance "Part"
 	refused(function()
-		(world.GetPartsInPart :: Parts)(world, part)
+		overlap(engine.environment, world, "GetPartsInPart")(world, part)
 	end, "same WorldRoot")
 	refused(function()
-		(world.Shapecast :: Shape)(world, part, direction, nil, CF.identity)
+		cast(engine.environment, world, "Shapecast")(world, part, direction, nil, CF.identity)
 	end, "unsupported")
 end)
 
@@ -423,15 +510,15 @@ it("unconfigured terrain refuses even after an overlap limit could have been sat
 	local terrain = engine.environment.createEngineInstance "Terrain"
 	terrain.Parent = world
 	refused(function()
-		(world.Raycast :: Ray)(world, V.new(0, 10, 0), V.new(0, -20, 0))
+		cast(engine.environment, world, "Raycast")(world, V.new(0, 10, 0), V.new(0, -20, 0))
 	end, "unsupported_content")
 	local params = D.OverlapParams.new()
 	params.MaxParts = 1
 	refused(function()
-		(world.GetPartBoundsInBox :: Bounds)(world, CF.identity, V.one, params)
+		overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.identity, V.one, params)
 	end, "unsupported_content")
 	params.ExcludeInstances = { terrain }
-	expect(#(world.GetPartBoundsInBox :: Bounds)(world, CF.identity, V.one, params)):toBe(1)
+	expect(#overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.identity, V.one, params)):toBe(1)
 end)
 
 it("ball intersections include tangency and exclude inside ray origins", function()
@@ -439,17 +526,17 @@ it("ball intersections include tangency and exclude inside ray origins", functio
 	local world = engine.service "Workspace"
 	local target = engine.newInstance "Part"
 	target.Shape, target.Size, target.Parent = D.Enum.PartType.Ball, V.one * 2, world
-	local tangent = assert((world.Raycast :: Ray)(world, V.new(1, 5, 0), V.new(0, -10, 0)))
+	local tangent = assert(cast(engine.environment, world, "Raycast")(world, V.new(1, 5, 0), V.new(0, -10, 0)))
 	close(tangent.Distance, 5)
 	expect(tangent.Normal):toEqual(V.xAxis)
-	expect((world.Raycast :: Ray)(world, V.zero, V.new(0, -10, 0))):toBe(nil)
+	expect(cast(engine.environment, world, "Raycast")(world, V.zero, V.new(0, -10, 0))):toBe(nil)
 	local source = engine.newInstance "Part"
 	source.Shape, source.Size, source.Parent = D.Enum.PartType.Ball, V.one * 2, world
 	source.CFrame = CF.new(2, 0, 0)
-	expect((world.GetPartsInPart :: Parts)(world, source)):toEqual { target }
+	expect(overlap(engine.environment, world, "GetPartsInPart")(world, source)):toEqual { target }
 	source.CFrame = CF.new(2.01, 0, 0)
-	expect(#(world.GetPartsInPart :: Parts)(world, source)):toBe(0)
-	local hit = assert((world.Shapecast :: Shape)(world, source, V.new(-4, 0, 0)))
+	expect(#overlap(engine.environment, world, "GetPartsInPart")(world, source)):toBe(0)
+	local hit = assert(cast(engine.environment, world, "Shapecast")(world, source, V.new(-4, 0, 0)))
 	close(hit.Distance, 0.01)
 	expect(hit.Normal):toEqual(V.xAxis)
 end)

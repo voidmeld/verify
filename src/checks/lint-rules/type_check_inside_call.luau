@@ -13,10 +13,12 @@ type Violation = {
 	sourcepath: path.Path?,
 }
 
-type Global = { name: { text: string } }
-type Group = { expression: syntax.CstExpr }
-type Binary = { operator: { text: string } }
-type Call = { func: syntax.CstExpr, arguments: { syntax.CstExpr }, location: syntax.Span }
+type Global = syntax.CstExprGlobal
+type Group = syntax.CstExprGroup
+type Binary = syntax.CstExprBinary
+type Call = syntax.CstExprCall
+
+local WARNING: "warning" = "warning"
 
 local NAME = "type_check_inside_call"
 
@@ -32,19 +34,19 @@ local COMPARISONS: { [string]: boolean } = {
 }
 
 local function asCall(node: syntax.CstNode): Call?
-	return (utils.isExprCall(node) :: unknown) :: Call?
+	return utils.isExprCall(node)
 end
 
 local function asGroup(node: syntax.CstExpr): Group?
-	return (utils.isExprGroup(node) :: unknown) :: Group?
+	return utils.isExprGroup(node)
 end
 
 local function asGlobal(node: syntax.CstExpr): Global?
-	return (utils.isExprGlobal(node) :: unknown) :: Global?
+	return utils.isExprGlobal(node)
 end
 
 local function asBinary(node: syntax.CstExpr): Binary?
-	return (utils.isExprBinary(node) :: unknown) :: Binary?
+	return utils.isExprBinary(node)
 end
 
 local function unwrapGroups(expr: syntax.CstExpr): syntax.CstExpr
@@ -106,7 +108,7 @@ local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, _context: 
 				name,
 				operator
 			),
-			severity = "warning" :: "warning",
+			severity = WARNING,
 			sourcepath = sourcepath,
 		}
 	end)

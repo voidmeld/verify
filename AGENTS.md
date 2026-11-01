@@ -35,3 +35,6 @@ Changes to this library use a pull request to `main` and the required `Gate` che
 
 Preserve the [MIT provenance](PROVENANCE.md). Keep history append-only unless the Owner authorizes a rewrite.
 Consumers follow the [Verify skill](.agents/skills/verify/SKILL.md).
+
+Every maintained Luau file requires `--!strict`, zero explicit `any` and zero type assertions
+(`::`), including concrete casts. The required gate rejects violations without a baseline or exemptions.

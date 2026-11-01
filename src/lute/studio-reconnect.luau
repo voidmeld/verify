@@ -70,7 +70,8 @@ local function wrap(initial: Connection?, deps: Deps): Recovering
 						end
 						active = fresh
 					else
-						last = { status = last.status, detail = tostring(value), lost = true }
+						local failed: Exchange = { status = last.status, detail = tostring(value), lost = true }
+						last = failed
 					end
 				end
 				local current = active
@@ -96,7 +97,8 @@ local function wrap(initial: Connection?, deps: Deps): Recovering
 				end
 			end
 			if uncertain and last.status == "unsent" then
-				last = { status = "unanswered", detail = last.detail, lost = last.lost }
+				local unanswered: Exchange = { status = "unanswered", detail = last.detail, lost = last.lost }
+				last = unanswered
 			end
 			return last
 		end,

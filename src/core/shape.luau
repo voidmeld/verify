@@ -1,7 +1,5 @@
 --!strict
 
-local readMetatable = (getmetatable :: unknown) :: (unknown) -> unknown
-
 local function sortedKeys<T>(map: { [string]: T }): { string }
 	local keys: { string } = {}
 	for key in map do
@@ -23,15 +21,26 @@ local function nonnegativeInteger(value: unknown): boolean
 	return type(value) == "number" and finiteNonnegative(value) and value % 1 == 0
 end
 
+local function record(value: unknown, label: string): { [string]: unknown }
+	assert(type(value) == "table", label .. " must be a table")
+	assert(getmetatable(value) == nil, label .. " must be a plain table")
+	local result: { [string]: unknown } = {}
+	for key, item in value do
+		if type(key) == "string" then
+			result[key] = item
+		end
+	end
+	return result
+end
+
 local function denseRows(value: unknown, count: number): boolean
 	if type(value) ~= "table" then
 		return false
 	end
-	local entries = value :: { [unknown]: unknown }
-	if readMetatable(entries) ~= nil or #entries ~= count then
+	if getmetatable(value) ~= nil or #value ~= count then
 		return false
 	end
-	for key in entries do
+	for key in value do
 		if type(key) == "userdata" then
 			continue
 		end
@@ -46,21 +55,20 @@ local function exactKeys(value: unknown, fields: { [string]: boolean }): boolean
 	if type(value) ~= "table" then
 		return false
 	end
-	local entries = value :: { [unknown]: unknown }
-	if readMetatable(entries) ~= nil then
+	if getmetatable(value) ~= nil then
 		return false
 	end
-	for key in entries do
+	local count = 0
+	for key in value do
 		if type(key) ~= "string" or fields[key] ~= true then
 			return false
 		end
+		count += 1
 	end
-	for key in fields do
-		if entries[key] == nil then
-			return false
-		end
+	for _ in fields do
+		count -= 1
 	end
-	return true
+	return count == 0
 end
 
 local function copyStrings(value: unknown, label: string): { string }
@@ -68,7 +76,7 @@ local function copyStrings(value: unknown, label: string): { string }
 		error(label .. " must be an array", 3)
 	end
 	local result: { string } = {}
-	for index, item in value :: { unknown } do
+	for index, item in value do
 		if type(index) ~= "number" or index ~= #result + 1 or type(item) ~= "string" then
 			error(label .. " must be a dense string array", 3)
 		end
@@ -92,6 +100,7 @@ local function nonnegativeNumber(value: unknown, label: string): number
 end
 
 return {
+	record = record,
 	sortedKeys = sortedKeys,
 	copyStrings = copyStrings,
 	requiredString = requiredString,

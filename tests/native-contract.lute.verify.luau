@@ -6,7 +6,6 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Core = require "../src/core"
 local Roblox = require "../src/roblox"
 local Wire = require "../src/lute/wire"
-local json = require "@std/json"
 
 describe("native execution contract", function()
 	it("one engine report survives chunking and refuses stale or duplicate runs", function()
@@ -29,7 +28,7 @@ describe("native execution contract", function()
 		expect(function()
 			Roblox.reportChannel.receive({ runId = "run-a", report = {} }, "run-a")
 		end):toThrow()
-		local one = json.serialize(Roblox.reportChannel.envelope("run-a", report))
+		local one = Wire.encode(Roblox.reportChannel.envelope("run-a", report))
 		expect(function()
 			Roblox.reportChannel.collect("VERIFY_REPORT|" .. one .. "\nVERIFY_REPORT|" .. one, "run-a", Wire.parse)
 		end):toThrow()

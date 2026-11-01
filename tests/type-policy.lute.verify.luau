@@ -33,4 +33,12 @@ it("type policy sees casts inside interpolated expressions", function()
 	expect(#Policy.explicitAny "local text = `{(1 :: any)}`"):toBe(1)
 end)
 
+it("type policy rejects concrete nested and interpolated casts", function()
+	expect(#Policy.casts "local x = (1 :: number) :: unknown"):toBe(2)
+	expect(#Policy.casts "local x = `{(1 :: number)}`"):toBe(1)
+	expect(#Policy.casts 'local text = ":: any"\n-- value :: number'):toBe(0)
+	local ok = pcall(Policy.casts, "local x = (")
+	expect(ok):toBe(false)
+end)
+
 return nil

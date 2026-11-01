@@ -3,6 +3,8 @@
 local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
+local Lute = require "../src/lute"
+
 local Batch = require "../src/lute/batch"
 local Host = require "../src/lute/host"
 local Runtime = require "../src/lute/runtime"
@@ -95,7 +97,7 @@ local function batchOf(id: string, locator: string): Verify.PlanBatch
 end
 
 local operations: Worker.Operations = {
-	load = function(): unknown
+	load = function(): (Verify.Harness) -> ()
 		return function(harness: Verify.Harness)
 			harness:case("one", function(context)
 				context:expect(1):toBe(1)
@@ -141,7 +143,8 @@ describe("worker host", function()
 	it("returns the validated report of a clean run", function()
 		local outcome = outcomeOf(workerScript(0))
 		expect(outcome.status):toBe "returned"
-		expect((outcome.report :: Verify.Report).passed):toBe(1)
+		local report = Wire.decode(Wire.encode(outcome.report))
+		expect(report.passed):toBe(1)
 	end)
 
 	it("returns the report of a worker that exits nonzero", function()
@@ -180,7 +183,8 @@ describe("worker host", function()
 
 	it("requires a worker path and delivers every batch through the time binding", function()
 		local state = memory({}, workerScript(0))
-		expect((pcall(Host.create, { worker = "" }, state.runtime))):toBe(false)
+		local invalid: Host.Options = { worker = "" }
+		expect((pcall(Host.create, invalid, state.runtime))):toBe(false)
 		local host = Host.create({ worker = "w.luau" }, state.runtime)
 		local runBatch = host.runBatch
 		local dispatched = 0
@@ -198,6 +202,20 @@ describe("worker host", function()
 		expect(delivered):toEqual { "returned", "returned" }
 		expect(dispatched):toBe(2)
 	end)
+end)
+
+it("refuses a resource with no release method", function()
+	local harness = Verify.createHarness {
+		now = function(): number
+			return 0
+		end,
+	}
+	harness:case("owns nothing releasable", function(context)
+		Lute.chunk.load "local context = ...; context:own({handle = true})"(context)
+	end)
+	local report = harness:run { executor = "test" }
+	expect(report.failed):toEqual(1)
+	expect(report.results[1].failures[1].message):toContain "dispose or destroy"
 end)
 
 return nil

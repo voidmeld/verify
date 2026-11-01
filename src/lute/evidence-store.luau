@@ -114,12 +114,15 @@ local function localDirectory(directory: string): Core.EvidenceSink
 end
 
 local function seal(report: Core.Report, options: SealOptions): Evidence.Sealed
+	local function now(): number
+		return os.time()
+	end
 	return Evidence.seal(report, {
 		from = options.from,
 		runId = options.runId,
 		build = options.build,
 		device = options.device,
-		now = options.now or os.time,
+		now = options.now or now,
 		hash = sha256,
 		read = readFile,
 		sink = options.sink or localDirectory(options.directory or DEFAULT_DIRECTORY),
@@ -127,13 +130,16 @@ local function seal(report: Core.Report, options: SealOptions): Evidence.Sealed
 end
 
 local function validate(report: Core.Report, options: ValidateOptions): Evidence.Result
+	local function now(): number
+		return os.time()
+	end
 	return Evidence.validate(report, {
 		from = options.from,
 		runId = options.runId,
 		build = options.build,
 		requireClean = options.requireClean,
 		required = options.required,
-		now = options.now or os.time,
+		now = options.now or now,
 		maxAgeSeconds = options.maxAgeSeconds,
 		maxSkewSeconds = options.maxSkewSeconds,
 		hosts = options.hosts,

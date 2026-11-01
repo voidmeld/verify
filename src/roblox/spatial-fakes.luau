@@ -49,9 +49,9 @@ local function attach(environment: Environment.Environment, hasPivot: (Instance)
 		if object:IsA "BasePart" then
 			return frame(object, "CFrame") * frame(object, "PivotOffset")
 		end
-		local primary = environment.propertyOf(object, "PrimaryPart") :: Instance?
+		local primary = environment.propertyOf(object, "PrimaryPart")
 		if primary then
-			return pivot(primary)
+			return pivot(environment.assertInstance(primary))
 		elseif hasPivot(object) then
 			return frame(object, "WorldPivot")
 		end
@@ -110,7 +110,7 @@ local function attach(environment: Environment.Environment, hasPivot: (Instance)
 		if type(read) ~= "function" then
 			return 0, 0
 		end
-		local ok, topLeft = pcall(read :: (Instance) -> unknown, service)
+		local ok, topLeft = pcall(environment.method(service, "GetGuiInset"), service)
 		if not ok then
 			return 0, 0
 		end

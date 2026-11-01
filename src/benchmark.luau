@@ -40,6 +40,10 @@ export type PhaseResult = Types.PhaseResult
 export type Result = Types.Result
 export type CollectionResult = Types.CollectionResult
 
+local function appendInvalid(issues: { Invalid }, issue: Invalid)
+	table.insert(issues, issue)
+end
+
 local function contains(values: { string }?, value: string): boolean
 	return values ~= nil and table.find(values, value) ~= nil
 end
@@ -109,7 +113,7 @@ local function yardstickIssues(spec: Spec, tool: Yardstick, before: { number }, 
 	end
 	local spread = relativeSpread(combined)
 	if spread ~= nil and spread > tool.maxSpread then
-		table.insert(issues, {
+		appendInvalid(issues, {
 			reason = "yardstick_unstable",
 			detail = ("yardstick spread was %.3f, above the allowed %.3f"):format(spread, tool.maxSpread),
 		})
@@ -120,7 +124,7 @@ local function yardstickIssues(spec: Spec, tool: Yardstick, before: { number }, 
 	local base = if tool.driftBase == "mean" then (first + last) / 2 else first
 	local drift = if base == 0 then (if last == first then 0 else math.huge) else math.abs(last - first) / base
 	if drift > tool.maxDrift then
-		table.insert(issues, {
+		appendInvalid(issues, {
 			reason = "yardstick_drift",
 			detail = ("yardstick %s moved %.3f between the start and end, above the allowed %.3f"):format(
 				statistic,
@@ -313,7 +317,7 @@ local function phaseResult(
 	if phase.maxSpread ~= nil and #samples > 0 then
 		local spread = result.spread
 		if spread ~= nil and spread > phase.maxSpread then
-			table.insert(result.invalid, {
+			appendInvalid(result.invalid, {
 				reason = "unstable",
 				detail = ("relative spread (p95-p50)/p50 of phase %s was %.3f, above the allowed %.3f"):format(
 					phase.name,
@@ -441,7 +445,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 		if spec.maxSpread ~= nil and #samples > 0 then
 			local spread = result.spread
 			if spread ~= nil and spread > spec.maxSpread then
-				table.insert(invalid, {
+				appendInvalid(invalid, {
 					reason = "unstable",
 					detail = ("relative spread (p95-p50)/p50 was %.3f, above the allowed %.3f"):format(
 						spread,
@@ -453,7 +457,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 		local tool = spec.yardstick
 		if tool ~= nil then
 			for _, issue in yardstickIssues(spec, tool, yardstickBefore, yardstickAfter) do
-				table.insert(invalid, issue)
+				appendInvalid(invalid, issue)
 			end
 		end
 		return result
@@ -461,7 +465,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 
 	local accepted = spec.environment.accepted
 	if accepted ~= nil and not contains(accepted, spec.environment.observed) then
-		table.insert(invalid, {
+		appendInvalid(invalid, {
 			reason = "environment_mismatch",
 			detail = ("observed environment %q is not among the accepted %s"):format(
 				spec.environment.observed,
@@ -471,7 +475,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 	end
 	local problems = mismatches(spec)
 	if #problems > 0 then
-		table.insert(invalid, { reason = "baseline_mismatch", detail = table.concat(problems, "; ") })
+		appendInvalid(invalid, { reason = "baseline_mismatch", detail = table.concat(problems, "; ") })
 	end
 	if #invalid > 0 then
 		return finish()
@@ -492,21 +496,22 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 
 	local heap = spec.heap
 	local function heapReading(): HeapReading?
-		if heap == nil or heapBefore == nil then
+		local before = heapBefore
+		if heap == nil or before == nil then
 			return nil
 		end
 		local after = readHeap(heap)
 		if after == nil then
 			return nil
 		end
-		return { before = heapBefore, after = after, growth = after - heapBefore, unit = heap.unit }
+		return { before = before, after = after, growth = after - before, unit = heap.unit }
 	end
 	local function finishWithHeap(): Result
 		local result = finish()
 		if heap ~= nil and failure == nil and #samples == spec.samples then
 			result.heap = heapReading()
 			if result.heap == nil then
-				table.insert(result.invalid, {
+				appendInvalid(result.invalid, {
 					reason = "heap_unsupported",
 					detail = "the heap probe did not return a finite non-negative reading",
 				})
@@ -631,7 +636,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 	if heap ~= nil then
 		heapBefore = readHeap(heap)
 		if heapBefore == nil then
-			table.insert(invalid, {
+			appendInvalid(invalid, {
 				reason = "heap_unsupported",
 				detail = "the heap probe did not return a finite non-negative reading",
 			})
@@ -647,7 +652,7 @@ local function measure(spec: Spec, clock: Clock, started: number): Result
 	end
 	for _ = 1, spec.samples do
 		if expired() then
-			table.insert(invalid, {
+			appendInvalid(invalid, {
 				reason = "deadline_exceeded",
 				detail = ("the %s second deadline elapsed after %d of %d samples"):format(
 					tostring(spec.deadlineSeconds),
@@ -792,7 +797,7 @@ local function collectOnce(collection: Collection): CollectionResult
 				result.yardstickAfter = table.clone(after)
 				local problems = mismatches(member)
 				if #problems > 0 then
-					table.insert(
+					appendInvalid(
 						result.invalid,
 						{ reason = "baseline_mismatch", detail = table.concat(problems, "; ") }
 					)

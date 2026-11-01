@@ -1,47 +1,61 @@
 --!strict
 
 return [==[
- local function near(actual, expected, label)
-  assert(math.abs(actual.X-expected[1]) < 0.001 and math.abs(actual.Y-expected[2]) < 0.001, label .. ": " .. tostring(actual))
- end
- local params = Instance.new("GetTextBoundsParams")
- params.Font, params.Size = Font.new("rbxasset://fonts/families/LegacyArial.json"), 14
- params.Text = "A"
- game.TextService:GetTextBoundsAsync(params)
- local screen = Instance.new("ScreenGui")
- screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
- local expected = game.HttpService:JSONDecode([=[[{"bounds":[0,10],"lineHeight":1,"api":[0,20.666667938232422],"scale":0.5,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[50,10]},{"bounds":[46.66666793823242,10],"lineHeight":1,"api":[94.66667175292969,20.666667938232422],"scale":0.5,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[50,10]},{"bounds":[38.66666793823242,120],"lineHeight":1,"api":[78,248],"scale":0.5,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[50,120]},{"bounds":[22.666667938232422,20],"lineHeight":1,"api":[46,41.333335876464844],"scale":0.5,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[50,20]},{"bounds":[0,10],"lineHeight":1.2,"api":[0,20.666667938232422],"scale":0.5,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[50,10]},{"bounds":[46.66666793823242,10],"lineHeight":1.2,"api":[94.66667175292969,20.666667938232422],"scale":0.5,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[50,10]},{"bounds":[38.66666793823242,142],"lineHeight":1.2,"api":[78,248],"scale":0.5,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[50,142]},{"bounds":[22.666667938232422,22],"lineHeight":1.2,"api":[46,41.333335876464844],"scale":0.5,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[50,22]},{"bounds":[0,10],"lineHeight":2,"api":[0,20.666667938232422],"scale":0.5,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[50,10]},{"bounds":[46.66666793823242,10],"lineHeight":2,"api":[94.66667175292969,20.666667938232422],"scale":0.5,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[50,10]},{"bounds":[38.66666793823242,230],"lineHeight":2,"api":[78,248],"scale":0.5,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[50,230]},{"bounds":[22.666667938232422,30],"lineHeight":2,"api":[46,41.333335876464844],"scale":0.5,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[50,30]},{"bounds":[0,20.666667938232422],"lineHeight":1,"api":[0,20.666667938232422],"scale":1,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[100,20.666667938232422]},{"bounds":[94.66667175292969,20.666667938232422],"lineHeight":1,"api":[94.66667175292969,20.666667938232422],"scale":1,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[100,20.666667938232422]},{"bounds":[78,248],"lineHeight":1,"api":[78,248],"scale":1,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[100,248]},{"bounds":[46,41.333335876464844],"lineHeight":1,"api":[46,41.333335876464844],"scale":1,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[100,41.333335876464844]},{"bounds":[0,20.666667938232422],"lineHeight":1.2,"api":[0,20.666667938232422],"scale":1,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[100,20.666667938232422]},{"bounds":[94.66667175292969,20.666667938232422],"lineHeight":1.2,"api":[94.66667175292969,20.666667938232422],"scale":1,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[100,20.666667938232422]},{"bounds":[78,293.4667053222656],"lineHeight":1.2,"api":[78,248],"scale":1,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[100,293.4667053222656]},{"bounds":[46,45.46666717529297],"lineHeight":1.2,"api":[46,41.333335876464844],"scale":1,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[100,45.46666717529297]},{"bounds":[0,20.666667938232422],"lineHeight":2,"api":[0,20.666667938232422],"scale":1,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[100,20.666667938232422]},{"bounds":[94.66667175292969,20.666667938232422],"lineHeight":2,"api":[94.66667175292969,20.666667938232422],"scale":1,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[100,20.666667938232422]},{"bounds":[78,475.3333435058594],"lineHeight":2,"api":[78,248],"scale":1,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[100,475.3333435058594]},{"bounds":[46,62],"lineHeight":2,"api":[46,41.333335876464844],"scale":1,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[100,62]},{"bounds":[0,42],"lineHeight":1,"api":[0,20.666667938232422],"scale":2,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[200,42]},{"bounds":[189.33334350585938,42],"lineHeight":1,"api":[94.66667175292969,20.666667938232422],"scale":2,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[200,42]},{"bounds":[154.6666717529297,504],"lineHeight":1,"api":[78,248],"scale":2,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[200,504]},{"bounds":[91.33333587646484,84],"lineHeight":1,"api":[46,41.333335876464844],"scale":2,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[200,84]},{"bounds":[0,42],"lineHeight":1.2,"api":[0,20.666667938232422],"scale":2,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[200,42]},{"bounds":[189.33334350585938,42],"lineHeight":1.2,"api":[94.66667175292969,20.666667938232422],"scale":2,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[200,42]},{"bounds":[154.6666717529297,596.4000244140625],"lineHeight":1.2,"api":[78,248],"scale":2,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[200,596.4000244140625]},{"bounds":[91.33333587646484,92.40000915527344],"lineHeight":1.2,"api":[46,41.333335876464844],"scale":2,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[200,92.40000915527344]},{"bounds":[0,42],"lineHeight":2,"api":[0,20.666667938232422],"scale":2,"text":"","legacy":[[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422],[0,20.666667938232422]],"size":[200,42]},{"bounds":[189.33334350585938,42],"lineHeight":2,"api":[94.66667175292969,20.666667938232422],"scale":2,"text":"Hello world","legacy":[[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422],[94.66667175292969,20.666667938232422]],"size":[200,42]},{"bounds":[154.6666717529297,966],"lineHeight":2,"api":[78,248],"scale":2,"text":"Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text Wrapped text ","legacy":[[78,20.666667938232422],[78,20.666667938232422],[78,20.666667938232422],[78,41.333335876464844],[78,41.333335876464844],[78,82.66667175292969],[78,20.666667938232422]],"size":[200,966]},{"bounds":[91.33333587646484,126],"lineHeight":2,"api":[46,41.333335876464844],"scale":2,"text":"Hello\nworld","legacy":[[46,20.666667938232422],[46,20.666667938232422],[46,20.666667938232422],[46,41.333335876464844],[46,41.333335876464844],[46,41.333335876464844],[46,20.666667938232422]],"size":[200,126]}]]=])
- local index = 0
- for _, scale in {0.5, 1, 2} do
-  for _, lineHeight in {1, 1.2, 2} do
-   for _, text in {"", "Hello world", string.rep("Wrapped text ", 6), "Hello\nworld"} do
-    local frame = Instance.new("Frame")
-    frame.Size, frame.Parent = UDim2.fromOffset(200, 500), screen
-    local scaler = Instance.new("UIScale")
-    scaler.Scale, scaler.Parent = scale, frame
-    local label = Instance.new("TextLabel")
-    label.FontFace, label.TextSize, label.LineHeight = params.Font, 14, lineHeight
-    label.Text, label.TextWrapped = text, true
-    label.Size, label.AutomaticSize = UDim2.fromOffset(100, 0), Enum.AutomaticSize.Y
-    label.Parent = frame
-    task.wait(0.05)
-    params.Text, params.Width = text, 100
-    local api = game.TextService:GetTextBoundsAsync(params)
-    index += 1
-    local observation = expected[index]
-    near(label.TextBounds, observation.bounds, "legacy bounds " .. index)
-    near(label.AbsoluteSize, observation.size, "legacy automatic size " .. index)
-    assert(api == Vector2.new(unpack(observation.api)), "legacy bounds API " .. index)
-    for heightIndex, height in {20,21,41,42,50,100,0} do
-     assert(game.TextService:GetTextSize(text,14,Enum.Font.Legacy,Vector2.new(100,height)) == Vector2.new(unpack(observation.legacy[heightIndex])), "legacy enum line limit " .. index .. "/" .. height)
-    end
-    assert(game.TextService:GetTextSize(text,14,Enum.Font.Legacy,Vector2.new(100,1000000)) == api, "legacy enum API " .. index)
-    frame:Destroy()
+local function near(a, b, e) return math.abs(a - b) <= (e or 0.001) end
+local params = Instance.new("GetTextBoundsParams")
+params.Font, params.Size = Font.new("rbxasset://fonts/families/LegacyArial.json"), 14
+params.Text = "A"
+game.TextService:GetTextBoundsAsync(params)
+local screen = Instance.new("ScreenGui")
+screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
+local texts = {"", "Hello world", string.rep("Wrapped text ", 6), "Hello\nworld"}
+for _, scale in {0.5, 1, 2} do
+ for _, lineHeight in {1, 1.2, 2} do
+  for index, text in texts do
+   local tag = scale .. "/" .. lineHeight .. "/" .. index
+   local frame = Instance.new("Frame")
+   frame.Size, frame.Parent = UDim2.fromOffset(200, 500), screen
+   local scaler = Instance.new("UIScale")
+   scaler.Scale, scaler.Parent = scale, frame
+   local label = Instance.new("TextLabel")
+   label.FontFace, label.TextSize, label.LineHeight = params.Font, 14, lineHeight
+   label.Text, label.TextWrapped = text, true
+   label.Size, label.AutomaticSize = UDim2.fromOffset(100, 0), Enum.AutomaticSize.Y
+   label.Parent = frame
+   task.wait(0.05)
+   params.Text, params.Width = text, 100
+   local api = game.TextService:GetTextBoundsAsync(params)
+   local bounds, size = label.TextBounds, label.AbsoluteSize
+   assert(near(size.X, 100 * scale), "legacy automatic height keeps the width " .. tag)
+   assert(near(size.Y, bounds.Y), "legacy automatic height follows the bounds " .. tag .. ": " .. tostring(size) .. " " .. tostring(bounds))
+   assert(bounds.X <= 100 * scale + 0.001, "legacy wrapped width stays within the constraint " .. tag)
+   assert((text == "") == (bounds.X == 0) and (text == "") == (api.X == 0), "only empty text has zero width " .. tag)
+   if lineHeight == 1 and index <= 2 then
+    assert(near(bounds.Y, api.Y * scale, math.max(1, api.Y * scale * 0.1)) and near(bounds.X, api.X * scale, math.max(2, api.X * scale * 0.1)), "legacy label bounds follow the service scaled " .. tag .. ": " .. tostring(bounds) .. " " .. tostring(api))
    end
+   if lineHeight > 1 then
+    assert(bounds.Y >= api.Y * scale - 1, "line spacing never shrinks the label " .. tag)
+   end
+   local function legacy(height)
+    return game.TextService:GetTextSize(text, 14, Enum.Font.Legacy, Vector2.new(100, height))
+   end
+   local full = legacy(1000000)
+   assert(near(full.X, api.X) and near(full.Y, api.Y), "legacy enum agrees with the font face " .. tag .. ": " .. tostring(full) .. " " .. tostring(api))
+   local line = legacy(0).Y
+   local lines = math.floor(full.Y / line + 0.5)
+   local previous = 0
+   for _, height in {0, 20, 21, 41, 42, 50, 100, 1000} do
+    local limited = legacy(height)
+    local expected = math.min(lines, math.max(1, math.floor(height / line + 0.0001))) * line
+    assert(near(limited.Y, expected, 0.01) and near(limited.X, full.X), "legacy enum line limit " .. tag .. "/" .. height .. ": " .. tostring(limited))
+    assert(limited.Y >= previous - 0.001, "legacy line limit grows monotonically " .. tag)
+    previous = limited.Y
+   end
+   frame:Destroy()
   end
  end
- params:Destroy()
- screen:Destroy()
-
+end
+params:Destroy()
+screen:Destroy()
 return true
 ]==]

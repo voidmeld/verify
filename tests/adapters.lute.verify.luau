@@ -78,7 +78,7 @@ describe("verify execution hosts", function()
 	end)
 
 	it("round-trips a batch across the worker wire", function()
-		local batches = Plan.partition({
+		local draft: Verify.PlanDraft = {
 			id = "wire",
 			units = {
 				{
@@ -90,7 +90,8 @@ describe("verify execution hosts", function()
 				},
 				{ id = "b", locator = "b.verify.luau", group = "g" },
 			},
-		}, 1)
+		}
+		local batches = Plan.partition(draft, 1)
 		local decoded = Batch.decode(Batch.encode(batches[1]))
 		expect(decoded.id):toEqual(batches[1].id)
 		expect(decoded.index):toEqual(1)

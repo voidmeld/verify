@@ -5,6 +5,7 @@ export type Task<A... = ...unknown, R... = ...unknown> = Callback<A..., R...> | 
 
 type Arguments = { [number]: unknown, n: number }
 type Ready = { thread: thread, arguments: Arguments, depth: number }
+local pack: (...unknown) -> Arguments = table.pack
 
 local MAX_DEFER_DEPTH = 80
 
@@ -60,16 +61,16 @@ local function create(): Scheduler
 		end
 	end
 
-	local function withTag<A...>(thread: thread, ...: A...): ...unknown
+	local function withTag(thread: thread, ...: unknown): ...unknown
 		release(thread)
 		local previous = active
 		active = tags[thread]
-		local results = table.pack(coroutine.resume(thread, ...))
+		local results = pack(coroutine.resume(thread, ...))
 		active = previous
 		return table.unpack(results, 1, results.n)
 	end
 
-	local function start<A...>(thread: thread, ...: A...)
+	local function start(thread: thread, ...: unknown)
 		release(thread)
 		local previous = active
 		active = tags[thread]
@@ -92,8 +93,8 @@ local function create(): Scheduler
 		return tostring(message)
 	end
 
-	local function push<A...>(thread: thread, depth: number, ...: A...)
-		ready[#ready + 1] = { thread = thread, arguments = table.pack(...), depth = depth }
+	local function push(thread: thread, depth: number, ...: unknown)
+		ready[#ready + 1] = { thread = thread, arguments = pack(...), depth = depth }
 	end
 
 	local function step()
@@ -155,7 +156,7 @@ local function create(): Scheduler
 
 	function scheduler.delay<A..., R...>(seconds: number, callback: Task<A..., R...>, ...: A...): thread
 		local thread = if type(callback) == "thread" then callback else coroutine.create(callback)
-		local arguments = table.pack(...)
+		local arguments = pack(...)
 		if tags[thread] == nil then
 			tags[thread] = active
 		end
@@ -191,7 +192,7 @@ local function create(): Scheduler
 		local thread = coroutine.running()
 		local cleanup = register(thread)
 		if type(cleanup) == "function" then
-			cleanups[thread] = cleanup :: () -> ()
+			cleanups[thread] = cleanup
 		end
 		return coroutine.yield()
 	end

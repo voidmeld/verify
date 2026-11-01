@@ -158,7 +158,13 @@ local function nativeLaunch(address: string, deadline: number): Session
 	}
 end
 
-local NATIVE: Backend = { now = os.clock, sleep = task.wait, launch = nativeLaunch }
+local NATIVE: Backend = {
+	now = os.clock,
+	sleep = function(seconds: number)
+		task.wait(seconds)
+	end,
+	launch = nativeLaunch,
+}
 
 local function run(options: Options): Core.BatchOutcome
 	local address = url(options.placeId, options.runId, { caseIds = options.caseIds, entry = options.entry })

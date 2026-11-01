@@ -1,5 +1,7 @@
 --!strict
 
+local Shape = require "./shape"
+
 export type Record = {
 	payload: string,
 	ordinal: number,
@@ -47,7 +49,7 @@ local function frame(tag: string, payload: string, maxPayloadBytes: number?): { 
 		return { tag .. "|" .. payload }
 	end
 	local count = math.ceil(#payload / limit)
-	local lines: { string } = table.create(count)
+	local lines: { string } = {}
 	for index = 1, count do
 		local first = (index - 1) * limit + 1
 		local last = math.min(index * limit, #payload)
@@ -138,7 +140,7 @@ local function reassemble(records: { Record }): (string?, string?)
 		end
 		seen[index] = chunk
 	end
-	local pieces: { string } = table.create(count)
+	local pieces: { string } = {}
 	for index = 1, count do
 		local chunk = seen[index]
 		if chunk == nil then
@@ -165,7 +167,7 @@ local function segment(payload: string, maxBytes: number): { Segment }
 		}
 	end
 	local count = math.ceil(totalBytes / maxBytes)
-	local segments: { Segment } = table.create(count)
+	local segments: { Segment } = {}
 	for index = 1, count do
 		local first = (index - 1) * maxBytes + 1
 		local last = math.min(index * maxBytes, totalBytes)
@@ -186,7 +188,10 @@ local function readSegment(raw: unknown): Segment?
 	if type(raw) ~= "table" then
 		return nil
 	end
-	local fields = raw :: { [string]: unknown }
+	if getmetatable(raw) ~= nil then
+		return nil
+	end
+	local fields = Shape.record(raw, "segment")
 	if
 		type(fields.index) ~= "number"
 		or type(fields.count) ~= "number"
@@ -215,7 +220,10 @@ local function reassembleSegments(segments: { unknown }): (string?, string?)
 	if type(first) ~= "table" then
 		return nil, "a segment is malformed"
 	end
-	local firstFields = first :: { [string]: unknown }
+	if getmetatable(first) ~= nil then
+		return nil, "a segment is malformed"
+	end
+	local firstFields = Shape.record(first, "segment")
 	if type(firstFields.count) ~= "number" then
 		return nil, "a segment is malformed"
 	end
@@ -254,7 +262,7 @@ local function reassembleSegments(segments: { unknown }): (string?, string?)
 		seen[piece.index] = piece
 	end
 
-	local pieces: { string } = table.create(count)
+	local pieces: { string } = {}
 	for index = 1, count do
 		local piece = seen[index]
 		if piece == nil then

@@ -16,6 +16,29 @@ local Environment = require "../src/roblox/environment"
 local Reflection = require "../src/roblox/reflection"
 local UiFakes = require "../src/roblox/ui-fakes"
 
+local function invoke(callback: unknown, ...: unknown): ...unknown
+	return Environment.vm.invoke(Environment.vm.value(callback), ...)
+end
+
+local function record(value: unknown): { [unknown]: unknown }
+	assert(type(value) == "table" or type(value) == "userdata")
+	return setmetatable({}, { __index = value, __newindex = value })
+end
+
+local function signal(value: unknown): Environment.Signal
+	assert(type(value) == "table")
+	local view: { Environment.Signal } = setmetatable({}, {
+		__index = function(): unknown
+			return value
+		end,
+	})
+	local result = view[1]
+	assert(type(result.Connect) == "function")
+	assert(type(result.Wait) == "function")
+	assert(type(result.Fire) == "function")
+	return result
+end
+
 local function thrown(callback: () -> ...unknown): string
 	local ok, message = pcall(callback)
 	assert(not ok, "expected the call to raise")
@@ -90,12 +113,12 @@ local function getters(entries: { [string]: Environment.Computed }): { [string]:
 	return entries
 end
 
-local function pinged(object: Environment.Instance): Environment.Signal<()>
-	return object.Pinged :: Environment.Signal<()>
+local function pinged(object: Environment.Instance)
+	return signal(object.Pinged)
 end
 
-local function raisingHandler(): () -> ()
-	return function()
+local function raisingHandler(): (...unknown) -> ()
+	return function(...: unknown)
 		error("handler failed", 0)
 	end
 end
@@ -239,7 +262,7 @@ describe("handler errors", function()
 			widget.Missing = 1
 		end)):toContain "is not a valid member"
 		expect(thrown(function()
-			plain { handlerErrors = ("ignore" :: unknown) :: "raise" }
+			invoke(plain, { handlerErrors = "ignore" })
 		end)):toContain "handlerErrors"
 	end)
 
@@ -268,14 +291,14 @@ describe("connection counts for any signal", function()
 		expect(env.connectionsOf(changed)):toBe(1)
 		expect(env.connectionsOf(attribute)):toBe(1)
 		expect(env.connectionsOf(own)):toBe(1)
-		expect(env.connectionsOf((env.heartbeat :: unknown) :: Environment.Signal)):toBe(1)
+		expect(env.connectionsOf(env.heartbeat)):toBe(1)
 		widget.Count = 1
 		widget.Count = 2
 		expect(env.firesOf(changed)):toBe(2)
 		own:Fire()
 		expect(env.firesOf(own)):toBe(1)
 		env.step(1)
-		expect(env.firesOf((env.heartbeat :: unknown) :: Environment.Signal)):toBe(1)
+		expect(env.firesOf(env.heartbeat)):toBe(1)
 		connection:Disconnect()
 		expect(env.connectionsOf(changed)):toBe(0)
 	end)
@@ -303,7 +326,7 @@ describe("connection counts for any signal", function()
 			return env.connectionsOf(foreign)
 		end)):toContain "not created by this environment"
 		expect(thrown(function()
-			return env.firesOf(({}) :: Environment.Signal)
+			return invoke(env.firesOf, {})
 		end)):toContain "not created by this environment"
 	end)
 end)
@@ -318,9 +341,9 @@ describe("per-instance method doubles", function()
 			table.insert(seen, self)
 			return key == "A"
 		end)
-		local call = first.IsKeyDown :: (Environment.Instance, string) -> boolean
-		expect(call(first, "A")):toBe(true)
-		expect(call(first, "B")):toBe(false)
+		local call = first.IsKeyDown
+		expect(invoke(call, first, "A")):toBe(true)
+		expect(invoke(call, first, "B")):toBe(false)
 		expect(seen[1] == first):toBe(true)
 		expect(thrown(function()
 			return second.IsKeyDown
@@ -328,7 +351,7 @@ describe("per-instance method doubles", function()
 		env.fakeOn(first, "IsKeyDown", function(): boolean
 			return false
 		end)
-		expect((first.IsKeyDown :: (Environment.Instance, string) -> boolean)(first, "A")):toBe(false)
+		expect(invoke(first.IsKeyDown, first, "A")):toBe(false)
 	end)
 
 	it("fakeOn refuses a property, an event and Parent", function()
@@ -356,11 +379,11 @@ describe("per-instance method doubles", function()
 		widget.GetFocusedTextBox = function(self: Environment.Instance): unknown
 			return self
 		end
-		expect((widget.GetFocusedTextBox :: (Environment.Instance) -> unknown)(widget) == widget):toBe(true)
+		expect(invoke(widget.GetFocusedTextBox, widget) == widget):toBe(true)
 		widget.GetFocusedTextBox = function(): unknown
 			return "second"
 		end
-		expect((widget.GetFocusedTextBox :: (Environment.Instance) -> unknown)(widget)):toBe "second"
+		expect(invoke(widget.GetFocusedTextBox, widget)):toBe "second"
 		expect(thrown(function()
 			return other.GetFocusedTextBox
 		end)):toContain "is not a valid member"
@@ -385,7 +408,7 @@ describe("per-instance method doubles", function()
 		env.fakeOn(widget, "Probe", function(): number
 			return 1
 		end)
-		local copy = (widget.Clone :: (Environment.Instance) -> Environment.Instance)(widget)
+		local copy = assert(widget:Clone())
 		expect(thrown(function()
 			return copy.Probe
 		end)):toContain "is not a valid member"
@@ -393,8 +416,13 @@ describe("per-instance method doubles", function()
 end)
 
 describe("rejected selection", function()
-	local function ui(selection: unknown, requirePlayerGui: boolean?): Bridge.Bridge
-		return bridge { ui = { selection = selection :: "raise" | "ignore"?, requirePlayerGui = requirePlayerGui } }
+	local function ui(selection: string?, requirePlayerGui: boolean?): Bridge.Bridge
+		local mode: { ("raise" | "ignore")? } = setmetatable({}, {
+			__index = function(): unknown
+				return selection
+			end,
+		})
+		return bridge { ui = { selection = mode[1], requirePlayerGui = requirePlayerGui } }
 	end
 
 	it("raise stays the default", function()
@@ -499,20 +527,18 @@ describe("rejected selection", function()
 	it("GetStyled raw writes do not fire style notifications", function()
 		local built = bridge()
 		local label = built.environment.createInstance "TextLabel"
-		local styled = label.GetStyled :: (Environment.Instance, string) -> unknown
-		local signal = (
-			label.GetStyledPropertyChangedSignal :: (Environment.Instance, string) -> Environment.Signal<()>
-		)(label, "Text")
+		local styled = label.GetStyled
+		local changed = signal(invoke(label.GetStyledPropertyChangedSignal, label, "Text"))
 		local fired = 0
-		signal:Connect(function()
+		changed:Connect(function()
 			fired += 1
 		end)
-		expect(styled(label, "Text")):toBe "Label"
+		expect(invoke(styled, label, "Text")):toBe "Label"
 		label.Text = "changed"
-		expect(styled(label, "Text")):toBe "changed"
+		expect(invoke(styled, label, "Text")):toBe "changed"
 		expect(fired):toBe(0)
 		expect(thrown(function()
-			return styled(label, "Nope")
+			return invoke(styled, label, "Nope")
 		end)):toContain "is not a valid member"
 	end)
 end)
@@ -547,8 +573,8 @@ describe("datatype shells", function()
 		local env = plain()
 		local widget = env.createInstance "Widget"
 		widget:SetAttribute("Info", Datatypes.TweenInfo.new(4))
-		local info = widget:GetAttribute "Info" :: Datatypes.TweenInfoValue
-		expect(info.Time):toBe(4)
+		local info = widget:GetAttribute "Info"
+		expect(record(info).Time):toBe(4)
 		expect(thrown(function()
 			widget:SetAttribute("Key", Datatypes.FloatCurveKey.new(0, 1, Datatypes.Enum.KeyInterpolationMode.Linear))
 		end)):toContain "FloatCurveKey"
@@ -656,10 +682,10 @@ describe("computed property reads", function()
 			},
 		}
 		local label = built.environment.createInstance("TextLabel", { Text = "abc" })
-		local bounds = label.TextBounds :: Datatypes.Vector2Value
-		expect(bounds.X):toBe(24)
+		local bounds = label.TextBounds
+		expect(record(bounds).X):toBe(24)
 		label.Text = "abcd"
-		expect((label.TextBounds :: Datatypes.Vector2Value).X):toBe(32)
+		expect(record(label.TextBounds).X):toBe(32)
 		expect(built.environment.createInstance("Frame").Visible):toBe(true)
 	end)
 
@@ -713,14 +739,14 @@ describe("computed property reads", function()
 		expect(label.TextFits):toBe(true)
 		local copy = assert(label:Clone())
 		expect(copy.TextFits):toBe(true)
-		expect((copy.TextBounds :: Datatypes.Vector2Value).X):toBe(24)
+		expect(record(copy.TextBounds).X):toBe(24)
 		expect(seen[#seen] == copy):toBe(true)
 		expect(hooked[1] == copy):toBe(true)
 		local tree = assert(parent:Clone())
 		local child = tree:GetChildren()[1]
 		expect(child ~= label):toBe(true)
 		expect(child.TextFits):toBe(true)
-		expect((child.TextBounds :: Datatypes.Vector2Value).X):toBe(24)
+		expect(record(child.TextBounds).X):toBe(24)
 		expect(seen[#seen] == child):toBe(true)
 		expect(#hooked):toBe(3)
 		connection:Disconnect()
@@ -813,7 +839,7 @@ describe("undeclared writes", function()
 		local parent = relaxed.createInstance("Folder", { Name = "relaxed" })
 		local child = relaxed.createInstance("Folder", { Name = "Child", Parent = parent })
 		expect(parent.Missing):toBeNil()
-		local indexed = (parent :: unknown) :: { [number]: unknown }
+		local indexed = record(parent)
 		expect(indexed[1]):toBeNil()
 		expect(parent.Child):toBe(child)
 		expect(parent.Name):toBe "relaxed"
@@ -840,7 +866,7 @@ describe("undeclared writes", function()
 		env.poke(widget, "Extra", 2)
 		expect(widget.Extra):toBe(2)
 		expect(fired):toBe(2)
-		local copy = (widget.Clone :: (Environment.Instance) -> Environment.Instance)(widget)
+		local copy = assert(widget:Clone())
 		expect(copy.Extra):toBe(2)
 		expect(thrown(function()
 			return widget.NeverWritten
@@ -910,10 +936,10 @@ describe("observation identity", function()
 		local counts: { Environment.Event } = {}
 		env.observe(function(event: Environment.Event)
 			table.insert(destroys, event)
-		end, { operations = { "destroy" :: Environment.Operation } })
+		end, { operations = { "destroy" } })
 		local counting = env.observe(function(event: Environment.Event)
 			table.insert(counts, event)
-		end, { operations = { "setProperty" :: Environment.Operation }, members = { "Count" } })
+		end, { operations = { "setProperty" }, members = { "Count" } })
 		local widget = env.createInstance "Widget"
 		widget.Count = 1
 		widget.Name = "Renamed"

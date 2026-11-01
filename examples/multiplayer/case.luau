@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../../src/core/shape"
 local Core = require "../../src/core"
 local Roblox = require "../../src/roblox"
 local Input = Roblox.inputHost
@@ -22,7 +23,7 @@ local button = Core.operation {
 	input = empty,
 	output = function(value: unknown): { x: number, y: number }
 		assert(type(value) == "table")
-		local fields = value :: { [string]: unknown }
+		local fields = Shape.record(value, "button")
 		assert(type(fields.x) == "number" and type(fields.y) == "number")
 		return { x = fields.x, y = fields.y }
 	end,

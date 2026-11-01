@@ -288,11 +288,12 @@ local function createHarness(options: {
 		local function walk(suite: Suite)
 			local path = suitePath(ancestors(suite))
 			for _, entry in suite.cases do
-				local matches = selected(entry, path, runOptions.selection)
+				local selection = runOptions.selection
+				local matches = selected(entry, path, selection)
 				if matches and inShard() then
 					local result = executeCase(suite, entry, available, runOrigin, invoker, runOptions, execution)
 					table.insert(results, result)
-				elseif runOptions.selection ~= nil and runOptions.selection.account == true then
+				elseif selection ~= nil and selection.account == true then
 					local skipped = table.clone(entry)
 					skipped.requires = {}
 					skipped.skipReason = DESELECTED_PREFIX
@@ -368,11 +369,12 @@ local function syntheticReport(options: SyntheticOptions): Report
 			elseif options.status == "cancelled" then "cancelled"
 			else "failed"
 		local message: string = options.message or tostring(options.status)
-		table.insert(failures, {
+		local failure: Failure = {
 			phase = options.phase or "executor",
 			outcome = outcome,
 			message = message,
-		})
+		}
+		table.insert(failures, failure)
 	end
 	local result: CaseResult = {
 		id = options.id,

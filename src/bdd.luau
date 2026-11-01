@@ -3,12 +3,12 @@
 local Verify = require "./core"
 
 type Context = Verify.Context
-type Expectation = Verify.Expectation
+type Expectation<T = unknown> = Verify.Expectation<T>
 type Harness = Verify.Harness
 
 export type Spy = Verify.Spy
 
-export type Own = (cleanup: () -> ()) -> ()
+export type Own = (cleanup: () -> ...unknown) -> ()
 export type Body = (own: Own, context: Context) -> ()
 export type CaseDefinition = {
 	timeoutSeconds: number?,
@@ -26,7 +26,7 @@ export type Bdd = {
 	itSkip: (name: string, reason: string, body: Body?) -> (),
 	beforeEach: (body: Body) -> (),
 	afterEach: (body: Body) -> (),
-	expect: (value: unknown) -> Expectation,
+	expect: typeof(Verify.expect),
 	spy: typeof(Verify.spy),
 	skip: (reason: string) -> never,
 }
@@ -40,8 +40,10 @@ local function create(harness: Harness): Bdd
 			local previous = activeContext
 			activeContext = context
 			local ok, message = pcall(function(): unknown
-				body(function(cleanup: () -> ())
-					context:defer(cleanup)
+				body(function(cleanup: () -> ...unknown)
+					context:defer(function()
+						cleanup()
+					end)
 				end, context)
 				return nil
 			end)
@@ -85,7 +87,7 @@ local function create(harness: Harness): Bdd
 		harness:afterEach(adapt(body))
 	end
 
-	function bdd.expect(value: unknown): Expectation
+	function bdd.expect<T>(value: T?): Expectation<T>
 		return Verify.expect(value)
 	end
 
@@ -123,7 +125,7 @@ export type Surface = {
 	beforeEach: (body: Body) -> (),
 	afterEach: (body: Body) -> (),
 	skip: (reason: string) -> never,
-	expect: (value: unknown, ...unknown) -> Expectation,
+	expect: typeof(Verify.expect),
 	spy: typeof(Verify.spy),
 	float32: (value: number) -> number,
 	open: (source: string) -> (),
@@ -147,11 +149,10 @@ local function surface(options: SurfaceOptions): Surface
 		capabilities = options.capabilities,
 		now = options.now or os.clock,
 		surface = create,
-		runtimeVerbs = { "skip" },
 		prefixCaseIds = false,
 		selection = options.selection,
 	}
-	local session = Verify.createSession(sessionOptions)
+	local session = Verify.createSurfaceSession(sessionOptions)
 	local depth = 0
 	local ambientOpen = false
 	local activeOverride: Bdd? = nil
@@ -194,7 +195,7 @@ local function surface(options: SurfaceOptions): Surface
 	end
 
 	function api.skip(reason: string): never
-		return session.verbs.skip(reason)
+		return session:active().skip(reason)
 	end
 
 	api.expect = Verify.expect

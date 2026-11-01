@@ -301,7 +301,7 @@ local function create(options: Options): () -> Summary
 					local declared = instance.check.report
 					expectation = { cases = declared.cases, minimum = declared.minimum, exact = declared.exact }
 				end
-				table.insert(producers, {
+				local producer: Gate.ProducerDraft = {
 					id = instance.id,
 					kind = "command",
 					argv = argv,
@@ -310,7 +310,8 @@ local function create(options: Options): () -> Summary
 					after = dependencies(instance, instances),
 					deadlineSeconds = instance.check.deadlineSeconds,
 					report = expectation,
-				})
+				}
+				table.insert(producers, producer)
 			end
 		end
 		files.makeDirectory(Paths.join(directory, "checks"))
@@ -463,7 +464,7 @@ local function create(options: Options): () -> Summary
 			local folder = Paths.join(directory, "captures/" .. device.id)
 			if files.isDirectory(folder) then
 				local entries = files.list(folder)
-				table.sort(entries, function(left, right)
+				table.sort(entries, function(left: Services.Entry, right: Services.Entry)
 					return left.name < right.name
 				end)
 				for _, entry in entries do
@@ -643,7 +644,8 @@ local function create(options: Options): () -> Summary
 			log(("run %s: agent %s started"):format(spec.id, adapter.id))
 			local outcome = adapter.run(request, services)
 			if closeStudio ~= nil then
-				closeStudio(studio ~= nil and studio.keep == true)
+				local releaseStudio: (boolean?) -> () = closeStudio
+				releaseStudio(studio ~= nil and studio.keep == true)
 				closeStudio = nil
 			end
 			files.write(Paths.join(directory, "transcript.jsonl"), stampedText(outcome.lines))

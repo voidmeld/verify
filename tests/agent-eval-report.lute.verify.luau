@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local AgentEval = require "../src/agent-eval"
 local Fakes = require "./agent-eval-fakes"
 local Lute = require "../src/lute"
+local Wire = require "../src/lute/wire"
 local Verify = require "../src/core"
 
 type Object = { [string]: unknown }
@@ -188,11 +189,13 @@ local function judgeCliFixture(): JudgeCliFixture
 		return AgentEval.cli(args, cli)
 	end
 	local function identity(): Object
-		local aggregate = Lute.parse(files.read "/e/judgments.json") :: { transport: string }
-		return Lute.parse(aggregate.transport) :: Object
+		local aggregate = Wire.record(Lute.parse(files.read "/e/judgments.json"))
+		local transport = aggregate.transport
+		assert(type(transport) == "string")
+		return Wire.record(Lute.parse(transport))
 	end
 	local function configureJudge(judge: Object)
-		local configuration = Lute.parse(files.read "/s/eval.json") :: Object
+		local configuration = Wire.record(Lute.parse(files.read "/s/eval.json"))
 		configuration.judge = judge
 		files.write("/s/eval.json", Fakes.json(configuration))
 	end
@@ -525,9 +528,8 @@ describe("agent evaluation report", function()
 			expect(fixture.invoke { "--effort", effort }):toBe(0)
 			expect(#fixture.requests - before):toBe(2)
 			expect(fixture.identity().effort):toBe(effort)
-			local request =
-				Lute.parse(assert(fixture.requests[#fixture.requests].body)) :: { output_config: { effort: string } }
-			expect(request.output_config.effort):toBe(effort)
+			local request = Wire.record(Lute.parse(assert(fixture.requests[#fixture.requests].body)))
+			expect(Wire.record(request.output_config).effort):toBe(effort)
 		end
 		local apiCalls = #fixture.requests
 		expect(fixture.invoke { "--effort", "high" }):toBe(0)
@@ -566,7 +568,7 @@ describe("agent evaluation report", function()
 			model = "historical-model",
 			effort = "provider-default",
 		}
-		local request = Lute.parse(assert(fixture.requests[#fixture.requests].body)) :: { model: string }
+		local request = Wire.record(Lute.parse(assert(fixture.requests[#fixture.requests].body)))
 		expect(request.model):toBe "historical-model"
 		local beforeAuth, beforeCommands = fixture.authReads(), #fixture.commands
 		expect(fixture.invoke { "--provider", "openai", "--transport", "cli" }):toBe(2)

@@ -1,7 +1,8 @@
 --!strict
 
 type Fields = { [string]: unknown }
-type Encode = (value: unknown, kind: string) -> unknown
+type Host = { read: (unknown, string) -> unknown, components: (unknown) -> { number } }
+type Encode = (value: unknown, kind: string, host: Host) -> unknown
 type EnumItem = { Name: string, Value: number }
 type EnumFamily = { GetEnumItems: (EnumFamily) -> { EnumItem } }
 type Enums = { GetEnums: (Enums) -> { EnumFamily }, [string]: EnumFamily }
@@ -23,6 +24,7 @@ type Globals = {
 	BrickColor: { new: (number) -> BrickColor, palette: (number) -> BrickColor },
 	Font: { fromEnum: (EnumItem) -> Font },
 	typeof: (unknown) -> string,
+	host: Host,
 	version: (() -> string)?,
 	security: unknown,
 	classSecurity: unknown,
@@ -118,7 +120,7 @@ local function sample(globals: Globals, encode: Encode, object: Node, members: {
 				return object[member.Name]
 			end)
 			if read and value ~= nil then
-				local encoded = encode(value, globals.typeof(value))
+				local encoded = encode(value, globals.typeof(value), globals.host)
 				if encoded ~= nil then
 					defaults[member.Name] = encoded
 				end

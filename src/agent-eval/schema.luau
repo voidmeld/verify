@@ -21,11 +21,12 @@ local function record(value: unknown, label: string): Record
 	if type(value) ~= "table" then
 		return fail(label, "must be an object")
 	end
-	local fields = value :: Record
-	for key in fields do
+	local fields: Record = {}
+	for key, item in value do
 		if type(key) ~= "string" then
 			return fail(label, "must be an object with string keys")
 		end
+		fields[key] = item
 	end
 	return fields
 end
@@ -107,7 +108,7 @@ local function list(value: unknown, label: string): { unknown }
 		return fail(label, "must be an array")
 	end
 	local result: { unknown } = {}
-	for key, item in value :: { [unknown]: unknown } do
+	for key, item in value do
 		if type(key) ~= "number" or key % 1 ~= 0 or key < 1 then
 			return fail(label, "must be an array")
 		end
@@ -178,7 +179,8 @@ local function canonical(value: unknown): string
 	elseif kind ~= "table" then
 		return "null"
 	end
-	local items = value :: { [unknown]: unknown }
+	assert(type(value) == "table")
+	local items = value
 	local count = 0
 	for _ in items do
 		count += 1

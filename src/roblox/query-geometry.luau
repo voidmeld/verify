@@ -151,7 +151,8 @@ local function contact(a: Shape, b: Shape): Vector
 						end
 					else
 						local t1, t2 = (-h[k] - o[k]) / d[k], (h[k] - o[k]) / d[k]
-						near, far = math.max(near, math.min(t1, t2)), math.min(far, math.max(t1, t2))
+						near = math.max(near, math.min(t1, t2))
+						far = math.min(far, math.max(t1, t2))
 					end
 				end
 				if near <= far + 1e-7 then

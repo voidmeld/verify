@@ -147,7 +147,12 @@ local function field(value: unknown, key: string): unknown
 	if type(value) ~= "table" then
 		return nil
 	end
-	return (value :: { [string]: unknown })[key]
+	for name, item in value do
+		if name == key then
+			return item
+		end
+	end
+	return nil
 end
 
 local function textOf(value: unknown): string?

@@ -61,7 +61,7 @@ local function world(): World
 				local text = Lute.encode { studios = self.studios }
 				return { status = "answered", result = { content = { { type = "text", text = text } } } }
 			end
-			local arguments = Wire.parse(argumentsJson) :: { [string]: unknown }
+			local arguments = Wire.record(Wire.parse(argumentsJson), "arguments")
 			return {
 				status = "answered",
 				result = { content = { { type = "text", text = tool .. ":" .. tostring(arguments.studio_id) } } },

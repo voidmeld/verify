@@ -89,7 +89,7 @@ local function memory(): Memory
 			local prefix = value .. "/"
 			for file in contents do
 				if string.sub(file, 1, #prefix) == prefix and string.find(file, "/", #prefix + 1, true) == nil then
-					table.insert(result, { name = string.sub(file, #prefix + 1), kind = "file" })
+					result[#result + 1] = { name = string.sub(file, #prefix + 1), kind = "file" }
 				end
 			end
 			for directory in directories do
@@ -97,10 +97,10 @@ local function memory(): Memory
 					string.sub(directory, 1, #prefix) == prefix
 					and string.find(directory, "/", #prefix + 1, true) == nil
 				then
-					table.insert(result, { name = string.sub(directory, #prefix + 1), kind = "directory" })
+					result[#result + 1] = { name = string.sub(directory, #prefix + 1), kind = "directory" }
 				end
 			end
-			table.sort(result, function(left, right)
+			table.sort(result, function(left: AgentEval.Entry, right: AgentEval.Entry): boolean
 				return left.name < right.name
 			end)
 			return result

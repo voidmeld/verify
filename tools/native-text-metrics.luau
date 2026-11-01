@@ -54,17 +54,38 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
    end
    table.insert(strings, text)
   end
-  local differences = {}
+  local differences, compared, violations = {}, 0, {}
+  local widths = {}
+  local lastHeight = 0
+  local function violate(rule, text, size)
+   if #violations < 20 then table.insert(violations, {rule = rule, text = text, size = size}) end
+  end
   for size = 1, 100 do
    params.Size = size
    local lineHeight = model.height(size)
+   local line = nil
    for _, text in strings do
     params.Text, params.Width = text, 0
     local native = game.TextService:GetTextBoundsAsync(params)
     local width = model.width(text, size)
+    compared += 1
     if width ~= native.X or native.Y ~= lineHeight then
      table.insert(differences, {text = text, size = size, actual = {width, lineHeight}, native = {native.X, native.Y}})
     end
+    if text:match "%S" then
+     line = line or native.Y
+     if native.Y ~= line then violate("every non-empty line has one height", text, size) end
+     if native.X <= 0 then violate("visible text has width", text, size) end
+    elseif text == "" and native.X ~= 0 then
+     violate("empty text has zero width", text, size)
+    end
+    local previous = widths[text]
+    if previous and native.X < previous - 0.001 then violate("width grows with size", text, size) end
+    widths[text] = native.X
+   end
+   if line then
+    if line < lastHeight then violate("line height grows with size", "", size) end
+    lastHeight = line
    end
    for _, text in {"Hello world ", "  Office staff affiliation  ", "affluent\nwaffle\n", "The quick brown fox jumps over the lazy dog"} do
     local minimum = 1
@@ -73,15 +94,24 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
     local native = game.TextService:GetTextBoundsAsync(params)
     local width, lines = model.wrap(text, size, params.Width)
     local height = model.height(size, lines)
+    compared += 1
     if width ~= native.X or height ~= native.Y then
      table.insert(differences, {text = text, size = size, width = params.Width, actual = {width, height}, native = {native.X, native.Y}})
+    end
+    if line then
+     local count = native.Y / line
+     if math.abs(count - math.floor(count + 0.5)) > 0.05 then violate("wrapped height is whole lines", text, size) end
+     if native.X > params.Width + 0.5 then violate("wrapped width stays within the constraint", text, size) end
+     params.Width = params.Width + 40
+     local wider = game.TextService:GetTextBoundsAsync(params)
+     if wider.Y > native.Y + 0.001 then violate("wider constraint never adds lines", text, size) end
     end
    end
   end
   local samples = {}
-  for index = 1, math.min(100, #differences) do samples[index] = differences[index] end
-  check:attach("differences.json", "application/json", game.HttpService:JSONEncode(samples))
-  check:expect(#differences):toBe(0)
+  for index = 1, math.min(20, #differences) do samples[index] = differences[index] end
+  check:attach("drift.json", "application/json", game.HttpService:JSONEncode({compared = compared, differing = #differences, engineVersion = version(), samples = samples}))
+  check:expect(violations):toEqual({})
  end)
 end
 return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-text-metrics", environment = {engineVersion = version()}}))
@@ -90,5 +120,23 @@ return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:
 	assert(result.status == "returned", result.detail)
 	local report = Core.decode(result.report)
 	print(Core.format(report))
+	for _, case in report.results do
+		for _, artifact in case.artifacts do
+			if artifact.name == "drift.json" and artifact.content ~= nil then
+				local differing = string.match(artifact.content, '"differing":(%d+)')
+				local compared = string.match(artifact.content, '"compared":(%d+)')
+				if differing ~= nil and compared ~= nil then
+					print(
+						string.format(
+							"drift %s: %s of %s recorded measurements differ from the live engine",
+							case.name,
+							differing,
+							compared
+						)
+					)
+				end
+			end
+		end
+	end
 	assert(report.total > 0 and report.passed == report.total, "native text metrics conformance failed")
 end

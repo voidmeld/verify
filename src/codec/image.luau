@@ -23,6 +23,7 @@ local function pngSize(bytes: string): (number?, number?)
 		return nil, nil
 	end
 	local width, height = string.unpack(">I4I4", bytes, 17)
+	assert(type(width) == "number" and type(height) == "number")
 	return width, height
 end
 

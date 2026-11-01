@@ -16,6 +16,18 @@ local BUILD: Core.EvidenceBuild = { commit = "c0ffee", tree = "7ee", clean = tru
 local SEALED_AT = 1000
 local CHECKED_AT = 1010
 
+local function copyArtifact(artifact: Core.Artifact)
+	return {
+		name = artifact.name,
+		reference = artifact.reference,
+		mediaType = artifact.mediaType,
+		sha256 = artifact.sha256,
+		size = artifact.size,
+		provenance = artifact.provenance,
+		content = artifact.content,
+	}
+end
+
 type Fixture = {
 	root: string,
 	report: Core.Report,
@@ -298,7 +310,7 @@ describe("evidence provenance rejection", function()
 		rejects(caseContext, fixture, "duplicate_observation")
 		local conflicting = build(caseContext)
 		local other = checkpoint(conflicting.report, "client-1")
-		local twin = table.clone(checkpoint(conflicting.report, "client-2").artifacts[1])
+		local twin = copyArtifact(checkpoint(conflicting.report, "client-2").artifacts[1])
 		twin.provenance = other.artifacts[1].provenance
 		table.insert(other.artifacts, twin)
 		rejects(caseContext, conflicting, "conflicting_observation")
@@ -309,22 +321,30 @@ describe("evidence provenance rejection", function()
 
 	it("rejects artifacts without identity or with an invalid recorded identity", function(_, caseContext)
 		local fixture = build(caseContext)
-		local artifact = checkpoint(fixture.report, "client-1").artifacts[1]
+		local captured = checkpoint(fixture.report, "client-1")
+		local artifact = copyArtifact(captured.artifacts[1])
+		captured.artifacts[1] = artifact
 		artifact.sha256, artifact.size, artifact.provenance = nil, nil, nil
 		rejects(caseContext, fixture, "missing_identity")
 		local forged = build(caseContext)
-		local identity = checkpoint(forged.report, "client-1").artifacts[1]
+		local forgedCapture = checkpoint(forged.report, "client-1")
+		local identity = copyArtifact(forgedCapture.artifacts[1])
+		forgedCapture.artifacts[1] = identity
 		identity.sha256 = Store.sha256 "forged"
 		rejects(caseContext, forged, "changed")
 		expect(function()
 			local report = build(caseContext).report
-			local target = checkpoint(report, "client-1").artifacts[1]
+			local capture = checkpoint(report, "client-1")
+			local target = copyArtifact(capture.artifacts[1])
+			capture.artifacts[1] = target
 			target.sha256 = "ABC"
 			Core.decode(report)
 		end):toThrow "lowercase hex sha-256"
 		expect(function()
 			local report = build(caseContext).report
-			local target = checkpoint(report, "client-1").artifacts[1]
+			local capture = checkpoint(report, "client-1")
+			local target = copyArtifact(capture.artifacts[1])
+			capture.artifacts[1] = target
 			target.sha256, target.size = nil, nil
 			Core.decode(report)
 		end):toThrow "requires a content identity"
@@ -464,7 +484,9 @@ describe("evidence tamper and availability", function()
 			build = BUILD,
 			device = "phone",
 			sink = sink,
-			now = os.time,
+			now = function(): number
+				return os.time()
+			end,
 			read = Store.readFile,
 			hash = function(): string
 				return "not-a-digest"
@@ -532,7 +554,8 @@ describe("review binding", function()
 		for _, review in evidence.reviews do
 			review.kind = "visual"
 		end
-		evidence.reviews[1].judgment.status = "failed"
+		local review = evidence.reviews[1]
+		review.judgment = { status = "failed", reviewer = review.judgment.reviewer, detail = review.judgment.detail }
 		rejects(caseContext, fixture, "review_not_passed")
 	end)
 

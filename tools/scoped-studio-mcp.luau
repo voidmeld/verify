@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../src/core/shape"
 local fs = require "@std/fs"
 local io = require "@lute/io"
 local process = require "@std/process"
@@ -11,24 +12,22 @@ local Wire = require "../src/lute/wire"
 
 local path = process.args[2]
 assert(path ~= nil and #process.args == 2, "usage: lute run tools/scoped-studio-mcp.luau <run scope file>")
-local raw = Eval.lute.decode(fs.readFileToString(path)) :: {
-	studio: { id: string, name: string },
-	executable: string,
-	directory: string,
-	seconds: number,
-	callSeconds: number?,
-}
+local raw = Shape.record(Eval.lute.decode(fs.readFileToString(path)), "scope")
+local studio = Shape.record(raw.studio, "scope studio")
+local identity =
+	{ id = Shape.requiredString(studio.id, "studio id"), name = Shape.requiredString(studio.name, "studio name") }
+local executable = Shape.requiredString(raw.executable, "executable")
+local directory = Shape.requiredString(raw.directory, "directory")
+local seconds = raw.seconds
+assert(type(seconds) == "number", "seconds must be a number")
 local callSeconds = raw.callSeconds or 60
 assert(
 	type(callSeconds) == "number" and callSeconds > 0 and callSeconds < math.huge,
 	"callSeconds must be finite and positive"
 )
-assert(
-	type(raw.seconds) == "number" and raw.seconds > 0 and raw.seconds < math.huge,
-	"seconds must be finite and positive"
-)
-local deadline = os.clock() + raw.seconds
-local transport: Mcp.Connection? = Mcp.connect(raw.executable, Files.claimDirectory(raw.directory), deadline)
+assert(seconds > 0 and seconds < math.huge, "seconds must be finite and positive")
+local deadline = os.clock() + seconds
+local transport: Mcp.Connection? = Mcp.connect(executable, Files.claimDirectory(directory), deadline)
 local callFailure: string? = nil
 local function dropTransport()
 	local previous = transport
@@ -40,15 +39,15 @@ end
 local function encode(value: unknown): string
 	return Wire.encode(value)
 end
-local scope = Eval.scopedMcp.create(raw.studio, {
+local scope = Eval.scopedMcp.create(identity, {
 	call = function(name, arguments): unknown
 		local now = os.clock()
 		assert(now < deadline, "the run deadline expired before the scoped Studio call")
 		if transport == nil then
-			transport = Mcp.connect(raw.executable, Files.claimDirectory(raw.directory), deadline)
+			transport = Mcp.connect(executable, Files.claimDirectory(directory), deadline)
 		end
 		local limit = math.min(now + callSeconds, deadline)
-		local called, value = pcall(assert(transport).callRaw, name, encode(arguments), limit)
+		local called, value = pcall(assert(transport).callRaw, name, encode(arguments), limit, nil)
 		if not called then
 			callFailure =
 				"the scoped Studio call failed without a response; it may have been applied; inspect state before repeating it"
@@ -69,12 +68,13 @@ local scope = Eval.scopedMcp.create(raw.studio, {
 	end,
 }, encode)
 local function respond(line: string)
-	local request = Eval.lute.decode(line) :: { id: unknown?, method: string, params: unknown? }
+	local request = Shape.record(Eval.lute.decode(line), "request")
+	local method = Shape.requiredString(request.method, "request method")
 	if request.id ~= nil then
 		callFailure = nil
 		local ok, result = pcall(function(): unknown
 			assert(os.clock() < deadline, "the scoped Studio run deadline expired")
-			return scope.dispatch(request.method, request.params)
+			return scope.dispatch(method, request.params)
 		end)
 		if ok and request.method == "ping" then
 			result = json.object {}
@@ -113,4 +113,4 @@ end)
 scope.close()
 dropTransport()
 
-assert(served, problem)
+assert(served, tostring(problem))

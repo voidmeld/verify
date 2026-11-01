@@ -8,10 +8,16 @@ local Lute = require "../src/lute"
 
 describe("place source cache", function()
 	it("loads Lute bytecode in isolated environments and refuses malformed JSON", function()
-		local host = table.clone(Lute.fixture.host)
-		host.readFile = function(): string
-			return "return subject"
-		end
+		local original = Lute.fixture.host
+		local host = {
+			readFile = function(): string
+				return "return subject"
+			end,
+			compile = original.compile,
+			load = original.load,
+			decodeJson = original.decodeJson,
+			encodeJson = original.encodeJson,
+		}
 		local cache = Roblox.createPlaceCache(host)
 		expect(cache.load("module.luau", { subject = "first" })()):toBe "first"
 		expect(cache.load("module.luau", { subject = "second" })()):toBe "second"

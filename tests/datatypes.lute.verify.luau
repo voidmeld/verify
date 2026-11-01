@@ -7,11 +7,24 @@ local fs = require "@std/fs"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 local probes = require "./fixtures/datatype-probes"
+local Wire = require "../src/lute/wire"
 
 local SNAPSHOT = "tests/fixtures/studio-reflection.json"
 local RECORDED = "tests/fixtures/datatype-probes.json"
 
 type Recorded = { engineVersion: string?, results: { [string]: string } }
+
+local function recorded(): Recorded
+	local parsed = Wire.record(Lute.parse(fs.readFileToString(RECORDED)))
+	local version = parsed.engineVersion
+	assert(version == nil or type(version) == "string")
+	local results: { [string]: string } = {}
+	for key, value in Wire.record(parsed.results) do
+		assert(type(key) == "string" and type(value) == "string")
+		results[key] = value
+	end
+	return { engineVersion = version, results = results }
+end
 
 local function thrown(body: () -> unknown): string
 	local ok, problem = pcall(body)
@@ -23,7 +36,7 @@ local function library(): Roblox.DatatypeLibrary
 end
 
 local function environment(types: Roblox.DatatypeLibrary): { [string]: unknown }
-	local globals = table.clone((types :: unknown) :: { [string]: unknown })
+	local globals = Wire.record(types)
 	local bridge = Lute.fixture.bridge()
 	globals.Instance = { new = bridge.environment.createInstance }
 	globals.typeof = bridge.placeEngine().typeName
@@ -61,7 +74,7 @@ end
 
 describe("Roblox datatypes compared with Studio", function()
 	it("every probe gives the result that Studio recorded", function()
-		local recorded = Lute.parse(fs.readFileToString(RECORDED)) :: Recorded
+		local recorded = recorded()
 		expect(type(recorded.engineVersion)):toBe "string"
 		local local_ = Lute.fixture.probeLocal(environment(library()), probes)
 		local mismatches: { string } = {}
@@ -79,7 +92,7 @@ describe("Roblox datatypes compared with Studio", function()
 	end)
 
 	it("the recorded results name exactly the current probes", function()
-		local recorded = Lute.parse(fs.readFileToString(RECORDED)) :: Recorded
+		local recorded = recorded()
 		local names: { [string]: boolean } = {}
 		for _, probe in probes do
 			expect(names[probe.name]):toBe(nil)
@@ -145,7 +158,7 @@ describe("datatype values", function()
 		expect(types.typeof(5)):toBe "number"
 		expect(types.typeName {}):toBe(nil)
 		expect(thrown(function(): unknown
-			return table.clone((types.Vector2.zero :: unknown) :: {})
+			return (Lute.chunk.load("return table.clone(value)", { environment = { value = types.Vector2.zero } })())
 		end) ~= ""):toBe(true)
 	end)
 
@@ -159,7 +172,7 @@ describe("datatype values", function()
 		expect(Roblox.reflectionSnapshot.library(snapshot) == types):toBe(true)
 		expect(types.Enum.TextXAlignment:FromValue(0)):toBe(types.Enum.TextXAlignment.Left)
 		expect(thrown(function(): unknown
-			return ((types.Enum :: unknown) :: { [string]: unknown }).KeyCode
+			return types.Enum.KeyCode
 		end)):toContain 'KeyCode is not a valid member of "Enum"'
 	end)
 
@@ -180,7 +193,7 @@ describe("datatype values", function()
 		local types = Roblox.datatypes.create {
 			enums = { Shape = { { name = "Round", value = 2 }, { name = "Square", value = 5 } } },
 		}
-		local shape = ((types.Enum :: unknown) :: { [string]: Roblox.DatatypeEnumCategory }).Shape
+		local shape = types.Enum.Shape
 		expect(#shape:GetEnumItems()):toBe(2)
 		expect(shape:FromValue(5)):toBe(shape.Square)
 		expect(shape.Round.Value):toBe(2)

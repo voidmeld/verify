@@ -1,6 +1,7 @@
 --!strict
 
 local fs = require "@std/fs"
+local Shape = require "../src/core/shape"
 local Wire = require "../src/lute/wire"
 local process = require "@std/process"
 local Core = require "../src/core"
@@ -12,7 +13,7 @@ local source = require "./lib/capture-native-content"
 local Attachments = require "../src/lute/capture-attachments"
 
 assert(#process.args == 3, "usage: lute run tools/capture-native-content.luau <request.json> <out.json>")
-local input = Wire.parse(fs.readFileToString(process.args[2])) :: { [string]: unknown }
+local input = Shape.record(Wire.parse(fs.readFileToString(process.args[2])), "capture request")
 local requests = Facts.requests(input.requests)
 local output = process.args[3]
 assert(not fs.exists(output), "capture output exists; preserve and reconcile it")

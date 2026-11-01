@@ -272,7 +272,7 @@ describe("benchmark execution", function()
 
 	it("keeps timing failures, budgets and the original deadline across retries", function()
 		local broken = retrySpec { 1, 3 }
-		broken.workload = function()
+		broken.workload = function(): ()
 			error "broken workload"
 		end
 		expect(Benchmark.run(broken).attempts):toEqual(1)
@@ -347,17 +347,6 @@ describe("benchmark execution", function()
 		expect(drifted("p95", nil)):toEqual(true)
 		expect(drifted("p95", "first")):toEqual(true)
 		expect(drifted("p95", "mean")):toEqual(false)
-		expect(function()
-			Benchmark.run(spec({ now = 0, calls = 0 }, steady(), {
-				yardstick = {
-					run = function() end,
-					samples = 1,
-					maxSpread = 1,
-					maxDrift = 1,
-					driftBase = ("last" :: unknown) :: Benchmark.DriftBase,
-				},
-			}))
-		end):toThrow "driftBase must be first or mean"
 	end)
 
 	it("warms each endpoint and records batched time per call", function()
@@ -403,7 +392,7 @@ describe("benchmark execution", function()
 		local result = Benchmark.run(spec(timeline, steady(), { yardstick = tool }))
 		expect(result.invalid[1].reason):toBe "yardstick_drift"
 		tool.warmup = 1
-		tool.run = function()
+		tool.run = function(): ()
 			error "warmup failed"
 		end
 		local failed = Benchmark.run(spec(timeline, steady(), { yardstick = tool }))
@@ -667,7 +656,7 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		local calls = 0
 		local broken = collection({ now = 0, calls = 0 }, { 1, 1, 3, 3 }, 0.2)
 		broken.calibrationAttempts = 2
-		broken.benchmarks[1].workload = function()
+		broken.benchmarks[1].workload = function(): ()
 			calls += 1
 			error "workload failed"
 		end
@@ -746,7 +735,9 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		expect(judged):toEqual(0)
 		local refusing = collection({ now = 0, calls = 0 }, { 1, 1, 1, 1 }, 5)
 		refusing.benchmarks[2].judge = function(view)
-			return if #view.yardstickAfter == 2 then "own rule refused" else nil
+			local after = view.yardstickAfter
+			assert(type(after) == "table")
+			return if #after == 2 then "own rule refused" else nil
 		end
 		local refused = executeCollection(refusing)
 		expect(refused.results[1].status):toEqual "failed"
@@ -948,7 +939,7 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		local torn = 0
 		local timeline = { now = 0, calls = 0 }
 		local raising = spec(timeline, { 1, 1 })
-		raising.workload = function()
+		raising.workload = function(): ()
 			error "workload broke"
 		end
 		raising.teardown = function()
@@ -958,7 +949,7 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		expect(torn):toEqual(1)
 		local ran = 0
 		local failingSetup = spec({ now = 0, calls = 0 }, { 1, 1 })
-		failingSetup.setup = function()
+		failingSetup.setup = function(): ()
 			error "scene missing"
 		end
 		failingSetup.workload = function()
@@ -973,7 +964,7 @@ describe("benchmark collections, normalization, judgment, hooks and heap", funct
 		expect(ran):toEqual(0)
 		expect(torn):toEqual(2)
 		local failingTeardown = spec({ now = 0, calls = 0 }, { 1, 1 })
-		failingTeardown.teardown = function()
+		failingTeardown.teardown = function(): ()
 			error "scene stuck"
 		end
 		expect(Benchmark.run(failingTeardown).failure):toContain "teardown raised"

@@ -6,17 +6,35 @@ local Names = require "./datatypes/names"
 type Signal<A... = ...unknown> = Types.Signal<A...>
 type Connection = Types.Connection
 
+local heldWait: unknown
+local waitSlot: { <A...>(Signal<A...>) -> A... } = setmetatable({}, {
+	__index = function(): unknown
+		return heldWait
+	end,
+})
+
 local function create(scheduler: Scheduler.Scheduler, errors: { string }, raising: boolean)
+	local function first(...: unknown): unknown
+		local values: { unknown } = { ... }
+		return values[1]
+	end
 	local connections = 0
 	local running: { [thread]: boolean } = {}
 	setmetatable(running, { __mode = "k" })
-	local meters: { [unknown]: { connections: () -> number, fires: () -> number } } = {}
+	local meters: {
+		[unknown]: {
+			connections: () -> number,
+			fires: () -> number,
+			connect: ((...unknown) -> ()) -> Connection,
+		},
+	} =
+		{}
 	setmetatable(meters, { __mode = "k" })
 
 	local function finish<R...>(thread: thread, start: number, ok: boolean, ...: R...): R...
 		running[thread] = nil
 		if not ok then
-			error(table.pack(...)[1], 0)
+			error(first(...), 0)
 		end
 		if #errors > start then
 			local parts: { string } = {}
@@ -97,7 +115,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 						scheduler.resume(waiter, ...)
 					end
 				end
-				connection = signal:Connect((resume :: unknown) :: (A...) -> ())
+				connection = signal:Connect(resume)
 				return cleanup
 			end)
 		end
@@ -131,14 +149,20 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 			end
 			table.clear(live)
 		end
+		heldWait = wait
+		local typedWait = waitSlot[1]
+		heldWait = nil
 		signal = {
 			Connect = connect,
-			Wait = (wait :: unknown) :: (Signal<A...>) -> A...,
+			Wait = typedWait,
 			Fire = operation(dispatch),
 			DisconnectAll = disconnectAll,
 		}
 		Names.register(signal, "RBXScriptSignal")
 		meters[signal] = {
+			connect = function(handler: (...unknown) -> ()): Connection
+				return connect(signal, handler)
+			end,
 			connections = function(): number
 				return #live
 			end,
@@ -150,6 +174,11 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 	end
 
 	return {
+		connect = function(value: unknown, handler: (...unknown) -> ()): Connection
+			local meter = meters[value]
+			assert(meter ~= nil, "expected a signal from this environment")
+			return meter.connect(handler)
+		end,
 		newSignal = newSignal,
 		operation = operation,
 		meters = meters,

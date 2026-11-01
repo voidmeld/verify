@@ -3,6 +3,7 @@
 local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
+local Shape = require "../src/core/shape"
 local Fixture = require "./reflection-fixture"
 
 local Environment = require "../src/roblox/environment"
@@ -108,12 +109,12 @@ describe("reflection adapter", function()
 			database = database(),
 			typeName = function(value)
 				if type(value) == "table" then
-					return (value :: { kind: string }).kind
+					return Shape.requiredString(Shape.record(value, "datatype").kind, "datatype kind")
 				end
 				return typeof(value)
 			end,
 			enumType = function(value)
-				return (value :: { enum: string }).enum
+				return Shape.requiredString(Shape.record(value, "enum").enum, "enum type")
 			end,
 			referenceClass = function(_, key)
 				return if key == "PrimaryPart" then "Part" else nil

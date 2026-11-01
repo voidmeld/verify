@@ -1,59 +1,83 @@
 --!strict
 
 return [==[
- local screen = Instance.new("ScreenGui")
- screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
- local expected = game.HttpService:JSONDecode([=[[{"padded":false,"children":[{"size":[50,40],"fits":true,"bounds":[36,40],"position":[0,0]},{"size":[50,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[0,41.5]}],"scale":0.5,"limited":false,"content":[50,48.16666793823242],"width":100},{"padded":false,"children":[{"size":[50,25],"fits":false,"bounds":[36,20],"position":[0,0]},{"size":[50,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[0,26.5]}],"scale":0.5,"limited":true,"content":[50,33.16666793823242],"width":100},{"padded":false,"children":[{"size":[100,84],"fits":true,"bounds":[73.33333587646485,84],"position":[0,0]},{"size":[100,14],"fits":true,"bounds":[59.333335876464847,14],"position":[0,87]}],"scale":1,"limited":false,"content":[100,101],"width":100},{"padded":false,"children":[{"size":[100,50],"fits":false,"bounds":[73.33333587646485,42],"position":[0,0]},{"size":[100,14],"fits":true,"bounds":[59.333335876464847,14],"position":[0,53]}],"scale":1,"limited":true,"content":[100,67],"width":100},{"padded":false,"children":[{"size":[200,168],"fits":true,"bounds":[144,168],"position":[0,0]},{"size":[200,28],"fits":true,"bounds":[115.33333587646485,28],"position":[0,174]}],"scale":2,"limited":false,"content":[200,202],"width":100},{"padded":false,"children":[{"size":[200,100],"fits":false,"bounds":[144,84],"position":[0,0]},{"size":[200,28],"fits":true,"bounds":[115.33333587646485,28],"position":[0,106]}],"scale":2,"limited":true,"content":[200,134],"width":100},{"padded":true,"children":[{"size":[45,40],"fits":true,"bounds":[36,40],"position":[3,0]},{"size":[45,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[3,41.5]}],"scale":0.5,"limited":false,"content":[45,48.16666793823242],"width":100},{"padded":true,"children":[{"size":[45,25],"fits":false,"bounds":[36,20],"position":[3,0]},{"size":[45,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[3,26.5]}],"scale":0.5,"limited":true,"content":[45,33.16666793823242],"width":100},{"padded":true,"children":[{"size":[90,84],"fits":true,"bounds":[73.33333587646485,84],"position":[6,0]},{"size":[90,14],"fits":true,"bounds":[59.333335876464847,14],"position":[6,87]}],"scale":1,"limited":false,"content":[90,101],"width":100},{"padded":true,"children":[{"size":[90,50],"fits":false,"bounds":[73.33333587646485,42],"position":[6,0]},{"size":[90,14],"fits":true,"bounds":[59.333335876464847,14],"position":[6,53]}],"scale":1,"limited":true,"content":[90,67],"width":100},{"padded":true,"children":[{"size":[180,168],"fits":true,"bounds":[144,168],"position":[12,0]},{"size":[180,28],"fits":true,"bounds":[115.33333587646485,28],"position":[12,174]}],"scale":2,"limited":false,"content":[180,202],"width":100},{"padded":true,"children":[{"size":[180,100],"fits":false,"bounds":[144,84],"position":[12,0]},{"size":[180,28],"fits":true,"bounds":[115.33333587646485,28],"position":[12,106]}],"scale":2,"limited":true,"content":[180,134],"width":100},{"padded":false,"children":[{"size":[120,13.333333969116211],"fits":true,"bounds":[108,13.333333969116211],"position":[0,0]},{"size":[120,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[0,14.833335876464844]}],"scale":0.5,"limited":false,"content":[120,21.5],"width":240},{"padded":false,"children":[{"size":[90,20],"fits":true,"bounds":[72,20],"position":[0,0]},{"size":[90,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[0,21.5]}],"scale":0.5,"limited":true,"content":[120,28.166667938232423],"width":240},{"padded":false,"children":[{"size":[240,28],"fits":true,"bounds":[220,28],"position":[0,0]},{"size":[240,14],"fits":true,"bounds":[59.333335876464847,14],"position":[0,31]}],"scale":1,"limited":false,"content":[240,45],"width":240},{"padded":false,"children":[{"size":[180,42],"fits":true,"bounds":[146.6666717529297,42],"position":[0,0]},{"size":[180,14],"fits":true,"bounds":[59.333335876464847,14],"position":[0,45]}],"scale":1,"limited":true,"content":[240,59],"width":240},{"padded":false,"children":[{"size":[480,56],"fits":true,"bounds":[432,56],"position":[0,0]},{"size":[480,28],"fits":true,"bounds":[115.33333587646485,28],"position":[0,62]}],"scale":2,"limited":false,"content":[480,90],"width":240},{"padded":false,"children":[{"size":[360,84],"fits":true,"bounds":[288,84],"position":[0,0]},{"size":[360,28],"fits":true,"bounds":[115.33333587646485,28],"position":[0,90]}],"scale":2,"limited":true,"content":[480,118],"width":240},{"padded":true,"children":[{"size":[115,13.333333969116211],"fits":true,"bounds":[108,13.333333969116211],"position":[3,0]},{"size":[115,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[3,14.833335876464844]}],"scale":0.5,"limited":false,"content":[115,21.5],"width":240},{"padded":true,"children":[{"size":[90,20],"fits":true,"bounds":[72,20],"position":[3,0]},{"size":[90,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[3,21.5]}],"scale":0.5,"limited":true,"content":[115,28.166667938232423],"width":240},{"padded":true,"children":[{"size":[230,28],"fits":true,"bounds":[220,28],"position":[6,0]},{"size":[230,14],"fits":true,"bounds":[59.333335876464847,14],"position":[6,31]}],"scale":1,"limited":false,"content":[230,45],"width":240},{"padded":true,"children":[{"size":[180,42],"fits":true,"bounds":[146.6666717529297,42],"position":[6,0]},{"size":[180,14],"fits":true,"bounds":[59.333335876464847,14],"position":[6,45]}],"scale":1,"limited":true,"content":[230,59],"width":240},{"padded":true,"children":[{"size":[460,56],"fits":true,"bounds":[432,56],"position":[12,0]},{"size":[460,28],"fits":true,"bounds":[115.33333587646485,28],"position":[12,62]}],"scale":2,"limited":false,"content":[460,90],"width":240},{"padded":true,"children":[{"size":[360,84],"fits":true,"bounds":[288,84],"position":[12,0]},{"size":[360,28],"fits":true,"bounds":[115.33333587646485,28],"position":[12,90]}],"scale":2,"limited":true,"content":[460,118],"width":240},{"padded":false,"children":[{"size":[400,6.6666669845581059],"fits":true,"bounds":[216,6.6666669845581059],"position":[0,0]},{"size":[400,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[0,8.166664123535157]}],"scale":0.5,"limited":false,"content":[400,14.833333969116211],"width":800},{"padded":false,"children":[{"size":[90,20],"fits":true,"bounds":[72,20],"position":[0,0]},{"size":[90,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[0,21.5]}],"scale":0.5,"limited":true,"content":[400,28.166667938232423],"width":800},{"padded":false,"children":[{"size":[800,14],"fits":true,"bounds":[440,14],"position":[0,0]},{"size":[800,14],"fits":true,"bounds":[59.333335876464847,14],"position":[0,17]}],"scale":1,"limited":false,"content":[800,31],"width":800},{"padded":false,"children":[{"size":[180,42],"fits":true,"bounds":[146.6666717529297,42],"position":[0,0]},{"size":[180,14],"fits":true,"bounds":[59.333335876464847,14],"position":[0,45]}],"scale":1,"limited":true,"content":[800,59],"width":800},{"padded":false,"children":[{"size":[1600,28],"fits":true,"bounds":[864,28],"position":[0,0]},{"size":[1600,28],"fits":true,"bounds":[115.33333587646485,28],"position":[0,34]}],"scale":2,"limited":false,"content":[1600,62],"width":800},{"padded":false,"children":[{"size":[360,84],"fits":true,"bounds":[288,84],"position":[0,0]},{"size":[360,28],"fits":true,"bounds":[115.33333587646485,28],"position":[0,90]}],"scale":2,"limited":true,"content":[1600,118],"width":800},{"padded":true,"children":[{"size":[395,6.6666669845581059],"fits":true,"bounds":[216,6.6666669845581059],"position":[3,0]},{"size":[395,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[3,8.166664123535157]}],"scale":0.5,"limited":false,"content":[395,14.833333969116211],"width":800},{"padded":true,"children":[{"size":[90,20],"fits":true,"bounds":[72,20],"position":[3,0]},{"size":[90,6.6666669845581059],"fits":true,"bounds":[28.666667938232423,6.6666669845581059],"position":[3,21.5]}],"scale":0.5,"limited":true,"content":[395,28.166667938232423],"width":800},{"padded":true,"children":[{"size":[790,14],"fits":true,"bounds":[440,14],"position":[6,0]},{"size":[790,14],"fits":true,"bounds":[59.333335876464847,14],"position":[6,17]}],"scale":1,"limited":false,"content":[790,31],"width":800},{"padded":true,"children":[{"size":[180,42],"fits":true,"bounds":[146.6666717529297,42],"position":[6,0]},{"size":[180,14],"fits":true,"bounds":[59.333335876464847,14],"position":[6,45]}],"scale":1,"limited":true,"content":[790,59],"width":800},{"padded":true,"children":[{"size":[1580,28],"fits":true,"bounds":[864,28],"position":[12,0]},{"size":[1580,28],"fits":true,"bounds":[115.33333587646485,28],"position":[12,34]}],"scale":2,"limited":false,"content":[1580,62],"width":800},{"padded":true,"children":[{"size":[360,84],"fits":true,"bounds":[288,84],"position":[12,0]},{"size":[360,28],"fits":true,"bounds":[115.33333587646485,28],"position":[12,90]}],"scale":2,"limited":true,"content":[1580,118],"width":800}]]=])
- local observationIndex = 0
- local params = Instance.new("GetTextBoundsParams")
- params.Font, params.Size, params.Text = Font.new("rbxasset://fonts/families/BuilderSans.json"),14,"A"
- game.TextService:GetTextBoundsAsync(params)
- params:Destroy()
- for _, width in {100,240,800} do
-  for _, padded in {false,true} do
-   for _, scale in {0.5,1,2} do
-    for _, limited in {false,true} do
-     local frame = Instance.new("Frame")
-     frame.Size, frame.Parent = UDim2.fromOffset(width,200), screen
-     local scaler = Instance.new("UIScale")
-     scaler.Scale, scaler.Parent = scale,frame
-     if padded then
-      local padding = Instance.new("UIPadding")
-      padding.PaddingLeft, padding.PaddingRight = UDim.new(0,6),UDim.new(0,4)
-      padding.Parent = frame
-     end
-     local list = Instance.new("UIListLayout")
-     list.FillDirection, list.HorizontalFlex, list.SortOrder = Enum.FillDirection.Vertical,Enum.UIFlexAlignment.Fill,Enum.SortOrder.LayoutOrder
-     list.Padding,list.Parent = UDim.new(0,3),frame
-     local labels = {}
-     for index, text in {string.rep("Wrapped text ",6),"Hello world"} do
-      local label = Instance.new("TextLabel")
-      label.Size,label.AutomaticSize = UDim2.fromOffset(0,0),Enum.AutomaticSize.Y
-      label.FontFace,label.TextSize = Font.new("rbxasset://fonts/families/BuilderSans.json"),14
-      label.Text,label.TextWrapped,label.LayoutOrder,label.Parent = text,true,index,frame
-      local constraint = Instance.new("UISizeConstraint")
-      constraint.MinSize = Vector2.new(1,1)
-      constraint.MaxSize = if limited then Vector2.new(180,50) else Vector2.new(1000,1000)
-      constraint.Parent = label
-      labels[index]=label
-     end
-     task.wait(0.05)
-     observationIndex += 1
-     local observation = expected[observationIndex]
-     for index, label in labels do
-      local child = observation.children[index]
-      assert(label.AbsoluteSize == Vector2.new(unpack(child.size)), "flexed text size " .. observationIndex .. "/" .. index .. ": " .. tostring(label.AbsoluteSize))
-      assert(label.TextBounds == Vector2.new(unpack(child.bounds)), "flexed text bounds " .. observationIndex .. "/" .. index .. ": " .. tostring(label.TextBounds))
-      assert((label.AbsolutePosition-frame.AbsolutePosition - Vector2.new(unpack(child.position))).Magnitude < 0.00001, "flexed text position " .. observationIndex .. "/" .. index .. ": " .. tostring(label.AbsolutePosition-frame.AbsolutePosition))
-      assert(label.TextFits == child.fits, "flexed text fits " .. observationIndex .. "/" .. index)
-     end
-     assert(list.AbsoluteContentSize == Vector2.new(unpack(observation.content)), "flexed text content " .. observationIndex .. ": " .. tostring(list.AbsoluteContentSize))
-     frame:Destroy()
+local screen = Instance.new("ScreenGui")
+screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
+local params = Instance.new("GetTextBoundsParams")
+params.Font, params.Size, params.Text = Font.new("rbxasset://fonts/families/BuilderSans.json"), 14, "A"
+game.TextService:GetTextBoundsAsync(params)
+params:Destroy()
+local function near(a, b) return math.abs(a - b) <= 0.01 end
+local heights = {}
+for _, width in {100, 240, 800} do
+ for _, padded in {false, true} do
+  for _, scale in {0.5, 1, 2} do
+   for _, limited in {false, true} do
+    local tag = width .. "/" .. tostring(padded) .. "/" .. scale .. "/" .. tostring(limited)
+    local frame = Instance.new("Frame")
+    frame.Size, frame.Parent = UDim2.fromOffset(width, 200), screen
+    local scaler = Instance.new("UIScale")
+    scaler.Scale, scaler.Parent = scale, frame
+    if padded then
+     local padding = Instance.new("UIPadding")
+     padding.PaddingLeft, padding.PaddingRight = UDim.new(0, 6), UDim.new(0, 4)
+     padding.Parent = frame
     end
+    local list = Instance.new("UIListLayout")
+    list.FillDirection, list.HorizontalFlex, list.SortOrder = Enum.FillDirection.Vertical, Enum.UIFlexAlignment.Fill, Enum.SortOrder.LayoutOrder
+    list.Padding, list.Parent = UDim.new(0, 3), frame
+    local labels = {}
+    for index, text in {string.rep("Wrapped text ", 6), "Hello world"} do
+     local label = Instance.new("TextLabel")
+     label.Size, label.AutomaticSize = UDim2.fromOffset(0, 0), Enum.AutomaticSize.Y
+     label.FontFace, label.TextSize = Font.new("rbxasset://fonts/families/BuilderSans.json"), 14
+     label.Text, label.TextWrapped, label.LayoutOrder, label.Parent = text, true, index, frame
+     local constraint = Instance.new("UISizeConstraint")
+     constraint.MinSize = Vector2.new(1, 1)
+     constraint.MaxSize = if limited then Vector2.new(180, 50) else Vector2.new(1000, 1000)
+     constraint.Parent = label
+     labels[index] = label
+    end
+    task.wait(0.05)
+    local inset = if padded then 10 else 0
+    local available = (width - inset) * scale
+    local expectedWidth = if limited then math.min(available, 180 * scale) else available
+    local first, second = labels[1], labels[2]
+    for index, label in labels do
+     assert(near(label.AbsoluteSize.X, expectedWidth), "flexed text fills the available width " .. tag .. "/" .. index .. ": " .. tostring(label.AbsoluteSize))
+     assert(label.TextBounds.X <= label.AbsoluteSize.X + 0.001, "text stays inside its label " .. tag .. "/" .. index)
+     assert(label.AbsoluteSize.Y <= (if limited then 50 * scale else 1000) + 0.001, "height respects the constraint " .. tag .. "/" .. index)
+     if not limited then
+      assert(near(label.AbsoluteSize.Y, label.TextBounds.Y), "automatic height follows the text " .. tag .. "/" .. index)
+     end
+     if label.AbsoluteSize.Y < 50 * scale - 0.5 then
+      assert(label.TextFits, "unclamped text fits " .. tag .. "/" .. index)
+     end
+     local offset = label.AbsolutePosition - frame.AbsolutePosition
+     assert(near(offset.X, (if padded then 6 * scale else 0)), "labels share the content edge " .. tag .. "/" .. index)
+    end
+    assert(second.TextFits and near(second.AbsoluteSize.Y, second.TextBounds.Y), "short text keeps its single line " .. tag)
+    assert(near((second.AbsolutePosition - first.AbsolutePosition).Y, first.AbsoluteSize.Y + 3 * scale), "labels stack with the list padding " .. tag)
+    assert(near(list.AbsoluteContentSize.Y, first.AbsoluteSize.Y + second.AbsoluteSize.Y + 3 * scale), "content height sums the children " .. tag .. ": " .. tostring(list.AbsoluteContentSize))
+    assert(near(list.AbsoluteContentSize.X, available), "content width fills the frame " .. tag .. ": " .. tostring(list.AbsoluteContentSize))
+    heights[tag] = first.TextBounds.Y
+    frame:Destroy()
    end
   end
  end
- screen:Destroy()
-
+end
+for _, padded in {false, true} do
+ for _, scale in {0.5, 1, 2} do
+  for _, limited in {false, true} do
+   local previous = math.huge
+   for _, width in {100, 240, 800} do
+    local current = heights[width .. "/" .. tostring(padded) .. "/" .. scale .. "/" .. tostring(limited)]
+    assert(current <= previous + 0.001, "wrapped height never grows with width " .. tostring(padded) .. "/" .. scale .. "/" .. width)
+    previous = current
+   end
+  end
+ end
+end
+screen:Destroy()
 return true
 ]==]

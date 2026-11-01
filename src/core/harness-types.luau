@@ -12,7 +12,7 @@ export type Failure = Types.Failure
 export type Origin = Types.Origin
 export type CaseResult = Types.CaseResult
 export type Report = Types.Report
-export type Expectation = Matchers.Expectation
+export type Expectation<T = unknown> = Matchers.Expectation<T>
 
 export type InvocationResult = {
 	outcome: "returned" | "failed" | "timed_out" | "cancelled",
@@ -55,7 +55,7 @@ export type Context = {
 	measure: (self: Context, actor: string, name: string, input: Performance.Input, limits: Performance.Limits) -> (),
 	remainingSeconds: (self: Context) -> number,
 
-	expect: (self: Context, value: unknown) -> Expectation,
+	expect: <T>(self: Context, value: T?) -> Expectation<T>,
 	defer: (self: Context, cleanup: () -> ()) -> (),
 	own: <T>(self: Context, resource: Resource<T>) -> (),
 	skip: (self: Context, reason: string) -> never,

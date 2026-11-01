@@ -24,14 +24,17 @@ while index <= #process.args do
 		index += 1
 	end
 end
-if #roots == 0 or ruleset == nil then
+if #roots == 0 then
+	error(USAGE, 0)
+end
+if ruleset == nil then
 	error(USAGE, 0)
 end
 local selected: Consumer.Ruleset = ruleset
 
 local function listDir(path: string): { Consumer.DirEntry }
 	local entries = fs.listDirectory(path)
-	local result: { Consumer.DirEntry } = table.create(#entries)
+	local result: { Consumer.DirEntry } = {}
 	for _, entry in entries do
 		table.insert(result, { name = entry.name, type = asString(entry.type) })
 	end

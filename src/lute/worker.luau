@@ -3,6 +3,8 @@
 local Batch = require "./batch"
 local LuteRuntime = require "./runtime"
 local Verify = require "../core"
+local Session = require "../core/session"
+local Vm = require "../roblox/value"
 local Wire = require "./wire"
 
 type PlanBatch = Verify.PlanBatch
@@ -54,14 +56,16 @@ local function runBatchWith(
 	operations: Operations | SelfRegisteringOperations,
 	options: Options?,
 	selfRegistering: boolean,
-	register: Registrar?
+	register: Registrar?,
+	load: Load?
 ): Report
 	local settings: Options = if options ~= nil then options else {}
 	local executor = settings.executor or "lute"
 	local capabilities = settings.capabilities or DEFAULT_CAPABILITIES
 	local environment = settings.environment or { runtime = "lute" }
-	local session = Verify.createSession {
+	local sessionOptions: Session.DefaultOptions = {
 		executor = executor,
+		surface = nil,
 		bind = settings.bind,
 		cancelled = settings.cancelled,
 		environment = environment,
@@ -70,6 +74,7 @@ local function runBatchWith(
 		prefixCaseIds = (settings.caseIdStyle or "unit-prefixed") == "unit-prefixed",
 		selection = settings.selection,
 	}
+	local session = Verify.createSession(sessionOptions)
 
 	for _, unit in batch.units do
 		local phase = if selfRegistering then "registration" else "load"
@@ -81,13 +86,15 @@ local function runBatchWith(
 			succeeded, value = pcall(assert(register), unit.locator, session:harness())
 			session:close()
 		else
-			succeeded, value = pcall((operations).load, unit.locator)
-			if succeeded then
+			local loaded, result = pcall(assert(load), unit.locator)
+			succeeded, value = loaded, result
+			if loaded then
 				classify = false
-				if type(value) == "function" then
+				local registration = Vm.value(result)
+				if type(registration) == "function" then
 					phase = "registration"
 					session:open(unit.locator)
-					succeeded, value = pcall(value :: (Verify.Harness) -> (), session:harness())
+					succeeded, value = pcall(registration, session:harness())
 					session:close()
 				else
 					succeeded = false
@@ -237,7 +244,7 @@ local function create(runtime: Runtime): Worker
 			return parseArguments(runtime.process.arguments)
 		end,
 		runBatch = function(batch: PlanBatch, operations: Operations, options: Options?): Report
-			return runBatchWith(batch, operations, options, false)
+			return runBatchWith(batch, operations, options, false, nil, operations.load)
 		end,
 		runBatchSelfRegistering = function(
 			batch: PlanBatch,
@@ -248,7 +255,7 @@ local function create(runtime: Runtime): Worker
 		end,
 		main = function(operations: Operations, options: Options?)
 			mainWith(runtime, function(batch, settings)
-				return runBatchWith(batch, operations, settings, false)
+				return runBatchWith(batch, operations, settings, false, nil, operations.load)
 			end, options)
 		end,
 		mainSelfRegistering = function(operations: SelfRegisteringOperations, options: Options?)

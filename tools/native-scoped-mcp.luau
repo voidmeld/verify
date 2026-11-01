@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../src/core/shape"
 local fs = require "@std/fs"
 local process = require "@std/process"
 local json = require "@std/json"
@@ -7,24 +8,65 @@ local Eval = require "../src/agent-eval"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 
-type Provisioned = { config: string, close: () -> () }
+type Provisioned = { config: string, close: (boolean?) -> () }
 type Studio = { id: string, name: string }
 type Call = { name: string, arguments: { [string]: unknown }, refusal: string? }
 type Reply = { id: number, result: { content: { { type: string?, text: string? } } }?, error: { message: string }? }
 
+local function studio(value: unknown): Studio
+	local row = Shape.record(value, "studio")
+	return { id = Shape.requiredString(row.id, "studio id"), name = Shape.requiredString(row.name, "studio name") }
+end
+local function studios(value: unknown): { studios: { Studio } }
+	local row = Shape.record(value, "studios result")
+	local values = row.studios
+	assert(type(values) == "table", "studios must be an array")
+	local result: { Studio } = {}
+	for _, value in values do
+		table.insert(result, studio(value))
+	end
+	return { studios = result }
+end
+local function reply(value: unknown): Reply
+	local row = Shape.record(value, "reply")
+	local id = row.id
+	assert(type(id) == "number", "reply id must be numeric")
+	local result: Reply = { id = id }
+	if row.error ~= nil then
+		local err = Shape.record(row.error, "reply error")
+		result.error = { message = Shape.requiredString(err.message, "error message") }
+	end
+	if row.result ~= nil then
+		local body = Shape.record(row.result, "reply result")
+		local content = body.content
+		assert(content == nil or type(content) == "table", "content must be an array")
+		local items: { { type: string?, text: string? } } = {}
+		for _, value in content or {} do
+			local item = Shape.record(value, "content item")
+			local kind, text = item.type, item.text
+			assert(kind == nil or type(kind) == "string", "content type must be a string")
+			assert(text == nil or type(text) == "string", "content text must be a string")
+			table.insert(items, { type = kind, text = text })
+		end
+		result.result = { content = items }
+	end
+	return result
+end
 local function info(provisioned: Provisioned): Studio
 	local parent = assert(string.match(provisioned.config, "^(.*)/[^/]+$"))
-	local scope = Eval.lute.decode(fs.readFileToString(parent .. "/studio-scope.json")) :: { studio: Studio }
-	return scope.studio
+	local scope = Shape.record(Eval.lute.decode(fs.readFileToString(parent .. "/studio-scope.json")), "scope")
+	return studio(scope.studio)
 end
 
 local function exchange(services: Eval.Services, config: string, directory: string, calls: { Call }): { Reply }
 	fs.createDirectory(directory, { makeParents = true })
-	local settings =
-		Eval.lute.decode(fs.readFileToString(config)) :: { mcpServers: { studio: { command: string, args: { string } } } }
-	local server = settings.mcpServers.studio
-	local argv = { server.command }
-	for _, word in server.args do
+	local settings = Shape.record(Eval.lute.decode(fs.readFileToString(config)), "settings")
+	local servers = Shape.record(settings.mcpServers, "MCP servers")
+	local server = Shape.record(servers.studio, "Studio server")
+	local command = Shape.requiredString(server.command, "server command")
+	local args = Shape.copyStrings(server.args, "server arguments")
+	local argv = { command }
+	for _, word in args do
 		table.insert(argv, word)
 	end
 	local requests: { string } = { json.serialize { jsonrpc = "2.0", id = 1, method = "initialize", params = {} } }
@@ -46,7 +88,7 @@ local function exchange(services: Eval.Services, config: string, directory: stri
 	assert(result.started and result.exitcode == 0 and not result.timedOut, "scoped proxy failed: " .. result.stderr)
 	local responses: { Reply } = {}
 	for line in string.gmatch(result.stdout, "[^\r\n]+") do
-		local reply = Eval.lute.decode(line) :: Reply
+		local reply = reply(Eval.lute.decode(line))
 		responses[reply.id] = reply
 	end
 	assert(#responses == #requests, "scoped proxy lost responses: " .. result.stdout)
@@ -206,7 +248,7 @@ return 'scoped input'
 			table.insert(calls, { name = "start_stop_play", arguments = { is_start = false } })
 			local replies = exchange(services, own.config, directory .. "/isolation-" .. index, calls)
 			local listing = assert(replies[1].result)
-			local studios = Eval.lute.decode(assert(listing.content[1].text)) :: { studios: { Studio } }
+			local studios = studios(Eval.lute.decode(assert(listing.content[1].text)))
 			assert(#studios.studios == 1 and studios.studios[1].id == self.id, "scope exposes another real Studio")
 			local image = false
 			for _, content in assert(replies[captureIndex].result).content do
@@ -216,7 +258,7 @@ return 'scoped input'
 		end
 		local aScope = directory .. "/a/studio-scope.json"
 		local originalScope = fs.readFileToString(aScope)
-		local limited = Eval.lute.decode(originalScope) :: { [string]: unknown }
+		local limited = Shape.record(Eval.lute.decode(originalScope), "scope")
 		limited.callSeconds = 5
 		fs.writeStringToFile(aScope, Eval.lute.encode(limited))
 		local afterTimeout = exchange(services, a.config, directory .. "/native-request-timeout", {
@@ -237,8 +279,7 @@ return 'scoped input'
 				},
 			},
 		})
-		local timeoutListing =
-			Eval.lute.decode(assert(assert(afterTimeout[2].result).content[1].text)) :: { studios: { Studio } }
+		local timeoutListing = studios(Eval.lute.decode(assert(assert(afterTimeout[2].result).content[1].text)))
 		assert(
 			#timeoutListing.studios == 1 and timeoutListing.studios[1].id == aInfo.id,
 			"timeout changed the scoped Studio"
@@ -286,7 +327,16 @@ return 'scoped input'
 					id = "native",
 					studio = {
 						place = "{evidence}/agent.rbxl",
-						build = { "rojo", "build", project, "-o", "{evidence}/agent.rbxl" },
+						build = {
+							"sh",
+							"-c",
+							string.format(
+								"cd %q && rojo build %q -o %q",
+								tostring(process.cwd()),
+								project,
+								"{evidence}/agent.rbxl"
+							),
+						},
 					},
 				},
 			},
@@ -372,6 +422,6 @@ return 'scoped input'
 		end
 	end
 	assert(#failures == 0, table.concat(failures, "; "))
-	assert(ok, problem)
+	assert(ok, tostring(problem))
 	print "native scoped MCP: two real scopes, unrelated Studio, all-tool isolation, unknown tools, native adapter failure/timeout and cleanup passed"
 end

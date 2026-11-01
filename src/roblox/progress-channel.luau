@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../core/shape"
 local Core = require "../core"
 
 local LOGGER = "VerifyProgress"
@@ -22,18 +23,22 @@ local function collect(rows: { unknown }, token: string, runId: string): Collect
 	local seen: { [number]: boolean } = {}
 	local result: Collected = { events = {}, rejected = 0, foreign = 0, first = nil }
 	for _, value in rows do
-		local row: { [string]: unknown } = if type(value) == "table" then value :: { [string]: unknown } else {}
+		if type(value) ~= "table" then
+			continue
+		end
+		local row = Shape.record(value, "progress row")
 		if row.loggerFullPath ~= LOGGER then
 			continue
 		end
-		local context = row.context
-		if type(context) ~= "table" then
+		local contextValue = row.context
+		local context = if type(contextValue) == "table" then Shape.record(contextValue, "progress context") else nil
+		if context == nil then
 			result.rejected += 1
 			result.first = result.first or "progress context is missing"
-		elseif (context :: { [string]: unknown }).token ~= token then
+		elseif context.token ~= token then
 			result.foreign += 1
 		else
-			local valid, event = pcall(Core.progress.valid, (context :: { [string]: unknown }).event, runId)
+			local valid, event = pcall(Core.progress.valid, context.event, runId)
 			if not valid then
 				result.rejected += 1
 				result.first = result.first or "progress context is not a valid event of this run"

@@ -124,9 +124,10 @@ local function create(run: (Spec) -> Result, collect: (Collection) -> Collection
 			end
 			if refusal ~= nil then
 				local message = refusal
-				pcall(context.step, context, "refused " .. entry.measurement, function()
+				local function fail(): ()
 					error(message, 0)
-				end)
+				end
+				pcall(context.step, context, "refused " .. entry.measurement, fail)
 			end
 		end
 		local refusal = regression(spec.name, result.comparison)

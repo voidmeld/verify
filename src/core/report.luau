@@ -69,7 +69,7 @@ local function copyEnvironment(value: unknown, label: string): { [string]: strin
 		error(label .. " must be a string map", 3)
 	end
 	local result: { [string]: string } = {}
-	for key, item in value :: { [unknown]: unknown } do
+	for key, item in value do
 		if type(key) ~= "string" or type(item) ~= "string" then
 			error(label .. " must contain only string keys and values", 3)
 		end
@@ -93,7 +93,7 @@ local function copyOrigin(value: unknown, label: string): Origin
 	if type(value) ~= "table" then
 		error(label .. " must be a table", 3)
 	end
-	local raw = value :: { [string]: unknown }
+	local raw = Shape.record(value, label)
 	return {
 		executor = requiredString(raw.executor, label .. ".executor"),
 		environment = copyEnvironment(raw.environment, label .. ".environment"),
@@ -106,11 +106,11 @@ local function copyFailures(value: unknown, label: string): { Failure }
 		error(label .. " must be an array", 3)
 	end
 	local result: { Failure } = {}
-	for index, item in value :: { unknown } do
+	for index, item in value do
 		if type(index) ~= "number" or index ~= #result + 1 or type(item) ~= "table" then
 			error(label .. " must be a dense failure array", 3)
 		end
-		local raw = item :: { [string]: unknown }
+		local raw = Shape.record(item, label)
 		local phase = requiredString(raw.phase, label .. ".phase")
 		local outcome = requiredString(raw.outcome, label .. ".outcome")
 		if not VALID_PHASE[phase] then
@@ -133,11 +133,11 @@ local function copySteps(value: unknown, label: string): { StepResult }
 		error(label .. " must be an array", 3)
 	end
 	local result: { StepResult } = {}
-	for index, item in value :: { unknown } do
+	for index, item in value do
 		if type(index) ~= "number" or index ~= #result + 1 or type(item) ~= "table" then
 			error(label .. " must be a dense step array", 3)
 		end
-		local raw = item :: { [string]: unknown }
+		local raw = Shape.record(item, label)
 		local status = requiredString(raw.status, label .. ".status")
 		if
 			status ~= "passed"
@@ -164,11 +164,11 @@ local function copyArtifacts(value: unknown, label: string): { Artifact }
 		error(label .. " must be an array", 3)
 	end
 	local result: { Artifact } = {}
-	for index, item in value :: { unknown } do
+	for index, item in value do
 		if type(index) ~= "number" or index ~= #result + 1 or type(item) ~= "table" then
 			error(label .. " must be a dense artifact array", 3)
 		end
-		local raw = item :: { [string]: unknown }
+		local raw = Shape.record(item, label)
 		local identity = Provenance.identity(raw, label)
 		table.insert(result, {
 			name = requiredString(raw.name, label .. ".name"),
@@ -184,16 +184,12 @@ local function copyArtifacts(value: unknown, label: string): { Artifact }
 end
 
 local function fields(value: unknown): { [string]: unknown }
-	assert(type(value) == "table", "evidence requires a record")
-	return value :: { [string]: unknown }
+	return Shape.record(value, "evidence")
 end
 
-local function rows(value: unknown): { unknown }
-	assert(
-		type(value) == "table" and Shape.denseRows(value, #(value :: { unknown })),
-		"evidence requires a dense array"
-	)
-	return value :: { unknown }
+local function rows(value: unknown)
+	assert(type(value) == "table" and Shape.denseRows(value, #value), "evidence requires a dense array")
+	return value
 end
 
 local function copyEvidence(value: unknown, steps: { StepResult }): Types.Evidence?
@@ -355,7 +351,7 @@ local function copyResult(value: unknown, label: string): CaseResult
 	if type(value) ~= "table" then
 		error(label .. " must be a table", 3)
 	end
-	local raw = value :: { [string]: unknown }
+	local raw = Shape.record(value, label)
 	local status = requiredString(raw.status, label .. ".status")
 	if not VALID_STATUS[status] then
 		error(label .. " contains an unknown status: " .. status, 3)
@@ -425,7 +421,7 @@ local function decode(value: unknown): Report
 	if type(value) ~= "table" then
 		error("Verify report must be a table", 2)
 	end
-	local raw = value :: { [string]: unknown }
+	local raw = Shape.record(value, "Verify report")
 	if raw.schemaVersion ~= SCHEMA_VERSION then
 		error(
 			("unsupported Verify report schema major %s; expected %d"):format(
@@ -440,7 +436,7 @@ local function decode(value: unknown): Report
 	end
 	local results: { CaseResult } = {}
 	local resultIds: { [string]: boolean } = {}
-	for index, item in raw.results :: { unknown } do
+	for index, item in raw.results do
 		if type(index) ~= "number" or index ~= #results + 1 then
 			error("Verify report results must be dense", 2)
 		end
@@ -452,7 +448,7 @@ local function decode(value: unknown): Report
 		table.insert(results, result)
 	end
 	local sources: { ReportSource } = {}
-	for index, item in raw.sources :: { unknown } do
+	for index, item in raw.sources do
 		if type(index) ~= "number" or index ~= #sources + 1 then
 			error("Verify report sources must be dense", 2)
 		end
@@ -716,9 +712,9 @@ local function canonicalValue(value: unknown): string
 	if kind == "number" or kind == "boolean" then
 		return tostring(value)
 	end
-	assert(kind == "table", "invalid evidence value")
+	assert(type(value) == "table", "invalid evidence value")
 	local pieces: { string } = {}
-	for key, child in value :: { [string | number]: unknown } do
+	for key, child in value do
 		table.insert(pieces, canonicalValue(key) .. "=" .. canonicalValue(child))
 	end
 	table.sort(pieces)
@@ -834,8 +830,8 @@ local function verdictDifferences(left: Report, right: Report): { string }
 	return ids
 end
 
-local function observationParity(left: Report, right: Report): Operations.Parity
-	left, right = decode(left), decode(right)
+local function observationParity(leftReport: Report, rightReport: Report): Operations.Parity
+	local left, right = decode(leftReport), decode(rightReport)
 	local differences = verdictDifferences(left, right)
 	local unsupported = left.total == 0 or right.total == 0 or left.passed ~= left.total or right.passed ~= right.total
 	local other: { [string]: CaseResult } = {}

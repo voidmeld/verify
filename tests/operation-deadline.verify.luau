@@ -63,9 +63,10 @@ local function spec(run: (Verify.Context) -> (), cleaned: { boolean }?): Verify.
 		requires = { "query:answer" },
 		timeoutSeconds = 60,
 		run = function(context)
-			if cleaned ~= nil then
+			local released = cleaned
+			if released ~= nil then
 				context:defer(function()
-					table.insert(cleaned, true)
+					table.insert(released, true)
 				end)
 			end
 			run(context)

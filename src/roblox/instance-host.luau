@@ -1,6 +1,7 @@
 --!strict
 --!nolint DeprecatedApi
 
+local Shape = require "../core/shape"
 local Operations = require "../core/operations"
 local Environment = require "./environment"
 local Native = require "./experience-host"
@@ -24,7 +25,7 @@ export type Simulated = Host & { environment: Environment.Environment }
 
 local function record(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "expected instance operation record")
-	return value :: { [string]: unknown }
+	return Shape.record(value, "instance operation record")
 end
 local function stringValue(value: unknown): string
 	assert(type(value) == "string" and value ~= "", "expected nonempty string")
@@ -49,7 +50,11 @@ local function write(value: unknown): Write
 	return { id = stringValue(row.id), key = stringValue(row.key), value = Operations.snapshot(row.value) }
 end
 
-local create = Operations.operation {
+local function snapshot(value: unknown): unknown
+	return Operations.snapshot(value)
+end
+
+local create: Operations.Operation<Creation, nil> = Operations.operation {
 	kind = "action",
 	name = "instance.create",
 	output = nothing,
@@ -58,7 +63,7 @@ local create = Operations.operation {
 		return { id = stringValue(row.id), className = stringValue(row.className), parent = optionalString(row.parent) }
 	end,
 }
-local parent = Operations.operation {
+local parent: Operations.Operation<Parent, nil> = Operations.operation {
 	kind = "action",
 	name = "instance.parent",
 	output = nothing,
@@ -67,21 +72,34 @@ local parent = Operations.operation {
 		return { id = stringValue(row.id), parent = optionalString(row.parent) }
 	end,
 }
-local destroy =
-	Operations.operation { kind = "action", name = "instance.destroy", input = stringValue, output = nothing }
-local setProperty =
-	Operations.operation { kind = "action", name = "instance.setProperty", input = write, output = nothing }
-local setAttribute =
-	Operations.operation { kind = "action", name = "instance.setAttribute", input = write, output = nothing }
-local inspect = Operations.operation {
+local destroy: Operations.Operation<string, nil> = Operations.operation<<string, nil>> {
+	kind = "action",
+	name = "instance.destroy",
+	input = stringValue,
+	output = nothing,
+}
+local setProperty: Operations.Operation<Write, nil> = Operations.operation<<Write, nil>> {
+	kind = "action",
+	name = "instance.setProperty",
+	input = write,
+	output = nothing,
+}
+local setAttribute: Operations.Operation<Write, nil> = Operations.operation<<Write, nil>> {
+	kind = "action",
+	name = "instance.setAttribute",
+	input = write,
+	output = nothing,
+}
+local inspect: Operations.Operation<string, View> = Operations.operation {
 	kind = "query",
 	name = "instance.inspect",
 	input = stringValue,
 	output = function(value: unknown): View
 		local row = record(value)
-		assert(type(row.children) == "table", "expected child names")
+		local rawChildren = row.children
+		assert(type(rawChildren) == "table", "expected child names")
 		local children: { string } = {}
-		for index, child in row.children :: { unknown } do
+		for index, child in rawChildren do
 			assert(index == #children + 1, "expected dense child names")
 			table.insert(children, stringValue(child))
 		end
@@ -89,10 +107,14 @@ local inspect = Operations.operation {
 	end,
 }
 local function property<T>(decode: (unknown) -> T): Operations.Operation<Member, T>
-	return Operations.operation { kind = "query", name = "instance.property", input = member, output = decode }
+	local definition: Operations.Operation<Member, T> =
+		{ kind = "query", name = "instance.property", input = member, output = decode }
+	return Operations.operation(definition)
 end
 local function attribute<T>(decode: (unknown) -> T): Operations.Operation<Member, T>
-	return Operations.operation { kind = "query", name = "instance.attribute", input = member, output = decode }
+	local definition: Operations.Operation<Member, T> =
+		{ kind = "query", name = "instance.attribute", input = member, output = decode }
+	return Operations.operation(definition)
 end
 
 local function registry(options: Options): Registry
@@ -105,7 +127,7 @@ local function registry(options: Options): Registry
 	local owned: { Node } = {}
 	local ownedIds: { [string]: boolean } = {}
 	local closed = false
-	local codec: Codec = options.codec or { encode = Operations.snapshot, decode = Operations.snapshot }
+	local codec: Codec = options.codec or { encode = snapshot, decode = snapshot }
 	local function get(id: string): Node
 		assert(not closed, "instance registry is closed")
 		local node = nodes[id]
@@ -119,7 +141,7 @@ local function registry(options: Options): Registry
 		end)
 	end
 	local operations: Native.Registry = { actions = {}, queries = {} }
-	operations.actions[create.name] = endpoint(create, function(input): nil
+	operations.actions[create.name] = endpoint(create, function(input: Creation): nil
 		assert(nodes[input.id] == nil, "instance id already bound")
 		local destination = if input.parent then get(input.parent) else nil
 		local node = options.createInstance(input.className)
@@ -129,11 +151,11 @@ local function registry(options: Options): Registry
 		node.Parent = destination
 		return nil
 	end)
-	operations.actions[parent.name] = endpoint(parent, function(input): nil
+	operations.actions[parent.name] = endpoint(parent, function(input: Parent): nil
 		get(input.id).Parent = if input.parent then get(input.parent) else nil
 		return nil
 	end)
-	operations.actions[destroy.name] = endpoint(destroy, function(id): nil
+	operations.actions[destroy.name] = endpoint(destroy, function(id: string): nil
 		assert(ownedIds[id], "cannot destroy a borrowed instance")
 		local target = get(id)
 		for _, item in borrowed do
@@ -143,25 +165,25 @@ local function registry(options: Options): Registry
 		nodes[id], ownedIds[id] = nil, nil
 		return nil
 	end)
-	operations.actions[setProperty.name] = endpoint(setProperty, function(input): nil
+	operations.actions[setProperty.name] = endpoint(setProperty, function(input: Write): nil
 		assert(input.key ~= "Parent", "use instance.parent for references")
 		get(input.id)[input.key] = codec.decode(input.value)
 		return nil
 	end)
-	operations.actions[setAttribute.name] = endpoint(setAttribute, function(input): nil
+	operations.actions[setAttribute.name] = endpoint(setAttribute, function(input: Write): nil
 		get(input.id):SetAttribute(input.key, codec.decode(input.value))
 		return nil
 	end)
-	local getProperty = property(Operations.snapshot)
-	operations.queries[getProperty.name] = endpoint(getProperty, function(input): unknown
+	local getProperty = property(snapshot)
+	operations.queries[getProperty.name] = endpoint(getProperty, function(input: Member): unknown
 		assert(input.key ~= "Parent", "inspect hierarchy through instance operations")
 		return codec.encode(get(input.id)[input.key])
 	end)
-	local getAttribute = attribute(Operations.snapshot)
-	operations.queries[getAttribute.name] = endpoint(getAttribute, function(input): unknown
+	local getAttribute = attribute(snapshot)
+	operations.queries[getAttribute.name] = endpoint(getAttribute, function(input: Member): unknown
 		return codec.encode(get(input.id):GetAttribute(input.key))
 	end)
-	operations.queries[inspect.name] = endpoint(inspect, function(id): View
+	operations.queries[inspect.name] = endpoint(inspect, function(id: string): View
 		local node = get(id)
 		local children: { string } = {}
 		for _, child in node:GetChildren() do

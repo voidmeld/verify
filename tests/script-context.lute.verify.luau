@@ -14,10 +14,16 @@ for _, mode in { "default", "legacy", "modern" } do
 		local project = fixture.project(if mode == "default" then nil else legacy)
 		local sources = table.clone(fixture.sources)
 		sources["fixture.project.json"] = Lute.encode(project)
-		local host = table.clone(Lute.fixture.host)
-		host.readFile = function(path: string): string
-			return assert(sources[path], path)
-		end
+		local base = Lute.fixture.host
+		local host: Lute.FixturePlaceHost = {
+			readFile = function(path: string): string
+				return assert(sources[path], path)
+			end,
+			compile = base.compile,
+			load = base.load,
+			encodeJson = base.encodeJson,
+			decodeJson = base.decodeJson,
+		}
 		local bridge = Lute.fixture.bridge()
 		own(bridge.close)
 		local report = Roblox.bootPlace({

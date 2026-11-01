@@ -8,7 +8,9 @@ local Roblox = require "../src/roblox"
 it("haptic effects accept native waveform keys and reject non-custom edits", function(own)
 	local snapshot = Lute.fixture.load()
 	local bridge = Lute.fixture.bridge(snapshot)
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local engine = bridge.placeEngine()
 	local library = Roblox.reflectionSnapshot.library(snapshot)
 	local globals: { [string]: unknown } = {
@@ -24,19 +26,21 @@ it("a host without haptic hardware reports no motors and emits no completion", f
 	local snapshot = Lute.fixture.load()
 	local library = Roblox.reflectionSnapshot.library(snapshot)
 	local bridge = Lute.fixture.bridge(snapshot)
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local engine = bridge.placeEngine()
 	local service = engine.service "HapticService"
-	local vibration = service.IsVibrationSupported :: (Roblox.Instance, unknown) -> boolean
-	local motor = service.IsMotorSupported :: (Roblox.Instance, unknown, unknown) -> boolean
+	local vibration = bridge.environment.method(service, "IsVibrationSupported")
+	local motor = bridge.environment.method(service, "IsMotorSupported")
 	for _, input in { library.Enum.UserInputType.Gamepad1, library.Enum.UserInputType.Touch } do
 		expect(vibration(service, input)):toBe(false)
 		expect(motor(service, input, library.Enum.VibrationMotor.Large)):toBe(false)
 	end
 	local effect = bridge.environment.createInstance "HapticEffect"
 	effect.Parent = engine.service "Workspace"
-	local play = effect.Play :: (Roblox.Instance) -> ()
-	local stop = effect.Stop :: (Roblox.Instance) -> ()
+	local play = bridge.environment.method(effect, "Play")
+	local stop = bridge.environment.method(effect, "Stop")
 	play(effect)
 	bridge.environment.step(1)
 	stop(effect)

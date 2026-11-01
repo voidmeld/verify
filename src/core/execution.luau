@@ -5,6 +5,7 @@ local Harness = require "./harness"
 local Plan = require "./plan"
 local ReportModel = require "./report"
 local Types = require "./types"
+local Shape = require "./shape"
 
 type Artifact = Types.Artifact
 type AttemptRecord = Types.AttemptRecord
@@ -96,7 +97,7 @@ local function unitIds(units: { PlanUnit }): { string }
 	return ids
 end
 
-local function execute(planDraft: PlanDraft, host: Host, options: Options?): ExecutionReport
+local function execute(planDraft: PlanDraft | Types.Plan, host: Host, options: Options?): ExecutionReport
 	local checkedPlan = Plan.validate(planDraft)
 	local selected = if options ~= nil and options.selection ~= nil
 		then Plan.select(checkedPlan, options.selection)
@@ -111,12 +112,13 @@ local function execute(planDraft: PlanDraft, host: Host, options: Options?): Exe
 
 	local facts: { Fact } = {}
 	local function fact(code: string, subject: string, detail: string)
-		table.insert(facts, {
+		local entry: Fact = {
 			code = code,
 			subject = subject,
 			detail = detail,
 			severity = if FAILING_FACTS[code] then "failure" else "limitation",
-		})
+		}
+		table.insert(facts, entry)
 	end
 
 	local environment: { [string]: string } = {}
@@ -275,7 +277,10 @@ local function execute(planDraft: PlanDraft, host: Host, options: Options?): Exe
 		if type(outcome) ~= "table" then
 			return { status = "faulted", detail = "the host returned no batch outcome" }
 		end
-		local candidate = outcome :: BatchOutcome
+		if getmetatable(outcome) ~= nil then
+			return { status = "faulted", detail = "the host must return a plain batch outcome" }
+		end
+		local candidate = Shape.record(outcome, "batch outcome")
 		if
 			candidate.status ~= "returned"
 			and candidate.status ~= "faulted"
@@ -284,7 +289,10 @@ local function execute(planDraft: PlanDraft, host: Host, options: Options?): Exe
 		then
 			return { status = "faulted", detail = "the host returned an unknown batch status" }
 		end
-		return candidate
+		if candidate.detail ~= nil and type(candidate.detail) ~= "string" then
+			return { status = "faulted", detail = "the host returned an invalid batch detail" }
+		end
+		return { status = candidate.status, detail = candidate.detail, report = candidate.report }
 	end
 
 	local function recordAttempt(batch: PlanBatch, attempt: number, raw: unknown, elapsedSeconds: number): BatchStatus

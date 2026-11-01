@@ -26,7 +26,7 @@ local function run(
 		local drain = logs
 		options = table.clone(options)
 		local bind = options.bind
-		options.bind = function(context)
+		options.bind = function(context: Core.Context): Core.CaseHost
 			context:defer(function()
 				Logs.finish(context, drain, if entry.expectedErrors then entry.expectedErrors[context.id] else nil)
 			end)
@@ -37,7 +37,7 @@ local function run(
 					capabilities = {},
 					environment = {},
 					now = entry.now,
-					invoke = function()
+					invoke = function(_request: Core.OperationRequest): unknown
 						error("no operation host is bound", 0)
 					end,
 				}

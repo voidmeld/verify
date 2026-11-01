@@ -15,10 +15,10 @@ export type ProductionFinding = {
 }
 
 export type Ruleset = {
-	name: string,
-	hostVariantSuffixes: { string },
-	hostGlobals: { string },
-	externalMutationMembers: { string },
+	read name: string,
+	read hostVariantSuffixes: { string },
+	read hostGlobals: { string },
+	read externalMutationMembers: { string },
 }
 
 export type DirEntry = { name: string, type: string }
@@ -65,7 +65,7 @@ local function longBracketEnd(contents: string, openAt: number, level: number): 
 end
 
 local function characters(contents: string): { string }
-	local result = table.create(#contents)
+	local result = table.create<<string>>(#contents)
 	for index = 1, #contents do
 		result[index] = string.sub(contents, index, index)
 	end
@@ -208,12 +208,15 @@ local function addMatches(
 	end
 end
 
-local GENERIC: Ruleset = table.freeze {
+local genericRules: Ruleset = {
 	name = "generic",
 	hostVariantSuffixes = table.freeze { ".lute.verify.luau" },
-	hostGlobals = table.freeze {},
-	externalMutationMembers = table.freeze {},
+	hostGlobals = {},
+	externalMutationMembers = {},
 }
+local GENERIC = table.freeze(genericRules)
+table.freeze(GENERIC.hostGlobals)
+table.freeze(GENERIC.externalMutationMembers)
 
 local ROBLOX: Ruleset = table.freeze {
 	name = "roblox",
@@ -332,7 +335,7 @@ local function scan(contents: string, path: string, ruleset: Ruleset): { Finding
 		"verification specifications are control-plane code without a measured native-codegen case",
 		"remove the annotation; benchmark a compute-bound kernel separately if one emerges"
 	)
-	table.sort(findings, function(left, right)
+	table.sort(findings, function(left: Finding, right: Finding)
 		return if left.offset == right.offset then left.code < right.code else left.offset < right.offset
 	end)
 	return findings
@@ -358,7 +361,7 @@ local function scanProductionPaths(paths: { string }): { ProductionFinding }
 			})
 		end
 	end
-	table.sort(findings, function(left, right)
+	table.sort(findings, function(left: ProductionFinding, right: ProductionFinding)
 		return if left.path == right.path then left.code < right.code else left.path < right.path
 	end)
 	return findings
@@ -370,7 +373,7 @@ end
 
 local function walkTree(root: string, listDir: ListDir, exempt: ((string) -> boolean)?, into: { string })
 	local entries = listDir(root)
-	table.sort(entries, function(left, right)
+	table.sort(entries, function(left: DirEntry, right: DirEntry)
 		return left.name < right.name
 	end)
 	for _, entry in entries do
@@ -416,7 +419,7 @@ local function scanTree(root: string, options: TreeOptions): TreeReport
 			})
 		end
 	end
-	table.sort(findings, function(left, right)
+	table.sort(findings, function(left: TreeFinding, right: TreeFinding)
 		if left.path ~= right.path then
 			return left.path < right.path
 		end

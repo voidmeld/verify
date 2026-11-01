@@ -10,6 +10,7 @@ end
 
 local fs = require "@std/fs"
 local Lute = require "../src/lute"
+local Wire = require "../src/lute/wire"
 local Roblox = require "../src/roblox"
 
 type Fields = { [string]: unknown }
@@ -134,11 +135,11 @@ local function visible(filter: unknown): { Member }
 	local classes = table.clone(CLASSES)
 	if
 		type(filter) == "table"
-		and ((filter :: Fields).Security == PLUGIN_SECURITY or (filter :: Fields).Security == ALL_SECURITY)
+		and (Wire.record(filter).Security == PLUGIN_SECURITY or Wire.record(filter).Security == ALL_SECURITY)
 	then
 		table.insert(classes, PLUGIN_CLASS)
 	end
-	if type(filter) == "table" and (filter :: Fields).Security == ALL_SECURITY then
+	if type(filter) == "table" and Wire.record(filter).Security == ALL_SECURITY then
 		table.insert(classes, HIDDEN_CLASS)
 	end
 	return classes
@@ -499,7 +500,7 @@ describe("Studio probes", function()
 			{ name = "sum", source = "return tostring(Vector2.new(1, 2) + Vector2.new(3, 4))" },
 			{ name = "raise", source = "return Vector2.new().Nope" },
 		}
-		local globals = table.clone((engine :: unknown) :: Fields)
+		local globals = Wire.record(engine)
 		globals.game = {
 			GetService = function(): unknown
 				return {

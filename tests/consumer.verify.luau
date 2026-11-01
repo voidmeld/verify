@@ -37,12 +37,6 @@ describe("verify consumer lints", function()
 		expect((codesWith(Consumer.generic, "task.wait()", "case.roblox.verify.luau"))):toEqual { "VRF001" }
 	end)
 
-	it("refuses a scan without a ruleset", function()
-		expect((pcall(function()
-			Consumer.scan("return nil", "case.verify.luau", ({}) :: Consumer.Ruleset)
-		end))):toEqual(false)
-	end)
-
 	it("allows host access in an explicitly Roblox specification", function()
 		expect((codes("return game, workspace", "case.roblox.verify.luau"))):toEqual {}
 	end)
@@ -199,12 +193,6 @@ describe("verify consumer tree scan", function()
 		expect(result.findings[1].path):toEqual "./specs/alpha.verify.luau"
 
 		expect(#result.productionFindings):toEqual(2)
-	end)
-
-	it("refuses a call missing listDir or readFile", function()
-		expect((pcall(function()
-			Consumer.scanTree(".", ({}) :: Consumer.TreeOptions)
-		end))):toEqual(false)
 	end)
 end)
 

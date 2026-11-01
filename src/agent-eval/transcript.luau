@@ -65,7 +65,13 @@ local function field(value: unknown, key: string): unknown
 	if type(value) ~= "table" then
 		return nil
 	end
-	local item = (value :: { [string]: unknown })[key]
+	local item: unknown
+	for name, child in value do
+		if name == key then
+			item = child
+			break
+		end
+	end
 	if type(item) == "userdata" then
 		return nil
 	end
@@ -108,7 +114,7 @@ local function add(into: Usage, value: Usage)
 end
 
 local function union(intervals: { { number } }): number
-	table.sort(intervals, function(left, right)
+	table.sort(intervals, function(left: { number }, right: { number })
 		return left[1] < right[1]
 	end)
 	local sum = 0
@@ -135,7 +141,7 @@ local function list(value: unknown): { unknown }
 		return {}
 	end
 	local result: { unknown } = {}
-	for _, item in ipairs(value :: { unknown }) do
+	for _, item in value do
 		table.insert(result, item)
 	end
 	return result
@@ -298,7 +304,7 @@ local function parseClaudeStream(lines: { Services.Line }, decode: (text: string
 			if type(models) == "table" then
 				local collected: { [string]: Usage } = {}
 				local found = false
-				for name, entry in models :: { [unknown]: unknown } do
+				for name, entry in models do
 					if type(name) == "string" and type(entry) == "table" then
 						collected[name] = modelUsage(entry)
 						found = true

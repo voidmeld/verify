@@ -43,6 +43,7 @@ local function collect(root: string): { { path: string, request: string } }
 	local function walk(directory: string)
 		local entries = fs.listDirectory(directory)
 		table.sort(entries, function(left, right)
+			assert(type(left.name) == "string" and type(right.name) == "string")
 			return left.name < right.name
 		end)
 		for _, entry in entries do

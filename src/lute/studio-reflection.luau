@@ -31,6 +31,8 @@ local DATATYPE_ENUMS = {
 	"RaycastFilterType",
 }
 local GLOBALS = "{ game = game, Instance = Instance, Enum = Enum, BrickColor = BrickColor, Font = Font, typeof = typeof,"
+	.. " host = { read = function(value, key) return value[key] end,"
+	.. " components = function(value) return { value:GetComponents() } end },"
 	.. " version = version, security = SecurityCapabilities.fromCurrent():Add(Enum.SecurityCapability.Plugin),"
 	.. " classSecurity = SecurityCapabilities.new(table.unpack(Enum.SecurityCapability:GetEnumItems())) }"
 
@@ -74,7 +76,7 @@ end
 local function record(text: string, part: string): Fields
 	local parsed, value: unknown = pcall(Wire.parse, text)
 	assert(parsed and type(value) == "table", "Studio returned an unreadable " .. part .. " capture")
-	return value :: Fields
+	return Wire.record(value)
 end
 
 local function batches(names: { string }, size: number): { { string } }
@@ -106,18 +108,20 @@ local function export(execute: Execute, options: Options?): Snapshot.Snapshot
 
 	local index = run("index", {})
 	local superclasses: { [string]: string | false } = {}
-	for _, entry in index.classes :: { Fields } do
+	for _, raw in Wire.array(index.classes) do
+		local entry = Wire.record(raw)
 		superclasses[checkedString(entry.name)] = false
 	end
-	for _, entry in index.classes :: { Fields } do
+	for _, raw in Wire.array(index.classes) do
+		local entry = Wire.record(raw)
 		local super = optionalString(entry.superclass)
 		if super ~= nil and superclasses[super] ~= nil then
 			superclasses[checkedString(entry.name)] = super
 		end
 	end
 	local known: { [string]: boolean } = {}
-	for _, name in index.enums :: { string } do
-		known[name] = true
+	for _, name in Wire.array(index.enums) do
+		known[checkedString(name)] = true
 	end
 
 	local wanted: { [string]: boolean } = {}
@@ -140,9 +144,10 @@ local function export(execute: Execute, options: Options?): Snapshot.Snapshot
 	local classes: Fields = {}
 	for _, batch in batches(keys(wanted), size) do
 		for name, entry in run("classes", batch) do
-			local super = superclasses[name];
-			(entry :: Fields).superclass = if type(super) == "string" then super else nil
-			classes[name] = entry
+			local fields = Wire.record(entry)
+			local super = superclasses[name]
+			fields.superclass = if type(super) == "string" then super else nil
+			classes[name] = fields
 		end
 	end
 
@@ -159,16 +164,17 @@ local function export(execute: Execute, options: Options?): Snapshot.Snapshot
 			families[name] = true
 		end
 		for _, entry in classes do
-			local fields = entry :: Fields
-			for _, property in fields.properties :: { [string]: Fields } do
+			local fields = Wire.record(entry)
+			for _, value in Wire.record(fields.properties) do
+				local property = Wire.record(value)
 				local family = string.match(checkedString(property.datatype), "^Enum%.(.+)$")
 				if family ~= nil and known[family] then
 					families[family] = true
 				end
 			end
-			for _, value in fields.defaults :: { [string]: unknown } do
-				if type(value) == "table" and (value :: Fields)["$"] == "EnumItem" then
-					families[checkedString((value :: Fields).family)] = true
+			for _, value in Wire.record(fields.defaults) do
+				if type(value) == "table" and Wire.record(value)["$"] == "EnumItem" then
+					families[checkedString(Wire.record(value).family)] = true
 				end
 			end
 		end
@@ -182,16 +188,14 @@ local function export(execute: Execute, options: Options?): Snapshot.Snapshot
 	end
 
 	local engine = run("engine", {})
-	return (
-		{
-			schemaVersion = Snapshot.SCHEMA_VERSION,
-			engineVersion = index.engineVersion,
-			classes = classes,
-			enums = enums,
-			brickColors = engine.brickColors,
-			fonts = engine.fonts,
-		} :: unknown
-	) :: Snapshot.Snapshot
+	return Snapshot.decode {
+		schemaVersion = Snapshot.SCHEMA_VERSION,
+		engineVersion = index.engineVersion,
+		classes = classes,
+		enums = enums,
+		brickColors = engine.brickColors,
+		fonts = engine.fonts,
+	}
 end
 
 local PREFIX = "^[^%s:]+:%d+: "
@@ -228,14 +232,19 @@ end
 return game:GetService("HttpService"):JSONEncode({ engineVersion = version(), results = results })]]
 	)
 	local reply = record(execute(table.concat(pieces, "\n")), "probe")
-	return { engineVersion = optionalString(reply.engineVersion), results = reply.results :: { [string]: string } }
+	local results: { [string]: string } = {}
+	for name, value in Wire.record(reply.results) do
+		results[name] = checkedString(value)
+	end
+	return { engineVersion = optionalString(reply.engineVersion), results = results }
 end
 
 local function probeLocal(environment: { [string]: unknown }, probes: { Probe }): { [string]: string }
 	local results: { [string]: string } = {}
 	for _, probe in probes do
 		local ran, value = pcall(function(): unknown
-			return Chunk.load(probe.source, { name = "probe", environment = environment })()
+			local result = Chunk.load(probe.source, { name = "probe", environment = environment })()
+			return result
 		end)
 		results[probe.name] = outcome(ran, value)
 	end

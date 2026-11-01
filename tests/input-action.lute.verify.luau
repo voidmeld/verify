@@ -5,23 +5,22 @@ local it, expect = Test.it, Test.expect
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 
-type Instance = Roblox.Instance
-type Fire = (Instance, unknown) -> ()
-type GetState = (Instance) -> unknown
-
 it("scripted input actions retain state and suppress duplicate transitions", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local env = bridge.environment
 	local action = env.createInstance "InputAction"
 	action.Parent = bridge.placeEngine().game
-	local fire = action.Fire :: Fire
-	local state = action.GetState :: GetState
+	local fire = env.method(action, "Fire")
+	local state = env.method(action, "GetState")
 	local events: { string } = {}
 	for _, name in { "Pressed", "Released", "StateChanged" } do
-		local signal = action[name] :: Roblox.Signal<...unknown>
+		local signal = env.event(action, name)
 		signal:Connect(function()
-			table.insert(events, name .. ":" .. tostring(state(action)))
+			local current = state(action)
+			table.insert(events, name .. ":" .. tostring(current))
 		end)
 	end
 	expect(state(action)):toBe(false)
@@ -45,7 +44,9 @@ it("directional input actions validate their state and emit no button events", f
 	local snapshot = Lute.fixture.load()
 	local library = Roblox.reflectionSnapshot.library(snapshot)
 	local bridge = Lute.fixture.bridge(snapshot)
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local env = bridge.environment
 	local entries: { { kind: string, zero: unknown, value: unknown } } = {
 		{ kind = "Direction1D", zero = 0, value = 0.5 },
@@ -56,8 +57,8 @@ it("directional input actions validate their state and emit no button events", f
 		local action = env.createInstance "InputAction"
 		action.Type = library.Enum.InputActionType[entry.kind]
 		action.Parent = bridge.placeEngine().game
-		local fire = action.Fire :: Fire
-		local state = action.GetState :: GetState
+		local fire = env.method(action, "Fire")
+		local state = env.method(action, "GetState")
 		expect(state(action)):toEqual(entry.zero)
 		fire(action, entry.value)
 		fire(action, entry.value)
@@ -74,7 +75,9 @@ end)
 
 it("input action lifecycle matches the shared Studio sequence", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local engine = bridge.placeEngine()
 	local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
 		aliases = {},
