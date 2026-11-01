@@ -80,7 +80,9 @@ local runtime: Runtime = {
 		read = fs.readFileToString,
 		write = fs.writeStringToFile,
 		exists = fs.exists,
-		createDirectory = fs.createDirectory,
+		createDirectory = function(path: string)
+			fs.createDirectory(path)
+		end,
 		remove = fs.remove,
 	},
 	process = {

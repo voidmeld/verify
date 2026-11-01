@@ -7,8 +7,11 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local fs = require "@std/fs"
 local process = require "@std/process"
 local parser = require "@std/syntax/parser"
-local syntax = require "@std/syntax"
 local Checks = require "../src/checks"
+local Denylist = require "../src/checks/denylist"
+local Corpus = require "../src/lute/corpus"
+local Comments = require "../src/checks/comments"
+local Provenance = require "../src/checks/provenance"
 
 local function fixture(body: (string) -> ())
 	Checks.temporaryDirectory.run(Checks.temporaryDirectory.root(), "checks-spec", function(root)
@@ -69,7 +72,7 @@ it("checks temporary directory cleans exceptions and rejects traversal", functio
 end)
 
 it("checks denylist preserves lines applies literal masks and scoped exemptions", function()
-	local rules = { { pattern = "secret", why = "private" } }
+	local rules: { Denylist.Rule } = { { pattern = "secret", why = "private" } }
 	expect(#Checks.denylist.scan("a", "safe", rules)):toBe(0)
 	expect(Checks.denylist.scan("a", "safe\nsecret", rules)[1]):toContain "a:2:"
 	expect(#Checks.denylist.scan("a", "secret", rules, { a = { "secret" } })):toBe(0)
@@ -78,7 +81,7 @@ it("checks denylist preserves lines applies literal masks and scoped exemptions"
 		#Checks.denylist.scan("a", "secret", { { pattern = "secret", why = "private", exempt = { a = "reviewed" } } })
 	):toBe(0)
 	expect(#Checks.denylist.scan("a", "aXb", { { pattern = "a.b", plain = true, why = "literal" } })):toBe(0)
-	local scoped =
+	local scoped: { Denylist.Rule } =
 		{ { pattern = "value%d+", why = "private", allMatches = true, exempt = { ["a:value1"] = "fixture" } } }
 	expect(#Checks.denylist.scan("a", "value1", scoped)):toBe(0)
 	expect(#Checks.denylist.scan("a", "value1 value2 value3", scoped)):toBe(2)
@@ -87,7 +90,7 @@ end)
 
 it("checks boundary rejects empty and forbidden roots with configured exclusions", function()
 	fixture(function(root)
-		local rules = { { pattern = "HOST", why = "host" } }
+		local rules: { Denylist.Rule } = { { pattern = "HOST", why = "host" } }
 		expect(#Checks.boundary { root = root, rules = rules }):toBe(1)
 		write(root, "pure.luau", "return 1")
 		expect(#Checks.boundary { root = root, rules = rules }):toBe(0)
@@ -102,7 +105,7 @@ it("checks manifest detects omissions duplicates order and writes discovery", fu
 	fixture(function(root)
 		write(root, "b.verify.luau", "return nil")
 		write(root, "a.verify.luau", "return nil")
-		local rules = { { root = root, pattern = "%.verify%.luau$" } }
+		local rules: { Corpus.Rule } = { { root = root, pattern = "%.verify%.luau$" } }
 		local entries = { root .. "/a.verify.luau", root .. "/b.verify.luau" }
 		expect(#Checks.testManifest { path = root .. "/manifest.luau", rules = rules, entries = entries }):toBe(0)
 		expect(#Checks.testManifest { path = "manifest", rules = rules, entries = { entries[2], entries[1] } }):toBe(2)
@@ -155,7 +158,7 @@ it("checks comments handle interpolation directives licenses and reversible rewr
 			"code.luau",
 			"--!strict\nlocal quoted = '-- ordinary text'\nlocal value = `{(function() -- forbidden\nreturn 1 end)()}`\n-- tail\n"
 		)
-		local config = { files = { path }, allowed = { "^%-%-!" } }
+		local config: Comments.Config = { files = { path }, allowed = { "^%-%-!" } }
 		expect(#Checks.comments(config)):toBe(2)
 		expect(#Checks.comments { files = { path }, allowed = config.allowed, write = true }):toBe(0)
 		expect(#Checks.comments(config)):toBe(0)
@@ -185,12 +188,16 @@ it("checks leakage and type policy honor git selection and ignored files", funct
 		git(root, { "add", "." })
 		write(root, "fresh.luau", "--!strict\nlocal x: any = 'private'\n")
 		write(root, "ignored.luau", "private")
-		local rules = { { pattern = "private", why = "private" } }
+		local rules: { Denylist.Rule } = { { pattern = "private", why = "private" } }
 		expect(#Checks.leakage { root = root, rules = rules }):toBe(0)
 		expect(#Checks.leakage { root = root, rules = rules, untracked = true }):toBe(1)
 		expect(#Checks.noAny { root = root }):toBe(0)
 		expect(#Checks.noAny { root = root, untracked = true }):toBe(1)
 		write(root, "fresh.luau", "--!nonstrict\nreturn 1\n")
+		expect(#Checks.noAny { root = root, untracked = true }):toBe(2)
+		write(root, "fresh.luau", "--!strict\nreturn (1 :: number)\n")
+		expect(#Checks.noAny { root = root, untracked = true }):toBe(1)
+		write(root, "escape.lua", "--!strict\nreturn (1 :: unknown)\n")
 		expect(#Checks.noAny { root = root, untracked = true }):toBe(2)
 	end)
 end)
@@ -223,7 +230,7 @@ end)
 
 it("checks provenance rejects missing license unmanaged notices scripts and dependency failure", function()
 	fixture(function(root)
-		local config = {
+		local config: Provenance.Config = {
 			forbiddenPaths = { root .. "/vendor" },
 			license = root .. "/LICENSE",
 			licenseFragments = { "Grant" },
@@ -287,7 +294,7 @@ end)
 
 it("checks lint rules reject shared globals misplaced comparisons and invalid escapes", function()
 	local function parse(source: string)
-		return ((parser.parse(source) :: unknown) :: { root: syntax.CstStatBlock }).root
+		return parser.parse(source).root
 	end
 	expect(#Checks.lintRules.globalTableUsage.lint(parse "return _G.value", nil, {})):toBe(1)
 	expect(#Checks.lintRules.globalTableUsage.lint(parse "local _G = {}; return _G.value", nil, {})):toBe(0)

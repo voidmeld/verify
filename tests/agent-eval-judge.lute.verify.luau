@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local AgentEval = require "../src/agent-eval"
 local Fakes = require "./agent-eval-fakes"
 local Lute = require "../src/lute"
+local Wire = require "../src/lute/wire"
 
 type Object = { [string]: unknown }
 
@@ -101,8 +102,9 @@ describe("agent evaluation judge", function()
 			return assert(reason)
 		end
 		expect(problem("Here it is: " .. verdict "first")):toContain "exactly one JSON object"
-		local raw = Lute.parse(verdict "first") :: Object
-		local criteria = raw.criteria :: Object
+		local raw = Wire.record(Lute.parse(verdict "first"))
+		local criteria = Wire.record(raw.criteria)
+		raw.criteria = criteria
 		criteria.polish = nil
 		expect(problem(Fakes.json(raw))):toContain "verdict.criteria.polish"
 		criteria.polish = "left"
@@ -261,13 +263,13 @@ describe("agent evaluation judge", function()
 		expect(sent[1].method):toBe "POST"
 		expect(sent[1].headers["x-api-key"]):toBe "test-key"
 		expect(sent[1].headers["anthropic-version"]):toBe "2023-06-01"
-		local body = Lute.parse(assert(sent[1].body)) :: Object
+		local body = Wire.record(Lute.parse(assert(sent[1].body)))
 		expect(body.model):toBe "claude-opus-5-5"
 		expect(body.max_tokens):toBe(16000)
 		expect(body.system):toBe "system text"
 		expect(body.output_config):toEqual { effort = "high" }
-		local messages = body.messages :: { Object }
-		local content = messages[1].content :: { Object }
+		local messages = Wire.array(body.messages)
+		local content = Wire.array(Wire.record(messages[1]).content)
 		expect(content[1]):toEqual { type = "text", text = "look" }
 		expect(content[2]):toEqual {
 			type = "image",
@@ -347,9 +349,8 @@ describe("agent evaluation judge", function()
 				local directory = assert(command.cwd)
 				table.insert(firstImages, memory.files.read(directory .. "/image-01.png"))
 				expect(memory.files.read(directory .. "/prompt.md")):toContain "./image-02.png"
-				local schema =
-					Lute.parse(memory.files.read(directory .. "/schema.json")) :: { properties: { criteria: { required: { string } } } }
-				expect(schema.properties.criteria.required):toEqual { "fit" }
+				local schema = Wire.record(Lute.parse(memory.files.read(directory .. "/schema.json")))
+				expect(Wire.record(Wire.record(schema.properties).criteria).required):toEqual { "fit" }
 				memory.files.write(
 					directory .. "/answer.json",
 					Fakes.json { criteria = { fit = "tie" }, overall = "tie", confidence = 1, reasons = { "same" } }
@@ -452,7 +453,7 @@ describe("agent evaluation judge", function()
 		local judgments: { AgentEval.Judgment } = {}
 		local labels: { AgentEval.Label } = {}
 		for index = 1, #humans do
-			table.insert(judgments, {
+			local judgment: AgentEval.Judgment = {
 				id = "c" .. index,
 				task = "t",
 				agent = "g",
@@ -467,7 +468,8 @@ describe("agent evaluation judge", function()
 				criteria = {},
 				winner = judges[index],
 				consistent = true,
-			})
+			}
+			table.insert(judgments, judgment)
 			table.insert(labels, { comparison = "c" .. index, winner = humans[index] })
 		end
 		table.insert(labels, { comparison = "missing", winner = "a" })

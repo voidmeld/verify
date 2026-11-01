@@ -27,6 +27,24 @@ describe("environment engine adapter", function()
 		expect(env.liveObjects()):toEqual(0)
 		expect(env.liveConnections()):toEqual(0)
 	end)
+	it("dispatches through the methods of any instance-shaped value", function()
+		local env = Environment.create()
+		local engine = Adapter.create(env)
+		local real = engine.new "Folder"
+		local calls: { string } = {}
+		local proxy = {
+			Destroy = function(_self: unknown)
+				table.insert(calls, "Destroy")
+			end,
+			GetPropertyChangedSignal = function(_self: unknown, property: string)
+				table.insert(calls, property)
+				return real:GetPropertyChangedSignal(property)
+			end,
+		}
+		engine.destroy(proxy)
+		expect(engine.propertyChanged(proxy, "Name")):toBeTruthy()
+		expect(calls):toEqual { "Destroy", "Name" }
+	end)
 	it("normalizes default and supplied datatype libraries", function()
 		local env = Environment.create()
 		local engine = Adapter.create(env, {

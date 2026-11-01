@@ -4,14 +4,30 @@ local Test = require "./harness"
 local it, expect = Test.it, Test.expect
 local Lute = require "../src/lute"
 local Facts = require "../src/roblox/content-facts"
-local Environment = require "../src/roblox/environment-types"
+local Environment = require "../src/roblox/environment"
 local Types = require "../src/roblox/datatypes"
+local Names = require "../src/roblox/datatypes/names"
 local fs = require "@std/fs"
 local Wire = require "../src/lute/wire"
 local fixture = Facts.validate(Wire.parse(fs.readFileToString "tests/fixtures/content-facts.json"))
 
-type Instance = Environment.Instance
-type Load = (Instance, number) -> Instance
+local function call(environment: Environment.Environment, object: unknown, name: string, ...: unknown): ...unknown
+	local instance = Environment.assertInstance(object)
+	return environment.method(instance, name)(instance, ...)
+end
+
+local function child(object: unknown, name: string): Environment.Instance
+	return assert(Environment.assertInstance(object):FindFirstChild(name))
+end
+
+local function array(value: unknown): { unknown }
+	assert(type(value) == "table")
+	local result: { unknown } = {}
+	for _, item in value do
+		table.insert(result, item)
+	end
+	return result
+end
 
 local function copy(): Facts.Capture
 	return Facts.validate(Wire.parse(Wire.encode(fixture)))
@@ -20,17 +36,17 @@ end
 it("content records reconstruct independent hierarchies references and native fields", function()
 	local engine = Lute.fixture.bridge(nil, { content = { facts = copy() } }).placeEngine()
 	local service = engine.service "InsertService"
-	local load = service.LoadAssetVersion :: Load
+	local load = engine.environment.method(service, "LoadAssetVersion")
 	local first, second = load(service, 42), load(service, 42)
-	local body = assert(first:FindFirstChild "Body")
-	expect(body.MeshSize):toEqual(Types.Vector3.new(1, 2, 3))
-	expect(first.PrimaryPart):toBe(body)
-	expect(assert(body:FindFirstChild "Motor").Part0):toBe(body)
-	expect(assert(body:FindFirstChild "Constraint").Attachment1):toBe(body:FindFirstChild "Bone")
-	expect((assert(body:FindFirstChild "Surface").ColorMapContent :: Types.ContentValue).Uri):toBe "rbxassetid://50"
-	expect(assert(first:FindFirstChild "NeverRun").Disabled):toBe(true)
+	local body = child(first, "Body")
+	expect(Environment.read(body, "MeshSize")):toEqual(Types.Vector3.new(1, 2, 3))
+	expect(Environment.read(first, "PrimaryPart")):toBe(body)
+	expect(Environment.read(child(body, "Motor"), "Part0")):toBe(body)
+	expect(Environment.read(child(body, "Constraint"), "Attachment1")):toBe(child(body, "Bone"))
+	expect(Names.fields(Environment.read(child(body, "Surface"), "ColorMapContent")).Uri):toBe "rbxassetid://50"
+	expect(Environment.read(child(first, "NeverRun"), "Disabled")):toBe(true)
 	body:Destroy()
-	expect(assert(second:FindFirstChild "Body").Size):toEqual(Types.Vector3.new(2, 4, 6))
+	expect(Environment.read(child(second, "Body"), "Size")):toEqual(Types.Vector3.new(2, 4, 6))
 	local count = engine.environment.liveObjects()
 	local ok, refusal = pcall(load, service, 45)
 	expect(ok):toBe(false)
@@ -45,22 +61,22 @@ end)
 it("mesh and animation records answer only captured IDs and supported options", function()
 	local engine = Lute.fixture.bridge(nil, { content = { facts = copy() } }).placeEngine()
 	local service = engine.service "AssetService"
-	local mesh = service.CreateMeshPartAsync :: (Instance, Types.ContentValue, unknown) -> Instance
+	local mesh = engine.environment.method(service, "CreateMeshPartAsync")
 	local part = mesh(service, Types.Content.fromAssetId(43), nil)
-	expect(part.Size):toEqual(Types.Vector3.new(2, 4, 6))
-	expect(part.MeshSize):toEqual(Types.Vector3.new(1, 2, 3))
+	expect(Environment.read(part, "Size")):toEqual(Types.Vector3.new(2, 4, 6))
+	expect(Environment.read(part, "MeshSize")):toEqual(Types.Vector3.new(1, 2, 3))
 	expect(pcall(mesh, service, Types.Content.fromAssetId(99), nil)):toBe(false)
 	expect(pcall(mesh, service, Types.Content.fromAssetId(43), { RenderFidelity = "Automatic" })):toBe(false)
 	local provider = engine.service "KeyframeSequenceProvider"
-	local load = provider.GetKeyframeSequenceAsync :: (Instance, string) -> Instance
+	local load = engine.environment.method(provider, "GetKeyframeSequenceAsync")
 	local sequence = load(provider, "rbxassetid://44")
-	local frames = (sequence.GetKeyframes :: (Instance) -> { Instance })(sequence)
-	expect(sequence.Loop):toBe(true)
-	expect(frames[1].Time):toBe(0.5)
-	local poses = (frames[1].GetPoses :: (Instance) -> { Instance })(frames[1])
-	expect(poses[1].Weight):toBe(0.75)
-	expect(tostring(poses[1].EasingStyle)):toBe "Enum.PoseEasingStyle.Linear"
-	expect(#(poses[1].GetSubPoses :: (Instance) -> { Instance })(poses[1])):toBe(1)
+	local frames = array(call(engine.environment, sequence, "GetKeyframes"))
+	expect(Environment.read(sequence, "Loop")):toBe(true)
+	expect(Environment.read(frames[1], "Time")):toBe(0.5)
+	local poses = array(call(engine.environment, frames[1], "GetPoses"))
+	expect(Environment.read(poses[1], "Weight")):toBe(0.75)
+	expect(tostring(Environment.read(poses[1], "EasingStyle"))):toBe "Enum.PoseEasingStyle.Linear"
+	expect(#array(call(engine.environment, poses[1], "GetSubPoses"))):toBe(1)
 	expect(pcall(load, provider, "rbxassetid://99")):toBe(false)
 end)
 
@@ -91,7 +107,7 @@ it("failed content reconstruction releases partial objects", function()
 	local engine = Lute.fixture.bridge(nil, { content = { facts = broken } }).placeEngine()
 	local service = engine.service "InsertService"
 	local count = engine.environment.liveObjects()
-	expect(pcall(service.LoadAssetVersion :: Load, service, 42)):toBe(false)
+	expect(pcall(engine.environment.method(service, "LoadAssetVersion"), service, 42)):toBe(false)
 	expect(engine.environment.liveObjects()):toBe(count)
 end)
 

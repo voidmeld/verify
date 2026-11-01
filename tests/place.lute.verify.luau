@@ -178,7 +178,7 @@ describe("native place bundler", function()
 		}
 		local output = fs.readFileToString(root .. "/result.rbxlx")
 		local function expression(path: string): string
-			return Place.moduleExpression(path):gsub("&", "&amp;"):gsub('"', "&quot;")
+			return (Place.moduleExpression(path):gsub("&", "&amp;"):gsub('"', "&quot;"))
 		end
 		local rooted = root:gsub("^/", "")
 		expect(output:find(expression(rooted .. "/src/core"), 1, true) ~= nil):toBe(true)

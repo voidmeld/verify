@@ -15,7 +15,7 @@ export type Options = {
 
 local function attach(environment: Environment.Environment, options: Options?)
 	local settings: Options = options or {}
-	local owned = setmetatable({} :: { [Environment.Object]: boolean }, { __mode = "k" })
+	local owned: { [Environment.Object]: boolean } = setmetatable({}, { __mode = "k" })
 	environment.onCreate(function(object)
 		owned[object] = true
 	end)
@@ -42,7 +42,7 @@ local function attach(environment: Environment.Environment, options: Options?)
 		end
 		return model
 	end)
-	local colors = setmetatable({} :: { [Environment.Instance]: { [string]: unknown } }, { __mode = "k" })
+	local colors: { [Environment.Instance]: { [string]: unknown } } = setmetatable({}, { __mode = "k" })
 	local function material(value: Enum.EnumItem): string
 		assert(Names.kind(value) == "EnumItem" and value:IsA "Material", "terrain material must be Enum.Material")
 		assert(value.Name ~= "Air" and value.Name ~= "Water", "terrain material does not support custom colors")

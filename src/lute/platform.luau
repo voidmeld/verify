@@ -196,7 +196,7 @@ local function run(options: Options): Result
 				for _, root in additionalRoots do
 					table.insert(roots, root)
 				end
-				local modules = { options.entry }
+				local modules: { string } = { options.entry }
 				local function bootstrap(entry: string?): string?
 					if entry == nil then
 						return nil
@@ -272,7 +272,7 @@ local function run(options: Options): Result
 			return Wire.parse(fs.readFileToString(progressPath .. ".diagnostics"))
 		end)
 		if read and type(found) == "table" then
-			local record = found :: { [string]: unknown }
+			local record = Wire.record(found)
 			diagnostics = ("progress was degraded: %s frame(s) rejected, %s poll failure(s); %s"):format(
 				tostring(record.rejected),
 				tostring(record.failures),

@@ -8,19 +8,42 @@ local Datatypes = require "../src/roblox/datatypes"
 local Transition = require "../src/roblox/ui-style-transition"
 local Frames = require "../src/roblox/datatypes/cframe"
 local Enum = Datatypes.Enum
-local function invoke(object: Environment.Instance, name: string, ...: unknown): unknown
-	return (object[name] :: Environment.Method)(object, ...)
+local function invoke(env: Environment.Environment, object: Environment.Instance, name: string, ...: unknown): unknown
+	return (env.method(object, name)(object, ...))
+end
+local function array(value: unknown): { unknown }
+	assert(type(value) == "table")
+	local result: { unknown } = {}
+	for _, item in value do
+		table.insert(result, item)
+	end
+	return result
 end
 local function create(): Environment.Environment
 	return Environment.create { classes = UI.classes, validateProperty = UI.validateProperty }
 end
 describe("explicit UI fakes", function()
+	it("connects the original signal and rejects foreign or unregistered values", function()
+		local env = create()
+		local signal: Environment.Signal<number> = env.newSignal()
+		local received = 0
+		local connection = env.connect(signal, function(value: unknown)
+			assert(type(value) == "number")
+			received = value
+		end)
+		signal:Fire(7)
+		expect(received):toBe(7)
+		connection:Disconnect()
+		expect(env.connectionsOf(signal)):toBe(0)
+		expect(pcall(env.connect, create().newSignal(), function() end)):toBe(false)
+		expect(pcall(env.connect, {}, function() end)):toBe(false)
+	end)
 	it("GUI insets require an explicit provider and retain both current values", function()
 		local env = create()
 		UI.attach(env)
 		local service = env.createInstance "GuiService"
 		expect(pcall(function()
-			invoke(service, "GetGuiInset")
+			invoke(env, service, "GetGuiInset")
 		end)):toEqual(false)
 		local topLeft, bottomRight = { X = 7, Y = 11 }, { X = 13, Y = 17 }
 		UI.attach(env, {
@@ -30,7 +53,7 @@ describe("explicit UI fakes", function()
 				end,
 			},
 		})
-		local method = service.GetGuiInset :: Environment.Method
+		local method = env.method(service, "GetGuiInset")
 		local first, second = method(service)
 		expect(first == topLeft):toEqual(true)
 		expect(second == bottomRight):toEqual(true)
@@ -45,7 +68,7 @@ describe("explicit UI fakes", function()
 		local frame = env.createInstance "ScrollingFrame"
 		local position = { X = 0, Y = 40 }
 		frame.CanvasPosition = position
-		expect((pcall(invoke, frame, "ResetScrollVelocity"))):toEqual(true)
+		expect((pcall(invoke, env, frame, "ResetScrollVelocity"))):toEqual(true)
 		expect(frame.CanvasPosition == position):toEqual(true)
 	end)
 	it("focus transfers and destruction cleans connections", function()
@@ -53,11 +76,11 @@ describe("explicit UI fakes", function()
 		local controller = UI.attach(env)
 		local first = env.createInstance("TextBox", { Text = "before" })
 		local second = env.createInstance "TextBox"
-		invoke(first, "CaptureFocus")
+		invoke(env, first, "CaptureFocus")
 		expect(first.Text):toEqual ""
-		expect(invoke(first, "IsFocused")):toEqual(true)
-		invoke(second, "CaptureFocus")
-		expect(invoke(first, "IsFocused")):toEqual(false)
+		expect(invoke(env, first, "IsFocused")):toEqual(true)
+		invoke(env, second, "CaptureFocus")
+		expect(invoke(env, first, "IsFocused")):toEqual(false)
 		expect(controller.focused() == second):toEqual(true)
 		second:Destroy()
 		expect(controller.focused()):toEqual(nil)
@@ -71,7 +94,7 @@ describe("explicit UI fakes", function()
 		local textbox = env.createInstance("TextBox", { Parent = panel })
 		local service = env.createInstance "GuiService"
 		expect(pcall(function()
-			invoke(textbox, "CaptureFocus")
+			invoke(env, textbox, "CaptureFocus")
 		end)):toEqual(false)
 		expect(pcall(function()
 			service.SelectedObject = textbox
@@ -86,30 +109,31 @@ describe("explicit UI fakes", function()
 		UI.attach(env)
 		local service = env.createInstance "TextService"
 		expect(pcall(function()
-			invoke(service, "GetTextSize", "x", 12)
+			invoke(env, service, "GetTextSize", "x", 12)
 		end)):toEqual(false)
 		UI.attach(env, {
 			measureText = function(text: string, size: number): unknown
 				return #text * size
 			end,
 		})
-		expect(invoke(service, "GetTextSize", "abc", 12)):toEqual(36)
+		expect(invoke(env, service, "GetTextSize", "abc", 12)):toEqual(36)
 	end)
 	it("style property and transition maps are copied", function()
 		local env = create()
 		UI.attach(env)
 		local rule = env.createInstance "StyleRule"
 		local values: { [string]: unknown } = { TextSize = 16 }
-		invoke(rule, "SetProperties", values)
+		invoke(env, rule, "SetProperties", values)
 		values.TextSize = 30
-		expect(invoke(rule, "GetProperty", "TextSize")):toEqual(16)
-		local read = invoke(rule, "GetProperties") :: { [string]: unknown }
-		read.TextSize = 90
-		expect(invoke(rule, "GetProperty", "TextSize")):toEqual(16)
-		invoke(rule, "SetProperty", "TextSize", nil)
-		expect(invoke(rule, "GetProperty", "TextSize")):toEqual(nil)
-		invoke(rule, "SetPropertyTransition", "TextSize", "injected")
-		expect((invoke(rule, "GetPropertyTransitions") :: { [string]: unknown }).TextSize):toEqual "injected"
+		expect(invoke(env, rule, "GetProperty", "TextSize")):toEqual(16)
+		local read = invoke(env, rule, "GetProperties")
+		assert(type(read) == "table")
+		table.clear(read)
+		expect(invoke(env, rule, "GetProperty", "TextSize")):toEqual(16)
+		invoke(env, rule, "SetProperty", "TextSize", nil)
+		expect(invoke(env, rule, "GetProperty", "TextSize")):toEqual(nil)
+		invoke(env, rule, "SetPropertyTransition", "TextSize", "injected")
+		expect(Environment.read(invoke(env, rule, "GetPropertyTransitions"), "TextSize")):toEqual "injected"
 	end)
 	it("fires StyledPropertiesChanged on GuiObjects when a read styled property changes", function()
 		local env = create()
@@ -119,9 +143,9 @@ describe("explicit UI fakes", function()
 		local padding = env.createInstance("UIPadding", { Parent = label })
 		local sheet = env.createInstance "StyleSheet"
 		local rule = env.createInstance("StyleRule", { Selector = "Frame", Parent = sheet })
-		invoke(rule, "SetProperty", "BackgroundTransparency", 0.25)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", 0.25)
 		local inset = env.createInstance("StyleRule", { Selector = "UIPadding", Parent = sheet })
-		invoke(inset, "SetProperty", "PaddingLeft", Datatypes.UDim.new(0, 4))
+		invoke(env, inset, "SetProperty", "PaddingLeft", Datatypes.UDim.new(0, 4))
 		env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
 		local labelFires, paddingFires = 0, 0
 		label.StyledPropertiesChanged:Connect(function()
@@ -134,11 +158,11 @@ describe("explicit UI fakes", function()
 		expect(ui.styled(padding, "PaddingLeft")):toEqual(Datatypes.UDim.new(0, 4))
 		ui.step()
 		expect(labelFires):toEqual(0)
-		invoke(rule, "SetProperty", "BackgroundTransparency", 0.5)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", 0.5)
 		ui.step()
 		expect(labelFires):toEqual(1)
 		expect(paddingFires):toEqual(0)
-		invoke(inset, "SetProperty", "PaddingLeft", Datatypes.UDim.new(0, 12))
+		invoke(env, inset, "SetProperty", "PaddingLeft", Datatypes.UDim.new(0, 12))
 		ui.step()
 		expect(labelFires):toEqual(1)
 		expect(paddingFires):toEqual(0)
@@ -152,7 +176,7 @@ describe("explicit UI fakes", function()
 		local frame = env.createInstance("Frame", { Parent = root })
 		local sheet = env.createInstance "StyleSheet"
 		local rule = env.createInstance("StyleRule", { Selector = "Frame", Parent = sheet })
-		invoke(rule, "SetProperty", "BackgroundTransparency", 0.25)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", 0.25)
 		local fires = 0
 		frame.StyledPropertiesChanged:Connect(function()
 			fires += 1
@@ -175,11 +199,10 @@ describe("explicit UI fakes", function()
 		sheet:SetAttribute("Alpha", 0.6)
 		sheet:SetAttribute("Alias", "$Alpha")
 		local rule = env.createInstance("StyleRule", { Selector = "Frame", Priority = 10, Parent = sheet })
-		invoke(rule, "SetProperty", "BackgroundTransparency", "$Alias")
-		local signal =
-			invoke(frame, "GetStyledPropertyChangedSignal", "BackgroundTransparency") :: Environment.Signal<()>
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", "$Alias")
+		local signal = invoke(env, frame, "GetStyledPropertyChangedSignal", "BackgroundTransparency")
 		local fired = 0
-		signal:Connect(function()
+		env.connect(signal, function()
 			fired += 1
 		end)
 		frame.BackgroundTransparency = 0.3
@@ -202,7 +225,7 @@ describe("explicit UI fakes", function()
 		expect(frame:IsPropertyModified "BackgroundTransparency"):toEqual(false)
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.2)
 		local hot = env.createInstance("StyleRule", { Selector = ".Hot", Priority = 20, Parent = sheet })
-		invoke(hot, "SetProperty", "BackgroundTransparency", 0.8)
+		invoke(env, hot, "SetProperty", "BackgroundTransparency", 0.8)
 		frame:AddTag "Hot"
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.8)
 		local nested = env.createInstance "StyleSheet"
@@ -215,12 +238,13 @@ describe("explicit UI fakes", function()
 		env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
 		ui.step()
 		invoke(
+			env,
 			hot,
 			"SetPropertyTransition",
 			"BackgroundTransparency",
 			Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear)
 		)
-		invoke(hot, "SetProperty", "BackgroundTransparency", 0.4)
+		invoke(env, hot, "SetProperty", "BackgroundTransparency", 0.4)
 		frame.BackgroundTransparency = 0.7
 		ui.step()
 		local before = fired
@@ -241,9 +265,9 @@ describe("explicit UI fakes", function()
 		local sheet = env.createInstance "StyleSheet"
 		env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
 		local rule = env.createInstance("StyleRule", { Selector = "Frame, TextLabel", Priority = 10, Parent = sheet })
-		invoke(rule, "SetProperty", "BackgroundTransparency", 0.6)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", 0.6)
 		local higher = env.createInstance("StyleRule", { Selector = ".Hot", Priority = 20, Parent = sheet })
-		invoke(higher, "SetProperty", "BackgroundTransparency", 0.8)
+		invoke(env, higher, "SetProperty", "BackgroundTransparency", 0.8)
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.8)
 		expect(ui.styled(other, "BackgroundTransparency")):toEqual(0.6)
 		rule.Selector = "  .Missing , .Hot  "
@@ -268,23 +292,22 @@ describe("explicit UI fakes", function()
 		local sheet = env.createInstance "StyleSheet"
 		env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
 		local rule = env.createInstance("StyleRule", { Selector = ".Card::UICorner", Parent = sheet })
-		invoke(rule, "SetProperty", "CornerRadius", "unmodeled")
+		invoke(env, rule, "SetProperty", "CornerRadius", "unmodeled")
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0)
-		local signal =
-			invoke(frame, "GetStyledPropertyChangedSignal", "BackgroundTransparency") :: Environment.Signal<()>
+		local signal = invoke(env, frame, "GetStyledPropertyChangedSignal", "BackgroundTransparency")
 		local fired = 0
-		signal:Connect(function()
+		env.connect(signal, function()
 			fired += 1
 		end)
 		ui.step()
 		expect(fired):toEqual(0)
-		invoke(rule, "SetProperty", "BackgroundTransparency", 0.5)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", 0.5)
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0)
-		invoke(rule, "SetProperty", "BackgroundTransparency", nil)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", nil)
 		local child = env.createInstance("StyleRule", { Selector = "Frame", Parent = rule })
-		invoke(child, "SetProperty", "BackgroundTransparency", 0.5)
+		invoke(env, child, "SetProperty", "BackgroundTransparency", 0.5)
 		expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
-		invoke(child, "SetProperty", "BackgroundTransparency", nil)
+		invoke(env, child, "SetProperty", "BackgroundTransparency", nil)
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0)
 		ui.close()
 		expect(env.liveConnections()):toEqual(0)
@@ -297,16 +320,16 @@ describe("explicit UI fakes", function()
 		local sheet = env.createInstance "StyleSheet"
 		env.createInstance("StyleLink", { StyleSheet = sheet, Parent = root })
 		local rule = env.createInstance("StyleRule", { Selector = "Frame:hover", Parent = sheet })
-		invoke(rule, "SetProperty", "BackgroundTransparency", 0.5)
+		invoke(env, rule, "SetProperty", "BackgroundTransparency", 0.5)
 		expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
 		rule.Selector = "Frame"
-		invoke(rule, "SetPropertyTransition", "BackgroundTransparency", { Time = 1 })
+		invoke(env, rule, "SetPropertyTransition", "BackgroundTransparency", { Time = 1 })
 		local ok, detail = pcall(ui.styled, frame, "BackgroundTransparency")
 		expect(ok):toEqual(false)
 		expect(string.find(tostring(detail), "transition requires TweenInfo", 1, true) ~= nil):toEqual(true)
-		invoke(rule, "SetPropertyTransition", "BackgroundTransparency", Datatypes.TweenInfo.new(0))
+		invoke(env, rule, "SetPropertyTransition", "BackgroundTransparency", Datatypes.TweenInfo.new(0))
 		expect(ui.styled(frame, "BackgroundTransparency")):toEqual(0.5)
-		invoke(sheet, "SetDerives", { env.createInstance "StyleSheet" })
+		invoke(env, sheet, "SetDerives", { env.createInstance "StyleSheet" })
 		expect((pcall(ui.styled, frame, "BackgroundTransparency"))):toEqual(false)
 	end)
 	it("release emits submission state and media records explicit playback state", function()
@@ -314,18 +337,19 @@ describe("explicit UI fakes", function()
 		local controller = UI.attach(env)
 		local textbox = env.createInstance "TextBox"
 		local submitted = false
-		local connection = (textbox.FocusLost :: Environment.Signal<boolean, unknown>):Connect(function(value: boolean)
+		local connection = env.event(textbox, "FocusLost"):Connect(function(value: unknown)
+			assert(type(value) == "boolean")
 			submitted = value
 		end)
-		invoke(textbox, "CaptureFocus")
-		invoke(textbox, "ReleaseFocus", true)
+		invoke(env, textbox, "CaptureFocus")
+		invoke(env, textbox, "ReleaseFocus", true)
 		expect(submitted):toEqual(true)
 		expect(controller.focused()):toEqual(nil)
 		connection:Disconnect()
 		local video = env.createInstance "VideoFrame"
-		invoke(video, "Play")
+		invoke(env, video, "Play")
 		expect(video.Playing):toEqual(true)
-		invoke(video, "Pause")
+		invoke(env, video, "Pause")
 		expect(video.Playing):toEqual(false)
 		expect(env.liveConnections()):toEqual(0)
 	end)
@@ -335,14 +359,15 @@ describe("explicit UI fakes", function()
 		local sheet = env.createInstance "StyleSheet"
 		local base = env.createInstance "StyleSheet"
 		local values = { base }
-		invoke(sheet, "SetDerives", values)
+		invoke(env, sheet, "SetDerives", values)
 		table.clear(values)
-		local read = invoke(sheet, "GetDerives") :: { Environment.Instance }
-		expect(read[1] == base):toEqual(true)
+		local read = invoke(env, sheet, "GetDerives")
+		expect(array(read)[1] == base):toEqual(true)
+		assert(type(read) == "table")
 		table.clear(read)
-		expect(#(invoke(sheet, "GetDerives") :: { Environment.Instance })):toEqual(1)
+		expect(#(array(invoke(env, sheet, "GetDerives")))):toEqual(1)
 		expect(pcall(function()
-			invoke(sheet, "SetDerives", { env.createInstance "Folder" })
+			invoke(env, sheet, "SetDerives", { env.createInstance "Folder" })
 		end)):toEqual(false)
 	end)
 	it("path storage copies arrays and instant page jumps emit state changes", function()
@@ -350,21 +375,21 @@ describe("explicit UI fakes", function()
 		UI.attach(env)
 		local path = env.createInstance "Path2D"
 		local values: { unknown } = { "explicit-point" }
-		invoke(path, "SetControlPoints", values)
+		invoke(env, path, "SetControlPoints", values)
 		table.clear(values)
-		expect((invoke(path, "GetControlPoints") :: { unknown })[1]):toEqual "explicit-point"
+		expect(array(invoke(env, path, "GetControlPoints"))[1]):toEqual "explicit-point"
 		local container = env.createInstance "Frame"
 		local layout = env.createInstance("UIPageLayout", { Parent = container })
 		local page = env.createInstance("Frame", { Parent = container })
 		local entered = false
-		local connection = (layout.PageEnter :: Environment.Signal<Environment.Instance>):Connect(function(value)
+		local connection = env.event(layout, "PageEnter"):Connect(function(value: unknown)
 			entered = value == page
 		end)
-		invoke(layout, "JumpTo", page)
+		invoke(env, layout, "JumpTo", page)
 		expect(layout.CurrentPage == page and entered):toEqual(true)
 		page.Visible = false
 		expect(pcall(function()
-			invoke(layout, "JumpTo", page)
+			invoke(env, layout, "JumpTo", page)
 		end)):toEqual(false)
 		connection:Disconnect()
 	end)
@@ -374,15 +399,15 @@ describe("explicit UI fakes", function()
 		local path = env.createInstance "Path2D"
 		local page = env.createInstance "UIPageLayout"
 		expect(pcall(function()
-			invoke(path, "GetLength")
+			invoke(env, path, "GetLength")
 		end)):toEqual(false)
 		expect(pcall(function()
-			invoke(page, "Next")
+			invoke(env, page, "Next")
 		end)):toEqual(false)
 		env.fake("Path2D.GetLength", function(_object: Environment.Instance): number
 			return 42
 		end)
-		expect(invoke(path, "GetLength")):toEqual(42)
+		expect(invoke(env, path, "GetLength")):toEqual(42)
 	end)
 end)
 
@@ -396,7 +421,8 @@ local function near(value: unknown, expected: number)
 end
 
 local function fixture(own: (() -> ()) -> ())
-	local env = Environment.create { classes = UI.classes }
+	local options: Environment.Options = { classes = UI.classes }
+	local env = Environment.create(options)
 	local ui = UI.attach(env)
 	own(ui.close)
 	local root = env.createInstance "Folder"
@@ -405,14 +431,14 @@ local function fixture(own: (() -> ()) -> ())
 	local link = env.createInstance("StyleLink", { Parent = root, StyleSheet = sheet })
 	local base = env.createInstance("StyleRule", { Selector = "Frame", Parent = sheet, Priority = 1 })
 	local hot = env.createInstance("StyleRule", { Selector = ".Hot", Parent = sheet, Priority = 2 })
-	invoke(base, "SetProperty", "BackgroundTransparency", 0)
-	invoke(hot, "SetProperty", "BackgroundTransparency", 1)
+	invoke(env, base, "SetProperty", "BackgroundTransparency", 0)
+	invoke(env, hot, "SetProperty", "BackgroundTransparency", 1)
 	return env, ui, frame, base, hot, sheet, link
 end
 
 it("hover tags interpolate for 0.2 seconds on virtual frames and return through the base transition", function(own)
 	local env, ui, frame, base = fixture(own)
-	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
 	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
 	frame:AddTag "Hot"
 	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
@@ -431,11 +457,11 @@ end)
 
 it("retargeting samples the current interpolation even without an intervening read", function(own)
 	local env, ui, frame, base, hot = fixture(own)
-	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
 	ui.styled(frame, "BackgroundTransparency")
 	frame:AddTag "Hot"
 	env.step(0.1)
-	invoke(hot, "SetProperty", "BackgroundTransparency", 0.25)
+	invoke(env, hot, "SetProperty", "BackgroundTransparency", 0.25)
 	near(ui.styled(frame, "BackgroundTransparency"), 0.5)
 	env.step(0.1)
 	near(ui.styled(frame, "BackgroundTransparency"), 0.375)
@@ -444,9 +470,9 @@ it("retargeting samples the current interpolation even without an intervening re
 end)
 
 it("zero duration overrides the default and takes effect immediately", function(own)
-	local _, ui, frame, base, hot = fixture(own)
-	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2))
-	invoke(hot, "SetPropertyTransition", "BackgroundTransparency", Datatypes.TweenInfo.new(0))
+	local env, ui, frame, base, hot = fixture(own)
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2))
+	invoke(env, hot, "SetPropertyTransition", "BackgroundTransparency", Datatypes.TweenInfo.new(0))
 	ui.styled(frame, "BackgroundTransparency")
 	frame:AddTag "Hot"
 	expect(ui.styled(frame, "BackgroundTransparency")):toBe(1)
@@ -455,6 +481,7 @@ end)
 it("delay holds the current value and repeats and reverses are ignored", function(own)
 	local env, ui, frame, base = fixture(own)
 	invoke(
+		env,
 		base,
 		"SetDefaultPropertyTransition",
 		Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true, 0.1)
@@ -473,8 +500,8 @@ it("transition tokens retarget styled theme values and preserve raw overrides", 
 	local env, ui, frame, base, _, sheet = fixture(own)
 	sheet:SetAttribute("Motion", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
 	sheet:SetAttribute("Alpha", 0)
-	invoke(base, "SetProperty", "BackgroundTransparency", "$Alpha")
-	invoke(base, "SetPropertyTransition", "BackgroundTransparency", "$Motion")
+	invoke(env, base, "SetProperty", "BackgroundTransparency", "$Alpha")
+	invoke(env, base, "SetPropertyTransition", "BackgroundTransparency", "$Motion")
 	ui.styled(frame, "BackgroundTransparency")
 	sheet:SetAttribute("Alpha", 1)
 	env.step(0.1)
@@ -489,7 +516,7 @@ end)
 
 it("removing rules uses the surviving transition and removing its scope snaps to the default", function(own)
 	local env, ui, frame, base, hot, _, link = fixture(own)
-	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
 	frame:AddTag "Hot"
 	ui.styled(frame, "BackgroundTransparency")
 	hot:Destroy()
@@ -502,15 +529,15 @@ it("removing rules uses the surviving transition and removing its scope snaps to
 end)
 
 it("default transition accessors share the star entry and replacement clears it", function(own)
-	local _, _, _, base = fixture(own)
+	local env, _, _, base = fixture(own)
 	local timing = Datatypes.TweenInfo.new(0.2)
-	invoke(base, "SetDefaultPropertyTransition", timing)
-	expect(invoke(base, "GetDefaultPropertyTransition")):toBe(timing)
-	expect(invoke(base, "GetPropertyTransitions")):toEqual { ["*"] = timing }
-	invoke(base, "SetPropertyTransitions", {})
-	expect(invoke(base, "GetDefaultPropertyTransition")):toBe(nil)
-	invoke(base, "SetPropertyTransition", "*", timing)
-	expect(invoke(base, "GetDefaultPropertyTransition")):toBe(timing)
+	invoke(env, base, "SetDefaultPropertyTransition", timing)
+	expect(invoke(env, base, "GetDefaultPropertyTransition")):toBe(timing)
+	expect(invoke(env, base, "GetPropertyTransitions")):toEqual { ["*"] = timing }
+	invoke(env, base, "SetPropertyTransitions", {})
+	expect(invoke(env, base, "GetDefaultPropertyTransition")):toBe(nil)
+	invoke(env, base, "SetPropertyTransition", "*", timing)
+	expect(invoke(env, base, "GetDefaultPropertyTransition")):toBe(timing)
 end)
 
 it("all easing styles and directions map to reference sample points", function()
@@ -559,13 +586,13 @@ it("styled properties interpolate every tweenable datatype and switch discrete v
 	for index, row in cases do
 		local env, ui, frame, base = fixture(own)
 		local timing = Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear)
-		invoke(base, "SetDefaultPropertyTransition", timing)
+		invoke(env, base, "SetDefaultPropertyTransition", timing)
 		local property = "Value" .. index
 		env.defineClass("Styled" .. index, { super = "Frame", properties = { [property] = row[1] } })
 		local object = env.createInstance("Styled" .. index, { Parent = frame })
-		invoke(base, "SetProperty", property, row[1])
+		invoke(env, base, "SetProperty", property, row[1])
 		expect(ui.styled(object, property)):toBe(row[1])
-		invoke(base, "SetProperty", property, row[2])
+		invoke(env, base, "SetProperty", property, row[2])
 		env.step(timing.Time / 2)
 		expect(ui.styled(object, property)):toEqual(row[3])
 		env.step(0.11)
@@ -578,9 +605,9 @@ it("CFrame transitions interpolate rotation on the place scheduler clock", funct
 	env.defineClass("StyledTransform", { super = "Frame", properties = { Transform = Datatypes.CFrame.new() } })
 	local object = env.createInstance("StyledTransform", { Parent = frame })
 	local timing = Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear)
-	invoke(base, "SetDefaultPropertyTransition", timing)
+	invoke(env, base, "SetDefaultPropertyTransition", timing)
 	ui.styled(object, "Transform")
-	invoke(base, "SetProperty", "Transform", Datatypes.CFrame.Angles(0, math.pi / 2, 0))
+	invoke(env, base, "SetProperty", "Transform", Datatypes.CFrame.Angles(0, math.pi / 2, 0))
 	env.scheduler.advance(timing.Time / 2)
 	ui.step()
 	local value = Frames.expect(ui.styled(object, "Transform"), 1)
@@ -591,6 +618,7 @@ end)
 it("retargeting during delay holds the current value and restarts the delay", function(own)
 	local env, ui, frame, base, hot = fixture(own)
 	invoke(
+		env,
 		base,
 		"SetDefaultPropertyTransition",
 		Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, 0, false, 0.1)
@@ -598,7 +626,7 @@ it("retargeting during delay holds the current value and restarts the delay", fu
 	ui.styled(frame, "BackgroundTransparency")
 	frame:AddTag "Hot"
 	env.step(0.05)
-	invoke(hot, "SetProperty", "BackgroundTransparency", 0.5)
+	invoke(env, hot, "SetProperty", "BackgroundTransparency", 0.5)
 	env.step(0.075)
 	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
 	env.step(0.125)
@@ -606,10 +634,10 @@ it("retargeting during delay holds the current value and restarts the delay", fu
 end)
 
 it("invalid and unresolved transition tokens retain precise refusals", function(own)
-	local _, ui, frame, base, _, sheet = fixture(own)
+	local env, ui, frame, base, _, sheet = fixture(own)
 	for _, entry in { { "$Missing", "missing token Missing" }, { "$Invalid", "transition requires TweenInfo" } } do
 		sheet:SetAttribute("Invalid", 1)
-		invoke(base, "SetDefaultPropertyTransition", entry[1])
+		invoke(env, base, "SetDefaultPropertyTransition", entry[1])
 		local ok, detail = pcall(ui.styled, frame, "BackgroundTransparency")
 		expect(ok):toBe(false)
 		expect(string.find(tostring(detail), entry[2], 1, true) ~= nil):toBe(true)
@@ -618,9 +646,9 @@ end)
 
 it("ancestor tag and parent changes retarget descendant transitions", function(own)
 	local env, ui, frame, base, _, sheet = fixture(own)
-	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
 	local lit = env.createInstance("StyleRule", { Selector = ".Lit > Frame", Parent = sheet, Priority = 3 })
-	invoke(lit, "SetProperty", "BackgroundTransparency", 1)
+	invoke(env, lit, "SetProperty", "BackgroundTransparency", 1)
 	local child = env.createInstance("Frame", { Parent = frame })
 	local other = env.createInstance("Frame", { Parent = frame.Parent })
 	expect(ui.styled(child, "BackgroundTransparency")):toBe(0)
@@ -642,8 +670,8 @@ end)
 it("a tag retarget preserves an unread token transition", function(own)
 	local env, ui, frame, base, _, sheet = fixture(own)
 	sheet:SetAttribute("Alpha", 0)
-	invoke(base, "SetProperty", "BackgroundTransparency", "$Alpha")
-	invoke(base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
+	invoke(env, base, "SetProperty", "BackgroundTransparency", "$Alpha")
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))
 	ui.styled(frame, "BackgroundTransparency")
 	sheet:SetAttribute("Alpha", 0.5)
 	env.step(0.1)

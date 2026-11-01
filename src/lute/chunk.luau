@@ -1,6 +1,8 @@
 --!strict
 
 local luau = require "@lute/luau"
+local VM = require "../roblox/value"
+local loadBytecode: (luau.Bytecode, string, { [string]: unknown }?) -> (...unknown) -> ...VM.Value = luau.load
 
 export type Options = {
 	name: string?,
@@ -41,9 +43,9 @@ local function bytecode(source: string): luau.Bytecode
 	return cached
 end
 
-local function load(source: string, options: Options?): (...unknown) -> ...unknown
+local function load(source: string, options: Options?): (...unknown) -> ...VM.Value
 	local settings: Options = options or {}
-	return luau.load(bytecode(source), "@" .. (settings.name or "chunk"), environmentFor(settings))
+	return loadBytecode(bytecode(source), "@" .. (settings.name or "chunk"), environmentFor(settings))
 end
 
 local function check(source: string, name: string?): (boolean, string?)

@@ -1,6 +1,7 @@
 --!strict
 --!nolint DeprecatedApi
 
+local Shape = require "../core/shape"
 local Experience = require "../core/operations"
 local Types = require "../core/types"
 
@@ -104,7 +105,7 @@ end
 
 local function record(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "experience-host: expected a request or response record")
-	return value :: { [string]: unknown }
+	return Shape.record(value, "experience-host record")
 end
 
 local function request(value: unknown): Experience.Request

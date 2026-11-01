@@ -1,6 +1,7 @@
 --!strict
 
-type Fields = { [string]: unknown }
+type Read = (unknown, string) -> unknown
+type Host = { read: Read, components: (unknown) -> { number } }
 
 local function numeric(value: unknown): number
 	assert(type(value) == "number")
@@ -24,11 +25,7 @@ local function number(value: unknown): unknown
 	return magnitude
 end
 
-local function field(value: unknown, key: string): unknown
-	return (value :: Fields)[key]
-end
-
-local function numbers(value: unknown, keys: { string }): { number }
+local function numbers(field: Read, value: unknown, keys: { string }): { number }
 	local out: { number } = {}
 	for index, key in keys do
 		out[index] = numeric(field(value, key))
@@ -36,13 +33,15 @@ local function numbers(value: unknown, keys: { string }): { number }
 	return out
 end
 
-local function enumName(value: unknown): string
+local function enumName(field: Read, value: unknown): string
 	return text(field(value, "Name"))
 end
 
-local function sequence(value: unknown, read: (unknown) -> { number }): { number }
+local function sequence(field: Read, value: unknown, read: (unknown) -> { number }): { number }
 	local out: { number } = {}
-	for _, keypoint in field(value, "Keypoints") :: { unknown } do
+	local keypoints = field(value, "Keypoints")
+	assert(type(keypoints) == "table")
+	for _, keypoint in keypoints do
 		for _, component in read(keypoint) do
 			table.insert(out, component)
 		end
@@ -50,7 +49,8 @@ local function sequence(value: unknown, read: (unknown) -> { number }): { number
 	return out
 end
 
-local function encode(value: unknown, kind: string): unknown
+local function encode(value: unknown, kind: string, host: Host): unknown
+	local field = host.read
 	if kind == "number" then
 		return number(value)
 	elseif kind == "string" then
@@ -67,13 +67,13 @@ local function encode(value: unknown, kind: string): unknown
 	elseif kind == "boolean" then
 		return value
 	elseif kind == "Vector3" or kind == "Vector3int16" then
-		return { ["$"] = kind, v = numbers(value, { "X", "Y", "Z" }) }
+		return { ["$"] = kind, v = numbers(field, value, { "X", "Y", "Z" }) }
 	elseif kind == "Vector2" or kind == "Vector2int16" then
-		return { ["$"] = kind, v = numbers(value, { "X", "Y" }) }
+		return { ["$"] = kind, v = numbers(field, value, { "X", "Y" }) }
 	elseif kind == "Color3" then
-		return { ["$"] = kind, v = numbers(value, { "R", "G", "B" }) }
+		return { ["$"] = kind, v = numbers(field, value, { "R", "G", "B" }) }
 	elseif kind == "UDim" then
-		return { ["$"] = kind, v = numbers(value, { "Scale", "Offset" }) }
+		return { ["$"] = kind, v = numbers(field, value, { "Scale", "Offset" }) }
 	elseif kind == "UDim2" then
 		local x, y = field(value, "X"), field(value, "Y")
 		return {
@@ -86,7 +86,7 @@ local function encode(value: unknown, kind: string): unknown
 			},
 		}
 	elseif kind == "CFrame" then
-		return { ["$"] = kind, v = { (field(value, "GetComponents") :: (unknown) -> ...number)(value) } }
+		return { ["$"] = kind, v = host.components(value) }
 	elseif kind == "Rect" then
 		local min, max = field(value, "Min"), field(value, "Max")
 		return {
@@ -99,18 +99,18 @@ local function encode(value: unknown, kind: string): unknown
 			},
 		}
 	elseif kind == "NumberRange" then
-		return { ["$"] = kind, v = numbers(value, { "Min", "Max" }) }
+		return { ["$"] = kind, v = numbers(field, value, { "Min", "Max" }) }
 	elseif kind == "NumberSequence" then
 		return {
 			["$"] = kind,
-			v = sequence(value, function(keypoint: unknown): { number }
-				return numbers(keypoint, { "Time", "Value", "Envelope" })
+			v = sequence(field, value, function(keypoint: unknown): { number }
+				return numbers(field, keypoint, { "Time", "Value", "Envelope" })
 			end),
 		}
 	elseif kind == "ColorSequence" then
 		return {
 			["$"] = kind,
-			v = sequence(value, function(keypoint: unknown): { number }
+			v = sequence(field, value, function(keypoint: unknown): { number }
 				local color = field(keypoint, "Value")
 				return {
 					numeric(field(keypoint, "Time")),
@@ -126,11 +126,11 @@ local function encode(value: unknown, kind: string): unknown
 		return {
 			["$"] = kind,
 			family = field(value, "Family"),
-			weight = enumName(field(value, "Weight")),
-			style = enumName(field(value, "Style")),
+			weight = enumName(field, field(value, "Weight")),
+			style = enumName(field, field(value, "Style")),
 		}
 	elseif kind == "Content" then
-		local source = enumName(field(value, "SourceType"))
+		local source = enumName(field, field(value, "SourceType"))
 		if source == "None" then
 			return { ["$"] = kind }
 		elseif source == "Uri" then
@@ -139,7 +139,7 @@ local function encode(value: unknown, kind: string): unknown
 		return nil
 	elseif kind == "EnumItem" then
 		local family = string.gsub(tostring(field(value, "EnumType")), "^Enum%.", "")
-		return { ["$"] = kind, family = family, name = enumName(value) }
+		return { ["$"] = kind, family = family, name = enumName(field, value) }
 	end
 	return nil
 end
@@ -177,7 +177,8 @@ local function serialize(value: unknown): string
 	elseif type(value) == "boolean" then
 		return tostring(value)
 	end
-	local entries = value :: { [unknown]: unknown }
+	assert(type(value) == "table")
+	local entries = value
 	if #entries > 0 or next(entries) == nil then
 		local items: { string } = {}
 		for index, item in entries do
@@ -187,13 +188,16 @@ local function serialize(value: unknown): string
 		return "[" .. table.concat(items, ",") .. "]"
 	end
 	local keys: { string } = {}
-	for key in entries do
-		table.insert(keys, text(key))
+	local fields: { [string]: unknown } = {}
+	for key, item in entries do
+		local name = text(key)
+		table.insert(keys, name)
+		fields[name] = item
 	end
 	table.sort(keys)
 	local pieces: { string } = {}
 	for _, key in keys do
-		table.insert(pieces, quote(key) .. ":" .. serialize(entries[key]))
+		table.insert(pieces, quote(key) .. ":" .. serialize(fields[key]))
 	end
 	return "{" .. table.concat(pieces, ",") .. "}"
 end

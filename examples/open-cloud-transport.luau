@@ -15,12 +15,12 @@ local function request(call: OpenCloud.Call, _deadline: number): OpenCloud.Excha
 	if call.body ~= nil then
 		headers["Content-Type"] = "application/json"
 	end
-	local method: string = call.method
-	local sent, response = pcall(net.request, call.url, {
-		method = method,
+	local metadata: net.Metadata = {
+		method = call.method,
 		headers = headers,
 		body = call.body,
-	})
+	}
+	local sent, response = pcall(net.request, call.url, metadata)
 	if not sent then
 		return { status = "unanswered", detail = tostring(response) }
 	end

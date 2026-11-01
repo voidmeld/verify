@@ -1,9 +1,10 @@
 --!strict
+local Vm = require "./value"
 
-local function encode(value: unknown, primitive: (unknown) -> string, typeName: (unknown) -> string): string
+local function encode(value: Vm.Value, primitive: (unknown) -> string, typeName: (unknown) -> string): string
 	local active: { [unknown]: boolean } = {}
-	local visit: (unknown) -> string
-	visit = function(current: unknown): string
+	local visit: (Vm.Value) -> string
+	visit = function(current: Vm.Value): string
 		local kind = typeName(current)
 		if kind == "string" or kind == "number" or kind == "boolean" or kind == "buffer" then
 			return primitive(current)
@@ -13,7 +14,8 @@ local function encode(value: unknown, primitive: (unknown) -> string, typeName: 
 		end
 		assert(not active[current], "tables cannot be cyclic")
 		active[current] = true
-		local values = current :: { [unknown]: unknown }
+		assert(type(current) == "table", "expected JSON table")
+		local values = current
 		local count = rawlen(values)
 		local parts: { string } = {}
 		local result: string

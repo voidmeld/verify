@@ -51,16 +51,27 @@ local function create(withMedia: boolean, ui: UiFakes.Options?): Bridge.Bridge
 	}
 end
 
-local function succeeds(body: () -> unknown): boolean
+local function succeeds(body: () -> ...unknown): boolean
 	return (pcall(body))
 end
 
-local function signal(object: Environment.Instance, name: string): Environment.Signal<...unknown>
-	return object[name] :: Environment.Signal<...unknown>
+local function call(
+	environment: Environment.Environment,
+	object: Environment.Instance,
+	name: string,
+	...: unknown
+): unknown
+	return (environment.method(object, name)(object, ...))
 end
 
-local function call(object: Environment.Instance, name: string, ...: unknown): unknown
-	return (object[name] :: Environment.Method)(object, ...)
+local function array(value: unknown): { unknown }
+	assert(type(value) == "table")
+	local values: { unknown } = {}
+	for index, item in value do
+		assert(type(index) == "number")
+		values[index] = item
+	end
+	return values
 end
 
 describe("generic fixture bridge", function()
@@ -76,7 +87,7 @@ describe("generic fixture bridge", function()
 		expect(engine.surface.memberType("TextButton", "Name")):toBe "String"
 		expect((pcall(engine.service, "Folder"))):toBe(false)
 		expect((pcall(engine.service, "Missing"))):toBe(false)
-		expect((pcall(engine.newInstance, "GuiService"))):toBe(false)
+		expect((pcall(engine.newInstance, "GuiService", nil))):toBe(false)
 		expect(engine.newInstance("GuiService", true).ClassName):toBe "GuiService"
 		engine.setSourceResolver(function(): string
 			return "module"
@@ -111,13 +122,13 @@ describe("generic fixture bridge", function()
 		expect(bridge.hasClass "Nonexistent"):toBe(false)
 		local button = env.createInstance "TextButton"
 		local activations = 0
-		signal(button, "Activated"):Connect(function()
+		env.event(button, "Activated"):Connect(function()
 			activations += 1
 		end)
 		env.fire(button, "Activated")
 		expect(activations):toBe(1)
 		local box = env.createInstance "TextBox"
-		call(box, "CaptureFocus")
+		call(env, box, "CaptureFocus")
 		expect((assert(bridge.ui)).focused() == box):toBe(true)
 		expect(succeeds(function(): unknown
 			box.Text = 3
@@ -143,7 +154,7 @@ describe("generic fixture bridge", function()
 		local box = env.createInstance("TextBox", { Parent = panel })
 		local service = env.createEngineInstance "GuiService"
 		expect(succeeds(function(): unknown
-			return call(box, "CaptureFocus")
+			return call(env, box, "CaptureFocus")
 		end)):toBe(false)
 		expect(succeeds(function(): unknown
 			service.SelectedObject = box
@@ -229,7 +240,11 @@ describe("generic fixture bridge", function()
 		other.SelectedObject = target
 		expect(other.SelectedObject == target):toBe(true)
 		expect(succeeds(function(): unknown
-			call(relaxed.environment.createInstance("TextBox", { Visible = false }), "CaptureFocus")
+			call(
+				relaxed.environment,
+				relaxed.environment.createInstance("TextBox", { Visible = false }),
+				"CaptureFocus"
+			)
 			return nil
 		end)):toBe(false)
 	end)
@@ -256,7 +271,7 @@ describe("generic fixture bridge", function()
 		local refused = create(true, nil)
 		local service = refused.environment.createEngineInstance "TextService"
 		expect(succeeds(function(): unknown
-			return call(service, "GetTextSize", "abc", 10)
+			return call(refused.environment, service, "GetTextSize", "abc", 10)
 		end)):toBe(false)
 		local measuring = create(true, {
 			measureText = function(text: string, size: number): unknown
@@ -264,7 +279,7 @@ describe("generic fixture bridge", function()
 			end,
 		})
 		local measured = measuring.environment.createEngineInstance "TextService"
-		expect(call(measured, "GetTextSize", "abc", 10)):toBe(30)
+		expect(call(measuring.environment, measured, "GetTextSize", "abc", 10)):toBe(30)
 	end)
 
 	it("clones preserve applicable UI fake state with remapped references", function()
@@ -275,39 +290,40 @@ describe("generic fixture bridge", function()
 		local derived = env.createInstance("StyleSheet", { Parent = root })
 		local rule = env.createInstance("StyleRule", { Parent = derived })
 		local path = env.createInstance("Path2D", { Parent = root })
-		call(rule, "SetProperty", "Color", "red")
-		call(rule, "SetPropertyTransition", "Color", "fast")
-		call(rule, "SetDefaultPropertyTransition", "slow")
-		call(derived, "SetDerives", { base })
-		call(path, "SetControlPoints", { 1, 2 })
+		call(env, rule, "SetProperty", "Color", "red")
+		call(env, rule, "SetPropertyTransition", "Color", "fast")
+		call(env, rule, "SetDefaultPropertyTransition", "slow")
+		call(env, derived, "SetDerives", { base })
+		call(env, path, "SetControlPoints", { 1, 2 })
 		local copy = assert(root:Clone())
 		local copiedBase = copy:FindFirstChild "StyleSheet"
 		local copiedDerived = copy:GetChildren()[2]
 		local copiedRule = assert(copiedDerived:FindFirstChildOfClass "StyleRule")
-		expect(call(copiedRule, "GetProperty", "Color")):toBe "red"
-		expect(call(copiedRule, "GetDefaultPropertyTransition")):toBe "slow"
-		expect(call(copiedRule, "GetPropertyTransitions")):toEqual { Color = "fast", ["*"] = "slow" }
-		local derives = call(copiedDerived, "GetDerives") :: { Environment.Instance }
+		expect(call(env, copiedRule, "GetProperty", "Color")):toBe "red"
+		expect(call(env, copiedRule, "GetDefaultPropertyTransition")):toBe "slow"
+		expect(call(env, copiedRule, "GetPropertyTransitions")):toEqual { Color = "fast", ["*"] = "slow" }
+		local derives = array(call(env, copiedDerived, "GetDerives"))
 		expect(derives[1] == copiedBase):toBe(true)
 		expect(derives[1] == base):toBe(false)
-		expect(call(assert(copy:FindFirstChildOfClass "Path2D"), "GetControlPoints")):toEqual { 1, 2 }
-		call(copiedRule, "SetProperty", "Color", "blue")
-		expect(call(rule, "GetProperty", "Color")):toBe "red"
+		expect(call(env, assert(copy:FindFirstChildOfClass "Path2D"), "GetControlPoints")):toEqual { 1, 2 }
+		call(env, copiedRule, "SetProperty", "Color", "blue")
+		expect(call(env, rule, "GetProperty", "Color")):toBe "red"
 	end)
 
 	it("a clone is not focused and an outside derive reference stays unmapped", function()
 		local bridge = create(true, nil)
 		local env = bridge.environment
 		local box = env.createInstance "TextBox"
-		call(box, "CaptureFocus")
+		call(env, box, "CaptureFocus")
 		local copy = assert(box:Clone())
-		expect(call(copy, "IsFocused")):toBe(false)
-		expect(call(box, "IsFocused")):toBe(true)
+		expect(call(env, copy, "IsFocused")):toBe(false)
+		expect(call(env, box, "IsFocused")):toBe(true)
 		local outside = env.createInstance "StyleSheet"
 		local sheet = env.createInstance "StyleSheet"
-		call(sheet, "SetDerives", { outside })
+		call(env, sheet, "SetDerives", { outside })
 		local copied = assert(sheet:Clone())
-		expect((call(copied, "GetDerives") :: { Environment.Instance })[1] == outside):toBe(true)
+		local derives = array(call(env, copied, "GetDerives"))
+		expect(derives[1] == outside):toBe(true)
 	end)
 
 	it("a failing clone hook leaves no leaked copies", function()
@@ -375,8 +391,8 @@ describe("generic fixture bridge", function()
 		local bridge = create(true, nil)
 		local env = bridge.environment
 		local box = env.createInstance "TextBox"
-		local connection = signal(box, "Changed"):Connect(function() end)
-		call(box, "CaptureFocus")
+		local connection = env.event(box, "Changed"):Connect(function() end)
+		call(env, box, "CaptureFocus")
 		bridge.faults.inject("destroy", 1)
 		local before = bridge.accounting()
 		expect(before.objects >= 1):toBe(true)

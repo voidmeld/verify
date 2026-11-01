@@ -285,7 +285,7 @@ local function timeToFirstPass(runs: { Result.RunResult }): number?
 		return nil
 	end
 	local ordered = table.clone(runs)
-	table.sort(ordered, function(left, right)
+	table.sort(ordered, function(left: Result.RunResult, right: Result.RunResult)
 		if left.seed ~= right.seed then
 			return left.seed < right.seed
 		end

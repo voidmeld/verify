@@ -11,8 +11,13 @@ local Verify = require "../src/core"
 local Channel = require "../src/roblox/report-channel"
 local Lute = require "../src/lute"
 local Platform = require "../src/lute/platform"
+local OpenCloud = require "../src/lute/open-cloud"
 local Wire = require "../src/lute/wire"
 
+local function asString(value: unknown): string
+	assert(type(value) == "string")
+	return value
+end
 local UUID = "123e4567-e89b-12d3-a456-426614174000"
 local PATH = "universes/1/places/2/versions/3/luau-execution-sessions/" .. UUID .. "/tasks/" .. UUID
 
@@ -43,7 +48,7 @@ local function report(runId: string, caseId: string, passing: boolean): string
 end
 
 local function runIdOf(call: Lute.OpenCloudCall): string
-	local script = (Wire.parse(call.body or "{}") :: { [string]: unknown }).script :: string
+	local script = asString(Wire.record(Wire.parse(call.body or "{}")).script)
 	return assert(string.match(script, 'local runId = "([^"]+)"'))
 end
 
@@ -116,7 +121,7 @@ local function session(self: Fake): Lute.OpenCloudSession
 	return Lute.openCloud.connect(self.options)
 end
 
-local INPUT = { code = "return 1", runId = "run-1", requires = nil }
+local INPUT: OpenCloud.RunInput = { code = "return 1", runId = "run-1", requires = nil }
 
 describe("Open Cloud execution", function()
 	it("a complete task with a bound all-passed report passes and captures logs and timing", function()
@@ -507,10 +512,11 @@ describe("Open Cloud execution", function()
 				return "run-1"
 			end,
 		}
-		local plan = Plan.validate {
+		local draft: Verify.PlanDraft = {
 			id = "open-cloud",
 			units = { { id = "case", locator = "case" } },
 		}
+		local plan = Plan.validate(draft)
 		local execution = Verify.execute(plan, host)
 		expect(execution.report.failed):toEqual(1)
 		expect(execution.report.passed):toEqual(0)
@@ -529,7 +535,7 @@ describe("Open Cloud execution", function()
 		expect(result.report.passed):toEqual(1)
 		expect(result.cloud ~= nil):toEqual(true)
 		expect(runIdOf(self.calls[1])):toEqual(result.directory)
-		local script = (Wire.parse(self.calls[1].body or "{}") :: { [string]: unknown }).script
+		local script = Wire.record(Wire.parse(self.calls[1].body or "{}")).script
 		expect(script):toContain "'open-cloud'"
 
 		local mismatch = fake("other", true)
@@ -568,7 +574,7 @@ describe("Open Cloud execution", function()
 		self.states = { complete { "alpha", "beta" } }
 		local code = "return { 'alpha', 'beta' }"
 		local outcome = session(self).run { code = code, runId = "task-a", requires = nil, binding = "caller" }
-		local sent = (Wire.parse(self.calls[1].body or "{}") :: { [string]: unknown }).script
+		local sent = Wire.record(Wire.parse(self.calls[1].body or "{}")).script
 		expect(sent):toEqual(code)
 		expect(outcome.binding):toEqual "caller"
 		expect(outcome.status):toEqual "returned"

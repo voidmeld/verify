@@ -227,6 +227,7 @@ local function normalizeProducer(draft: GateTypes.ProducerDraft, defaultDeadline
 	if draft.tier ~= nil and draft.tier == "" then
 		error(label .. ".tier must not be empty", 3)
 	end
+	local environment: { [string]: string } = draft.env or {}
 	return {
 		id = id,
 		kind = kind,
@@ -239,7 +240,7 @@ local function normalizeProducer(draft: GateTypes.ProducerDraft, defaultDeadline
 		exclusive = if draft.exclusive ~= nil then draft.exclusive else kind == "benchmark",
 		argv = argv,
 		exit = exit,
-		env = if draft.env ~= nil then table.clone(draft.env) else {},
+		env = table.clone(environment),
 		cwd = draft.cwd,
 		report = expectation,
 		worker = draft.worker,
@@ -475,7 +476,7 @@ local function define(draft: GateTypes.GateDraft): Gate
 			deadlineSeconds = producer.deadlineSeconds,
 		})
 	end
-	local plan = Plan.validate {
+	local planDraft: Types.PlanDraft = {
 		id = draft.id,
 		requires = policy.requires,
 		policy = {
@@ -485,6 +486,7 @@ local function define(draft: GateTypes.GateDraft): Gate
 		},
 		units = units,
 	}
+	local plan = Plan.validate(planDraft)
 	return {
 		schemaVersion = SCHEMA_VERSION,
 		id = draft.id,

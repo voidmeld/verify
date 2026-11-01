@@ -389,7 +389,7 @@ describe("benchmark phases", function()
 	it("fails when a phase raises and keeps the earlier phases consistent", function()
 		local line = timeline()
 		local spec = phased(line, { { 1, 1 }, { 1, 1 } })
-		assert(spec.phases)[2].run = function()
+		assert(spec.phases)[2].run = function(): ()
 			error "second phase broke"
 		end
 		local result = Benchmark.run(spec)
@@ -397,7 +397,7 @@ describe("benchmark phases", function()
 		expect(#result.phases[1].samples):toEqual(0)
 		expect(#result.samples):toEqual(0)
 		local setup = phased(line, { { 1, 1 } })
-		setup.setup = function()
+		setup.setup = function(): ()
 			error "no lab"
 		end
 		local blank = Benchmark.run(setup)

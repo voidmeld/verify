@@ -14,7 +14,7 @@ local function texts(result: unknown): string
 	local content = Mcp.record(result).content
 	assert(type(content) == "table", "Studio MCP response has no content")
 	local chunks: { string } = {}
-	for _, value in content :: { unknown } do
+	for _, value in content do
 		local block = Mcp.record(value)
 		if block.type == "text" and type(block.text) == "string" then
 			table.insert(chunks, block.text)
@@ -30,11 +30,11 @@ local function find(value: unknown, runId: string): Core.Report?
 			return find(object, runId)
 		end
 	elseif type(value) == "table" then
-		local object = value :: { [unknown]: unknown }
+		local object = Wire.record(value)
 		if object.runId ~= nil then
 			return Channel.receive(value, runId)
 		end
-		for _, child in object do
+		for _, child in value do
 			local report = find(child, runId)
 			if report ~= nil then
 				return report
@@ -57,7 +57,7 @@ end
 local function saveCapture(result: unknown, directory: string, stem: string): Image
 	local content = Mcp.record(result).content
 	assert(type(content) == "table", "capture returned no image content")
-	for _, item in content :: { unknown } do
+	for _, item in content do
 		local image = Mcp.record(item)
 		if image.type == "image" then
 			assert(

@@ -1,26 +1,15 @@
 --!strict
 
 local parser = require "@std/syntax/parser"
-local syntax = require "@std/syntax"
 local visitor = require "@std/syntax/visitor"
 
 local function explicitAny(source: string): { number }
-	local parsed = (parser.parse(source)) :: { root: syntax.CstStatBlock }
+	local parsed = parser.parse(source)
 	local lines: { number } = {}
 	local walk = visitor.create()
-	walk.visitType = function(node)
-		local tag = ((node) :: { tag: string }).tag
-		if tag == "reference" then
-			local reference = (node) :: {
-				prefix: unknown,
-				name: { text: string },
-				location: {
-					beginLine: number,
-				},
-			}
-			if reference.prefix == nil and reference.name.text == "any" then
-				table.insert(lines, reference.location.beginLine)
-			end
+	walk.visitTypeReference = function(node)
+		if node.prefix == nil and node.name.text == "any" then
+			table.insert(lines, node.location.beginLine)
 		end
 		return true
 	end
@@ -28,16 +17,24 @@ local function explicitAny(source: string): { number }
 	return lines
 end
 
+local function casts(source: string): { number }
+	local parsed = parser.parse(source)
+	local lines: { number } = {}
+	local walk = visitor.create()
+	walk.visitExprTypeAssertion = function(node)
+		table.insert(lines, node.operator.location.beginLine)
+		return true
+	end
+	visitor.visit(parsed.root, walk)
+	return lines
+end
+
 local function nonStrict(source: string): { number }
-	local parsed = (parser.parse(source)) :: { root: syntax.CstStatBlock, eof: syntax.CstToken<string> }
+	local parsed = parser.parse(source)
 	local lines: { number } = {}
 	local walk = visitor.create()
 	walk.visitToken = function(token)
-		local view = (token) :: {
-			leadingTrivia: { { text: string, location: { beginLine: number } } },
-			trailingTrivia: { { text: string, location: { beginLine: number } } },
-		}
-		for _, trivia in { view.leadingTrivia, view.trailingTrivia } do
+		for _, trivia in { token.leadingTrivia, token.trailingTrivia } do
 			for _, item in trivia do
 				if string.match(item.text, "^%-%-!nonstrict%s*$") or string.match(item.text, "^%-%-!nocheck%s*$") then
 					table.insert(lines, item.location.beginLine)
@@ -51,4 +48,4 @@ local function nonStrict(source: string): { number }
 	return lines
 end
 
-return { explicitAny = explicitAny, nonStrict = nonStrict }
+return { explicitAny = explicitAny, casts = casts, nonStrict = nonStrict }

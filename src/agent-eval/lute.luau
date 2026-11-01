@@ -171,7 +171,9 @@ local files: Services.Files = {
 	list = function(path: string): { Services.Entry }
 		local result: { Services.Entry } = {}
 		for _, entry in fs.listDirectory(path) do
-			table.insert(result, { name = entry.name, kind = if entry.type == "dir" then "directory" else "file" })
+			local item: Services.Entry =
+				{ name = entry.name, kind = if entry.type == "dir" then "directory" else "file" }
+			table.insert(result, item)
 		end
 		return result
 	end,
@@ -307,11 +309,12 @@ local function request(input: Services.HttpRequest): (Services.HttpResponse?, st
 	local response: Services.HttpResponse? = nil
 	local problem: string? = nil
 	task.spawn(function()
-		local ok, value = pcall(net.request, input.url, {
+		local metadata: net.Metadata = {
 			method = input.method,
 			headers = input.headers,
 			body = input.body,
-		})
+		}
+		local ok, value = pcall(net.request, input.url, metadata)
 		if ok then
 			local answer = value
 			response = { status = answer.status, body = answer.body }
@@ -335,7 +338,7 @@ local function checks(gate: Gate.Definition, directory: string, runId: string): 
 end
 
 local function encode(value: unknown): string
-	return json.serialize(value :: json.Value, true)
+	return Wire.pretty(value)
 end
 
 local function decode(text: string): unknown

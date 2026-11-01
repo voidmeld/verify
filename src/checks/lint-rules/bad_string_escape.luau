@@ -14,16 +14,18 @@ type Violation = {
 }
 
 type Token = { text: string, location: syntax.Span }
-type ConstantString = { quoteStyle: string, value: Token, location: syntax.Span }
-type InterpString = { strings: { Token } }
+type ConstantString = syntax.CstExprConstantString
+type InterpString = syntax.CstExprInterpString
 
 local function asConstantString(node: syntax.CstNode): ConstantString?
-	return (utils.isExprConstantString(node) :: unknown) :: ConstantString?
+	return utils.isExprConstantString(node)
 end
 
 local function asInterpString(node: syntax.CstNode): InterpString?
-	return (utils.isExprInterpString(node) :: unknown) :: InterpString?
+	return utils.isExprInterpString(node)
 end
+
+local WARNING: "warning" = "warning"
 
 local NAME = "bad_string_escape"
 
@@ -100,7 +102,7 @@ local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, _context: 
 			lintname = NAME,
 			location = location,
 			message = message(escapes),
-			severity = "warning" :: "warning",
+			severity = WARNING,
 			sourcepath = sourcepath,
 		})
 	end

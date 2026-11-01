@@ -41,6 +41,7 @@ local function check(config: Config): { string }
 	end
 	local findings: { string } = {}
 	local exported: { [string]: boolean } = {}
+	local undocumented = config.undocumented or {}
 	local function visit(value: unknown, prefix: string, ancestors: { [unknown]: boolean })
 		assert(type(value) == "table", prefix .. " does not return a table")
 		if ancestors[value] then
@@ -48,10 +49,11 @@ local function check(config: Config): { string }
 		end
 		local nextAncestors = table.clone(ancestors)
 		nextAncestors[value] = true
-		for key, child in value :: { [string]: unknown } do
+		for key, child in value do
+			assert(type(key) == "string", prefix .. " has an unnamed export")
 			local qualified = prefix .. "." .. key
 			exported[qualified] = true
-			if not documented[qualified] and (config.undocumented == nil or config.undocumented[qualified] == nil) then
+			if not documented[qualified] and undocumented[qualified] == nil then
 				table.insert(findings, qualified .. " is exported but undocumented")
 			end
 			if config.recursive and type(child) == "table" and string.match(key, "^[%u_]+$") == nil then

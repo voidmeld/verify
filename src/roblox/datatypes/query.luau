@@ -30,7 +30,7 @@ local function append(target: { unknown }, value: unknown, visiting: { [unknown]
 	elseif type(value) == "table" then
 		assert(not visiting[value], "cyclic instance filter")
 		visiting[value] = true
-		for _, child in value :: { unknown } do
+		for _, child in value do
 			append(target, child, visiting)
 		end
 		visiting[value] = nil

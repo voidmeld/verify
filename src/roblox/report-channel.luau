@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../core/shape"
 local Core = require "../core"
 
 export type Envelope = { runId: string, report: Core.Report }
@@ -11,7 +12,7 @@ end
 
 local function receive(value: unknown, runId: string): Core.Report
 	assert(runId ~= "" and type(value) == "table", "report channel requires an envelope")
-	local fields = value :: { [string]: unknown }
+	local fields = Shape.record(value, "report envelope")
 	assert(fields.runId == runId, "report channel run identity mismatch")
 	return Core.decode(fields.report)
 end

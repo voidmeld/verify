@@ -79,8 +79,8 @@ describe("result transport", function()
 	end)
 
 	it("refuses a tag that would collide with the field separator", function()
-		expect((pcall(Verify.frame, "VER|IFY", "x"))):toEqual(false)
-		expect((pcall(Verify.frame, "", "x"))):toEqual(false)
+		expect((pcall(Verify.frame, "VER|IFY", "x", nil))):toEqual(false)
+		expect((pcall(Verify.frame, "", "x", nil))):toEqual(false)
 	end)
 end)
 
@@ -115,7 +115,7 @@ describe("segmented result transport", function()
 	it("round-trips whatever it segmented, out of order", function()
 		local payload = string.rep("payload-", 300)
 		local segments = Verify.segment(payload, 64)
-		local shuffled = { segments[3], segments[1], segments[2] }
+		local shuffled: { unknown } = { segments[3], segments[1], segments[2] }
 		for index = 4, #segments do
 			table.insert(shuffled, segments[index])
 		end
@@ -126,7 +126,7 @@ describe("segmented result transport", function()
 
 	it("tolerates a duplicated segment and rejects a conflicting duplicate", function()
 		local segments = Verify.segment("abcdef", 2)
-		local withDuplicate = { segments[1], segments[1], segments[2], segments[3] }
+		local withDuplicate: { unknown } = { segments[1], segments[1], segments[2], segments[3] }
 		local recovered, problem = Verify.reassembleSegments(withDuplicate)
 		expect(problem):toEqual(nil)
 		expect(recovered):toEqual "abcdef"
@@ -184,6 +184,19 @@ describe("segmented result transport", function()
 		end
 	end)
 
+	it("refuses executable segment records without running their metamethods", function()
+		local invoked = false
+		local function reject()
+			invoked = true
+			error "segment metamethod must not run"
+		end
+		local wire = setmetatable(Verify.segment("payload", 64)[1], { __index = reject, __iter = reject })
+		local recovered, problem = Verify.reassembleSegments { wire }
+		expect(recovered):toEqual(nil)
+		expect(problem):toEqual "a segment is malformed"
+		expect(invoked):toEqual(false)
+	end)
+
 	it("refuses every malformed field in a decoded segment without modifying its input", function()
 		local segment = Verify.segment("decoded payload", 64)[1]
 		local wire: { [string]: unknown } = {
@@ -195,13 +208,14 @@ describe("segmented result transport", function()
 			payload = segment.payload,
 		}
 		for _, field in { "index", "count", "digest", "totalDigest", "totalBytes", "payload" } do
+			local original = wire[field]
 			local invalid = table.clone(wire)
 			invalid[field] = false
 			local value, reason = Verify.reassembleSegments { invalid }
 			expect(value):toEqual(nil)
 			expect(reason):toEqual "a segment is malformed"
 			expect(invalid[field]):toEqual(false)
-			expect(wire[field]):toEqual(segment[field])
+			expect(wire[field]):toEqual(original)
 		end
 	end)
 
@@ -309,9 +323,9 @@ describe("session framing", function()
 				}
 			end,
 		}
-		local session = Verify.createSession(options)
+		local session = Verify.createSurfaceSession(options)
 		session:open "first.verify.luau"
-		session.verbs.it("alpha", function(context)
+		session:current().it("alpha", function(context)
 			context:expect(1):toBe(1)
 		end)
 		session:close()

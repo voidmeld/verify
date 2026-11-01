@@ -8,7 +8,7 @@ type ClassSpec<P = { [string]: unknown }, M = { [string]: unknown }> = Types.Cla
 type Resolved = Types.Resolved
 type DefineOptions = Types.DefineOptions
 type Computed = Types.Computed
-local metatableOf = (getmetatable :: unknown) :: (unknown) -> unknown
+local metatableOf = getmetatable
 
 local UNIVERSAL_EVENTS: { string } = {
 	"Changed",
@@ -28,14 +28,14 @@ local function create(settings: Types.Options)
 	local computedLookups: { [string]: { [string]: { get: ((object: Instance) -> unknown)?, writable: boolean } } } = {}
 	local ancestry: { [string]: { [string]: boolean } } = {}
 	local plainReads: { [string]: { [string]: boolean } } = {}
-	local function defineClass<P, M>(className: string, spec: ClassSpec<P, M>, defineOptions: DefineOptions?)
+	local function defineClass(className: string, spec: ClassSpec, defineOptions: DefineOptions?)
 		if type(className) ~= "string" or className == "" then
 			error("class name must be a non-empty string", 2)
 		end
 		if specs[className] ~= nil and not (defineOptions ~= nil and defineOptions.replace == true) then
 			error(("class %q is already defined"):format(className), 2)
 		end
-		specs[className] = (spec :: unknown) :: ClassSpec
+		specs[className] = spec
 		table.clear(resolved)
 		table.clear(computedLookups)
 		table.clear(ancestry)

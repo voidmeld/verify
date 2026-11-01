@@ -2,17 +2,32 @@
 
 local D = require "./datatypes"
 local Environment = require "./environment-types"
+local Transition = require "./ui-style-transition"
 
 type Instance = Environment.Instance
 
-local destroyed: Environment.ObserveFilter = { operations = { "destroy" :: Environment.Operation } }
+local destroyed: Environment.ObserveFilter = { operations = { "destroy" } }
 type Info = D.TweenInfoValue
-type Entry = { target: Instance, goal: { [string]: unknown }, info: Info, elapsed: number }
+type Entry = {
+	target: Instance,
+	goal: { [string]: unknown },
+	origins: { [string]: unknown },
+	timing: Transition.Timing,
+	elapsed: number,
+}
 
 local SETTLED = 1e-6
 
 local function attach(environment: Environment.Environment)
 	local State = D.Enum.PlaybackState
+	environment.fake(
+		"TweenService.GetValue",
+		function(_service: Instance, alpha: number, style: D.EnumMember, direction: D.EnumMember): number
+			assert(style:IsA "EasingStyle", "TweenService:GetValue requires EasingStyle")
+			assert(direction:IsA "EasingDirection", "TweenService:GetValue requires EasingDirection")
+			return Transition.ease(alpha, style.Name, direction.Name)
+		end
+	)
 	local entries: { [Instance]: Entry } = {}
 	setmetatable(entries, { __mode = "k" })
 	local active: { [Instance]: boolean } = {}
@@ -36,7 +51,8 @@ local function attach(environment: Environment.Environment)
 				continue
 			end
 			entry.elapsed += seconds
-			local delay, duration = entry.info.DelayTime, entry.info.Time
+			local timing = entry.timing
+			local delay, duration = timing.delay, timing.time
 			if entry.elapsed + SETTLED >= delay + duration then
 				for key, value in entry.goal do
 					entry.target[key] = value
@@ -44,6 +60,14 @@ local function attach(environment: Environment.Environment)
 				settle(tween, State.Completed)
 			elseif entry.elapsed + SETTLED >= delay then
 				environment.poke(tween, "PlaybackState", State.Playing)
+				local alpha =
+					Transition.ease(math.max(0, entry.elapsed - delay) / duration, timing.style, timing.direction)
+				for key, value in entry.goal do
+					local nextValue = Transition.interpolate(entry.origins[key], value, alpha)
+					if entry.target[key] ~= nextValue then
+						entry.target[key] = nextValue
+					end
+				end
 			end
 		end
 		idle()
@@ -63,7 +87,13 @@ local function attach(environment: Environment.Environment)
 			local tween = environment.createEngineInstance "Tween"
 			environment.poke(tween, "Instance", target)
 			environment.poke(tween, "TweenInfo", info)
-			entries[tween] = { target = target, goal = table.clone(goal), info = info, elapsed = 0 }
+			entries[tween] = {
+				target = target,
+				goal = table.clone(goal),
+				origins = {},
+				timing = assert(Transition.timing(info)),
+				elapsed = 0,
+			}
 			return tween
 		end
 	)
@@ -75,18 +105,23 @@ local function attach(environment: Environment.Environment)
 		if tween.PlaybackState == State.Completed or tween.PlaybackState == State.Cancelled then
 			entry.elapsed = 0
 		end
+		if tween.PlaybackState ~= State.Paused then
+			for key in entry.goal do
+				entry.origins[key] = entry.target[key]
+			end
+		end
 		active[tween] = true
 		environment.poke(
 			tween,
 			"PlaybackState",
-			if entry.elapsed + SETTLED < entry.info.DelayTime then State.Delayed else State.Playing
+			if entry.elapsed + SETTLED < entry.timing.delay then State.Delayed else State.Playing
 		)
 		if heartbeat == nil then
 			heartbeat = environment.heartbeat:Connect(advance)
 		end
 	end)
 	environment.fake("TweenBase.Pause", function(tween: Instance)
-		if active[tween] then
+		if active[tween] and tween.PlaybackState == State.Playing then
 			active[tween] = nil
 			environment.poke(tween, "PlaybackState", State.Paused)
 			idle()

@@ -62,5 +62,5 @@ return game:GetService("HttpService"):JSONEncode(Roblox.reportChannel.envelope(r
 		end
 	end)
 	fs.removeDirectory(directory, { recursive = true })
-	assert(ok, failure)
+	assert(ok, tostring(failure))
 end

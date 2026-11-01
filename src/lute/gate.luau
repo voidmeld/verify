@@ -8,6 +8,7 @@ local Verify = require "../core"
 local Cli = require "./gate-cli"
 local Gate = require "../gate"
 local Wire = require "./wire"
+local Outcome = require "./gate-outcome"
 
 type Runtime = LuteRuntime.Runtime
 
@@ -85,7 +86,7 @@ end
 local function numbers(value: unknown): { [string]: number }
 	local result: { [string]: number } = {}
 	if type(value) == "table" then
-		for key, entry in value :: { [unknown]: unknown } do
+		for key, entry in value do
 			if type(key) == "string" and type(entry) == "number" then
 				result[key] = entry
 			end
@@ -99,7 +100,7 @@ local function readWeights(text: string): Cli.Weights
 	if not parsed or type(value) ~= "table" then
 		return { producers = {}, files = {} }
 	end
-	local fields = value :: { [string]: unknown }
+	local fields = Wire.record(value)
 	return { producers = numbers(fields.producers), files = numbers(fields.files) }
 end
 
@@ -166,7 +167,7 @@ local function create(runtime: Runtime): Gate
 				local started = runtime.time.clock()
 				local reports: { Verify.Report } = {}
 				local runBatch = host.runBatch
-				host.runBatch = function(batch)
+				host.runBatch = function(batch: Verify.PlanBatch): Verify.BatchOutcome
 					local deadline = started + job.deadlineSeconds
 					if not acquire(deadline, false) then
 						return {
@@ -353,15 +354,14 @@ local function create(runtime: Runtime): Gate
 		if not parsed or type(value) ~= "table" then
 			return nil, "the earlier outcome is unreadable"
 		end
-		local outcome = value :: Gate.Outcome
-		if outcome.gate ~= gate.id or outcome.digest ~= gate.digest then
+		local fields = Wire.record(value)
+		if fields.gate ~= gate.id or fields.digest ~= gate.digest then
 			return nil, "the earlier outcome belongs to another gate definition"
 		end
-		local decoded, report = pcall(Verify.decode, outcome.execution.report)
-		if not decoded then
-			return nil, "the earlier outcome holds an invalid report: " .. tostring(report)
+		local valid, outcome = pcall(Outcome.decode, fields)
+		if not valid then
+			return nil, "the earlier outcome is invalid: " .. tostring(outcome)
 		end
-		outcome.execution.report = report
 		return outcome, nil
 	end
 
@@ -434,12 +434,13 @@ local function create(runtime: Runtime): Gate
 				return 0
 			end
 		elseif #only > 0 or #command.tiers > 0 or #command.cases > 0 or command.name ~= nil then
-			selection = {
+			local selected: Gate.Selection = {
 				ids = if #only > 0 then only else nil,
 				tiers = if #command.tiers > 0 then command.tiers else nil,
 				cases = if #command.cases > 0 then command.cases else nil,
 				nameContains = command.name,
 			}
+			selection = selected
 		end
 		base.selection = selection
 		if base.observe == nil then

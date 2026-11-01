@@ -4,6 +4,7 @@ local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Core = require "../src/core"
+local Shape = require "../src/core/shape"
 local Native = require "../src/roblox/experience-host"
 local Multi = require "../src/roblox/multiplayer"
 
@@ -61,7 +62,7 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 	local remote: Multi.Remote
 	remote = {
 		OnServerEvent = {
-			Connect = function(_, callback)
+			Connect = function(_: unknown, callback: (Multi.Player, unknown) -> ()): Multi.Connection
 				serverListener = callback
 				return connect(function()
 					serverListener = nil
@@ -69,24 +70,31 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 			end,
 		},
 		OnClientEvent = {
-			Connect = function()
+			Connect = function(_: unknown, _callback: (unknown) -> ()): Multi.Connection
 				error "server cannot listen as client"
 			end,
 		},
-		FireServer = function()
+		FireServer = function(_remote: Multi.Remote, _value: unknown): ()
 			error "server cannot send as client"
 		end,
-		FireClient = function(_, player, value)
-			local packet = value :: { [string]: unknown }
-			if packet.kind == "request" then
-				local envelope = packet.envelope :: Native.Envelope
+		FireClient = function(_remote: Multi.Remote, player: Multi.Player, value: unknown): ()
+			local packet = Shape.record(value, "multiplayer message")
+			local kind = packet.kind
+			local envelopeValue = packet.envelope
+			if kind == "request" then
+				local envelope = Shape.record(envelopeValue, "request envelope")
+				local requestId = envelope.id
+				assert(type(requestId) == "string")
+				local request = Shape.record(envelope.request, "wire request")
+				local actor = request.actor
+				assert(type(actor) == "string")
 				if mode == "wrong-identity" then
 					emit(player, {
 						runId = "run",
 						kind = "response",
-						id = envelope.id,
+						id = requestId,
 						response = {
-							id = envelope.id,
+							id = requestId,
 							actor = "client-99",
 							kind = "query",
 							name = "identity",
@@ -111,7 +119,7 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 							id = previousId,
 							response = {
 								id = previousId,
-								actor = envelope.request.actor,
+								actor = actor,
 								kind = "query",
 								name = "identity",
 								ok = true,
@@ -119,23 +127,23 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 							},
 						})
 					end
-					previousId = envelope.id
+					previousId = requestId
 					local response: Native.Response = {
-						id = envelope.id,
-						actor = envelope.request.actor,
+						id = requestId,
+						actor = actor,
 						kind = "query",
 						name = "identity",
 						ok = true,
 						value = "forged",
 					}
-					emit(outsider, { runId = "run", kind = "response", id = envelope.id, response = response })
+					emit(outsider, { runId = "run", kind = "response", id = requestId, response = response })
 					emit(
 						players[if player.UserId == 1 then 2 else 1],
-						{ runId = "run", kind = "response", id = envelope.id, response = response }
+						{ runId = "run", kind = "response", id = requestId, response = response }
 					)
-					emit(player, { runId = "other", kind = "response", id = envelope.id, response = response })
+					emit(player, { runId = "other", kind = "response", id = requestId, response = response })
 				end
-			elseif packet.kind == "close" and (mode == "cleanup-timeout" or mode == "premature-ack") then
+			elseif kind == "close" and (mode == "cleanup-timeout" or mode == "premature-ack") then
 				return
 			end
 			local callback = listeners[player.UserId]
@@ -162,7 +170,7 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 				registry = {
 					actions = {},
 					queries = {
-						identity = Native.endpoint(identity, function(value)
+						identity = Native.endpoint(identity, function(value: string)
 							return "server:" .. value
 						end),
 					},
@@ -204,7 +212,7 @@ local function exercise(mode: Mode, body: (Core.Context) -> (), count: number?):
 							registry = {
 								actions = {},
 								queries = {
-									identity = Native.endpoint(identity, function(value)
+									identity = Native.endpoint(identity, function(value: string)
 										return player.Name .. ":" .. value
 									end),
 								},
@@ -282,8 +290,9 @@ describe("multiplayer transport", function()
 		expect(connections):toBe(0)
 	end)
 	it("fails lost actors and bounded response waits", function()
-		for _, mode in { "disconnect", "timeout", "wrong-identity" } do
-			local report = exercise(mode :: Mode, function(context)
+		local modes: { Mode } = { "disconnect", "timeout", "wrong-identity" }
+		for _, mode in modes do
+			local report = exercise(mode, function(context)
 				context:perform("client-1", operation, "x")
 			end)
 			expect(report.passed):toBe(0)
@@ -291,8 +300,9 @@ describe("multiplayer transport", function()
 		end
 	end)
 	it("records cleanup failure and missing acknowledgments without passing", function()
-		for _, mode in { "cleanup-failure", "cleanup-timeout", "premature-ack" } do
-			local report = exercise(mode :: Mode, function() end)
+		local modes: { Mode } = { "cleanup-failure", "cleanup-timeout", "premature-ack" }
+		for _, mode in modes do
+			local report = exercise(mode, function() end)
 			expect(report.passed):toBe(0)
 			expect(report.results[1].failures[1].phase):toBe "cleanup"
 		end

@@ -24,13 +24,13 @@ export type StepResult = {
 }
 
 export type Artifact = {
-	name: string,
-	reference: string,
-	mediaType: string?,
-	sha256: string?,
-	size: number?,
-	provenance: Provenance.Provenance?,
-	content: string?,
+	read name: string,
+	read reference: string,
+	read mediaType: string?,
+	read sha256: string?,
+	read size: number?,
+	read provenance: Provenance.Provenance?,
+	read content: string?,
 }
 
 export type Observation = {
@@ -47,7 +47,7 @@ export type Checkpoint = {
 	name: string,
 	artifacts: { Artifact },
 }
-export type Judgment = { status: "passed" | "failed" | "unreviewed", reviewer: string, detail: string }
+export type Judgment = { read status: "passed" | "failed" | "unreviewed", read reviewer: string, read detail: string }
 export type Review = {
 	step: number,
 	actor: string,

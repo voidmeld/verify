@@ -19,7 +19,7 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 	local function forward(name: string, arguments: { [string]: unknown }): unknown
 		local ok, result = pcall(backend.call, name, arguments)
 		assert(ok, "the scoped Studio call failed; inspect this run's console")
-		if type(result) == "table" and (result :: { [string]: unknown }).isError == true then
+		if type(result) == "table" and result.isError == true then
 			error("the scoped Studio tool returned an error; inspect this run's console", 0)
 		end
 		return result

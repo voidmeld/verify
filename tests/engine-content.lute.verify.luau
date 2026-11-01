@@ -6,15 +6,27 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Lute = require "../src/lute"
 local Environment = require "../src/roblox/environment"
-local LogFakes = require "../src/roblox/log-fakes"
 local Datatypes = require "../src/roblox/datatypes"
 local Roblox = require "../src/roblox"
 
 type Instance = Environment.Instance
-type Load = (Instance, number) -> Instance
-type GetColor = (Instance, unknown) -> unknown
-type SetColor = (Instance, unknown, unknown) -> ()
-type History = (Instance) -> { LogFakes.Entry }
+local function call(environment: Environment.Environment, object: unknown, name: string, ...: unknown): ...unknown
+	local instance = Environment.assertInstance(object)
+	return environment.method(instance, name)(instance, ...)
+end
+
+local function array(value: unknown): { unknown }
+	assert(type(value) == "table")
+	local result: { unknown } = {}
+	for _, item in value do
+		table.insert(result, item)
+	end
+	return result
+end
+
+local function children(environment: Environment.Environment, object: unknown): { unknown }
+	return array(call(environment, object, "GetChildren"))
+end
 
 it("asset versions load independent copies of supplied content under InsertService", function()
 	local template: Instance? = nil
@@ -35,15 +47,15 @@ it("asset versions load independent copies of supplied content under InsertServi
 	part.Size = engine.datatypes.Vector3.new(3, 4, 5)
 	part.Parent = template
 	local service = engine.service "InsertService"
-	local load = service.LoadAssetVersion :: Load
+	local load = engine.environment.method(service, "LoadAssetVersion")
 	local first = load(service, 42)
 	local second = load(service, 42)
-	expect(first.Parent):toBe(service)
-	expect(first.Name):toBe "Fixture"
+	expect(Environment.read(first, "Parent")):toBe(service)
+	expect(Environment.read(first, "Name")):toBe "Fixture"
 	expect(first == second):toBe(false)
-	expect(first:GetChildren()[1].Size):toEqual(part.Size)
-	first:GetChildren()[1]:Destroy()
-	expect(#second:GetChildren()):toBe(1)
+	expect(Environment.read(children(engine.environment, first)[1], "Size")):toEqual(part.Size)
+	call(engine.environment, children(engine.environment, first)[1], "Destroy")
+	expect(#children(engine.environment, second)):toBe(1)
 	expect(#source:GetChildren()):toBe(1)
 	expect((pcall(load, service, 99))):toBe(false)
 	expect((pcall(load, service, -1))):toBe(false)
@@ -61,34 +73,31 @@ it("localization tables store entries and format keys through a translator", fun
 	local engine = Lute.fixture.bridge().placeEngine()
 	local localization = engine.newInstance "LocalizationTable"
 	type Entries = { { Key: string, Source: string, Values: { [string]: string } } }
-	type SetEntries = (Instance, Entries) -> ()
-	type GetEntries = (Instance) -> Entries
-	type Translator = {
-		FormatByKey: (Translator, string, { [string | number]: unknown }?) -> string,
-		Translate: (Translator, unknown, string) -> string,
-	}
-	type GetTranslator = (Instance, string) -> Translator
 	local entries: Entries = {
 		{ Key = "greeting", Source = "Hello {name}", Values = { es = "Hola {name}" } },
 		{ Key = "count", Source = "{1} games", Values = {} },
 	}
-	local setEntries = localization.SetEntries :: SetEntries
+	local setEntries = engine.environment.method(localization, "SetEntries")
 	setEntries(localization, entries)
 	entries[1].Source = "changed after storing"
-	local stored = (localization.GetEntries :: GetEntries)(localization)
-	expect(stored[1].Source):toBe "Hello {name}"
-	local spanish = (localization.GetTranslator :: GetTranslator)(localization, "es")
+	local stored = array(call(engine.environment, localization, "GetEntries"))
+	expect(Environment.read(stored[1], "Source")):toBe "Hello {name}"
+	local spanish = call(engine.environment, localization, "GetTranslator", "es")
+	local translate = Lute.chunk.load(
+		"local name = ... return translator[name](translator, select(2, ...))",
+		{ environment = { translator = spanish } }
+	)
 	local named: { [string | number]: unknown } = { name = "Ada" }
 	local positional: { [string | number]: unknown } = { 3 }
-	expect(spanish:FormatByKey("greeting", named)):toBe "Hola Ada"
-	expect(spanish:FormatByKey("count", positional)):toBe "3 games"
-	expect(spanish:Translate(nil, "Hello {name}")):toBe "Hola {name}"
-	expect(pcall(spanish.FormatByKey, spanish, "missing")):toBe(false)
+	expect(translate("FormatByKey", "greeting", named)):toBe "Hola Ada"
+	expect(translate("FormatByKey", "count", positional)):toBe "3 games"
+	expect(translate("Translate", nil, "Hello {name}")):toBe "Hola {name}"
+	expect(pcall(translate, "FormatByKey", "missing")):toBe(false)
 end)
 it("asset loading refuses absent providers and invalid content without inventing geometry", function()
 	local engine = Lute.fixture.bridge().placeEngine()
 	local service = engine.service "InsertService"
-	local load = service.LoadAssetVersion :: Load
+	local load = engine.environment.method(service, "LoadAssetVersion")
 	local ok, message = pcall(load, service, 42)
 	expect(ok):toBe(false)
 	expect(string.find(tostring(message), "requires an assetVersion provider", 1, true) ~= nil):toBe(true)
@@ -100,7 +109,7 @@ it("asset loading refuses absent providers and invalid content without inventing
 	} })
 	local other = bridge.placeEngine()
 	local otherService = other.service "InsertService"
-	local otherLoad = otherService.LoadAssetVersion :: Load
+	local otherLoad = other.environment.method(otherService, "LoadAssetVersion")
 	expect((pcall(otherLoad, otherService, 42))):toBe(false)
 	supplied = other.newInstance "Folder"
 	expect((pcall(otherLoad, otherService, 42))):toBe(false)
@@ -123,8 +132,8 @@ it("terrain colors round trip overrides and read supplied material facts", funct
 	})
 	local engine = bridge.placeEngine()
 	local terrain = engine.newInstance("Terrain", true)
-	local get = terrain.GetMaterialColor :: GetColor
-	local set = terrain.SetMaterialColor :: SetColor
+	local get = engine.environment.method(terrain, "GetMaterialColor")
+	local set = engine.environment.method(terrain, "SetMaterialColor")
 	local grass = engine.datatypes.Enum.Material.Grass
 	local tint = engine.datatypes.Color3.new(0.8, 0.7, 0.6)
 	expect(get(terrain, grass)):toEqual(engine.datatypes.Color3.new(0.2, 0.3, 0.4))
@@ -143,19 +152,21 @@ it("terrain colors round trip overrides and read supplied material facts", funct
 	end
 	expect((pcall(set, terrain, grass, "red"))):toBe(false)
 	expect(get(terrain, grass)):toEqual(tint)
-	local missing = Lute.fixture.bridge().placeEngine().newInstance("Terrain", true)
-	local readMissing = missing.GetMaterialColor :: GetColor
+	local missingEngine = Lute.fixture.bridge().placeEngine()
+	local missing = missingEngine.newInstance("Terrain", true)
+	local readMissing = missingEngine.environment.method(missing, "GetMaterialColor")
 	expect((pcall(readMissing, missing, grass))):toBe(false)
 end)
 it("log history records real diagnostics with levels clock ordering copies and bounded retention", function()
 	local engine = Lute.fixture.bridge().placeEngine()
 	local log = engine.service "LogService"
-	local history = log.GetLogHistory :: History
-	local clear = log.ClearOutput :: (Instance) -> ()
+	local history = engine.environment.method(log, "GetLogHistory")
+	local clear = engine.environment.method(log, "ClearOutput")
 	expect(history(log)):toEqual {}
 	local received: { { message: string, kind: unknown } } = {}
-	local signal = log.MessageOut :: Environment.Signal<string, unknown>
-	local connection = signal:Connect(function(message, kind)
+	local signal = engine.environment.event(log, "MessageOut")
+	local connection = signal:Connect(function(message: unknown, kind: unknown)
+		assert(type(message) == "string")
 		table.insert(received, { message = message, kind = kind })
 	end)
 	local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
@@ -163,26 +174,30 @@ it("log history records real diagnostics with levels clock ordering copies and b
 		cache = Roblox.createPlaceCache(Lute.fixture.host),
 		host = Lute.fixture.host,
 	})
-	local output = runtime.globals.print :: (...unknown) -> ()
-	local warn = runtime.globals.warn :: (...unknown) -> ()
+	local output = Lute.chunk.load("print(...)", { environment = runtime.globals })
+	local warn = Lute.chunk.load("warn(...)", { environment = runtime.globals })
 	output "hello"
 	engine.environment.step(0.5)
 	warn "warning"
 	engine.record("error", "failure", "fixture")
-	local entries = history(log)
-	expect(entries[1].messageType):toBe(engine.datatypes.Enum.MessageType.MessageOutput)
-	expect(entries[2].messageType):toBe(engine.datatypes.Enum.MessageType.MessageWarning)
-	expect(entries[3].messageType):toBe(engine.datatypes.Enum.MessageType.MessageError)
-	expect(entries[2].timestamp):toBe(0.5)
+	local rawEntries = history(log)
+	local entries = array(rawEntries)
+	expect(Environment.read(entries[1], "messageType")):toBe(engine.datatypes.Enum.MessageType.MessageOutput)
+	expect(Environment.read(entries[2], "messageType")):toBe(engine.datatypes.Enum.MessageType.MessageWarning)
+	expect(Environment.read(entries[3], "messageType")):toBe(engine.datatypes.Enum.MessageType.MessageError)
+	expect(Environment.read(entries[2], "timestamp")):toBe(0.5)
 	expect(#received):toBe(3)
-	entries[1].message = "changed"
-	table.clear(entries)
-	expect(history(log)[1].message):toBe "hello"
+	local entry = entries[1]
+	assert(type(entry) == "table")
+	table.clear(entry)
+	assert(type(rawEntries) == "table")
+	table.clear(rawEntries)
+	expect(Environment.read(array(history(log))[1], "message")):toBe "hello"
 	for index = 1, 513 do
 		engine.record("print", tostring(index), "fixture")
 	end
-	expect(#history(log)):toBe(512)
-	expect(history(log)[1].message):toBe "2"
+	expect(#array(history(log))):toBe(512)
+	expect(Environment.read(array(history(log))[1], "message")):toBe "2"
 	clear(log)
 	expect(history(log)):toEqual {}
 	expect(#engine.diagnostics):toBe(516)
@@ -198,8 +213,8 @@ it("incoming chat callbacks are write-only replaceable clearable and callable by
 		return "decorated " .. message
 	end
 	chat.OnIncomingMessage = decorate
-	local callback = engine.environment.propertyOf(chat, "OnIncomingMessage") :: (string) -> string
-	expect(callback "message"):toBe "decorated message"
+	local callback = engine.environment.propertyOf(chat, "OnIncomingMessage")
+	expect(Lute.chunk.load("return callback(...)", { environment = { callback = callback } }) "message"):toBe "decorated message"
 	chat.OnIncomingMessage = function() end
 	expect(engine.environment.propertyOf(chat, "OnIncomingMessage") == decorate):toBe(false)
 	chat.OnIncomingMessage = nil

@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local AgentEval = require "../src/agent-eval"
 local Fakes = require "./agent-eval-fakes"
 local Lute = require "../src/lute"
+local Wire = require "../src/lute/wire"
 
 type Object = { [string]: unknown }
 
@@ -310,7 +311,7 @@ it("rechecks a saved deadline stop without counting it as a pass", function()
 	local before = execute(memory, calls, { selection = { tasks = { "one" } } })
 	for _, result in before.results do
 		local path = result.directory .. "/result.json"
-		local saved = Lute.parse(memory.files.read(path)) :: { [string]: unknown }
+		local saved = Wire.record(Lute.parse(memory.files.read(path)))
 		saved.status = "timed_out"
 		saved.exceeded = { "wallSeconds" }
 		memory.files.write(path, Lute.encode(saved))
@@ -331,10 +332,12 @@ it("refuses to recheck a saved run that did not complete or reach its deadline",
 	local calls: Calls = { requests = {} }
 	local before = execute(memory, calls, { selection = { tasks = { "one" } } })
 	local path = before.results[1].directory .. "/result.json"
-	local saved = Lute.parse(memory.files.read(path)) :: { [string]: unknown }
+	local saved = Wire.record(Lute.parse(memory.files.read(path)))
 	saved.status = "failed"
 	memory.files.write(path, Lute.encode(saved))
-	local ok, problem = pcall(execute, memory, calls, { selection = { tasks = { "one" } }, checksOnly = true })
+	local ok, problem = pcall(function()
+		execute(memory, calls, { selection = { tasks = { "one" } }, checksOnly = true })
+	end)
 	expect(ok):toBe(false)
 	expect(tostring(problem)):toContain "checks-only requires a completed or deadline-stopped saved run"
 end)
@@ -361,7 +364,13 @@ it("scoped Studio releases before checks and never keeps an adapter error", func
 		end
 		local services = Fakes.services(memory.files, {})
 		local opened, closed = 0, 0
-		services.studio = function(workspace, directory, place, build, _seconds)
+		services.studio = function(
+			workspace: string,
+			directory: string,
+			place: string,
+			build: { string },
+			_seconds: number
+		): { config: string, close: (boolean?) -> () }
 			opened += 1
 			expect(place):toBe(directory .. "/agent.rbxlx")
 			expect(build[2]):toBe(workspace)
@@ -481,8 +490,8 @@ describe("agent evaluation runner", function()
 		expect(memory.files.exists "/evidence/runs/two/treatment/agent/seed-1/workspace/main.luau"):toBe(true)
 		expect(check(find(summary, "two/baseline/agent/1"), "extra").passed):toBe(false)
 
-		local index = Lute.parse(memory.files.read "/evidence/index.json") :: { runs: { { id: string } } }
-		expect(#index.runs):toBe(4)
+		local index = Wire.record(Lute.parse(memory.files.read "/evidence/index.json"))
+		expect(#Wire.array(index.runs)):toBe(4)
 		local loaded = AgentEval.load("/evidence", memory.files, Lute.parse)
 		expect(#loaded):toBe(4)
 		expect(loaded[1]):toEqual(treatment)

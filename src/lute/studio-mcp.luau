@@ -32,7 +32,7 @@ local META =
 
 local function record(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "Studio MCP returned a non-record")
-	return value :: { [string]: unknown }
+	return Wire.record(value)
 end
 
 type Pipe = {
@@ -131,11 +131,10 @@ local function windowsPipe(executable: string, directory: string, deadline: numb
 	local pidPath, exitedPath = directory .. "/pid", directory .. "/exited"
 	local bridge: { done: boolean, detail: string } = { done = false, detail = "" }
 	task.spawn(function()
-		local ran, result = pcall(
-			Runtime.process.run,
-			Powershell.command(BRIDGE),
-			{ env = { VERIFY_MCP_DIRECTORY = directory, VERIFY_MCP_EXECUTABLE = executable } }
-		)
+		local environment: { [string]: string } =
+			{ VERIFY_MCP_DIRECTORY = directory, VERIFY_MCP_EXECUTABLE = executable }
+		local options: Runtime.RunOptions = { env = environment }
+		local ran, result = pcall(Runtime.process.run, Powershell.command(BRIDGE), options)
 		bridge.detail = if ran then (result).stderr else tostring(result)
 		bridge.done = true
 	end)
@@ -221,7 +220,7 @@ local function connectOnce(executable: string, directory: string, deadline: numb
 				for text in string.gmatch(chunk, "([^\n]+)\n") do
 					local parsed, value = pcall(Wire.parse, text)
 					if parsed and type(value) == "table" then
-						local fields = value :: { [string]: unknown }
+						local fields = record(value)
 						if type(fields.id) == "number" then
 							answers[fields.id] = fields
 						end
@@ -233,7 +232,7 @@ local function connectOnce(executable: string, directory: string, deadline: numb
 			if fields ~= nil then
 				answers[id] = nil
 				if fields.error ~= nil then
-					return { status = "answered", detail = json.serialize(fields.error :: json.Value) }
+					return { status = "answered", detail = Wire.encode(fields.error) }
 				end
 				return { status = "answered", result = fields.result }
 			end
@@ -288,7 +287,13 @@ local function connect(executable: string, directory: string, deadline: number):
 			limit
 		)
 	end
-	local recovered = Reconnect.wrap(nil, { open = open, now = os.clock, wait = task.wait })
+	local recovered = Reconnect.wrap(nil, {
+		open = open,
+		now = os.clock,
+		wait = function(seconds: number)
+			task.wait(seconds)
+		end,
+	})
 	local function callRaw(name: string, argumentsJson: string, limit: number, replaySafe: boolean?): Exchange
 		return recovered.callRaw(name, argumentsJson, limit, replaySafe == true or name == "list_roblox_studios")
 	end
@@ -298,16 +303,11 @@ local function connect(executable: string, directory: string, deadline: number):
 		alive = recovered.alive,
 		callRaw = callRaw,
 		call = function(name, arguments)
-			local argumentsJson = if next(arguments) == nil
-				then "{}"
-				else json.serialize(Operations.snapshot(arguments) :: json.Value)
+			local argumentsJson = if next(arguments) == nil then "{}" else Wire.encode(Operations.snapshot(arguments))
 			local reply = callRaw(name, argumentsJson, deadline)
 			assert(reply.status == "answered" and reply.detail == nil, reply.detail or reply.status)
 			local result = record(reply.result)
-			assert(
-				result.isError ~= true,
-				"Studio MCP tool failed: " .. json.serialize((result :: unknown) :: json.Value)
-			)
+			assert(result.isError ~= true, "Studio MCP tool failed: " .. Wire.encode(result))
 			return result
 		end,
 	}

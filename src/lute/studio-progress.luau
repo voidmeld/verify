@@ -19,7 +19,7 @@ local function listener(path: string, runId: string, readHistory: (number) -> st
 	local rejected, foreign, failures = 0, 0, 0
 	local firstProblem: string? = nil
 	local function read()
-		local collected = ProgressChannel.collect(Wire.parse(readHistory(polled)) :: { unknown }, token, runId)
+		local collected = ProgressChannel.collect(Wire.array(Wire.parse(readHistory(polled))), token, runId)
 		rejected = math.max(rejected, collected.rejected)
 		foreign = math.max(foreign, collected.foreign)
 		if collected.first ~= nil and firstProblem == nil then

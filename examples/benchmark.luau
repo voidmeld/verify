@@ -52,19 +52,20 @@ print(
 )
 assert(report.passed == report.total, "the benchmark did not pass")
 
+local sample: { number } = {}
 local phases: { Benchmark.Phase } = {
 	{
 		name = "sort",
-		run = function(state: unknown)
-			table.sort(state :: { number })
+		run = function()
+			table.sort(sample)
 		end,
 		budget = { p95 = 250 },
 	},
 	{
 		name = "scan",
-		run = function(state: unknown, sampler: Benchmark.Sampler)
+		run = function(_state: unknown, sampler: Benchmark.Sampler)
 			local largest: { number } = {}
-			for _, value in state :: { number } do
+			for _, value in sample do
 				largest[1] = math.max(largest[1] or 0, value)
 			end
 			sampler.series("largest", largest)
@@ -81,7 +82,8 @@ local screen: Benchmark.Spec = {
 	samples = 8,
 	environment = { observed = "example-machine" },
 	beforeSample = function()
-		return table.clone(data)
+		sample = table.clone(data)
+		return sample
 	end,
 	phases = phases,
 }

@@ -10,6 +10,7 @@ local Classes = require "./environment-classes"
 local Scheduler = require "./scheduler"
 local createSignals = require "./environment-signals"
 local Types = require "./environment-types"
+local Vm = require "./value"
 local SpatialFakes = require "./spatial-fakes"
 local AudioFakes = require "./audio-fakes"
 local InputActionFakes = require "./input-action-fakes"
@@ -42,13 +43,15 @@ export type SignalHandle = Types.SignalHandle
 export type Environment = Types.Environment
 type Resolved = Types.Resolved
 type State = Types.State
-local metatableOf = (getmetatable :: unknown) :: (unknown) -> unknown
+local metatableOf: (unknown) -> unknown = getmetatable
 
 local instances: { [unknown]: Instance } = {}
+local objects: { [unknown]: Instance } = {}
+Names.weak(objects)
 Names.weak(instances)
 
-local function create<P, M, F>(options: Options<P, M, F>?): Environment
-	local settings: Options = ((options or {}) :: unknown) :: Options
+local function create(options: Options?): Environment
+	local settings: Options = options or {}
 	local limits: Limits = settings.limits or {}
 	local fakes: { [string]: unknown } = {}
 	local initialFakes: { [string]: unknown } = settings.fakes or {}
@@ -79,9 +82,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	local setTag: (Instance, string, boolean) -> ()
 	local states: { [unknown]: State } = {}
 	Names.weak(states)
-	type MethodOverride = { handler: unknown, previous: unknown, active: boolean }
-	local function doubleHandler(value: unknown): unknown
-		return if type(value) == "table" then (value :: MethodOverride).handler else value
+	local function doubleHandler(entry: Types.Override?): Vm.Value?
+		return if entry ~= nil then entry.handler else nil
 	end
 	local newObject: (className: string, props: { [unknown]: unknown }?, isRoot: boolean, engineOwned: boolean?) -> Instance
 
@@ -173,7 +175,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	end
 
 	local function isObject(value: unknown): boolean
-		return type(value) == "table" and rawget(value :: { [string]: unknown }, "__state") ~= nil
+		return objects[value] ~= nil
 	end
 
 	local function signalFor(state: State, key: string): Signal
@@ -405,21 +407,21 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 	end
 
-	local function memberMethod(object: Instance, state: State, key: string): ((Instance, ...unknown) -> ...unknown)?
+	local function memberMethod(object: Instance, state: State, key: string): Types.InstanceMethod?
 		local method = state.class.methods[key]
 		if method == nil then
 			return nil
 		end
-		local implementation: unknown = if method == true then fakes[state.className .. "." .. key] else method
-		if implementation == nil then
+		local found: unknown = if method == true then fakes[state.className .. "." .. key] else method
+		if found == nil then
 			local walk: string? = specs[state.className].super
-			while implementation == nil and walk ~= nil do
-				implementation = fakes[walk .. "." .. key]
+			while found == nil and walk ~= nil do
+				found = fakes[walk .. "." .. key]
 				local spec = specs[walk]
 				walk = if spec ~= nil then spec.super else nil
 			end
 		end
-		if implementation == nil then
+		if found == nil then
 			error(
 				("unsupported_method: %s.%s is declared but has no simulation or configured fake"):format(
 					state.className,
@@ -428,8 +430,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				3
 			)
 		end
-		return function(_self: Instance, ...: unknown): ...unknown
-			return (implementation :: Method)(object, ...)
+		local implementation = Vm.value(found)
+		assert(type(implementation) == "function", "simulated method must be a function")
+		return function(_self: Object, ...: unknown): ...unknown
+			return implementation(object, ...)
 		end
 	end
 
@@ -457,8 +461,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			return newObject(...)
 		end,
 		touch = touch,
-		setTag = function(...)
-			return setTag(...)
+		setTag = function(object: Instance, tag: string, present: boolean)
+			setTag(object, tag, present)
 		end,
 		root = function()
 			return root
@@ -510,10 +514,23 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			end
 			return state.values[key]
 		end
+		local bound = state.bound
+		local cached = if bound ~= nil then bound[key] else nil
+		if
+			cached ~= nil
+			and state.doubles[key] == nil
+			and (
+				class.methods[key] ~= nil
+				or (class.properties[key] == nil and computedFor(state.className, key) == nil)
+			)
+		then
+			return cached
+		end
 		local double = doubleHandler(state.doubles[key])
 		if double ~= nil then
-			return operation(function(_self: Instance, ...: unknown): ...unknown
-				return (double :: Method)(object, ...)
+			assert(type(double) == "function", "method double must be a function")
+			return operation(function(_self: Object, ...: unknown): ...unknown
+				return double(object, ...)
 			end)
 		end
 		if state.class.events[key] then
@@ -522,20 +539,15 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		local property = class.methods[key] == nil
 			and (class.properties[key] ~= nil or computedFor(state.className, key) ~= nil)
 		if not property then
-			local bound = state.bound
-			local cached = if bound ~= nil then bound[key] else nil
-			if cached ~= nil then
-				return cached
-			end
-			local resolved: unknown = nil
+			local resolved: Types.InstanceMethod? = nil
 			if type(state.class.methods[key]) == "function" then
 				local method = memberMethod(object, state, key)
 				assert(method ~= nil)
 				resolved = operation(method)
 			else
-				local builtin = universal(object, state, key)
+				local builtin = Vm.value(universal(object, state, key))
 				if type(builtin) == "function" then
-					resolved = operation(builtin :: Method)
+					resolved = operation(builtin)
 				else
 					local method = memberMethod(object, state, key)
 					if method ~= nil then
@@ -580,7 +592,11 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		end
 		local access = state.class.access[key]
 		if access == "callback" then
-			state.doubles[key] = if value == nil then nil else { handler = value, previous = nil, active = true }
+			if value == nil then
+				state.doubles[key] = nil
+			else
+				state.doubles[key] = { handler = Vm.value(value), previous = nil, active = true }
+			end
 			return
 		elseif access == "read" or access == "none" then
 			error("read-only property: " .. key, 3)
@@ -605,7 +621,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 				and not isEvent
 				and key ~= "ClassName"
 			then
-				state.doubles[key] = value
+				state.doubles[key] = { handler = Vm.value(value), previous = nil, active = true }
 				return
 			end
 			if settings.undeclaredWrites ~= true or isEvent or key == "ClassName" or type(value) == "function" then
@@ -638,6 +654,13 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		__newindex = operation(writeMember),
 	}
 
+	local minted: unknown
+	local mint: { Instance } = setmetatable({}, {
+		__index = function(): unknown
+			return minted
+		end,
+	})
+
 	function newObject(
 		className: string,
 		props: { [unknown]: unknown }?,
@@ -652,8 +675,11 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			error(("Unable to create an Instance of type %q"):format(className), 3)
 		end
 		local values: { [string]: unknown } = defaultsOf(className, class)
-		local object = (setmetatable({} :: { [string]: unknown }, objectMetatable) :: unknown) :: Instance
+		minted = setmetatable({}, objectMetatable)
+		local object = mint[1]
+		minted = nil
 		Names.register(object, if class.instance then "Instance" else "Object")
+		objects[object] = object
 		if class.instance then
 			instances[object] = object
 		end
@@ -727,8 +753,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 					return
 				end
 				self.IsPlaying = false
-				local stopped = self.Stopped :: Signal<()>
-				local ended = self.Ended :: Signal<()>
+				local stopped = signalFor(stateOf(self), "Stopped")
+				local ended = signalFor(stateOf(self), "Ended")
 				stopped:Fire()
 				ended:Fire()
 			end,
@@ -747,7 +773,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 	if specs.Folder ~= nil then
 		root = newObject("Folder", nil, true)
 	else
-		defineClass("Folder", { super = if specs.Instance ~= nil then "Instance" else nil })
+		local folder: ClassSpec = { super = if specs.Instance ~= nil then "Instance" else nil }
+		defineClass("Folder", folder)
 		root = newObject("Folder", nil, true)
 	end
 
@@ -806,7 +833,10 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			table.clear(state.doubles)
 		end
 	end
-	environment.newSignal = newSignal
+	environment.connect = signals.connect
+	environment.newSignal = function<A...>(): Signal<A...>
+		return newSignal()
+	end
 	environment.step = function(seconds: number)
 		scheduler.advance(seconds)
 		scheduler.drain(100000)
@@ -927,7 +957,7 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 		then
 			error(("%s of %s is a property or event and cannot be a method double"):format(name, describe(state)), 2)
 		end
-		local entry: MethodOverride = { handler = handler, previous = state.doubles[name], active = true }
+		local entry: Types.Override = { handler = Vm.value(handler), previous = state.doubles[name], active = true }
 		state.doubles[name] = entry
 		return function()
 			if not entry.active then
@@ -937,8 +967,8 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			entry.handler = nil
 			if state.doubles[name] == entry then
 				local previous = entry.previous
-				while type(previous) == "table" and not (previous :: MethodOverride).active do
-					previous = (previous :: MethodOverride).previous
+				while previous ~= nil and not previous.active do
+					previous = previous.previous
 				end
 				state.doubles[name] = previous
 				entry.previous = nil
@@ -1030,8 +1060,9 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			if index ~= nil then
 				table.remove(observers, index)
 			end
+			local selected = operations
 			for _, operation: Operation in OPERATIONS do
-				if operations == nil or operations[operation] then
+				if selected == nil or selected[operation] then
 					observing[operation] = (observing[operation] or 0) - 1
 				end
 			end
@@ -1060,14 +1091,35 @@ local function create<P, M, F>(options: Options<P, M, F>?): Environment
 			fires = meter.fires,
 		}
 	end
-	environment.connectionsOf = function(signal: Signal): number
+	environment.assertInstance = function(value: unknown): Instance
+		local instance = instances[value]
+		assert(instance ~= nil, "expected a simulated Instance")
+		return instance
+	end
+	environment.assertObject = function(value: unknown): Object
+		local object = objects[value]
+		assert(object ~= nil, "expected a simulated Object")
+		return object
+	end
+	environment.method = function(object: Object, name: string): Types.InstanceMethod
+		local owned = assert(objects[object], "expected a simulated Object")
+		local method = Vm.value(readMember(owned, name))
+		assert(type(method) == "function", "expected a simulated method: " .. name)
+		return method
+	end
+	environment.event = function(object: Object, name: string): Signal
+		local state = stateOf(object)
+		assert(state.class.events[name], "expected a simulated event: " .. name)
+		return signalFor(state, name)
+	end
+	environment.connectionsOf = function<A...>(signal: Signal<A...>): number
 		local meter = meters[signal]
 		if meter == nil then
 			error("signal was not created by this environment", 2)
 		end
 		return meter.connections()
 	end
-	environment.firesOf = function(signal: Signal): number
+	environment.firesOf = function<A...>(signal: Signal<A...>): number
 		local meter = meters[signal]
 		if meter == nil then
 			error("signal was not created by this environment", 2)
@@ -1105,10 +1157,39 @@ local function assertInstance(value: unknown): Instance
 	return instance
 end
 
+local function assertObject(value: unknown): Object
+	local object = objects[value]
+	assert(object ~= nil, "expected a simulated Object")
+	return object
+end
+
+local function read(value: unknown, key: unknown): unknown
+	local object = objects[value]
+	if object ~= nil then
+		assert(type(key) == "string", "simulated Object members require a name")
+		return object[key]
+	end
+	if type(value) == "userdata" then
+		return Names.fields(value)[key]
+	end
+	assert(type(value) == "table", "expected a table or simulated datatype")
+	for name, item in value do
+		if name == key then
+			return item
+		end
+	end
+	return nil
+end
+
 return {
+	invoke = Vm.invoke,
+	read = read,
+	vm = Vm,
+	write = Vm.write,
 	create = create,
 	isInstance = isInstance,
 	assertInstance = assertInstance,
+	assertObject = assertObject,
 	typeName = Names.kind,
 	BASIC_CLASSES = Classes,
 }

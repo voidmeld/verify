@@ -29,7 +29,9 @@ do
 				end,
 			},
 		})
-		own(bridge.close)
+		own(function()
+			bridge.close()
+		end)
 		local engine = bridge.placeEngine()
 		local runtime = Roblox.createPlaceRuntime(engine, { root = engine.game, scripts = {}, sources = {} }, {
 			aliases = {},
@@ -54,7 +56,7 @@ do
 				local inset = runtime.device().guiInset
 				return { X = inset[1], Y = inset[2] }
 			end,
-			library = (engine.datatypes :: unknown) :: Roblox.DatatypeLibrary,
+			library = engine.datatypes,
 			activationWindowSeconds = 0.5,
 			read = assert(bridge.ui).styled,
 		})

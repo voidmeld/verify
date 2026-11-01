@@ -4,6 +4,7 @@
 local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
+local Vector = require "../src/roblox/datatypes/vector"
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local probe = require "./fixtures/ui-style-properties"
@@ -89,7 +90,7 @@ it("updates a populated unstyled screen after layout within its interaction budg
 		expect(os.clock() - started < 5):toBe(true)
 	end
 	assert(bridge.layout).step()
-	expect((panels[256].AbsolutePosition :: { X: number }).X):toBe(256)
+	expect(Vector.expect2(panels[256].AbsolutePosition, 1).X):toBe(256)
 end)
 
 return nil

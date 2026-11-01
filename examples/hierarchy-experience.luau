@@ -1,15 +1,12 @@
 --!strict
 
+local Shape = require "../src/core/shape"
 local Verify = require "../src/core"
 local Experience = require "../src/core/operations"
 
-export type Folder = {
-	Name: string,
-	Parent: Folder?,
-	GetChildren: (self: Folder) -> { Folder },
-	IsDescendantOf: (self: Folder, ancestor: Folder) -> boolean,
-	Destroy: (self: Folder) -> (),
-}
+local Environment = require "../src/roblox/environment"
+
+export type Folder = Environment.Instance
 export type Metadata = { name: string, environment: { [string]: string }, now: () -> number }
 export type View = { children: { string }, parent: string?, ancestors: { string } }
 
@@ -19,7 +16,7 @@ local reparent = Verify.operation {
 	name = "reparent",
 	input = function(value: unknown): Reparent
 		assert(type(value) == "table", "expected reparent payload")
-		local row = value :: { [string]: unknown }
+		local row = Shape.record(value, "payload")
 		assert(
 			type(row.object) == "string" and (row.parent == nil or type(row.parent) == "string"),
 			"invalid reparent payload"
@@ -44,12 +41,12 @@ local children = Verify.operation {
 	end,
 	output = function(value: unknown): View
 		assert(type(value) == "table", "expected hierarchy view")
-		local row = value :: { [string]: unknown }
+		local row = Shape.record(value, "payload")
 		assert(row.parent == nil or type(row.parent) == "string", "invalid parent")
 		local function strings(value: unknown): { string }
 			assert(type(value) == "table", "expected names")
 			local result: { string } = {}
-			for index, child in value :: { unknown } do
+			for index, child in value do
 				assert(index == #result + 1 and type(child) == "string", "invalid name array")
 				table.insert(result, child)
 			end
@@ -97,7 +94,7 @@ local function host(createFolder: () -> Folder, metadata: Metadata): Experience.
 			initialize()
 			if request.kind == "action" and request.name == "reparent" then
 				assert(type(request.payload) == "table", "reparent requires a named object and parent")
-				local payload = request.payload :: { [string]: unknown }
+				local payload = Shape.record(request.payload, "reparent payload")
 				assert(type(payload.object) == "string", "reparent object must be a name")
 				local object = folders[payload.object]
 				assert(object ~= nil, "unknown hierarchy object")
@@ -115,7 +112,9 @@ local function host(createFolder: () -> Folder, metadata: Metadata): Experience.
 				assert(object ~= nil, "unknown hierarchy object")
 				local children: { string } = {}
 				for _, child in object:GetChildren() do
-					table.insert(children, child.Name)
+					local name = child.Name
+					assert(type(name) == "string")
+					table.insert(children, name)
 				end
 				local ancestors: { string } = {}
 				for name, candidate in folders do
@@ -126,8 +125,13 @@ local function host(createFolder: () -> Folder, metadata: Metadata): Experience.
 				table.sort(children)
 				table.sort(ancestors)
 				local parent = object.Parent
-				local view: View =
-					{ children = children, parent = if parent ~= nil then parent.Name else nil, ancestors = ancestors }
+				local parentName: string? = nil
+				if parent ~= nil then
+					local name = parent.Name
+					assert(type(name) == "string")
+					parentName = name
+				end
+				local view: View = { children = children, parent = parentName, ancestors = ancestors }
 				return view
 			end
 			error("unsupported hierarchy operation", 0)

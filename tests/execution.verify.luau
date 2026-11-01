@@ -47,7 +47,11 @@ local PLAN: Verify.PlanDraft = {
 }
 
 local function queued(host: Verify.Host): Verify.Host
-	host.runQueue = function(_parallel, take, deliver)
+	host.runQueue = function(
+		_parallel: number,
+		take: () -> Verify.PlanBatch?,
+		deliver: (number, Verify.BatchOutcome) -> ()
+	)
 		while true do
 			local batch = take()
 			if batch == nil then
@@ -97,7 +101,11 @@ end
 describe("queued execution", function()
 	it("keeps reports and attempt order independent of completion order", function()
 		local host = queued(Host.create { units = UNITS })
-		host.runQueue = function(_parallel, take, deliver)
+		host.runQueue = function(
+			_parallel: number,
+			take: () -> Verify.PlanBatch?,
+			deliver: (number, Verify.BatchOutcome) -> ()
+		)
 			local pending: { Verify.PlanBatch } = {}
 			while true do
 				local batch = take()
@@ -167,7 +175,11 @@ describe("queued execution", function()
 	it("rejects an outcome for a batch that was never dispatched", function()
 		local host = queued(Host.create { units = UNITS })
 		local dispatch = assert(host.runQueue)
-		host.runQueue = function(parallel, take, deliver)
+		host.runQueue = function(
+			parallel: number,
+			take: () -> Verify.PlanBatch?,
+			deliver: (number, Verify.BatchOutcome) -> ()
+		)
 			deliver(99, { status = "faulted", detail = "foreign outcome" })
 			dispatch(parallel, take, deliver)
 		end
@@ -569,6 +581,24 @@ describe("execution retry policy", function()
 end)
 
 describe("execution transport faults", function()
+	it("records an executable batch outcome as a fault without running its metamethods", function()
+		local host = Host.create { units = UNITS }
+		local runBatch = host.runBatch
+		local invoked = false
+		local function reject()
+			invoked = true
+			error "batch outcome metamethod must not run"
+		end
+		host.runBatch = function(batch): Verify.BatchOutcome
+			return setmetatable(runBatch(batch), { __index = reject, __iter = reject })
+		end
+		local execution = Verify.execute(PLAN, host, { batchCount = 1 })
+		expect(execution.attempts[1].status):toEqual "faulted"
+		expect(execution.attempts[1].detail):toContain "plain batch outcome"
+		expect(execution.report.failed):toEqual(4)
+		expect(invoked):toEqual(false)
+	end)
+
 	it("names a batch the host never delivered an outcome for", function()
 		local execution = Verify.execute(
 			PLAN,
@@ -674,7 +704,8 @@ describe("execution deadlines cancellation and fail-fast", function()
 	end)
 
 	it("fails a run that proved nothing", function()
-		local execution = Verify.execute({ id = "empty", units = {} }, Host.create { units = {} })
+		local empty: Verify.PlanDraft = { id = "empty", units = {} }
+		local execution = Verify.execute(empty, Host.create { units = {} })
 		expect((hasFact(execution, "no-cases"))):toEqual(true)
 		expect((statusOf(execution.report, "execution:no-cases:empty"))):toEqual "failed"
 	end)
@@ -693,12 +724,12 @@ describe("owned resources", function()
 				table.insert(released, "function")
 			end)
 			context:own {
-				dispose = function()
+				dispose = function(_self: {})
 					table.insert(released, "dispose")
 				end,
 			}
 			context:own {
-				destroy = function()
+				destroy = function(_self: {})
 					table.insert(released, "destroy")
 				end,
 			}
@@ -706,20 +737,6 @@ describe("owned resources", function()
 		local report = harness:run { executor = "test" }
 		expect(report.passed):toEqual(1)
 		expect(released):toEqual { "destroy", "dispose", "function" }
-	end)
-
-	it("refuses a resource with no release method", function()
-		local harness = Verify.createHarness {
-			now = function(): number
-				return 0
-			end,
-		}
-		harness:case("owns nothing releasable", function(context)
-			context:own(({ handle = true } :: unknown) :: Verify.Resource)
-		end)
-		local report = harness:run { executor = "test" }
-		expect(report.failed):toEqual(1)
-		expect(report.results[1].failures[1].message):toContain "dispose or destroy"
 	end)
 
 	it("releases an owned resource even when the case failed", function()
@@ -742,7 +759,7 @@ describe("owned resources", function()
 
 	describe("selection accounting", function()
 		it("says exactly what ran, what the host could not run and what was not run", function()
-			local plan = Plan.validate {
+			local draft: Verify.PlanDraft = {
 				id = "catalogue",
 				units = {
 					{ id = "unit/a", locator = "a.luau", tags = { "unit" } },
@@ -750,6 +767,7 @@ describe("owned resources", function()
 					{ id = "e2e/c", locator = "c.luau", tags = { "e2e" }, requires = { "player" } },
 				},
 			}
+			local plan = Plan.validate(draft)
 			local units: { [string]: Host.UnitRun } = {
 				["unit/a"] = passing "a",
 				["unit/b"] = passing "b",

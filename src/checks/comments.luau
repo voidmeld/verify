@@ -8,6 +8,8 @@ local Walk = require "./walk"
 local Text = require "./comment-text"
 local Repository = require "./repository"
 
+type Removal = { start: number, finish: number }
+
 export type Config = {
 	roots: { string }?,
 	files: { string }?,
@@ -32,23 +34,20 @@ local function check(config: Config): { string }
 		end
 		seen[path] = true
 		local text = fs.readFileToString(path)
-		local parsed = (parser.parse(text) :: unknown) :: { root: syntax.CstStatBlock, eof: syntax.CstToken<string> }
+		local parsed = parser.parse(text)
 		local walk = visitor.create()
-		local removals: { { start: number, finish: number } } = {}
+		local removals: { Removal } = {}
 		local offsets: { [number]: boolean } = {}
-		walk.visitToken = function(token)
-			local view = (token :: unknown) :: {
-				leadingTrivia: { { tag: string, text: string, location: { beginLine: number, beginColumn: number } } },
-				trailingTrivia: { { tag: string, text: string, location: { beginLine: number, beginColumn: number } } },
-			}
-			for _, trivia in { view.leadingTrivia, view.trailingTrivia } do
+		walk.visitToken = function(token: syntax.CstToken): boolean
+			for _, trivia in { token.leadingTrivia, token.trailingTrivia } do
 				for _, item in trivia do
 					if item.tag == "whitespace" then
 						continue
 					end
 					local lineStart = 1
 					for _ = 2, item.location.beginLine do
-						lineStart = (string.find(text, "\n", lineStart, true) :: number) + 1
+						local ending = string.find(text, "\n", lineStart, true)
+						lineStart = assert(ending) + 1
 					end
 					local start = lineStart + item.location.beginColumn - 1
 					local finish = start + #item.text - 1
@@ -64,9 +63,10 @@ local function check(config: Config): { string }
 							end
 						end
 					end
-					if config.licenseFragments ~= nil then
+					local fragments = config.licenseFragments
+					if fragments ~= nil then
 						local license = true
-						for _, fragment in config.licenseFragments do
+						for _, fragment in fragments do
 							if string.find(item.text, fragment, 1, true) == nil then
 								license = false
 							end
@@ -91,7 +91,7 @@ local function check(config: Config): { string }
 		visitor.visit(parsed.root, walk)
 		walk.visitToken(parsed.eof)
 		if config.write then
-			table.sort(removals, function(left, right)
+			table.sort(removals, function(left: Removal, right: Removal): boolean
 				return left.start > right.start
 			end)
 			for _, removal in removals do

@@ -34,7 +34,7 @@ local function write(report: Core.Report, directory: string, required: { Require
 	local captured: { Captured } = {}
 	local summary = { Core.format(copy), "", "Artifacts:" }
 	local count = 0
-	local function persist(artifact: Core.Artifact, caseId: string, actor: string?, checkpoint: string?)
+	local function persist(artifact: Core.Artifact, caseId: string, actor: string?, checkpoint: string?): Core.Artifact
 		count += 1
 		local identity = caseId
 			.. (if actor then " / " .. actor else "")
@@ -42,6 +42,7 @@ local function write(report: Core.Report, directory: string, required: { Require
 			.. " / "
 			.. artifact.name
 		local reference = artifact.reference
+		local saved = reference
 		local ok, reason = pcall(function()
 			local source = absolute(reference)
 			local bytes = Files.readArtifact(reference)
@@ -52,26 +53,36 @@ local function write(report: Core.Report, directory: string, required: { Require
 			local filename = string.format("%04d-%s%s", count, safe(artifact.name), suffix)
 			local output = assert(artifactsDirectory) .. "/" .. filename
 			Files.writeArtifact(output, bytes)
-			artifact.reference = output
+			saved = output
 		end)
 		if ok then
 			table.insert(
 				captured,
 				{ caseId = caseId, actor = actor, checkpoint = checkpoint, mediaType = artifact.mediaType }
 			)
-			table.insert(summary, "saved " .. identity .. ": " .. artifact.reference)
+			table.insert(summary, "saved " .. identity .. ": " .. saved)
+			return {
+				name = artifact.name,
+				reference = saved,
+				mediaType = artifact.mediaType,
+				sha256 = artifact.sha256,
+				size = artifact.size,
+				provenance = artifact.provenance,
+				content = artifact.content,
+			}
 		else
 			table.insert(summary, "MISSING " .. identity .. ": " .. reference .. " (" .. tostring(reason) .. ")")
+			return artifact
 		end
 	end
 	for _, result in copy.results do
-		for _, artifact in result.artifacts do
-			persist(artifact, result.id, nil, nil)
+		for index, artifact in result.artifacts do
+			result.artifacts[index] = persist(artifact, result.id, nil, nil)
 		end
 		if result.evidence then
 			for _, checkpoint in result.evidence.checkpoints do
-				for _, artifact in checkpoint.artifacts do
-					persist(artifact, result.id, checkpoint.actor, checkpoint.name)
+				for index, artifact in checkpoint.artifacts do
+					checkpoint.artifacts[index] = persist(artifact, result.id, checkpoint.actor, checkpoint.name)
 				end
 			end
 		end

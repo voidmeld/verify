@@ -79,7 +79,7 @@ end
 
 local function noAny(config: Selection): { string }
 	local selection = table.clone(config)
-	selection.suffixes = { ".luau" }
+	selection.suffixes = { ".luau", ".lua" }
 	local findings: { string } = {}
 	for _, path in selected(selection) do
 		local source = fs.readFileToString((config.root or ".") .. "/" .. path)
@@ -88,6 +88,9 @@ local function noAny(config: Selection): { string }
 		end
 		for _, line in Policy.nonStrict(source) do
 			table.insert(findings, ("%s:%d: weakening strict checking is forbidden"):format(path, line))
+		end
+		for _, line in Policy.casts(source) do
+			table.insert(findings, ("%s:%d: type casts are forbidden"):format(path, line))
 		end
 		for _, line in Policy.explicitAny(source) do
 			table.insert(findings, ("%s:%d: explicit any is forbidden"):format(path, line))

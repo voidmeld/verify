@@ -34,11 +34,18 @@ local function decode(source: string): (Metrics.Face, string)
 	for _, entry in assert(json.asArray(root.sizes)) do
 		local row = assert(json.asObject(entry))
 		local advances, adjustments = numbers(row.advances), numbers(row.adjustments)
-		local starts = if row.starts == nil then nil else numbers(row.starts)
-		local ends = if row.ends == nil then nil else numbers(row.ends)
+		local declaredStarts, declaredEnds = row.starts, row.ends
+		local starts = if declaredStarts == nil then nil else numbers(declaredStarts)
+		local ends = if declaredEnds == nil then nil else numbers(declaredEnds)
 		assert(#advances == #tokens and #adjustments == #pairs)
-		assert(starts == nil or #starts == #tokens)
-		assert(ends == nil or #ends == #tokens)
+		if starts ~= nil then
+			local values: { number } = starts
+			assert(#values == #tokens)
+		end
+		if ends ~= nil then
+			local values: { number } = ends
+			assert(#values == #tokens)
+		end
 		table.insert(sizes, {
 			advances = advances,
 			adjustments = adjustments,
@@ -192,4 +199,4 @@ local function heights(): (Values.TextParameters, number, number) -> number
 	end
 end
 
-return { create = create, truncator = truncator, heights = heights }
+return { create = create, truncator = truncator, heights = heights, decode = decode }

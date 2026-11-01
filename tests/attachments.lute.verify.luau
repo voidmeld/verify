@@ -81,7 +81,7 @@ describe("inline text attachments on the simulator", function()
 		run = function(_, caseContext)
 			local stored: { [string]: string } = {}
 			local result = simulate(caseContext, "attach-ok", function(options)
-				options.attachmentSink = function(caseId, name, text, meta)
+				options.attachmentSink = function(caseId: string, name: string, text: string, meta)
 					stored[caseId .. "/" .. name] = text
 					expect(meta.sha256):toEqual(Store.sha256(text))
 					return "sink://" .. caseId .. "/" .. name, nil
@@ -259,7 +259,7 @@ describe("attachments through a Studio transport", function()
 			local fetches = 0
 			local transport: Lute.StudioTransport = {
 				call = function(tool: string, argumentsJson: string): Lute.StudioExchange
-					local arguments = Wire.parse(argumentsJson) :: { [string]: unknown }
+					local arguments = Wire.record(Wire.parse(argumentsJson), "arguments")
 					local function text(value: string): unknown
 						return { content = { { type = "text", text = value } } }
 					end
@@ -283,7 +283,7 @@ describe("attachments through a Studio transport", function()
 				end,
 				close = function() end,
 			}
-			local session = assert(Lute.studio.attach {
+			local session, refusal = Lute.studio.attach {
 				authorize = function()
 					return { ok = true }
 				end,
@@ -291,7 +291,8 @@ describe("attachments through a Studio transport", function()
 				transport = transport,
 				callSeconds = 5,
 				runSeconds = 20,
-			})
+			}
+			assert(session ~= nil, if refusal then refusal.detail else "attachment failed")
 			local result = session.report("Server", 'local runId = "run-9"; return produce(runId)', "run-9")
 			expect(result.problem):toBeNil()
 			expect(fetches > 12):toBe(true)

@@ -114,6 +114,31 @@ describe("one case execution model", function()
 		expect(report.results[1].steps[1].status):toBe "timed_out"
 	end)
 
+	it("foreign error tables cannot run metamethods in the failure classifier", function()
+		local inspected, cleaned = 0, 0
+		local function inspect(): never
+			inspected += 1
+			error "error metamethod must not run"
+		end
+		local fault = setmetatable({}, { __index = inspect, __iter = inspect })
+		local harness = Verify.createHarness {
+			now = function()
+				return 0
+			end,
+		}
+		harness:case("foreign error", function(context)
+			context:defer(function()
+				cleaned += 1
+			end)
+			error(fault)
+		end)
+		local report = harness:run { executor = "memory" }
+		expect(report.failed):toBe(1)
+		expect(report.results[1].failures[1].phase):toBe "case"
+		expect(inspected):toBe(0)
+		expect(cleaned):toBe(1)
+	end)
+
 	it("ordinary and BDD cases use the same deadline and cleanup classifier", function()
 		local time = 0
 		local cleaned = 0

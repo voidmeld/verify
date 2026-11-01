@@ -3,6 +3,7 @@
 local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
+local Shape = require "../src/core/shape"
 local Verify = require "../src/core"
 local Experience = require "../src/core/operations"
 
@@ -88,7 +89,11 @@ describe("experience cases", function()
 		expect(closed):toBe(true)
 		expect(result.results[1].steps[1].actor):toBe "server"
 		expect(#result.results[1].artifacts):toBe(1)
-		expect(#(assert(result.results[1].evidence)).reviews):toBe(1)
+		local evidence = assert(result.results[1].evidence)
+		expect(#evidence.reviews):toBe(1)
+		expect(table.isfrozen(evidence.checkpoints[1].artifacts)):toBe(true)
+		expect(table.isfrozen(evidence.checkpoints[1].artifacts[1])):toBe(true)
+		expect(table.isfrozen(evidence.reviews[1].judgment)):toBe(true)
 	end)
 	it("missing declared capabilities are unsupported without execution", function()
 		local host, count = fixture()
@@ -104,7 +109,7 @@ describe("experience cases", function()
 	end)
 	it("capture alone cannot satisfy a quality judgment", function()
 		local host = fixture()
-		host.judge = function()
+		host.judge = function(_request: Experience.JudgmentRequest): Experience.Judgment
 			return { status = "unreviewed", reviewer = "fixture", detail = "no review performed" }
 		end
 		local result = Verify.runCase(
@@ -154,13 +159,14 @@ describe("experience cases", function()
 	end)
 	it("retains immutable portable observations and refuses cycles", function()
 		local payload = { value = 1 }
-		local copied = Experience.snapshot(payload) :: { value: number }
+		local copied = Experience.snapshot(payload)
+		assert(type(copied) == "table")
 		payload.value = 2
-		expect(copied.value):toBe(1)
+		expect(Shape.record(copied, "copied payload").value):toBe(1)
 		expect(table.isfrozen(copied)):toBe(true)
 		local cycle: { [string]: unknown } = {}
 		cycle.self = cycle
-		local ok = pcall(Experience.snapshot, cycle)
+		local ok = pcall(Experience.snapshot, cycle, nil)
 		expect(ok):toBe(false)
 	end)
 	it("parity compares observations and refuses two unsupported runs", function()
@@ -211,7 +217,8 @@ describe("experience cases", function()
 			executor = host.name,
 			capabilities = host.capabilities,
 			bind = function()
-				return fixture()
+				local fresh = fixture()
+				return fresh
 			end,
 		}
 

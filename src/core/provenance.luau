@@ -86,7 +86,7 @@ local function copyBuild(value: unknown, label: string): Build
 	if type(value) ~= "table" then
 		error(label .. " must be a table", 3)
 	end
-	local raw = value :: { [string]: unknown }
+	local raw = Shape.record(value, label)
 	if type(raw.clean) ~= "boolean" then
 		error(label .. ".clean must be a boolean", 3)
 	end
@@ -102,7 +102,7 @@ local function copyProvenance(value: unknown, label: string): Provenance
 	if type(value) ~= "table" then
 		error(label .. " must be a table", 3)
 	end
-	local raw = value :: { [string]: unknown }
+	local raw = Shape.record(value, label)
 	local actor = if raw.actor == nil then nil else text(raw.actor, label .. ".actor")
 	local checkpoint = if raw.checkpoint == nil then nil else text(raw.checkpoint, label .. ".checkpoint")
 	if checkpoint ~= nil and actor == nil then
@@ -164,9 +164,10 @@ end
 
 local function memorySink(hash: Hasher): MemorySink
 	local sink: MemorySink
+	local blobs: { [string]: string } = {}
 	local count = 0
 	sink = {
-		blobs = {},
+		blobs = blobs,
 		available = true,
 		put = function(content: Content, meta: Meta): (string?, string?)
 			if not sink.available then

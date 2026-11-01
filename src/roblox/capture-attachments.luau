@@ -1,5 +1,7 @@
 --!strict
 
+local Shape = require "../core/shape"
+
 export type Part = { name: string, bytes: number, sha256: string }
 export type File = { name: string, mediaType: string, bytes: number, sha256: string, parts: { Part } }
 export type Manifest = { schemaVersion: number, files: { File } }
@@ -81,36 +83,17 @@ local function writer(
 	}
 end
 
-local function reassemble<A>(
-	artifacts: { A },
-	decode: (string) -> unknown,
-	sha256: (string) -> string
-): { [string]: string }
-	local parts: { [string]: string } = {}
-	for _, entry in artifacts do
-		local artifact = (entry :: unknown) :: Artifact
-		assert(parts[artifact.name] == nil, "duplicate capture part")
-		local content = assert(artifact.content, "capture part has no content")
-		assert(
-			#content > 0 and #content < LIMITS.maxBytes and utf8.len(content) ~= nil,
-			"invalid capture part size or UTF-8"
-		)
-		parts[artifact.name] = content
-	end
-	local manifest = decode((assert(parts[MANIFEST], "missing capture manifest"))) :: Manifest
+local function decodeManifest(value: unknown): Manifest
+	local manifest = Shape.record(value, "capture manifest")
 	assert(
-		type(manifest) == "table"
-			and manifest.schemaVersion == 1
-			and type(manifest.files) == "table"
-			and #manifest.files > 0,
+		manifest.schemaVersion == 1 and type(manifest.files) == "table" and #manifest.files > 0,
 		"invalid capture manifest"
 	)
-	local used: { [string]: boolean } = { [MANIFEST] = true }
-	local output: { [string]: string } = {}
-	local total = 0
-	for _, file in manifest.files do
+	local files: { File } = {}
+	for _, entry in manifest.files do
+		local file = Shape.record(entry, "capture file")
+		assert(type(file.name) == "string", "invalid captured file name")
 		name(file.name)
-		assert(output[file.name] == nil, "duplicate captured file")
 		assert(type(file.mediaType) == "string" and file.mediaType ~= "", "invalid capture media type")
 		assert(
 			type(file.bytes) == "number"
@@ -120,6 +103,51 @@ local function reassemble<A>(
 			"invalid capture byte count"
 		)
 		assert(type(file.parts) == "table" and #file.parts > 0, "capture has no parts")
+		local parts: { Part } = {}
+		for _, item in file.parts do
+			local part = Shape.record(item, "capture part")
+			assert(
+				type(part.name) == "string" and type(part.sha256) == "string" and type(part.bytes) == "number",
+				"invalid capture part"
+			)
+			table.insert(parts, { name = part.name, bytes = part.bytes, sha256 = digest(part.sha256) })
+		end
+		assert(type(file.sha256) == "string", "invalid capture digest")
+		table.insert(files, {
+			name = file.name,
+			mediaType = file.mediaType,
+			bytes = file.bytes,
+			sha256 = digest(file.sha256),
+			parts = parts,
+		})
+	end
+	return { schemaVersion = 1, files = files }
+end
+
+local function reassemble<A>(
+	artifacts: { A },
+	decode: (string) -> unknown,
+	sha256: (string) -> string
+): { [string]: string }
+	local parts: { [string]: string } = {}
+	for _, entry in artifacts do
+		local artifact = Shape.record(entry, "capture artifact")
+		assert(type(artifact.name) == "string", "invalid capture part name")
+		assert(parts[artifact.name] == nil, "duplicate capture part")
+		local content = artifact.content
+		assert(type(content) == "string", "capture part has no content")
+		assert(
+			#content > 0 and #content < LIMITS.maxBytes and utf8.len(content) ~= nil,
+			"invalid capture part size or UTF-8"
+		)
+		parts[artifact.name] = content
+	end
+	local manifest = decodeManifest(decode((assert(parts[MANIFEST], "missing capture manifest"))))
+	local used: { [string]: boolean } = { [MANIFEST] = true }
+	local output: { [string]: string } = {}
+	local total = 0
+	for _, file in manifest.files do
+		assert(output[file.name] == nil, "duplicate captured file")
 		local chunks: { string } = {}
 		for _, part in file.parts do
 			assert(not used[part.name], "duplicate capture manifest part")
@@ -146,4 +174,4 @@ local function reassemble<A>(
 	return output
 end
 
-return { writer = writer, reassemble = reassemble, limits = LIMITS }
+return { writer = writer, reassemble = reassemble, decode = decodeManifest, limits = LIMITS }

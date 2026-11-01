@@ -11,7 +11,7 @@ type Status = Model.Status
 type Failure = Model.Failure
 type Origin = Model.Origin
 type CaseResult = Model.CaseResult
-type Expectation = Model.Expectation
+type Expectation<T = unknown> = Model.Expectation<T>
 type InvocationResult = Model.InvocationResult
 type Invoker = Model.Invoker
 type StepOptions = Model.StepOptions
@@ -22,11 +22,35 @@ type RunOptions = Model.RunOptions
 type CaseEntry = Model.CaseEntry
 type Suite = Model.Suite
 
+local function snapshotFields(source: { [string]: unknown }, target: { [string]: unknown })
+	for key, value in source do
+		assert(type(key) == "string", "observations require string keys")
+		target[key] = Operations.snapshot(value)
+	end
+	table.freeze(target)
+end
+
 local RuntimeSkip = {}
 local StepAbort = {}
 local TimedOut = {}
 local Cancelled = {}
 local Unsupported = {}
+
+local function failureFields(value: unknown): (unknown, unknown, unknown)
+	local signal, reason, detail: unknown = nil, nil, nil
+	if type(value) == "table" then
+		for key, item in next, value do
+			if key == "signal" then
+				signal = item
+			elseif key == "reason" then
+				reason = item
+			elseif key == "detail" then
+				detail = item
+			end
+		end
+	end
+	return signal, reason, detail
+end
 
 local checkedName = Model.checkedName
 local ancestors = Model.ancestors
@@ -151,18 +175,17 @@ local function executeCase(
 		then
 			return { outcome = "failed", error = "executor invoker returned an unknown outcome" }
 		end
-		local abort = type(invocation.error) == "table"
-			and (invocation.error :: { [string]: unknown }).signal == StepAbort
+		local thrown = invocation.error
+		local signal, _, detail = failureFields(thrown)
+		local abort = signal == StepAbort
 		if not abort and now() >= (if releasing then cleanupDeadline else deadline) then
 			return {
 				outcome = "timed_out",
 				error = "case deadline exceeded: " .. tostring(invocation.error or "late completion"),
 			}
 		end
-		if invocation.outcome == "failed" and type(invocation.error) == "table" then
-			local signal = (invocation.error :: { [string]: unknown }).signal
+		if invocation.outcome == "failed" and type(thrown) == "table" then
 			if signal == TimedOut then
-				local detail = (invocation.error :: { [string]: unknown }).detail
 				return {
 					outcome = "timed_out",
 					error = if type(detail) == "string" then detail else "case deadline exceeded",
@@ -181,14 +204,14 @@ local function executeCase(
 		end
 		local thrown = invocation.error
 		if type(thrown) == "table" then
-			local signal = thrown :: { [unknown]: unknown }
-			if signal.signal == RuntimeSkip then
-				runtimeSkipReason = tostring(signal.reason)
+			local signal, reason = failureFields(thrown)
+			if signal == RuntimeSkip then
+				runtimeSkipReason = tostring(reason)
 				return false
-			elseif signal.signal == Unsupported then
-				table.insert(missing, tostring(signal.reason))
+			elseif signal == Unsupported then
+				table.insert(missing, tostring(reason))
 				return false
-			elseif signal.signal == StepAbort then
+			elseif signal == StepAbort then
 				return false
 			end
 		end
@@ -204,7 +227,7 @@ local function executeCase(
 		return false
 	end
 
-	local function context_expect(self: Context, value: unknown): Expectation
+	local function context_expect<T>(self: Context, value: T?): Expectation<T>
 		return Matchers.expect(value)
 	end
 
@@ -223,14 +246,13 @@ local function executeCase(
 		if type(resource) ~= "table" then
 			error("own requires a function or a table carrying dispose or destroy", 2)
 		end
-		local handle = resource :: T & Disposable<T>
+		local handle: T & Disposable<T> = resource
 		local release = (handle.dispose or handle.destroy)
 		if type(release) ~= "function" then
 			error("own requires a resource with a dispose or destroy method", 2)
 		end
-		local dispose = release :: (T) -> ()
 		table.insert(cleanups, function()
-			dispose(handle)
+			release(handle)
 		end)
 	end
 
@@ -267,8 +289,7 @@ local function executeCase(
 			runOptions.progress.publish(entry.id, actor or "case", name, "started", nil)
 		end
 		local invocation = invoke("step", stepRun)
-		local unsupported = type(invocation.error) == "table"
-			and (invocation.error :: { [string]: unknown }).signal == Unsupported
+		local unsupported = failureFields(invocation.error) == Unsupported
 		local stepStatus: "passed" | "failed" | "timed_out" | "cancelled" | "unsupported" = if unsupported
 			then "unsupported"
 			elseif invocation.outcome == "returned" then "passed"
@@ -363,13 +384,14 @@ local function executeCase(
 						),
 					}, 0)
 				end
-				local called, value = pcall(bound.invoke, {
+				local request: Operations.Request = {
 					kind = operation.kind,
 					actor = actor,
 					name = operation.name,
 					payload = payload,
 					deadline = callLimit,
-				})
+				}
+				local called, value = pcall(bound.invoke, request)
 				if not called then
 					if deadlineSeconds ~= nil and callLimit < caseLimit and now() >= callLimit then
 						stuck(tostring(value))
@@ -527,8 +549,12 @@ local function executeCase(
 			actor = actor,
 			run = function()
 				assert(actor ~= "" and name ~= "", "measurement needs actor and name")
-				local capturedInput = Operations.snapshot(input) :: Performance.Input
-				local capturedLimits = Operations.snapshot(limits) :: Performance.Limits
+				assert(getmetatable(input) == nil, "observations must be plain values")
+				local capturedInput = table.clone(input)
+				snapshotFields(input, capturedInput)
+				assert(getmetatable(limits) == nil, "observations must be plain values")
+				local capturedLimits = table.clone(limits)
+				snapshotFields(limits, capturedLimits)
 				local evaluation = Performance.evaluate(Performance.summarize(capturedInput), capturedLimits)
 				table.insert(evidence.measurements, {
 					step = #steps + 1,

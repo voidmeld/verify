@@ -39,8 +39,12 @@ it("capture attachments split a sixteen MiB native result within harness limits 
 		writer.attach("metrics.json", "application/json", "{}")
 		writer.finish()
 	end)
-	local report =
-		Core.decode(Wire.parse(Wire.encode(harness:run { executor = "capture-test", attachments = Parts.limits })))
+	local limits: Core.AttachmentLimits = {
+		maxBytes = Parts.limits.maxBytes,
+		maxCount = Parts.limits.maxCount,
+		maxTotalBytes = Parts.limits.maxTotalBytes,
+	}
+	local report = Core.decode(Wire.parse(Wire.encode(harness:run { executor = "capture-test", attachments = limits })))
 	expect(report.passed):toBe(1)
 	for _, artifact in report.results[1].artifacts do
 		local text = assert(artifact.content)
@@ -75,34 +79,33 @@ it("capture reassembly refuses missing duplicate extra and altered parts", funct
 end)
 
 it("capture reassembly refuses malformed manifests before writing files", function(own)
-	for _, mutate in
-		{
-			function(manifest: Parts.Manifest)
-				manifest.files[1].bytes += 1
-			end,
-			function(manifest: Parts.Manifest)
-				manifest.files[1].sha256 = string.rep("0", 64)
-			end,
-			function(manifest: Parts.Manifest)
-				manifest.files[1].parts[1].bytes += 1
-			end,
-			function(manifest: Parts.Manifest)
-				table.insert(manifest.files[1].parts, manifest.files[1].parts[1])
-			end,
-			function(manifest: Parts.Manifest)
-				table.insert(manifest.files, manifest.files[1])
-			end,
-			function(manifest: Parts.Manifest)
-				manifest.files[1].name = "../escape.json"
-			end,
-			function(manifest: Parts.Manifest)
-				manifest.schemaVersion = 2
-			end,
-		}
-	do
+	local mutations: { (Parts.Manifest) -> () } = {
+		function(manifest: Parts.Manifest)
+			manifest.files[1].bytes += 1
+		end,
+		function(manifest: Parts.Manifest)
+			manifest.files[1].sha256 = string.rep("0", 64)
+		end,
+		function(manifest: Parts.Manifest)
+			manifest.files[1].parts[1].bytes += 1
+		end,
+		function(manifest: Parts.Manifest)
+			table.insert(manifest.files[1].parts, manifest.files[1].parts[1])
+		end,
+		function(manifest: Parts.Manifest)
+			table.insert(manifest.files, manifest.files[1])
+		end,
+		function(manifest: Parts.Manifest)
+			manifest.files[1].name = "../escape.json"
+		end,
+		function(manifest: Parts.Manifest)
+			manifest.schemaVersion = 2
+		end,
+	}
+	for _, mutate in mutations do
 		local artifacts = capture "{}"
 		local entry = artifacts[#artifacts]
-		local manifest = Wire.parse(assert(entry.content)) :: Parts.Manifest
+		local manifest = Parts.decode(Wire.parse(assert(entry.content)))
 		mutate(manifest)
 		entry.content = Wire.encode(manifest)
 		local directory = temporary(own, "refused-capture") .. "/restored"

@@ -52,6 +52,7 @@ local SOURCES = { "src", "tests", "tools", "examples", "lint.config.luau" }
 local lsp: { string } = {
 	"luau-lsp",
 	"analyze",
+	"--flag:LuauSolverV2=true",
 	"--platform=standard",
 	"--base-luaurc=.luaurc",
 	"--ignore=**/.lute/**",

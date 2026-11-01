@@ -33,7 +33,7 @@ it("queued workers refill a free slot while another batch is still running", fun
 	local host = Lute.host { worker = "unused-worker.luau" }
 	local active, maximum = 0, 0
 	local thirdStarted, overlapped = false, false
-	host.runBatch = function(batch)
+	host.runBatch = function(batch: Verify.PlanBatch): Verify.BatchOutcome
 		active += 1
 		maximum = math.max(maximum, active)
 		if batch.index == 1 then

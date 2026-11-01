@@ -86,7 +86,8 @@ local function create(dependencies: Dependencies)
 		end
 	end
 
-	local COMMON: { [string]: boolean } = table.freeze { IsA = true, GetPropertyChangedSignal = true }
+	local commonMethods: { [string]: boolean } = { IsA = true, GetPropertyChangedSignal = true }
+	local COMMON = table.freeze(commonMethods)
 	local function universal(object: Instance, state: State, key: string): unknown
 		if not state.class.instance and COMMON[key] ~= true then
 			return nil
@@ -127,75 +128,81 @@ local function create(dependencies: Dependencies)
 						return child
 					end
 				end
-				return (
-					scheduler.block(function(waiter: thread)
-						local finished = false
-						local added: Connection?
-						local removed: Connection?
-						local names: { [Instance]: Connection } = {}
-						local timer: thread?
-						local function cleanup()
-							if finished then
-								return
-							end
-							finished = true
-							if added then
-								added:Disconnect()
-							end
-							if removed then
-								removed:Disconnect()
-							end
-							for _, connection in names do
-								connection:Disconnect()
-							end
-							table.clear(names)
-							if timer then
-								scheduler.cancel(timer)
-							end
+				local result = scheduler.block(function(waiter: thread)
+					local finished = false
+					local added: Connection?
+					local removed: Connection?
+					local names: { [Instance]: Connection } = {}
+					local timer: thread?
+					local function cleanup()
+						if finished then
+							return
 						end
-						local function finish(child: Instance?)
-							if finished then
-								return
-							end
-							cleanup()
-							if coroutine.status(waiter) ~= "dead" then
-								scheduler.resume(waiter, child)
-							end
+						finished = true
+						if added then
+							added:Disconnect()
 						end
-						local function watch(child: Instance)
-							names[child] = child:GetPropertyChangedSignal("Name"):Connect(function()
-								if stateOf(child).parent == object and stateOf(child).values.Name == name then
-									finish(child)
-								end
-							end)
+						if removed then
+							removed:Disconnect()
 						end
-						for _, child in state.children do
+						for _, connection in names do
+							connection:Disconnect()
+						end
+						table.clear(names)
+						if timer then
+							scheduler.cancel(timer)
+						end
+					end
+					local function finish(child: Instance?)
+						if finished then
+							return
+						end
+						cleanup()
+						if coroutine.status(waiter) ~= "dead" then
+							scheduler.resume(waiter, child)
+						end
+					end
+					local function watch(child: Instance)
+						names[child] = child:GetPropertyChangedSignal("Name"):Connect(function()
+							if stateOf(child).parent == object and stateOf(child).values.Name == name then
+								finish(child)
+							end
+						end)
+					end
+					for _, child in state.children do
+						watch(child)
+					end
+					added = signalFor(state, "ChildAdded"):Connect(function(value: unknown)
+						local child = instances[value]
+						assert(child ~= nil, "expected a simulated Instance")
+						if stateOf(child).values.Name == name then
+							finish(child)
+						else
 							watch(child)
 						end
-						added = signalFor(state, "ChildAdded"):Connect(function(value: unknown)
-							local child = value :: Instance
-							if stateOf(child).values.Name == name then
-								finish(child)
-							else
-								watch(child)
-							end
-						end)
-						removed = signalFor(state, "ChildRemoved"):Connect(function(value: unknown)
-							local child = value :: Instance
-							local connection = names[child]
-							if connection then
-								connection:Disconnect()
-								names[child] = nil
-							end
-						end)
-						if timeout ~= nil then
-							timer = scheduler.delay(timeout, function()
-								finish(nil)
-							end)
+					end)
+					removed = signalFor(state, "ChildRemoved"):Connect(function(value: unknown)
+						local child = instances[value]
+						assert(child ~= nil, "expected a simulated Instance")
+						local connection = names[child]
+						if connection then
+							connection:Disconnect()
+							names[child] = nil
 						end
-						return cleanup
-					end) :: unknown
-				) :: Instance?
+					end)
+					if timeout ~= nil then
+						timer = scheduler.delay(timeout, function()
+							finish(nil)
+						end)
+					end
+					return cleanup
+				end)
+				if result == nil then
+					return nil
+				end
+				local child = instances[result]
+				assert(child ~= nil, "expected a simulated Instance")
+				return child
 			end
 		elseif key == "FindFirstChild" or key == "FindFirstChildOfClass" or key == "FindFirstChildWhichIsA" then
 			return function(_self: Instance, name: string, recursive: boolean?): Instance?

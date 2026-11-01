@@ -2,12 +2,12 @@
 
 local Datatypes = require "./datatypes"
 local Environment = require "./environment"
-local Adapter = require "./environment-engine"
 local FixtureBridge = require "./fixture-bridge"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
 local UiLayout = require "./ui-layout"
 local ContentFakes = require "./content-fakes"
+local Shape = require "../core/shape"
 
 export type Property = { datatype: string, scriptability: string, tags: { string } }
 export type ClassEntry = {
@@ -67,6 +67,101 @@ local function check(condition: boolean, message: string)
 	end
 end
 
+local function text(value: unknown): string
+	assert(type(value) == "string", "reflection snapshot requires a string")
+	return value
+end
+
+local function numeric(value: unknown): number
+	assert(type(value) == "number", "reflection snapshot requires a number")
+	return value
+end
+
+local function numbers(value: unknown): { number }
+	assert(type(value) == "table", "reflection snapshot requires a number array")
+	local result: { number } = {}
+	for index, item in value do
+		assert(index == #result + 1, "reflection snapshot requires a dense array")
+		table.insert(result, numeric(item))
+	end
+	return result
+end
+
+local function decode(value: unknown): Snapshot
+	local raw = Shape.record(value, "reflection snapshot")
+	local classes: { [string]: ClassEntry } = {}
+	for name, item in Shape.record(raw.classes, "snapshot classes") do
+		local row = Shape.record(item, "snapshot class")
+		local properties: { [string]: Property } = {}
+		for property, entry in Shape.record(row.properties, "snapshot properties") do
+			local data = Shape.record(entry, "snapshot property")
+			properties[property] = {
+				datatype = text(data.datatype),
+				scriptability = text(data.scriptability),
+				tags = Shape.copyStrings(data.tags, "snapshot property tags"),
+			}
+		end
+		local superclass, events, methods = row.superclass, row.events, row.methods
+		classes[name] = {
+			superclass = if superclass == nil then nil else text(superclass),
+			tags = Shape.copyStrings(row.tags, "snapshot class tags"),
+			properties = properties,
+			defaults = Shape.record(row.defaults, "snapshot defaults"),
+			events = if events == nil then nil else Shape.copyStrings(events, "snapshot events"),
+			methods = if methods == nil then nil else Shape.copyStrings(methods, "snapshot methods"),
+		}
+	end
+	local enums: Datatypes.EnumCatalog? = nil
+	if raw.enums ~= nil then
+		local families: Datatypes.EnumCatalog = {}
+		for name, items in Shape.record(raw.enums, "snapshot enums") do
+			assert(type(items) == "table", "snapshot enum requires an array")
+			local family: { { name: string, value: number } } = {}
+			for _, item in items do
+				local row = Shape.record(item, "snapshot enum item")
+				table.insert(family, { name = text(row.name), value = numeric(row.value) })
+			end
+			families[name] = family
+		end
+		enums = families
+	end
+	local brickColors: Datatypes.BrickColorCatalog? = nil
+	if raw.brickColors ~= nil then
+		local row = Shape.record(raw.brickColors, "snapshot brick colors")
+		local colors: { { number: number, name: string, color: { number } } } = {}
+		assert(type(row.colors) == "table", "snapshot brick colors requires an array")
+		for _, item in row.colors do
+			local entry = Shape.record(item, "snapshot brick color")
+			table.insert(
+				colors,
+				{ number = numeric(entry.number), name = text(entry.name), color = numbers(entry.color) }
+			)
+		end
+		local catalog: Datatypes.BrickColorCatalog = { colors = colors, palette = numbers(row.palette) }
+		brickColors = catalog
+	end
+	local fonts: Datatypes.FontCatalog? = nil
+	if raw.fonts ~= nil then
+		local catalog: Datatypes.FontCatalog = {}
+		for name, item in Shape.record(raw.fonts, "snapshot fonts") do
+			local row = Shape.record(item, "snapshot font")
+			catalog[name] = { family = text(row.family), weight = text(row.weight), style = text(row.style) }
+		end
+		fonts = catalog
+	end
+	local engineVersion = raw.engineVersion
+	local snapshot: Snapshot = {
+		schemaVersion = numeric(raw.schemaVersion),
+		engineVersion = if engineVersion == nil then nil else text(engineVersion),
+		classes = classes,
+		enums = enums,
+		brickColors = brickColors,
+		fonts = fonts,
+	}
+	check(snapshot.schemaVersion == SCHEMA_VERSION, "has an unsupported schema")
+	return snapshot
+end
+
 local function validate(snapshot: Snapshot)
 	check(type(snapshot) == "table" and snapshot.schemaVersion == SCHEMA_VERSION, "has an unsupported schema")
 	check(type(snapshot.classes) == "table", "holds no classes")
@@ -115,9 +210,10 @@ end
 
 local function components(tagged: Fields): { unknown }
 	local raw = tagged.v
-	check(type(raw) == "table", "holds a malformed " .. tostring(tagged["$"]) .. " default")
+	assert(type(raw) == "table", "reflection snapshot holds a malformed " .. tostring(tagged["$"]) .. " default")
 	local out: { unknown } = {}
-	for index, item in raw :: { unknown } do
+	for index, item in raw do
+		assert(type(index) == "number", "reflection snapshot components require numeric keys")
 		out[index] = number(item)
 	end
 	return out
@@ -136,11 +232,11 @@ local function decodeValue(types: Datatypes.Library, value: unknown): unknown
 	if type(value) ~= "table" then
 		return value
 	end
-	local tagged = value :: Fields
+	local tagged = Shape.record(value, "reflection snapshot default")
 	local kind = tagged["$"]
 	if kind == "bytes" then
 		return (
-			string.gsub(tagged.v :: string, "%x%x", function(pair: string): string
+			string.gsub(text(tagged.v), "%x%x", function(pair: string): string
 				return string.char(tonumber(pair, 16) or 0)
 			end)
 		)
@@ -152,7 +248,7 @@ local function decodeValue(types: Datatypes.Library, value: unknown): unknown
 		return types.BrickColor.new(tagged.v)
 	elseif kind == "Font" then
 		return types.Font.new(
-			tagged.family :: string,
+			text(tagged.family),
 			enumItem(types, "FontWeight", tagged.weight),
 			enumItem(types, "FontStyle", tagged.style)
 		)
@@ -200,7 +296,7 @@ end
 local function checkStrings(values: unknown, label: string): { string }
 	assert(type(values) == "table", label .. " must be a list")
 	local result: { string } = {}
-	for _, value in values :: { unknown } do
+	for _, value in values do
 		assert(type(value) == "string", label .. " must contain only strings")
 		table.insert(result, value)
 	end
@@ -251,7 +347,7 @@ local function database(snapshot: Snapshot): Reflection.Database
 	end
 	local self: Reflection.Database
 	self = {
-		GetClassNames = function(): { string }
+		GetClassNames = function(_self: Reflection.Database): { string }
 			return table.clone(names)
 		end,
 		GetClass = function(_: Reflection.Database, name: string): Reflection.Class?
@@ -270,8 +366,8 @@ local function database(snapshot: Snapshot): Reflection.Database
 	return self
 end
 
-local function engineLibrary(types: Datatypes.Library): Adapter.Library
-	return ({ typeName = Environment.typeName, datatypes = types } :: unknown) :: Adapter.Library
+local function engineLibrary(types: Datatypes.Library): FixtureBridge.Library
+	return { typeName = Environment.typeName, datatypes = types }
 end
 
 local function bridge(snapshot: Snapshot, options: Options?): FixtureBridge.Bridge
@@ -297,6 +393,7 @@ local function bridge(snapshot: Snapshot, options: Options?): FixtureBridge.Brid
 end
 
 return {
+	decode = decode,
 	SCHEMA_VERSION = SCHEMA_VERSION,
 	database = database,
 	library = library,

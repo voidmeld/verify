@@ -119,7 +119,7 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 	self.transport = {
 		call = function(tool: string, argumentsJson: string, deadline: number): Mcp.Exchange
 			released = false
-			local arguments = Wire.parse(argumentsJson) :: { [string]: unknown }
+			local arguments = Wire.record(Wire.parse(argumentsJson))
 			table.insert(self.calls, { tool = tool, arguments = arguments })
 			if self.hang[tool] then
 				while os.clock() < deadline + 5 and not released do
@@ -286,7 +286,7 @@ describe("attach to an open Studio", function()
 		}
 		expect(absent):toBeNil()
 		expect((assert(absentRefusal)).kind):toEqual "absent"
-		expect(#((assert(absentRefusal)).candidates :: { Lute.StudioInfo })):toEqual(1)
+		expect(#assert(assert(absentRefusal).candidates)):toEqual(1)
 
 		local two = fake(TWO)
 		local ambiguous, ambiguousRefusal = Lute.studio.attach {
@@ -298,13 +298,17 @@ describe("attach to an open Studio", function()
 		}
 		expect(ambiguous):toBeNil()
 		expect((assert(ambiguousRefusal)).kind):toEqual "ambiguous"
-		expect(#((assert(ambiguousRefusal)).candidates :: { Lute.StudioInfo })):toEqual(2)
+		expect(#assert(assert(ambiguousRefusal).candidates)):toEqual(2)
 
 		local _, implicit = Lute.studio.attach { authorize = allow, transport = one.transport }
 		expect((assert(implicit)).kind):toEqual "invalid"
-		local _, unauthorized =
-			Lute.studio.attach({ studioId = "studio-a", transport = one.transport } :: Lute.StudioAttachOptions)
-		expect((assert(unauthorized)).kind):toEqual "invalid"
+		local unauthorized = Lute.chunk.load("local _, refusal = attach(options); return refusal", {
+			environment = {
+				attach = Lute.studio.attach,
+				options = { studioId = "studio-a", transport = one.transport },
+			},
+		})()
+		expect(Wire.record(unauthorized).kind):toEqual "invalid"
 	end)
 
 	it("sends nothing a refusing authorize hook has not approved and shows exact request bytes", function()
@@ -651,7 +655,9 @@ describe("attach to an open Studio", function()
 			attach = { authorize = allow, studioId = "studio-a", transport = self.transport },
 		}
 		expect(outcome.status):toEqual "timed_out"
-		pcall(fs.removeDirectory, Files.temporary "verify-attach-tests-never", { recursive = true })
+		pcall(function()
+			fs.removeDirectory(Files.temporary "verify-attach-tests-never", { recursive = true })
+		end)
 	end)
 
 	it("classifies a run that vanished or a lost session as session_lost", function(own)
@@ -783,7 +789,9 @@ describe("one authored case, launched or attached", function()
 			attach = { authorize = allow, studioId = "gone", transport = self.transport },
 		}
 		expect(absent.detail):toContain "absent"
-		pcall(fs.removeDirectory, Files.temporary "verify-attach-tests-refused", { recursive = true })
+		pcall(function()
+			fs.removeDirectory(Files.temporary "verify-attach-tests-refused", { recursive = true })
+		end)
 	end)
 
 	it("the Studio host attaches per batch with the same code builder", function(_, caseContext)
@@ -969,7 +977,9 @@ describe("a Studio MCP child that exits", function()
 			injected = injected or string.find(source, "local progressToken = ", 1, true) ~= nil
 		end
 		expect(injected):toBe(true)
-		pcall(fs.removeDirectory, directory, { recursive = true })
+		pcall(function()
+			fs.removeDirectory(directory, { recursive = true })
+		end)
 	end)
 
 	it("drains long progress histories below the Studio output limit without losing events", function(_, caseContext)
@@ -1031,7 +1041,9 @@ describe("a Studio MCP child that exits", function()
 		}
 		expect(outcome.status):toEqual "returned"
 		expect(fs.exists(file .. ".diagnostics")):toBe(true)
-		pcall(fs.removeDirectory, directory, { recursive = true })
+		pcall(function()
+			fs.removeDirectory(directory, { recursive = true })
+		end)
 		local refused = fake(ONE)
 		refused.console = tampered.console
 		local second = Files.claimDirectory(Files.temporary "verify-attach-progress-c")
@@ -1053,7 +1065,9 @@ describe("a Studio MCP child that exits", function()
 		expect(outcome2.status):toEqual "returned"
 		local diagnostics = fs.readFileToString(second .. "/progress.jsonl.diagnostics")
 		expect(diagnostics):toContain "history read"
-		pcall(fs.removeDirectory, second, { recursive = true })
+		pcall(function()
+			fs.removeDirectory(second, { recursive = true })
+		end)
 	end)
 
 	it("an attached run without a listener never reads the console or injects a token", function()
@@ -1077,7 +1091,9 @@ describe("a Studio MCP child that exits", function()
 		for _, source in self.calls_by_source do
 			expect((string.find(source, "progressToken", 1, true))):toBeNil()
 		end
-		pcall(fs.removeDirectory, directory, { recursive = true })
+		pcall(function()
+			fs.removeDirectory(directory, { recursive = true })
+		end)
 	end)
 end)
 

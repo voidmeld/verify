@@ -387,7 +387,7 @@ local function schedule(
 				result = entry.handle.poll()
 			end)
 			if not polled then
-				result = {
+				local failed: GateTypes.JobOutcome = {
 					started = true,
 					exitcode = -1,
 					timedOut = false,
@@ -395,6 +395,7 @@ local function schedule(
 					stderr = "",
 					detail = "the executor raised while polling: " .. tostring(outcome),
 				}
+				result = failed
 			end
 			if result ~= nil then
 				table.remove(running, index)

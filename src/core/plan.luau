@@ -67,8 +67,14 @@ local function normalizeRetry(retry: RetryPolicy?, label: string): RetryPolicy
 	return { maxAttempts = maxAttempts, on = outcomes }
 end
 
-local function normalizePolicy(policy: PlanPolicyDraft?, label: string): PlanPolicy
-	local source: PlanPolicyDraft = if policy ~= nil then policy else {}
+local function normalizePolicy(policy: (PlanPolicyDraft | PlanPolicy)?, label: string): PlanPolicy
+	local source: PlanPolicyDraft | PlanPolicy
+	if policy ~= nil then
+		source = policy
+	else
+		local defaults: PlanPolicyDraft = {}
+		source = defaults
+	end
 	local style: "unit-prefixed" | "bare" = "unit-prefixed"
 	local declaredStyle = source.caseIdStyle
 	if declaredStyle == "bare" then
@@ -89,7 +95,7 @@ local function normalizePolicy(policy: PlanPolicyDraft?, label: string): PlanPol
 	}
 end
 
-local function validate(draft: PlanDraft): Plan
+local function validate(draft: PlanDraft | Plan): Plan
 	if draft.schemaVersion ~= nil and draft.schemaVersion ~= SCHEMA_VERSION then
 		error(
 			("unsupported execution plan schema major %s; expected %d"):format(
@@ -172,7 +178,7 @@ local function intersects(values: { string }, wanted: { [string]: boolean }): bo
 	return false
 end
 
-local function select(plan: PlanDraft, selection: PlanSelection?): Plan
+local function select(plan: PlanDraft | Plan, selection: PlanSelection?): Plan
 	local checked = validate(plan)
 	if selection == nil then
 		return checked
@@ -215,7 +221,7 @@ local function select(plan: PlanDraft, selection: PlanSelection?): Plan
 	}
 end
 
-local function partition(plan: PlanDraft, batchCount: number, mode: Types.BatchingMode?): { PlanBatch }
+local function partition(plan: PlanDraft | Plan, batchCount: number, mode: Types.BatchingMode?): { PlanBatch }
 	local checked = validate(plan)
 	if batchCount < 1 or batchCount % 1 ~= 0 then
 		error("execution plan batch count must be a positive integer", 2)
@@ -240,7 +246,7 @@ local function partition(plan: PlanDraft, batchCount: number, mode: Types.Batchi
 	end
 
 	local order = table.clone(groups)
-	table.sort(order, function(left, right)
+	table.sort(order, function(left: Group, right: Group)
 		if left.size ~= right.size then
 			return left.size > right.size
 		end
@@ -260,14 +266,15 @@ local function partition(plan: PlanDraft, batchCount: number, mode: Types.Batchi
 		sizes[target] += group.size
 	end
 
-	local batches: { PlanBatch } = table.create(batchCount)
+	local batches: { PlanBatch } = {}
 	for index = 1, batchCount do
-		table.insert(batches, {
+		local batch: PlanBatch = {
 			id = ("batch-%d"):format(index),
 			index = index,
 			units = {},
 			deadlineSeconds = checked.policy.deadlineSeconds,
-		})
+		}
+		table.insert(batches, batch)
 	end
 	for _, unit in checked.units do
 		local key = if unit.group ~= nil then "g:" .. unit.group else "u:" .. unit.id
@@ -291,7 +298,7 @@ local function caseId(unitId: string, path: { string }, name: string, style: str
 	error("unknown case id style: " .. tostring(style), 2)
 end
 
-local function digest(plan: PlanDraft): string
+local function digest(plan: PlanDraft | Plan): string
 	local checked = validate(plan)
 	local pieces: { string } = {
 		("v%d"):format(checked.schemaVersion),

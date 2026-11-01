@@ -110,7 +110,7 @@ do
 			inset = function()
 				return { X = 0, Y = 0 }
 			end,
-			library = (engine.datatypes :: unknown) :: Roblox.DatatypeLibrary,
+			library = engine.datatypes,
 			activationWindowSeconds = 0.5,
 			read = assert(bridge.ui).styled,
 		})

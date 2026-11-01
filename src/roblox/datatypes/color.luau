@@ -312,6 +312,7 @@ local function brickColor(catalog: BrickColorCatalog?): BrickColorConstructor
 end
 
 return {
+	expect = expect,
 	Color3 = Color3,
 	brickColor = brickColor,
 	isColor3 = function(value: unknown): boolean

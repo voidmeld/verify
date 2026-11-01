@@ -69,7 +69,8 @@ local function create(
 		end
 		local pending = { subtree }
 		while #pending > 0 do
-			local object = table.remove(pending) :: Instance
+			local object = table.remove(pending)
+			assert(object ~= nil)
 			local entries = animated[object]
 			if entries then
 				for _, entry in entries do
@@ -290,7 +291,12 @@ local function create(
 			if known == nil then
 				known = table.clone(index.byProperty[property] or {})
 				for _, candidate in index.rules do
-					if (transitions[candidate] or {})["*"] ~= nil and not table.find(known, candidate) then
+					local candidateTransitions = transitions[candidate]
+					if
+						candidateTransitions ~= nil
+						and candidateTransitions["*"] ~= nil
+						and not table.find(known, candidate)
+					then
 						table.insert(known, candidate)
 					end
 				end
@@ -321,7 +327,10 @@ local function create(
 			end
 			present = true
 			if property then
-				local parameters = (transitions[candidate] or {})[property] or (transitions[candidate] or {})["*"]
+				local candidateTransitions = transitions[candidate]
+				local parameters = if candidateTransitions
+					then candidateTransitions[property] or candidateTransitions["*"]
+					else nil
 				if parameters ~= nil then
 					local priority = Values.number(env.propertyOf(candidate, "Priority"))
 					if priority == transitionPriority then
@@ -360,26 +369,29 @@ local function create(
 			entries = {}
 			animated[object] = entries
 		end
-		local entry = entries[key]
+		local entry: Animated? = entries[key]
 		if entry == nil then
 			observe()
-			entry = {
+			local created: Animated = {
 				property = property,
 				phantom = phantom,
 				motion = { target = target, origin = target, started = env.now() },
 			}
-			entries[key] = entry
+			entry = created
+			entries[key] = created
 		else
-			Transition.retarget(entry.motion, target, timing, entry.dirty or env.now())
-			entry.dirty = nil
-			stale[entry] = nil
+			local active: Animated = entry
+			Transition.retarget(active.motion, target, timing, active.dirty or env.now())
+			active.dirty = nil
+			stale[active] = nil
 		end
+		local current = assert(entry)
 		if timing ~= nil then
-			timed[entry] = object
+			timed[current] = object
 		else
-			timed[entry] = nil
+			timed[current] = nil
 		end
-		return sheet, Transition.sample(entry.motion, env.now())
+		return sheet, Transition.sample(current.motion, env.now())
 	end
 	function refresh(quiet: boolean?)
 		local since = staleSince

@@ -73,24 +73,37 @@ local function nonnegativeFinite(value: unknown, label: string): number
 	return value
 end
 
+local function fields(value: unknown): { [string]: unknown }
+	assert(type(value) == "table")
+	local result: { [string]: unknown } = {}
+	for key, item in value do
+		if type(key) == "string" then
+			result[key] = item
+		end
+	end
+	return result
+end
+
 local function decode(value: unknown): Stored
 	assert(type(value) == "table", "a stored run must be a table")
-	local raw = value :: { [string]: unknown }
+	local raw = fields(value)
 	assert(raw.schemaVersion == SCHEMA_VERSION, "unsupported stored run schema version")
-	local rows = raw.measurements
-	local listedRows = rows :: { unknown }
-	assert(type(rows) == "table" and #listedRows > 0, "a stored run needs measurements")
+	local rows = rawget(raw, "measurements")
+	assert(type(rows) == "table", "a stored run needs measurements")
+	local listedRows = rows
+	assert(#listedRows > 0, "a stored run needs measurements")
 	local measurements: { StoredMeasurement } = {}
 	local seen: { [string]: boolean } = {}
 	for index, item in listedRows do
 		assert(type(item) == "table", "a stored measurement must be a table")
-		local row = item :: { [string]: unknown }
+		local row = fields(item)
 		local name = text(row.name, "measurement name")
 		assert(not seen[name], ("stored measurement %q is listed twice"):format(name))
 		seen[name] = true
 		local listed = row.samples
-		local listedSamples = listed :: { unknown }
-		assert(type(listed) == "table" and #listedSamples > 0, "stored samples must not be empty")
+		assert(type(listed) == "table", "stored samples must not be empty")
+		local listedSamples = listed
+		assert(#listedSamples > 0, "stored samples must not be empty")
 		local samples: { number } = {}
 		for position, sample in listedSamples do
 			assert(position == #samples + 1, "stored samples must be a dense array")
@@ -104,7 +117,11 @@ local function decode(value: unknown): Stored
 			samples = samples,
 		})
 	end
-	return { schemaVersion = SCHEMA_VERSION, name = text(raw.name, "stored run name"), measurements = measurements }
+	return {
+		schemaVersion = SCHEMA_VERSION,
+		name = text(rawget(raw, "name"), "stored run name"),
+		measurements = measurements,
+	}
 end
 
 local function metricOf(measurement: StoredMeasurement, metric: SpreadMetric): number
@@ -116,7 +133,10 @@ local function metricOf(measurement: StoredMeasurement, metric: SpreadMetric): n
 	local value = if metric == "mean"
 		then summary.mean
 		elseif metric == "maximum" then summary.maximum
-		else summary[metric]
+		elseif metric == "p50" then summary.p50
+		elseif metric == "p95" then summary.p95
+		else summary.p99
+	assert(value ~= nil, "stored measurement requires a sample")
 	return value
 end
 

@@ -3,8 +3,9 @@
 local Environment = require "./environment"
 local Datatypes = require "./datatypes"
 local DeviceCatalog = require "./device-catalog"
+local Vm = require "./value"
 
-export type Chunk = () -> unknown
+export type Chunk = () -> Vm.Value
 export type Instance = Environment.Instance
 export type Diagnostic = { kind: string, text: string, source: string }
 export type Engine = {
@@ -16,7 +17,7 @@ export type Engine = {
 	currentSource: () -> string,
 	record: (string, string, string) -> (),
 	isInstance: (unknown) -> boolean,
-	datatypes: typeof(Datatypes),
+	datatypes: Datatypes.Library,
 	typeName: (unknown) -> string,
 	diagnostics: { Diagnostic },
 	surface: {
@@ -43,7 +44,7 @@ export type ServiceRuntime = {
 
 export type Runtime = ServiceRuntime & {
 	globals: { [string]: unknown },
-	requireInstance: (unknown) -> unknown,
+	requireInstance: (unknown) -> Vm.Value,
 	runScript: (Instance, string) -> thread?,
 	step: (seconds: number) -> (),
 	screenArea: (screen: Instance) -> { x: number, y: number, width: number, height: number },
@@ -51,11 +52,11 @@ export type Runtime = ServiceRuntime & {
 }
 
 export type Host<B = unknown, C = Chunk> = {
-	readFile: (path: string) -> string,
-	compile: (source: string) -> B,
-	load: (bytecode: B, chunkName: string, environment: { [string]: unknown }) -> C,
-	encodeJson: (value: unknown) -> string,
-	decodeJson: (text: string) -> unknown,
+	read readFile: (path: string) -> string,
+	read compile: (source: string) -> B,
+	read load: (bytecode: B, chunkName: string, environment: { [string]: unknown }) -> C,
+	read encodeJson: (value: unknown) -> string,
+	read decodeJson: (text: string) -> unknown,
 }
 
 export type Cache<B = unknown, C = Chunk> = {

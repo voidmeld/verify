@@ -2,6 +2,7 @@
 
 local PlaceRuntime = require "./place-runtime"
 local Paths = require "../core/path"
+local Shape = require "../core/shape"
 type Instance = PlaceRuntime.Instance
 export type Engine = PlaceRuntime.Engine
 type Runtime = PlaceRuntime.Runtime
@@ -12,10 +13,10 @@ type ProjectNode = {
 	["$properties"]: { [string]: unknown }?,
 	["$attributes"]: { [string]: unknown }?,
 }
-type Project = { globIgnorePaths: { string }?, emitLegacyScripts: boolean?, tree: { [string]: ProjectNode } }
+type Project = { globIgnorePaths: { string }?, emitLegacyScripts: boolean?, tree: ProjectNode }
 
-export type Host<B = unknown, C = () -> unknown> = PlaceRuntime.Host<B, C>
-export type Cache<B = unknown, C = () -> unknown> = PlaceRuntime.Cache<B, C>
+export type Host<B = unknown, C = PlaceRuntime.Chunk> = PlaceRuntime.Host<B, C>
+export type Cache<B = unknown, C = PlaceRuntime.Chunk> = PlaceRuntime.Cache<B, C>
 export type Mounted = PlaceRuntime.Mounted
 
 export type Files = {
@@ -169,13 +170,60 @@ local function scriptClass(fileName: string): (string?, string?)
 	return nil, nil
 end
 
+local function projectField(value: unknown, key: unknown): unknown
+	assert(type(value) == "table", "expected project table")
+	for name, item in value do
+		if name == key then
+			return item
+		end
+	end
+	return nil
+end
+
+local function projectNode(value: unknown): ProjectNode
+	local fields = Shape.record(value, "project node")
+	local path, className = fields["$path"], fields["$className"]
+	assert(path == nil or type(path) == "string", "project path must be a string")
+	assert(className == nil or type(className) == "string", "project class must be a string")
+	local node: ProjectNode = {}
+	for key, item in fields do
+		node[key] = item
+	end
+	node["$path"] = path
+	node["$className"] = className
+	if fields["$properties"] ~= nil then
+		node["$properties"] = Shape.record(fields["$properties"], "project properties")
+	end
+	if fields["$attributes"] ~= nil then
+		node["$attributes"] = Shape.record(fields["$attributes"], "project attributes")
+	end
+	return node
+end
+
+local function decodeProject(value: unknown): Project
+	local fields = Shape.record(value, "project")
+	local ignorePaths = fields.globIgnorePaths
+	local paths: { string }? = nil
+	if ignorePaths ~= nil then
+		assert(type(ignorePaths) == "table", "project ignores must be an array")
+		paths = {}
+		for index, path in ignorePaths do
+			assert(type(index) == "number" and type(path) == "string", "project ignore must be a string")
+			paths[index] = path
+		end
+	end
+	local legacy = fields.emitLegacyScripts
+	assert(legacy == nil or type(legacy) == "boolean", "project legacy scripts must be a boolean")
+	return { globIgnorePaths = paths, emitLegacyScripts = legacy, tree = projectNode(fields.tree) }
+end
+
 local function numbers(value: unknown, count: number): { number }
 	assert(type(value) == "table", "invalid project datatype component count")
-	local entries = value :: { unknown }
+	local entries = value
 	assert(#entries == count, "invalid project datatype component count")
 	local result: { number } = {}
 	for index, component in entries do
-		assert(type(component) == "number", "project datatype requires numeric components")
+		assert(type(index) == "number" and type(component) == "number", "project datatype requires numeric components")
 		result[index] = component
 	end
 	return result
@@ -189,7 +237,7 @@ local function projectValue(engine: PlaceRuntime.Engine, declared: string?, valu
 			return family[value]
 		end
 		if type(value) == "table" then
-			local ordinal = (value :: { Enum: unknown }).Enum
+			local ordinal = Shape.record(value, "project enum").Enum
 			for _, item in family:GetEnumItems() do
 				if item.Value == ordinal then
 					return item
@@ -201,7 +249,7 @@ local function projectValue(engine: PlaceRuntime.Engine, declared: string?, valu
 	if type(value) ~= "table" or declared == nil then
 		return value
 	end
-	local explicit = (value :: { [string]: unknown })[declared]
+	local explicit = Shape.record(value, "project datatype")[declared]
 	local encoded = if explicit ~= nil then explicit else value
 	if declared == "Color3" then
 		local v = numbers(encoded, 3)
@@ -231,11 +279,12 @@ local function projectValue(engine: PlaceRuntime.Engine, declared: string?, valu
 			)
 		end
 		assert(type(encoded) == "table", "project CFrame requires position and orientation")
-		local frame = encoded :: { position: unknown, orientation: { unknown } }
+		local frame = Shape.record(encoded, "project CFrame")
+		local rows = frame.orientation
 		local p = numbers(frame.position, 3)
 		assert(type(frame.orientation) == "table" and #frame.orientation == 3, "project CFrame requires three rows")
 		local x, y, z =
-			numbers(frame.orientation[1], 3), numbers(frame.orientation[2], 3), numbers(frame.orientation[3], 3)
+			numbers(projectField(rows, 1), 3), numbers(projectField(rows, 2), 3), numbers(projectField(rows, 3), 3)
 		return engine.datatypes.CFrame.new(p[1], p[2], p[3], x[1], x[2], x[3], y[1], y[2], y[3], z[1], z[2], z[3])
 	end
 	return encoded
@@ -245,7 +294,7 @@ local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, de
 	local cache = deps.cache
 	local files = deps.files
 	local opaque = deps.opaque
-	local project = deps.host.decodeJson(deps.host.readFile(projectPath)) :: Project
+	local project = decodeProject(deps.host.decodeJson(deps.host.readFile(projectPath)))
 	local patterns: { string } = {}
 	local ignorePaths: { string } = project.globIgnorePaths or {}
 	for _, glob in ignorePaths do
@@ -397,23 +446,24 @@ local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, de
 			if type(key) ~= "string" or string.sub(key, 1, 1) == "$" then
 				continue
 			end
-			mountNode(value :: ProjectNode, key, object)
+			mountNode(projectNode(value), key, object)
 		end
 		return object
 	end
 
-	configure(engine.game, (project.tree :: unknown) :: ProjectNode)
-	for name, node in project.tree do
+	configure(engine.game, project.tree)
+	for name, value in project.tree do
 		if type(name) ~= "string" or string.sub(name, 1, 1) == "$" then
 			continue
 		end
+		local node = projectNode(value)
 		local service = engine.service(if node["$className"] ~= nil then node["$className"] else name)
 		configure(service, node)
 		for key, value in node do
 			if type(key) ~= "string" or string.sub(key, 1, 1) == "$" then
 				continue
 			end
-			mountNode(value :: ProjectNode, key, service)
+			mountNode(projectNode(value), key, service)
 		end
 	end
 

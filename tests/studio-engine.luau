@@ -3,6 +3,7 @@
 local Wire = require "../src/lute/wire"
 
 local luau = require "@std/luau"
+local loadBytecode: (luau.Bytecode, string, { [string]: unknown }?) -> (...unknown) -> ...unknown = luau.load
 local task = require "@std/task"
 local Environment = require "../src/roblox/environment"
 
@@ -74,7 +75,7 @@ local function new(globals: { [string]: unknown }): Engine
 	end
 	return {
 		run = function(datamodel: string, code: string): string
-			local chunk = luau.load(luau.compile(code), "=engine", environment(datamodel))
+			local chunk = loadBytecode(luau.compile(code), "=engine", environment(datamodel))
 			return text(chunk())
 		end,
 		clear = function(datamodel: string)

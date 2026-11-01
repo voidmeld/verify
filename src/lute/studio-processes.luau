@@ -259,10 +259,10 @@ local function read(path: string): Cleanup?
 	if not ok or type(value) ~= "table" then
 		return nil
 	end
-	local fields = value :: { [string]: unknown }
+	local fields = value
 	local survivors: { number } = {}
 	if type(fields.survivors) == "table" then
-		for _, pid in fields.survivors :: { unknown } do
+		for _, pid in fields.survivors do
 			if type(pid) == "number" then
 				table.insert(survivors, pid)
 			end

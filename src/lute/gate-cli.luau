@@ -249,10 +249,9 @@ local function shard(draft: Gate.Draft, slot: Shard, weights: Weights, tiers: { 
 			end
 		elseif producer.kind == "tests" and producer.locators ~= nil then
 			for _, locator in producer.locators do
-				table.insert(
-					items,
+				local item: Item =
 					{ files = { locator }, producers = {}, weight = weights.files[locator] or fileDefault }
-				)
+				table.insert(items, item)
 			end
 		else
 			local top = root(producer.id)

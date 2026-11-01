@@ -1,5 +1,6 @@
 --!strict
 
+local VM = require "../roblox/value"
 local fs = require "@std/fs"
 local Path = require "@std/path"
 local luau = require "@lute/luau"
@@ -20,14 +21,13 @@ export type ExportOptions = StudioReflection.Options
 export type Execute = StudioReflection.Execute
 export type Probe = StudioReflection.Probe
 export type ProbeResults = StudioReflection.ProbeResults
-export type PlaceHost = PlaceBoot.Host<luau.Bytecode, () -> unknown>
+export type PlaceHost = PlaceBoot.Host<luau.Bytecode, () -> VM.Value>
 
+local loadBytecode: (luau.Bytecode, string, { [string]: unknown }) -> () -> VM.Value = luau.load
 local host: PlaceHost = {
 	readFile = fs.readFileToString,
 	compile = luau.compile,
-	load = function(bytecode: luau.Bytecode, chunkName: string, environment: { [string]: unknown }): () -> unknown
-		return luau.load(bytecode, chunkName, environment)
-	end,
+	load = loadBytecode,
 	encodeJson = Wire.encode,
 	decodeJson = Wire.parse,
 }
@@ -52,14 +52,16 @@ local function load(source: string?): Snapshot.Snapshot
 	local path = source or DEFAULT_PATH
 	local decoded = Wire.parse(fs.readFileToString(path))
 	assert(type(decoded) == "table", "reflection snapshot is not a JSON object: " .. path)
-	return decoded :: Snapshot.Snapshot
+	return Snapshot.decode(decoded)
 end
 
 local function bridge(snapshot: (string | Snapshot.Snapshot)?, options: Options?): FixtureBridge.Bridge
-	local settings: Options = table.clone(options or {})
+	local defaults: Options = {}
+	local settings = table.clone(options or defaults)
 	local captured = if type(snapshot) == "table" then snapshot else load(snapshot)
 	if settings.ui ~= false then
-		local ui: UiFakes.Options = table.clone(settings.ui or {})
+		local defaultUi: UiFakes.Options = {}
+		local ui = table.clone(settings.ui or defaultUi)
 		if ui.measureBounds == nil then
 			ui.measureBounds = TextMetrics.create()
 			if ui.measureLineHeight == nil then
@@ -74,7 +76,7 @@ local function bridge(snapshot: (string | Snapshot.Snapshot)?, options: Options?
 			local height = TextMetrics.heights()
 			local library = Snapshot.library(captured)
 			ui.measureText = function(text: string, size: number, value: Enum.EnumItem, bounds: Values.Vector): unknown
-				local parameters = {
+				local parameters: Values.TextParameters = {
 					Text = text,
 					Size = size,
 					Font = Values.font(library.Font.fromEnum(value)),

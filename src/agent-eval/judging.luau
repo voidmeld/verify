@@ -65,7 +65,7 @@ local function comparisons(suite: Model.Suite, results: { Result.RunResult }): {
 										table.insert(images, { label = capture.label, path = capture.path })
 									end
 								end
-								table.sort(images, function(x, y)
+								table.sort(images, function(x: Judge.Image, y: Judge.Image)
 									return x.label < y.label
 								end)
 								return { arm = result.arm, run = result.id, images = images }
@@ -128,14 +128,15 @@ local function decodeJudgment(value: unknown): Judge.Judgment
 				reasons = Schema.texts(verdictRaw.reasons, where .. ".verdict.reasons"),
 			}
 		end
-		table.insert(presentations, {
+		local presentation: Judge.Presentation = {
 			first = if raw.first == "b" then "b" else "a",
 			attempts = Schema.number(raw.attempts, where .. ".attempts", 0, true),
 			model = Schema.optionalText(raw.model, where .. ".model"),
 			raw = if type(raw.raw) == "string" then raw.raw else nil,
 			verdict = verdict,
 			error = if type(raw.error) == "string" then raw.error else nil,
-		})
+		}
+		table.insert(presentations, presentation)
 	end
 	return {
 		id = Schema.text(entry.id, "judgment.id"),

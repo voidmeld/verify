@@ -1,31 +1,41 @@
 --!strict
 
-export type Expectation = {
-	toBe: (self: Expectation, expected: unknown) -> (),
-	toEqual: (self: Expectation, expected: unknown) -> (),
-	toBeNil: (self: Expectation) -> (),
-	toBeOk: (self: Expectation) -> (),
-	toBeTruthy: (self: Expectation) -> (),
-	toBeFalsy: (self: Expectation) -> (),
-	toBeCloseTo: (self: Expectation, expected: number, tolerance: number?) -> (),
-	toBeNear: (self: Expectation, expected: number, tolerance: number) -> (),
-	toBeFloat32: (self: Expectation, authored: number) -> (),
-	toBeTrueWith: (self: Expectation, detail: string) -> (),
-	toBeLessThan: (self: Expectation, expected: number) -> (),
-	toBeGreaterThan: (self: Expectation, expected: number) -> (),
-	toBeLessThanOrEqual: (self: Expectation, expected: number) -> (),
-	toBeGreaterThanOrEqual: (self: Expectation, expected: number) -> (),
-	toContain: (self: Expectation, expected: unknown) -> (),
-	toContainExactly: (self: Expectation, expected: unknown) -> (),
-	toHaveLength: (self: Expectation, expected: number) -> (),
-	toThrow: (self: Expectation, contains: string?) -> (),
-	toThrowMatching: (self: Expectation, pattern: string) -> (),
-	never: Expectation,
+type CallableExpectation = { read actual: () -> ...unknown }
+
+export type Expectation<T = unknown> = {
+	read actual: T,
+	toBe: (self: Expectation<T>, expected: unknown) -> (),
+	toEqual: (self: Expectation<T>, expected: unknown) -> (),
+	toBeNil: (self: Expectation<T>) -> (),
+	toBeOk: (self: Expectation<T>) -> (),
+	toBeTruthy: (self: Expectation<T>) -> (),
+	toBeFalsy: (self: Expectation<T>) -> (),
+	toBeCloseTo: (self: Expectation<T>, expected: number, tolerance: number?) -> (),
+	toBeNear: (self: Expectation<T>, expected: number, tolerance: number) -> (),
+	toBeFloat32: (self: Expectation<T>, authored: number) -> (),
+	toBeTrueWith: (self: Expectation<T>, detail: string) -> (),
+	toBeLessThan: (self: Expectation<T>, expected: number) -> (),
+	toBeGreaterThan: (self: Expectation<T>, expected: number) -> (),
+	toBeLessThanOrEqual: (self: Expectation<T>, expected: number) -> (),
+	toBeGreaterThanOrEqual: (self: Expectation<T>, expected: number) -> (),
+	toContain: (self: Expectation<T>, expected: unknown) -> (),
+	toContainExactly: (self: Expectation<T>, expected: unknown) -> (),
+	toHaveLength: (self: Expectation<T>, expected: number) -> (),
+	toThrow: (self: CallableExpectation, contains: string?) -> (),
+	toThrowMatching: (self: CallableExpectation, pattern: string) -> (),
+	read never: Expectation<T>,
 }
 
 local function checkedString(value: unknown): string
 	assert(type(value) == "string")
 	return value
+end
+
+local function view(value: unknown): { [unknown]: unknown }
+	assert(type(value) == "table")
+	local result: { [unknown]: unknown } = {}
+	setmetatable(result, { __index = value })
+	return result
 end
 
 local function render(value: unknown, depth: number, seen: { [unknown]: boolean }): string
@@ -41,9 +51,9 @@ local function render(value: unknown, depth: number, seen: { [unknown]: boolean 
 		return "<table>"
 	end
 	seen[value] = true
-	local values = value :: { [unknown]: unknown }
+	local values = view(value)
 	local keys: { unknown } = {}
-	for key in values do
+	for key in value do
 		table.insert(keys, key)
 	end
 	table.sort(keys, function(left, right)
@@ -72,14 +82,14 @@ local function deepEqual(left: unknown, right: unknown, seen: { [unknown]: unkno
 		return seen[left] == right
 	end
 	seen[left] = right
-	local leftTable = left :: { [unknown]: unknown }
-	local rightTable = right :: { [unknown]: unknown }
-	for key, value in leftTable do
+	local leftTable = view(left)
+	local rightTable = view(right)
+	for key, value in left do
 		if not deepEqual(value, rightTable[key], seen) then
 			return false
 		end
 	end
-	for key in rightTable do
+	for key in right do
 		if leftTable[key] == nil and rightTable[key] ~= nil then
 			return false
 		end
@@ -110,9 +120,10 @@ local function caught(ok: boolean, thrown: unknown): string
 	return if ok then "caught: (no error)" else "caught: " .. tostring(thrown)
 end
 
-local function makeExpectation(actual: unknown): Expectation
-	local function build(negated: boolean): Expectation
-		local expectation = {} :: Expectation
+local function makeExpectation<T>(value: T): Expectation<T>
+	local actual: unknown = value
+	local function build(negated: boolean)
+		local expectation = { actual = value }
 
 		local function check(condition: boolean, verb: string, expected: unknown?, detail: string?)
 			if condition == negated then
@@ -131,36 +142,36 @@ local function makeExpectation(actual: unknown): Expectation
 			return if type(actual) == "number" then actual else nil
 		end
 
-		function expectation:toBe(expected: unknown)
+		function expectation.toBe(_self: Expectation<T>, expected: unknown)
 			check(actual == expected, "to be", expected)
 		end
 
-		function expectation:toEqual(expected: unknown)
+		function expectation.toEqual(_self: Expectation<T>, expected: unknown)
 			check(deepEqual(actual, expected, {}), "to deeply equal", expected)
 		end
 
-		function expectation:toBeNil()
+		function expectation.toBeNil(_self: Expectation<T>)
 			check(actual == nil, "to be nil")
 		end
 
-		function expectation:toBeOk()
+		function expectation.toBeOk(_self: Expectation<T>)
 			check(actual ~= nil, "to be non-nil")
 		end
 
-		function expectation:toBeTruthy()
+		function expectation.toBeTruthy(_self: Expectation<T>)
 			check(not not actual, "to be truthy")
 		end
 
-		function expectation:toBeFalsy()
+		function expectation.toBeFalsy(_self: Expectation<T>)
 			check(not actual, "to be falsy")
 		end
 
-		function expectation:toBeCloseTo(expected: number, tolerance: number?)
+		function expectation.toBeCloseTo(_self: Expectation<T>, expected: number, tolerance: number?)
 			local epsilon = tolerance or 1e-9
 			check(math.abs(numberValue() - expected) <= epsilon, "to be close to", expected)
 		end
 
-		function expectation:toBeNear(expected: number, tolerance: number)
+		function expectation.toBeNear(_self: Expectation<T>, expected: number, tolerance: number)
 			if type(expected) ~= "number" or type(tolerance) ~= "number" then
 				error("toBeNear requires an expected number and a tolerance", 2)
 			end
@@ -176,7 +187,7 @@ local function makeExpectation(actual: unknown): Expectation
 			check(observed ~= nil and math.abs(observed - expected) < tolerance, "to be near", expected, detail)
 		end
 
-		function expectation:toBeFloat32(authored: number)
+		function expectation.toBeFloat32(_self: Expectation<T>, authored: number)
 			if type(authored) ~= "number" then
 				error("toBeFloat32 requires the authored number to compare against", 2)
 			end
@@ -192,23 +203,23 @@ local function makeExpectation(actual: unknown): Expectation
 			)
 		end
 
-		function expectation:toBeTrueWith(detail: string)
+		function expectation.toBeTrueWith(_self: Expectation<T>, detail: string)
 			check(actual == true, "to be true: " .. detail)
 		end
 
-		function expectation:toBeLessThan(expected: number)
+		function expectation.toBeLessThan(_self: Expectation<T>, expected: number)
 			check(numberValue() < expected, "to be less than", expected)
 		end
 
-		function expectation:toBeGreaterThan(expected: number)
+		function expectation.toBeGreaterThan(_self: Expectation<T>, expected: number)
 			check(numberValue() > expected, "to be greater than", expected)
 		end
 
-		function expectation:toBeLessThanOrEqual(expected: number)
+		function expectation.toBeLessThanOrEqual(_self: Expectation<T>, expected: number)
 			check(numberValue() <= expected, "to be at most", expected)
 		end
 
-		function expectation:toBeGreaterThanOrEqual(expected: number)
+		function expectation.toBeGreaterThanOrEqual(_self: Expectation<T>, expected: number)
 			check(numberValue() >= expected, "to be at least", expected)
 		end
 
@@ -221,17 +232,17 @@ local function makeExpectation(actual: unknown): Expectation
 			if type(actual) ~= "table" then
 				error("containment expectation requires a string or table", 3)
 			end
+			return actual
 		end
 
-		function expectation:toContain(expected: unknown)
+		function expectation.toContain(_self: Expectation<T>, expected: unknown)
 			if type(actual) == "string" then
 				local needle = if type(expected) == "string" then expected else tostring(expected)
 				check(containsSubstring(expected), "to contain substring", needle)
 				return
 			end
-			requireHaystack()
 			local found = false
-			for _, value in actual :: { unknown } do
+			for _, value in requireHaystack() do
 				if deepEqual(value, expected, {}) then
 					found = true
 					break
@@ -240,15 +251,14 @@ local function makeExpectation(actual: unknown): Expectation
 			check(found, "to contain a deeply equal member", expected)
 		end
 
-		function expectation:toContainExactly(expected: unknown)
+		function expectation.toContainExactly(_self: Expectation<T>, expected: unknown)
 			if type(actual) == "string" then
 				local needle = if type(expected) == "string" then expected else tostring(expected)
 				check(containsSubstring(expected), "to contain substring", needle)
 				return
 			end
-			requireHaystack()
 			local found = false
-			for _, value in actual :: { unknown } do
+			for _, value in requireHaystack() do
 				if value == expected then
 					found = true
 					break
@@ -257,21 +267,21 @@ local function makeExpectation(actual: unknown): Expectation
 			check(found, "to contain the identical member", expected)
 		end
 
-		function expectation:toHaveLength(expected: number)
+		function expectation.toHaveLength(_self: Expectation<T>, expected: number)
 			if type(actual) == "string" then
 				check(#actual == expected, "to have length", expected)
 			elseif type(actual) == "table" then
-				check(#(actual :: { unknown }) == expected, "to have length", expected)
+				check(#actual == expected, "to have length", expected)
 			else
 				error("length expectation requires a string or table", 2)
 			end
 		end
 
-		function expectation:toThrow(contains: string?)
+		function expectation.toThrow(_self: CallableExpectation, contains: string?)
 			if type(actual) ~= "function" then
 				error("throw expectation requires a function", 2)
 			end
-			local ok, thrown: unknown = pcall(actual :: () -> ())
+			local ok, thrown: unknown = pcall(_self.actual)
 			local matched = not ok
 			if matched and contains ~= nil then
 				matched = string.find(tostring(thrown), contains, 1, true) ~= nil
@@ -279,18 +289,19 @@ local function makeExpectation(actual: unknown): Expectation
 			check(matched, "to throw", contains, caught(ok, thrown))
 		end
 
-		function expectation:toThrowMatching(pattern: string)
+		function expectation.toThrowMatching(_self: CallableExpectation, pattern: string)
 			if type(actual) ~= "function" then
 				error("throw expectation requires a function", 2)
 			end
 			if type(pattern) ~= "string" or pattern == "" then
 				error("toThrowMatching requires a non-empty pattern", 2)
 			end
-			local ok, thrown: unknown = pcall(actual :: () -> ())
+			local ok, thrown: unknown = pcall(_self.actual)
 			local matched = not ok and string.find(tostring(thrown), pattern) ~= nil
 			check(matched, "to throw matching", pattern, caught(ok, thrown))
 		end
 
+		expectation.never = expectation
 		return expectation
 	end
 
@@ -302,7 +313,7 @@ local function makeExpectation(actual: unknown): Expectation
 
 	local positive = build(false)
 	local negative = build(true)
-	local function attach(value: Expectation)
+	local function attach(value: Expectation<T>)
 		setmetatable(value, unknownMatcher)
 	end
 	attach(positive)
@@ -312,7 +323,7 @@ local function makeExpectation(actual: unknown): Expectation
 	return positive
 end
 
-local function expect(actual: unknown): Expectation
+local function expect<T>(actual: T?): Expectation<T>
 	return makeExpectation(actual)
 end
 

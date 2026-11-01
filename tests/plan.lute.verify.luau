@@ -10,10 +10,17 @@ end
 
 local Capability = require "../src/core/capability"
 local Plan = require "../src/core/plan"
+local Chunk = require "../src/lute/chunk"
 local Batch = require "../src/lute/batch"
 
 local Verify = require "../src/core"
 
+local function validate(draft: Verify.PlanDraft): Verify.Plan
+	return Plan.validate(draft)
+end
+local function partition(draft: Verify.PlanDraft, count: number): { Verify.PlanBatch }
+	return Plan.partition(draft, count)
+end
 local function unit(id: string, group: string?, tags: { string }?, requires: { string }?): Verify.PlanUnitDraft
 	return { id = id, locator = id .. ".verify.luau", group = group, tags = tags, requires = requires }
 end
@@ -57,35 +64,54 @@ describe("execution plan", function()
 		expect(plan.units[1].tags):toEqual { "neutral" }
 	end)
 
+	it("selects and partitions a validated plan without changing its policy or digest", function()
+		local plan = Plan.validate(BASE)
+		local digest = Plan.digest(plan)
+		local selected = Plan.select(plan, { groups = { "alpha" } })
+		expect(idsOf(selected.units)):toEqual { "alpha/one", "alpha/two" }
+		expect(selected.policy):toEqual(plan.policy)
+		local batches = Plan.partition(selected, 2)
+		expect(batchIds(batches)):toEqual { { "alpha/one", "alpha/two" }, {} }
+		expect(Plan.digest(plan)):toEqual(digest)
+	end)
+
 	it("refuses a duplicate unit id and a duplicate locator", function()
-		local duplicateId = pcall(Plan.validate, {
-			id = "p",
-			units = { unit "a", { id = "a", locator = "b.verify.luau" } },
-		})
+		local duplicateId = pcall(function()
+			return validate {
+				id = "p",
+				units = { unit "a", { id = "a", locator = "b.verify.luau" } },
+			}
+		end)
 		expect(duplicateId):toEqual(false)
-		local duplicateLocator = pcall(Plan.validate, {
-			id = "p",
-			units = { unit "a", { id = "b", locator = "a.verify.luau" } },
-		})
+		local duplicateLocator = pcall(function()
+			return validate {
+				id = "p",
+				units = { unit "a", { id = "b", locator = "a.verify.luau" } },
+			}
+		end)
 		expect(duplicateLocator):toEqual(false)
 	end)
 
 	it("refuses a retry policy that names a correctness outcome", function()
-		local ok, thrown: unknown = pcall(Plan.validate, {
-			id = "p",
-			policy = { retry = { maxAttempts = 3, on = { "failed" } } },
-			units = { unit "a" },
-		})
+		local ok, thrown: unknown = pcall(function()
+			return validate {
+				id = "p",
+				policy = { retry = { maxAttempts = 3, on = { "failed" } } },
+				units = { unit "a" },
+			}
+		end)
 		expect(ok):toEqual(false)
 		expect((tostring(thrown))):toContain "not an infrastructure outcome"
 	end)
 
 	it("refuses more than one attempt with nothing eligible", function()
-		local ok = pcall(Plan.validate, {
-			id = "p",
-			policy = { retry = { maxAttempts = 2, on = {} } },
-			units = { unit "a" },
-		})
+		local ok = pcall(function()
+			return validate {
+				id = "p",
+				policy = { retry = { maxAttempts = 2, on = {} } },
+				units = { unit "a" },
+			}
+		end)
 		expect(ok):toEqual(false)
 	end)
 
@@ -151,7 +177,7 @@ describe("execution plan", function()
 	end)
 
 	it("returns exactly the batch count asked for, empty batches included", function()
-		local batches = Plan.partition({ id = "p", units = { unit "only" } }, 4)
+		local batches = partition({ id = "p", units = { unit "only" } }, 4)
 		expect(#batches):toEqual(4)
 		expect(#batches[1].units):toEqual(1)
 		expect(#batches[4].units):toEqual(0)
@@ -215,14 +241,14 @@ describe("cost-aware batching", function()
 	end
 
 	it("defaults every unit to weight one", function()
-		local plan = Plan.validate { id = "p", units = { { id = "a", locator = "a.luau" } } }
+		local plan = validate { id = "p", units = { { id = "a", locator = "a.luau" } } }
 		expect(plan.units[1].weight):toEqual(1)
 	end)
 
 	it("refuses a weight that is not a positive number", function()
 		local function withWeight(weight: unknown): () -> ()
 			return function()
-				Plan.validate {
+				validate {
 					id = "p",
 					units = { { id = "a", locator = "a.luau", weight = asNumber(weight) } },
 				}
@@ -323,7 +349,10 @@ describe("cost-aware batching", function()
 
 	it("refuses a batching mode it does not implement", function()
 		expect((pcall(function()
-			((Plan.partition :: unknown) :: (Verify.PlanDraft, number, string) -> unknown)(WEIGHTED, 2, "measured")
+			Chunk.load(
+				'return partition(plan, 2, "measured")',
+				{ environment = { partition = Plan.partition, plan = WEIGHTED } }
+			)()
 		end))):toEqual(false)
 	end)
 

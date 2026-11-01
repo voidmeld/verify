@@ -11,7 +11,7 @@ local Example = require "../examples/hierarchy-experience"
 local function fixture(): (Experience.Host, Environment.Environment)
 	local environment = Environment.create()
 	local host = Example.host(function(): Example.Folder
-		return ((environment.createInstance "Folder") :: unknown) :: Example.Folder
+		return environment.createInstance "Folder"
 	end, { name = "simulated-hierarchy", environment = { runtime = "simulation" }, now = environment.now })
 	return host, environment
 end

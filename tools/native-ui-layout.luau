@@ -4,6 +4,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local fixtures = {
+	{ name = "native tween interpolation", source = require "../tests/fixtures/tween-interpolation" },
 	{ name = "native selection assignment", source = require "../tests/fixtures/ui-selection-assignment" },
 	{ name = "native text content", source = require "../tests/fixtures/ui-content-text" },
 	{ name = "native selection scrolling", source = require "../tests/fixtures/ui-selection-scroll" },
@@ -67,7 +68,7 @@ return function()
 		place = place,
 		worker = "tools/studio-worker.luau",
 		context = "Client",
-		deadlineSeconds = 180,
+		deadlineSeconds = 420,
 		code = [[
 local root = game:GetService("ReplicatedStorage").VerifyUILayout
 local Core = require(root.src.core)

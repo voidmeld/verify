@@ -5,10 +5,11 @@ local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Core = require "../src/core"
+local Wait = require "../src/core/wait"
 
 it("bounded waits retain terminal outcomes and clamp the final sleep", function()
 	local now = 0
-	local ops = {
+	local ops: Wait.Ops = {
 		now = function(): number
 			return now
 		end,

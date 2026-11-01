@@ -15,6 +15,8 @@ type Shape = Geometry.Shape
 type Filter = D.RaycastParamsValue | D.OverlapParamsValue
 type Result = { Instance: Instance, Position: Vector, Normal: Vector, Distance: number, Material: unknown }
 local resultKind = Names.behavior "RaycastResult"
+local results: { [unknown]: Result } = {}
+Names.weak(results)
 local V = D.Vector3
 
 local function finite(value: number)
@@ -59,20 +61,20 @@ local function ball(position: Vector, radius: number): Shape
 	return { frame = D.CFrame.new(position), half = V.one * radius, radius = radius }
 end
 
-local function listed(part: Instance, filter: { unknown }): boolean
-	for _, candidate in filter do
-		assert(Names.kind(candidate) == "Instance", "query filters require Instances")
-		local object = candidate :: Instance
-		if part == object or part:IsDescendantOf(object) then
-			return true
-		end
-	end
-	return false
-end
-
 local function attach(environment: Environment.Environment)
+	local function listed(part: Instance, filter: { unknown }): boolean
+		for _, candidate in filter do
+			assert(Names.kind(candidate) == "Instance", "query filters require Instances")
+			local object = environment.assertInstance(candidate)
+			if part == object or part:IsDescendantOf(object) then
+				return true
+			end
+		end
+		return false
+	end
+
 	type Rules = { groups: { [string]: boolean }, masks: { [string]: { [string]: boolean } } }
-	local worlds = setmetatable({} :: { [Instance]: Rules }, { __mode = "k" })
+	local worlds: { [Instance]: Rules } = setmetatable({}, { __mode = "k" })
 	local function rules(owner: Instance): Rules
 		local world = owner
 		if owner:IsA "PhysicsService" or owner:IsA "Workspace" then
@@ -262,6 +264,7 @@ local function attach(environment: Environment.Environment)
 					Distance = t * length,
 					Material = environment.propertyOf(part, "Material"),
 				})
+				results[nearest] = nearest
 			end
 		end
 		return nearest
@@ -351,4 +354,10 @@ local function attach(environment: Environment.Environment)
 	)
 end
 
-return { attach = attach }
+local function expectResult(value: unknown): Result
+	local result = results[value]
+	assert(result ~= nil, "expected a simulated RaycastResult")
+	return result
+end
+
+return { attach = attach, expectResult = expectResult }

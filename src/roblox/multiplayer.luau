@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../core/shape"
 local Core = require "../core"
 local Native = require "./experience-host"
 
@@ -35,12 +36,12 @@ export type ClientOptions = {
 
 local function record(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "session message must be a record")
-	return value :: { [string]: unknown }
+	return Shape.record(value, "session message")
 end
 local function strings(value: unknown): { string }
 	assert(type(value) == "table", "expected capability list")
 	local result: { string } = {}
-	for _, item in value :: { unknown } do
+	for _, item in value do
 		assert(type(item) == "string" and item ~= "", "invalid capability")
 		table.insert(result, item)
 	end
@@ -49,7 +50,7 @@ end
 local function artifacts(value: unknown): { Core.Artifact }
 	assert(type(value) == "table", "expected capture artifacts")
 	local result: { Core.Artifact } = {}
-	for _, item in value :: { unknown } do
+	for _, item in value do
 		local fields = record(item)
 		assert(type(fields.name) == "string" and type(fields.reference) == "string", "invalid capture")
 		assert(fields.mediaType == nil or type(fields.mediaType) == "string", "invalid capture media type")

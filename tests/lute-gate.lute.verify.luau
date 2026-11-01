@@ -124,7 +124,7 @@ describe("shared gate process slots", function()
 		local runtime = table.clone(LuteRuntime)
 		runtime.bounded = { mechanism = "job" }
 		runtime.process = table.clone(runtime.process)
-		runtime.process.run = function(argv)
+		runtime.process.run = function(argv: { string }, _options: LuteRuntime.RunOptions?): LuteRuntime.ProcessResult
 			local worker = table.find(argv, "examples/worker.luau")
 			active += 1
 			peak = math.max(peak, active)
@@ -599,6 +599,23 @@ describe("isolated sources, selection and the last outcome", function()
 		expect(recordOf(wrong, "probe").status):toEqual "failed"
 	end)
 
+	it("refuses a malformed persisted outcome for the matching gate", function()
+		local gate = Gate.define { id = "malformed-outcome", producers = { sh("probe", "true") } }
+		local directory = ROOT .. "/malformed-outcome"
+		Files.ensureDirectory(directory)
+		fs.writeStringToFile(
+			directory .. "/latest.json",
+			Lute.encode {
+				schemaVersion = Gate.SCHEMA_VERSION,
+				gate = gate.id,
+				digest = gate.digest,
+			}
+		)
+		local outcome, reason = Lute.gate.last(gate, { directory = directory })
+		expect(outcome):toEqual(nil)
+		expect(reason):toContain "invalid"
+	end)
+
 	it("keeps the last outcome for a rerun and refuses another gate's", function()
 		local bad = fixture(
 			"rerun-bad",
@@ -664,7 +681,7 @@ describe("the gate command line", function()
 			'return function(harness) harness:case("opens the door", function() end) harness:case("closes the window", function() end) end'
 		)
 		local lines, cli = talk()
-		local options = { options = { directory = ROOT .. "/cli" } }
+		local options: GateRuntime.CliOptions = { options = { directory = ROOT .. "/cli" } }
 		expect(cli.cli(draft { named }, { "--list" }, options)):toEqual(0)
 		expect(joined(lines)):toContain "alpha"
 		expect(cli.cli(draft { named }, {}, options)):toEqual(0)
@@ -683,7 +700,7 @@ describe("the gate command line", function()
 		local base = draft { first, quiet }
 		base.producers[2].silent = { quiet }
 		local _, cli = talk()
-		local options = { options = { directory = ROOT .. "/cli-silent" } }
+		local options: GateRuntime.CliOptions = { options = { directory = ROOT .. "/cli-silent" } }
 		expect(cli.cli(base, {}, options)):toEqual(0)
 		expect(cli.cli(base, { "--file", first }, options)):toEqual(0)
 	end)
@@ -705,7 +722,7 @@ describe("the gate command line", function()
 			return base
 		end
 		local lines, cli = talk()
-		local options = { options = { directory = ROOT .. "/cli-census" } }
+		local options: GateRuntime.CliOptions = { options = { directory = ROOT .. "/cli-census" } }
 		expect(cli.cli(census(), {}, options)):toEqual(0)
 		expect(cli.cli(census(), { "--file", first }, options)):toEqual(0)
 		expect(cli.cli(census(), { "--file", second }, options)):toEqual(0)
@@ -724,7 +741,7 @@ describe("the gate command line", function()
 		local named = fixture("cli-file", 'return function(harness) harness:case("opens the door", function() end) end')
 		local other = fixture("cli-other", 'return function(harness) harness:case("lone", function() end) end')
 		local lines, cli = talk()
-		local options = { options = { directory = ROOT .. "/cli-file" } }
+		local options: GateRuntime.CliOptions = { options = { directory = ROOT .. "/cli-file" } }
 		expect(cli.cli(draft { named, other }, { "--file", named }, options)):toEqual(0)
 		expect(joined(lines)):toContain "NARROWED"
 		expect(cli.cli(draft { named }, { "--file", "nowhere.verify.luau" }, options)):toEqual(2)
@@ -735,7 +752,7 @@ describe("the gate command line", function()
 		expect(cli.cli(draft { named }, { "--tier" }, options)):toEqual(2)
 		expect(cli.cli(draft { named }, { "--name", "" }, options)):toEqual(2)
 		expect(joined(lines)):toContain "usage:"
-		local fresh = { options = { directory = ROOT .. "/cli-none" } }
+		local fresh: GateRuntime.CliOptions = { options = { directory = ROOT .. "/cli-none" } }
 		expect(cli.cli(draft { named }, { "--rerun" }, fresh)):toEqual(1)
 		expect(cli.cli(draft { named }, { "--explain", "alpha" }, fresh)):toEqual(1)
 		local failing = draft { named }

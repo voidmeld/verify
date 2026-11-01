@@ -10,6 +10,8 @@ local Values = require "./ui-values"
 local EnumTypes = require "./datatypes/enum"
 local Gamepad = require "./input-gamepad"
 local Touch = require "./input-touch"
+local VectorTypes = require "./datatypes/vector"
+local Names = require "./datatypes/names"
 
 export type Key = { code: string, down: boolean }
 export type Pointer = { x: number, y: number, button: "left" | "right" | "middle", down: boolean }
@@ -26,7 +28,13 @@ export type SimulatedOptions = {
 }
 local function fields(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "expected input record")
-	return value :: { [string]: unknown }
+	local result: { [string]: unknown } = {}
+	for key, item in value do
+		if type(key) == "string" then
+			result[key] = item
+		end
+	end
+	return result
 end
 local function key(value: unknown): Key
 	local record = fields(value)
@@ -54,9 +62,11 @@ local function empty(value: unknown): nil
 	assert(value == nil, "expected no result")
 	return nil
 end
-local keyOperation = Core.operation { kind = "action", name = "input.key", input = key, output = empty }
-local pointerOperation = Core.operation { kind = "action", name = "input.pointer", input = pointer, output = empty }
-local textOperation = Core.operation { kind = "action", name = "input.text", input = text, output = empty }
+local keyOperation = Core.operation<<Key, nil>> { kind = "action", name = "input.key", input = key, output = empty }
+local pointerOperation =
+	Core.operation<<Pointer, nil>> { kind = "action", name = "input.pointer", input = pointer, output = empty }
+local textOperation =
+	Core.operation<<string, nil>> { kind = "action", name = "input.text", input = text, output = empty }
 local function registry(backend: Backend): Native.Registry
 	return {
 		actions = {
@@ -288,7 +298,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 			local action = binding.Parent
 			if action == nil or not action:IsA "InputAction" then
-				return unsupported "InputBinding without a direct InputAction"
+				unsupported "InputBinding without a direct InputAction"
+				return
 			end
 			local enabled = env.propertyOf(action, "Enabled")
 			if enabled == false then
@@ -456,8 +467,12 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		if type(method) ~= "function" then
 			return nil
 		end
-		local found = (method :: (Instance) -> Instance?)(service)
-		return if found and env.isAlive(found) then found else nil
+		local found = env.method(service, "GetFocusedTextBox")(service)
+		if found == nil then
+			return nil
+		end
+		local instance = Environment.assertInstance(found)
+		return if env.isAlive(instance) then instance else nil
 	end
 	local function send(at: Position, down: boolean, movePointer: boolean?)
 		local objects = hits(at, "button")
@@ -496,13 +511,13 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if box and box ~= clicked then
 				local release = box.ReleaseFocus
 				if type(release) == "function" then
-					(release :: (Instance, boolean, Instance) -> ())(box, false, object)
+					env.method(box, "ReleaseFocus")(box, false, object)
 				end
 			end
 			if clicked and clicked:IsA "TextBox" and read(clicked, "TextEditable") ~= false and box ~= clicked then
 				local capture = clicked.CaptureFocus
 				if type(capture) == "function" then
-					(capture :: (Instance) -> ())(clicked)
+					env.method(clicked, "CaptureFocus")(clicked)
 				end
 				if tostring(clicked.Text) ~= "" then
 					unsupported "TextBox click placement inside existing text"
@@ -591,7 +606,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if sunk and priority < sunk then
 				break
 			end
-			local fire = entry.action.Fire :: (Instance, boolean) -> ()
+			local fire = env.method(entry.action, "Fire")
 			fire(entry.action, down)
 			if env.propertyOf(entry.context, "Sink") == true then
 				sunk = priority
@@ -629,8 +644,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if parent:IsA "ScreenGui" or parent:IsA "GuiObject" and read(parent, "ClipsDescendants") == true then
 				local origin = Values.vector(read(parent, "AbsolutePosition"))
 				local extent = Values.vector(read(parent, "AbsoluteSize"))
-				left, top = math.max(left, origin.X), math.max(top, origin.Y)
-				right, bottom = math.min(right, origin.X + extent.X), math.min(bottom, origin.Y + extent.Y)
+				left = math.max(left, origin.X)
+				top = math.max(top, origin.Y)
+				right = math.min(right, origin.X + extent.X)
+				bottom = math.min(bottom, origin.Y + extent.Y)
 			end
 			parent = parent.Parent
 		end
@@ -772,7 +789,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		if guiService and Environment.isInstance(selected) then
 			local target = Environment.assertInstance(selected)
 			if code == "Thumbstick1" then
-				local position = env.propertyOf(object, "Position") :: { X: number, Y: number, Z: number }
+				local position = VectorTypes.expect3(env.propertyOf(object, "Position"), 1)
 				if position.X ~= 0 and position.Y ~= 0 then
 					unsupported "virtual controller diagonal thumbstick selection"
 				end
@@ -871,7 +888,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				end
 				local release = box.ReleaseFocus
 				if type(release) == "function" then
-					(release :: (Instance, boolean) -> ())(box, true)
+					env.method(box, "ReleaseFocus")(box, true)
 				end
 			end
 			env.fire(service, if value.down then "InputBegan" else "InputEnded", object, true)
@@ -942,9 +959,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local root = gui:FindFirstAncestorWhichIsA "DataModel"
 		local guiService = root and root:FindFirstChildOfClass "GuiService"
 		assert(guiService, "touch input requires GuiService")
-		local getArea = guiService.GetInsetArea :: (Instance, unknown) -> { Min: Position }
+		local getArea = env.method(guiService, "GetInsetArea")
 		local area = getArea(guiService, library.Enum.ScreenInsets.None)
-		return { X = at.X + area.Min.X, Y = at.Y + area.Min.Y }
+		assert(Datatypes.typeName(area) == "Rect", "GetInsetArea must return a Rect")
+		local minimum = Values.vector(Names.fields(area).Min)
+		return { X = at.X + minimum.X, Y = at.Y + minimum.Y }
 	end
 	local touch = Touch.create(env, {
 		service = service,

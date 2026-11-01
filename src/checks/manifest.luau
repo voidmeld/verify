@@ -27,7 +27,7 @@ local function check(config: Config): { string }
 		return {}
 	end
 	assert(config.entries ~= nil, "manifest check needs loaded entries")
-	local entries = config.entries :: { string }
+	local entries = config.entries
 	local findings: { string } = {}
 	for index = 1, math.max(#found, #entries) do
 		if found[index] ~= entries[index] then

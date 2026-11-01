@@ -1,5 +1,7 @@
 --!strict
 
+local Shape = require "../core/shape"
+
 local Environment = require "./environment-types"
 local Datatypes = require "./datatypes"
 
@@ -83,7 +85,10 @@ end
 
 local function record(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "content facts require an object")
-	return value :: { [string]: unknown }
+	for key in value do
+		assert(type(key) == "string", "content facts require string fields")
+	end
+	return Shape.record(value, "content facts")
 end
 
 local function integer(value: unknown, minimum: number): number
@@ -101,7 +106,10 @@ end
 
 local function array(value: unknown): { unknown }
 	assert(type(value) == "table", "content facts require an array")
-	local result = value :: { unknown }
+	local result: { unknown } = {}
+	for key, item in value do
+		result[integer(key, 1)] = item
+	end
 	local count = 0
 	for key in result do
 		integer(key, 1)
@@ -114,19 +122,22 @@ end
 local function numbers(value: unknown, count: number): { number }
 	local values = array(value)
 	assert(#values == count, "content facts have the wrong component count")
+	local result: { number } = {}
 	for _, component in values do
 		assert(
 			type(component) == "number" and component == component and math.abs(component) < math.huge,
 			"content facts require finite components"
 		)
+		table.insert(result, component)
 	end
-	return values :: { number }
+	return result
 end
 
 local function requests(value: unknown): { Request }
 	local rows = array(value)
 	assert(#rows > 0, "content capture requires requests")
 	local seen: { [string]: boolean } = {}
+	local result: { Request } = {}
 	for _, entry in rows do
 		local row = record(entry)
 		local kind, key = text(row.kind), text(row.key)
@@ -141,8 +152,14 @@ local function requests(value: unknown): { Request }
 				"unknown content request field"
 			)
 		end
+		table.insert(result, {
+			kind = kind,
+			key = key,
+			id = if kind ~= "model" then integer(row.id, 1) else nil,
+			version = if kind == "model" then integer(row.version, 1) else nil,
+		})
 	end
-	return rows :: { Request }
+	return result
 end
 
 local function validate(value: unknown): Capture
@@ -154,25 +171,31 @@ local function validate(value: unknown): Capture
 	integer(capture.gameId, 0)
 	local rows = array(capture.rows)
 	local inputs: { unknown } = {}
+	local output: { Row } = {}
 	for _, entry in rows do
 		local row = record(entry)
 		table.insert(inputs, row.request)
+		local request = requests({ row.request })[1]
+		local facts: { Node }? = nil
+		local refusal: string? = nil
 		assert(type(row.ok) == "boolean", "content capture requires a load result")
 		if row.ok then
 			assert(row.refusal == nil, "successful content capture has a refusal")
 			local nodes = array(row.facts)
 			assert(#nodes > 0, "content capture has no root")
-			local kind = record(row.request).kind
+			local kind = request.kind
 			local rootClass = record(nodes[1]).className
 			assert(
 				rootClass
 					== (if kind == "model" then "Model" elseif kind == "mesh" then "MeshPart" else "KeyframeSequence"),
 				"content capture has the wrong root class"
 			)
+			facts = {}
 			for index, node in nodes do
 				local fields = record(node)
-				text(fields.className)
-				local needed = required[fields.className :: string]
+				table.insert(facts, fields)
+				local className = text(fields.className)
+				local needed = required[className]
 				if needed then
 					requireFields(fields, needed)
 				end
@@ -210,11 +233,19 @@ local function validate(value: unknown): Capture
 			end
 		else
 			assert(row.facts == nil, "refused content capture has facts")
-			text(row.refusal)
+			refusal = text(row.refusal)
 		end
+		table.insert(output, { request = request, ok = row.ok, facts = facts, refusal = refusal })
 	end
 	requests(inputs)
-	return (capture :: unknown) :: Capture
+	return {
+		schemaVersion = 1,
+		engineVersion = text(capture.engineVersion),
+		placeId = integer(capture.placeId, 0),
+		placeVersion = integer(capture.placeVersion, 0),
+		gameId = integer(capture.gameId, 0),
+		rows = output,
+	}
 end
 
 local function attach(environment: Environment.Environment, value: unknown, library: Datatypes.Library?)
@@ -234,7 +265,7 @@ local function attach(environment: Environment.Environment, value: unknown, libr
 		local objects: { Environment.Instance } = {}
 		local ok, failure = pcall(function()
 			for index, node in nodes do
-				local object = environment.createEngineInstance(node.className :: string)
+				local object = environment.createEngineInstance(text(node.className))
 				objects[index] = object
 				for class, fields in required do
 					if object:IsA(class) then
@@ -251,27 +282,23 @@ local function attach(environment: Environment.Environment, value: unknown, libr
 						local components = numbers(item, 3)
 						environment.poke(object, property, types.Vector3.new(table.unpack(components)))
 					elseif frames[field] then
-						environment.poke(
-							object,
-							frames[field] :: string,
-							types.CFrame.new(table.unpack(numbers(item, 12)))
-						)
+						environment.poke(object, text(frames[field]), types.CFrame.new(table.unpack(numbers(item, 12))))
 					elseif scalars[field] then
 						local target = if field == "textureId" and node.className == "SpecialMesh"
 							then "TextureId"
-							else scalars[field] :: string
+							else text(scalars[field])
 						if maps[field] then
 							environment.poke(
 								object,
 								maps[field],
-								if item == "" then types.Content.none else types.Content.fromUri(item :: string)
+								if item == "" then types.Content.none else types.Content.fromUri(text(item))
 							)
 						else
 							environment.poke(object, target, item)
 						end
 					elseif enums[field] then
-						local spec = enums[field] :: { string }
-						environment.poke(object, spec[1], types.Enum[spec[2]][item :: string])
+						local spec = assert(enums[field])
+						environment.poke(object, spec[1], types.Enum[spec[2]][text(item)])
 					end
 				end
 				if object:IsA "BaseScript" then
@@ -282,11 +309,11 @@ local function attach(environment: Environment.Environment, value: unknown, libr
 				local object = objects[index]
 				for field, property in references do
 					if node[field] then
-						environment.poke(object, property, objects[node[field] :: number])
+						environment.poke(object, property, objects[integer(node[field], 1)])
 					end
 				end
 				if node.parent then
-					object.Parent = objects[node.parent :: number]
+					object.Parent = objects[integer(node.parent, 1)]
 				end
 			end
 		end)
@@ -315,7 +342,7 @@ local function attach(environment: Environment.Environment, value: unknown, libr
 		"AssetService.CreateMeshPartAsync",
 		function(_service: Environment.Instance, content: Datatypes.ContentValue, options: unknown)
 			assert(
-				options == nil or (type(options) == "table" and next(options :: { [string]: unknown }) == nil),
+				options == nil or (type(options) == "table" and next(options) == nil),
 				"unsupported_content: mesh options change captured geometry"
 			)
 			local uri = content.Uri

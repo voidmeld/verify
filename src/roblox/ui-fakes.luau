@@ -124,16 +124,21 @@ local classes: { [string]: Environment.ClassSpec } = {
 	},
 }
 
+local function hasClass(object: Instance, className: string): boolean
+	return object:IsA(className)
+end
+
 local function visible(object: Instance): boolean
 	local current: Instance? = object
-	while current do
-		if current:IsA "GuiObject" and current.Visible == false then
+	while current ~= nil do
+		local node: Instance = current
+		if hasClass(node, "GuiObject") and node.Visible == false then
 			return false
 		end
-		if current:IsA "ScreenGui" and current.Enabled == false then
+		if hasClass(node, "ScreenGui") and node.Enabled == false then
 			return false
 		end
-		current = current.Parent
+		current = node.Parent
 	end
 	return true
 end
@@ -313,7 +318,8 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		setValue(transitions, object, name, value)
 	end)
 	env.fake("StyleRule.GetDefaultPropertyTransition", function(object: Instance): unknown
-		return (transitions[object] or {})["*"]
+		local values = transitions[object]
+		return if values then values["*"] else nil
 	end)
 	env.fake("StyleRule.SetDefaultPropertyTransition", function(object: Instance, value: unknown)
 		setValue(transitions, object, "*", value)
@@ -395,7 +401,9 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		env.fake(member, handler)
 	end
 	return {
-		styled = style.styled,
+		styled = function(object: Instance, property: string): unknown
+			return style.styled(object, property, nil)
+		end,
 		component = style.component,
 		step = style.step,
 		cached = style.cached,

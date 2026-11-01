@@ -34,7 +34,7 @@ export type CaseResult = Types.CaseResult
 export type Report = Types.Report
 export type SelectionSubject = Types.SelectionSubject
 export type SelectionPredicate = Types.SelectionPredicate
-export type Expectation = Matchers.Expectation
+export type Expectation<T = unknown> = Matchers.Expectation<T>
 export type Spy<A... = ...unknown> = Spy.Spy<A...>
 
 export type Resource<T = unknown> = HarnessModule.Resource<T>
@@ -67,7 +67,7 @@ export type EvidenceContent = Provenance.Content
 export type EvidenceMeta = Provenance.Meta
 export type EvidenceStat = Provenance.Stat
 
-export type Session<S = { [string]: unknown }> = SessionModule.Session<S>
+export type Session<S = Harness> = SessionModule.Session<S>
 export type SessionProvidedOptions<S> = SessionModule.ProvidedOptions<S>
 export type Segment = Transport.Segment
 export type ProgressEvent = Progress.Event
@@ -83,6 +83,7 @@ return {
 	syntheticReport = HarnessModule.syntheticReport,
 	format = Format.format,
 	createSession = SessionModule.create,
+	createSurfaceSession = SessionModule.createSurface,
 	execute = Execution.execute,
 	expect = Matchers.expect,
 	float32 = Matchers.float32,

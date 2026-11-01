@@ -102,10 +102,10 @@ describe("bounded host commands", function()
 			end
 			local mechanisms: { Bounded.Mechanism } = { "auto", "job" }
 			if available "perl" then
-				table.insert(mechanisms, "perl")
+				mechanisms[#mechanisms + 1] = "perl"
 			end
 			if available "setsid" then
-				table.insert(mechanisms, "setsid")
+				mechanisms[#mechanisms + 1] = "setsid"
 			end
 			local ran = 0
 			for _, shell in shells do

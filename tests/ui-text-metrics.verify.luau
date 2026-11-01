@@ -8,10 +8,13 @@ local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 
 local call = Lute.chunk.load "local service, member = ...; return service[member](service, select(3, ...))"
+local xComponent = Lute.chunk.load "local vector = ...; return vector.X"
 
 it("default text measurements use captured native font facts", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
 	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
 		Font = library.Font.new "rbxasset://fonts/families/BuilderSans.json",
@@ -35,7 +38,9 @@ end)
 
 it("captured Latin and Japanese text preserves service widths and wrapping", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
 	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
 		Font = library.Font.new "rbxasset://fonts/families/BuilderSans.json",
@@ -60,7 +65,9 @@ end)
 
 it("text measurements refuse unmodeled shaping and split narrow words", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
 	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
 		Font = library.Font.new "rbxasset://fonts/families/BuilderSans.json",
@@ -89,8 +96,10 @@ it("text measurements refuse unmodeled shaping and split narrow words", function
 			local widest = 0
 			for _, codepoint in utf8.codes "Hello" do
 				parameters.Text = utf8.char(codepoint)
-				local measured = call(service, "GetTextBoundsAsync", parameters) :: { X: number, Y: number }
-				widest = math.max(widest, measured.X)
+				local measured = call(service, "GetTextBoundsAsync", parameters)
+				local width = xComponent(measured)
+				assert(type(width) == "number")
+				widest = math.max(widest, width)
 			end
 			expect(actual):toEqual(library.Vector2.new(widest, 6 * 14))
 			continue
@@ -110,14 +119,18 @@ it("text measurement providers remain explicit overrides and can be disabled", f
 			measureText = false,
 		},
 	})
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local service = bridge.placeEngine().service "TextService"
 	expect(call(service, "GetTextBoundsAsync", {})):toEqual(Roblox.datatypes.Vector2.new(12, 34))
 	expect(function()
 		call(service, "GetTextSize", "Hello", 14, nil, nil)
 	end):toThrow()
 	local disabled = Lute.fixture.bridge(nil, { ui = { measureBounds = false } })
-	own(disabled.close)
+	own(function()
+		disabled.close()
+	end)
 	expect(function()
 		local service = disabled.placeEngine().service "TextService"
 		call(service, "GetTextBoundsAsync", {})
@@ -135,7 +148,9 @@ it("automatic text shrinks after edits and rejects unmodeled text before publish
 			end,
 		},
 	})
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
 	local env, layout = bridge.environment, assert(bridge.layout)
 	local frame = env.createInstance("Frame", { Size = library.UDim2.fromOffset(100, 100) })
@@ -177,7 +192,9 @@ end)
 
 it("native boundary corrections and Legacy Arial line metrics", function(own)
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
 	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
 		Font = library.Font.new "rbxasset://fonts/families/LegacyArial.json",

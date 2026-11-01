@@ -32,12 +32,14 @@ type UDim = Adapter.UDim
 type UDim2 = Adapter.UDim2
 type CFrame = Adapter.CFrame
 
-export type Options<V2 = Vector2, V3 = Vector3, C3 = Color3, U1 = UDim, U2 = UDim2, CF = CFrame> = {
+export type Library = { typeName: (unknown) -> string, datatypes: Datatypes.Library }
+
+export type Options = {
 	content: ContentFakes.Options?,
 	database: Reflection.Database,
 	typeName: (unknown) -> string,
 	enumType: ((unknown) -> string)?,
-	library: Adapter.Library<V2, V3, C3, U1, U2, CF>?,
+	library: Library?,
 	classes: { [string]: Environment.ClassSpec }?,
 	referenceClass: ((className: string, property: string) -> string?)?,
 	validateProperty: ((className: string, property: string, value: unknown, operation: "set" | "poke") -> ...unknown)?,
@@ -117,8 +119,8 @@ local function overlays(options: Options, unavailable: { string }): { [string]: 
 	return result
 end
 
-local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U2, CF>): Bridge
-	local settings = (options :: unknown) :: Options
+local function create(options: Options): Bridge
+	local settings = options
 	local serviceClasses: { [string]: boolean } = {}
 	local resolveService: ((string) -> Environment.Instance)? = nil
 	local computed: { [string]: Environment.Computed } = table.clone(settings.computed or {})
@@ -174,7 +176,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 	local validator: ((className: string, property: string, value: unknown, operation: "set" | "poke") -> ...unknown)? =
 		nil
 	if uiValidates then
-		validator = function(className, property, value, operation)
+		validator = function(className: string, property: string, value: unknown, operation: "set" | "poke"): ...unknown
 			if property == "SelectedObject" and (selectUi == nil or selectUi(className, property)) then
 				if selection.validate(className, property, value, operation) == false then
 					return false
@@ -188,6 +190,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 	else
 		validator = supplied
 	end
+	local dependents: { [string]: { string } } = { Text = { "ContentText" } }
 	local environment = Reflection.create {
 		database = settings.database,
 		typeName = settings.typeName,
@@ -198,24 +201,22 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		defaultProperty = settings.defaultProperty,
 		handlerErrors = settings.handlerErrors,
 		computed = table.freeze(computed),
-		computedDependents = table.freeze { Text = { "ContentText" } },
+		computedDependents = table.freeze(dependents),
 		undeclaredWrites = settings.undeclaredWrites,
 		undeclaredReads = settings.undeclaredReads,
 		functionDoubles = settings.functionDoubles,
 	}
-	local controller: UiFakes.Controller? = if ui ~= false
-		then UiFakes.attach(environment, ui :: UiFakes.Options?, selection)
-		else nil
+	local controller: UiFakes.Controller? = if ui ~= false then UiFakes.attach(environment, ui, selection) else nil
 	local content = if settings.content then table.clone(settings.content) else nil
 	if content and content.library == nil and settings.library then
-		content.library = ((settings.library :: unknown) :: { datatypes: Datatypes.Library }).datatypes
+		content.library = settings.library.datatypes
 	end
 	ContentFakes.attach(environment, content)
 	LocalizationFakes.attach(environment)
-	local library = (settings.library :: unknown) :: Adapter.Library<V2, V3, C3, U1, U2, CF>?
+	local library = settings.library
 	if library then
 		local found, member = pcall(function(): unknown
-			return ((library.datatypes :: unknown) :: typeof(Datatypes)).Enum.GuiState.NonInteractable
+			return library.datatypes.Enum.GuiState.NonInteractable
 		end)
 		nonInteractable = if found then member else nil
 		readInteractable = function(object: Environment.Instance): unknown
@@ -314,9 +315,7 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 				end
 			end,
 			isInstance = Environment.isInstance,
-			datatypes = if settings.library
-				then (settings.library.datatypes :: unknown) :: typeof(Datatypes)
-				else Datatypes,
+			datatypes = if settings.library then settings.library.datatypes else Datatypes,
 			typeName = settings.typeName,
 			diagnostics = diagnostics,
 			surface = {
@@ -401,7 +400,9 @@ local function create<V2, V3, C3, U1, U2, CF>(options: Options<V2, V3, C3, U1, U
 		hasClass = function(className: string): boolean
 			return settings.database:GetClass(className) ~= nil
 		end,
-		observe = environment.observe,
+		observe = function(listener: (Environment.Event) -> ()): Environment.Connection
+			return environment.observe(listener, nil)
+		end,
 		track = track,
 		record = record,
 		instanceHost = function(actor: string): InstanceHost.Simulated

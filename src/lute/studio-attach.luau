@@ -150,11 +150,11 @@ local function discovered(text: string): { StudioInfo }
 		if type(value) ~= "table" then
 			return
 		end
-		local fields = value :: { [unknown]: unknown }
+		local fields = Wire.record(value)
 		if type(fields.id) == "string" and type(fields.name) == "string" then
 			seen[fields.id] = fields.name
 		end
-		for _, child in fields do
+		for _, child in value do
 			visit(child)
 		end
 	end
@@ -163,7 +163,7 @@ local function discovered(text: string): { StudioInfo }
 	for id, name in seen do
 		table.insert(studios, { id = id, name = name })
 	end
-	table.sort(studios, function(left, right)
+	table.sort(studios, function(left: StudioInfo, right: StudioInfo)
 		return left.id < right.id
 	end)
 	return studios
@@ -213,7 +213,7 @@ local function attach(options: Options): (Session?, Refusal?)
 		if not decoded or type(fields) ~= "table" then
 			return unsent "request arguments are not a JSON object"
 		end
-		local record = fields :: { [string]: unknown }
+		local record = Wire.record(fields)
 		local target = studio
 		if tool ~= LIST and (target == nil or record.studio_id ~= target.id) then
 			return unsent "request does not target the attached Studio"
@@ -284,7 +284,7 @@ local function attach(options: Options): (Session?, Refusal?)
 			return { ok = false, delivery = "answered", refused = false, expired = false, detail = exchange.detail }
 		end
 		local parsed, text = pcall(Reply.texts, exchange.result)
-		local flagged = type(exchange.result) == "table" and (exchange.result :: { [string]: unknown }).isError == true
+		local flagged = type(exchange.result) == "table" and Wire.record(exchange.result).isError == true
 		return {
 			ok = parsed and not flagged,
 			delivery = "answered",
@@ -454,12 +454,9 @@ local function attach(options: Options): (Session?, Refusal?)
 		if playing ~= wanted then
 			local response = toggle(wanted, true)
 			if not response.ok then
-				outcome = {
-					acknowledged = false,
-					restored = false,
-					mode = priorMode,
-					detail = response.detail or "restore failed",
-				}
+				outcome.acknowledged = false
+				outcome.restored = false
+				outcome.detail = response.detail or "restore failed"
 			end
 		end
 		pcall(transport.close)
@@ -471,7 +468,9 @@ local function attach(options: Options): (Session?, Refusal?)
 		studio = selected,
 		studios = studios,
 		call = call,
-		execute = execute,
+		execute = function(datamodel: string, code: string): Response
+			return execute(datamodel, code, nil)
+		end,
 		play = function(start: boolean): Response
 			return toggle(start, false)
 		end,
@@ -580,26 +579,35 @@ local function run(options: RunOptions): Core.BatchOutcome
 		if (options.attach.mode or "edit") ~= "play" then
 			local started = opened.play(true)
 			if not started.ok then
-				outcome = {
+				local failed: Core.BatchOutcome = {
 					status = if started.expired then "timed_out" else "faulted",
 					detail = describe("start play", started),
 				}
+				outcome = failed
 				return
 			end
 		end
-		outcome = runSession(opened, options, directory, directory)
+		local sessionOptions: SessionRun = {
+			code = options.code,
+			context = options.context,
+			progressFile = options.progressFile,
+			finalCapture = options.finalCapture,
+		}
+		outcome = runSession(opened, sessionOptions, directory, directory)
 	end)
 	if not body then
-		outcome = { status = "faulted", detail = "attached run raised: " .. tostring(thrown) }
+		local failed: Core.BatchOutcome = { status = "faulted", detail = "attached run raised: " .. tostring(thrown) }
+		outcome = failed
 	end
 	local cleanup = opened.close()
 	if not cleanup.acknowledged then
-		outcome = {
+		local failed: Core.BatchOutcome = {
 			status = "faulted",
 			detail = "Studio cleanup was not acknowledged: "
 				.. (cleanup.detail or "unknown")
 				.. "; the attached Studio may still be in play",
 		}
+		outcome = failed
 	end
 	return outcome
 end

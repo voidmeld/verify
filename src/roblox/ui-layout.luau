@@ -199,7 +199,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			maximumY = math.max(0, maximum.Y * rectangle.scale - rectangle.height + content.height)
 		end
 		local wrapped = optional(object, "TextWrapped") == true
-		local parameters = {
+		local parameters: Values.TextParameters = {
 			Text = Values.string(read(object, "Text")),
 			Font = Values.font(read(object, "FontFace")),
 			Size = rendered,
@@ -318,6 +318,12 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 	end
 	local size: (Instance, Rectangle, number?) -> Rectangle
+	local function measuredSize(object: Instance, parent: Rectangle): Rectangle
+		return size(object, parent, nil)
+	end
+	local function reflowSize(object: Instance, parent: Rectangle, width: number): Rectangle
+		return size(object, parent, width)
+	end
 	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
 		local authored = Values.dimensions(read(object, "Size"))
 		local scale = parent.scale
@@ -479,7 +485,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			end
 			local first = List.measure(list, inset(object, limited(projected)), read, function(child, frame)
 				return firstSize(child, frame, not horizontal, horizontal)
-			end, size)
+			end, reflowSize)
 			local basis: Rectangle = table.clone(rectangle)
 			if autoX then
 				basis.width = math.max(rectangle.width, first.width + paddingX)
@@ -488,7 +494,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				basis.height = math.max(rectangle.height, first.height + paddingY)
 			end
 			local reference = limited(basis)
-			local second = List.measure(list, inset(object, table.clone(reference)), read, size, size)
+			local second = List.measure(list, inset(object, table.clone(reference)), read, measuredSize, reflowSize)
 			if autoX then
 				rectangle.width = math.max(basis.width, second.width + paddingX)
 			end
@@ -501,7 +507,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			return rectangle
 		end
 		if list and optional(list, "Wraps") == true and not (if horizontal then autoX else autoY) then
-			local measured = List.measure(list, content, read, size, size)
+			local measured = List.measure(list, content, read, measuredSize, reflowSize)
 			grow(measured.width + paddingX, measured.height + paddingY)
 			return rectangle
 		end
@@ -594,7 +600,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				intrinsicHeight += math.max(0, count - 1) * gap
 			end
 			if horizontal and autoY and not autoX and optional(list, "Wraps") ~= true then
-				intrinsicHeight = List.measure(list, content, read, size, size).height
+				intrinsicHeight = List.measure(list, content, read, measuredSize, reflowSize).height
 			end
 		end
 		grow(intrinsicWidth + paddingX, intrinsicHeight + paddingY)
@@ -724,7 +730,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 					local measured = Grid.measure(grid, inner, read)
 					return measured.width + padX, measured.height + padY
 				elseif list then
-					local measured = List.measure(list, inner, read, size, size)
+					local measured = List.measure(list, inner, read, measuredSize, reflowSize)
 					return measured.width + padX, measured.height + padY
 				end
 				local farX, farY = 0, 0
@@ -744,11 +750,13 @@ local function attach(environment: Environment.Environment, options: Options): C
 				return farX + padX, farY + padY
 			end
 			local showX, showY = false, false
-			local canvasX, canvasY = 0, 0
+			local canvasX: number = 0
+			local canvasY: number = 0
 			for _ = 1, 3 do
 				local baseX = rectangle.width - reserve(insetX, showY)
 				local baseY = rectangle.height - reserve(insetY, showX)
-				canvasX, canvasY = math.max(authoredX, baseX), math.max(authoredY, baseY)
+				canvasX = math.max(authoredX, baseX)
+				canvasY = math.max(authoredY, baseY)
 				local contentX, contentY = extent(canvasX, canvasY)
 				if automatic == "X" or automatic == "XY" then
 					canvasX = math.max(canvasX, contentX)
@@ -871,7 +879,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 					placements[item.object] = item.rectangle
 				end
 			elseif list then
-				for _, item in List.measure(list, content, read, size, size).items do
+				for _, item in List.measure(list, content, read, measuredSize, reflowSize).items do
 					placements[item.object] = item.rectangle
 				end
 			end
@@ -975,7 +983,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				environment.publish(grid, "AbsoluteCellSize", vector(measured.cellWidth, measured.cellHeight))
 				environment.publish(grid, "AbsoluteCellCount", vector(measured.columns, measured.rows))
 			elseif list then
-				local measured = List.measure(list, content, read, size, size)
+				local measured = List.measure(list, content, read, measuredSize, reflowSize)
 				for _, item in measured.items do
 					placements[item.object] = item.rectangle
 				end
@@ -1160,7 +1168,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return result
 	end
-	attached = { step = step, busy = nil, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
+	local controller: Controller =
+		{ step = step, busy = nil, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
+	attached = controller
 	return attached
 end
 

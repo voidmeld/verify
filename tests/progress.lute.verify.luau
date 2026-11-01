@@ -105,6 +105,17 @@ local function twoActorCase(): Core.NamedCase
 end
 
 describe("run progress", function()
+	it("refuses executable event records before reading their fields", function()
+		local invoked = false
+		local function reject()
+			invoked = true
+			error "progress metamethod must not run"
+		end
+		local event = setmetatable({}, { __index = reject, __iter = reject })
+		expect((pcall(Core.progress.valid, event, "run-1"))):toBe(false)
+		expect(invoked):toBe(false)
+	end)
+
 	it("orders per-actor events with one monotonic sequence and never changes the report", function()
 		local events: { Core.ProgressEvent } = {}
 		local timeNow = clock
@@ -205,14 +216,14 @@ describe("Studio progress history", function()
 		table.insert(rows, { loggerFullPath = Roblox.progressChannel.LOGGER, context = { token = token, event = {} } })
 		local native = historyReader(rows)
 		local page = native.run("Client", Roblox.progressChannel.readPage(token, 1))
-		local collected = Roblox.progressChannel.collect(Wire.parse(page) :: { unknown }, token, "run")
+		local collected = Roblox.progressChannel.collect(Wire.array(Wire.parse(page)), token, "run")
 		expect(#page <= 32768):toBe(true)
 		expect(#collected.events):toBe(1)
 		expect(collected.events[1].sequence):toBe(2)
 		expect(collected.rejected):toBe(2)
 		expect(collected.foreign):toBe(0)
 		local all = Roblox.progressChannel.collect(
-			Wire.parse(native.run("Client", Roblox.progressChannel.read)) :: { unknown },
+			Wire.array(Wire.parse(native.run("Client", Roblox.progressChannel.read))),
 			token,
 			"run"
 		)

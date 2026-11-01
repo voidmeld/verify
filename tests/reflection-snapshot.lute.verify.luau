@@ -4,6 +4,9 @@ local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Datatypes = require "../src/roblox/datatypes"
+local VectorTypes = require "../src/roblox/datatypes/vector"
+local ColorTypes = require "../src/roblox/datatypes/color"
+local Names = require "../src/roblox/datatypes/names"
 local path = require "@std/path"
 local process = require "@std/process"
 local temporary = require "./temporary"
@@ -114,7 +117,7 @@ describe("reflection snapshot loaded under Lute", function()
 		local env = bridge.environment
 		local part = env.createInstance "Part"
 		expect(part.Anchored):toBe(false)
-		expect((part.Size :: Datatypes.Vector3Value).X):toBe(4)
+		expect(VectorTypes.expect3(part.Size, 1).X):toBe(4)
 		expect(bridge.hasClass "TextLabel"):toBe(true)
 		expect(bridge.hasClass "Camera"):toBe(false)
 		expect(bridge.layout):toBe(nil)
@@ -135,7 +138,7 @@ describe("reflection snapshot loaded under Lute", function()
 		local bridge = Lute.fixture.bridge(snapshot, options)
 		local env = bridge.environment
 		local part = env.createInstance "Part"
-		expect((part.Configured :: (unknown) -> number)(part)):toBe(42)
+		expect(env.method(part, "Configured")(part)):toBe(42)
 		for _, name in { "NativeOnly", "InheritedOnly" } do
 			local ok, problem = pcall(function()
 				return part[name]
@@ -146,7 +149,7 @@ describe("reflection snapshot loaded under Lute", function()
 		local close = env.fakeOn(part, "NativeOnly", function(): string
 			return "configured"
 		end)
-		expect((part.NativeOnly :: (unknown) -> string)(part)):toBe "configured"
+		expect(env.method(part, "NativeOnly")(part)):toBe "configured"
 		close()
 		expect(accepts(function()
 			return part.NativeOnly
@@ -301,8 +304,8 @@ describe("reflection snapshot loaded under Lute", function()
 		}
 		local leaf = bridge.environment.createInstance "Leaf"
 		local fired: { string } = {}
-		local pinged = leaf.Pinged :: { Connect: (unknown, () -> ()) -> unknown }
-		local popped = leaf.Popped :: { Connect: (unknown, () -> ()) -> unknown }
+		local pinged = bridge.environment.event(leaf, "Pinged")
+		local popped = bridge.environment.event(leaf, "Popped")
 		pinged:Connect(function()
 			table.insert(fired, "Pinged")
 		end)
@@ -437,10 +440,11 @@ describe("reflection snapshot loaded under Lute", function()
 			return Roblox.reflectionSnapshot.database { schemaVersion = 1, classes = {} }
 		end)):toBe(false)
 		expect(accepts(function(): unknown
-			return Roblox.reflectionSnapshot.database {
-				schemaVersion = 2,
-				classes = { Bad = (5 :: unknown) :: Roblox.ReflectionSnapshotClass },
-			}
+			return (
+				Lute.chunk.load("return database { schemaVersion = 2, classes = { Bad = 5 } }", {
+					environment = { database = Roblox.reflectionSnapshot.database },
+				})()
+			)
 		end)):toBe(false)
 	end)
 end)
@@ -454,7 +458,7 @@ describe("reflection snapshot exported from Studio", function()
 		expect(label.Text):toBe "Label"
 		expect(label.TextXAlignment):toBe(types.Enum.TextXAlignment.Center)
 		expect(label.FontFace):toBe(types.Font.fromEnum(types.Enum.Font.Legacy))
-		expect((label.TextColor3 :: Roblox.DatatypeColor3):ToHex()):toBe "1b2a35"
+		expect(ColorTypes.expect(label.TextColor3, 1):ToHex()):toBe "1b2a35"
 		expect(label.Size):toBe(types.UDim2.new())
 		expect(label.Visible):toBe(true)
 		expect(label:IsA "GuiObject"):toBe(true)
@@ -479,7 +483,7 @@ describe("reflection snapshot exported from Studio", function()
 		label.TextXAlignment = types.Enum.TextXAlignment.Left
 		label.TextColor3 = types.Color3.fromHSV(0.5, 0.5, 0.5)
 		label.FontFace = types.Font.fromName("GothamSSm", types.Enum.FontWeight.Bold)
-		expect((label.FontFace :: Roblox.DatatypeFont).Bold):toBe(true)
+		expect(Names.fields(label.FontFace).Bold):toBe(true)
 		local verdicts = {
 			accepts(function(): unknown
 				label.TextXAlignment = types.Enum.FontWeight.Bold
@@ -515,7 +519,7 @@ describe("reflection snapshot exported from Studio", function()
 			return bridge.environment.createInstance "GuiObject"
 		end)):toBe(false)
 		expect(accepts(function(): unknown
-			return ((types.Enum :: unknown) :: { [string]: unknown }).KeyCode
+			return types.Enum.KeyCode
 		end)):toBe(false)
 		expect(type(snapshot.engineVersion)):toBe "string"
 	end)
@@ -528,12 +532,14 @@ describe("reflection snapshot exported from Studio", function()
 		local vector = (assert(datatypes.Vector2))(1, 2)
 		expect(engine.typeName(vector)):toBe "Vector2"
 		expect(vector):toBe(types.Vector2.new(1, 2))
-		type MakeFrame = (Roblox.EnvironmentEngineVector3, { number }) -> Roblox.EnvironmentEngineCFrame
-		local position = (types.Vector3.new(1, 2, 3) :: unknown) :: Roblox.EnvironmentEngineVector3
-		local frame = (assert(datatypes.CFrame))(position, { 1, 0, 0, 0, 1, 0, 0, 0, 1 })
+		local position = types.Vector3.new(1, 2, 3)
+		local frame = Lute.chunk.load(
+			"return make(position, { 1, 0, 0, 0, 1, 0, 0, 0, 1 })",
+			{ environment = { make = datatypes.CFrame, position = position } }
+		)()
 		expect(engine.typeName(frame)):toBe "CFrame"
 		local readCFrame = assert(engine.readCFrame)
-		local x, y, z = readCFrame(frame)
+		local x, y, z = Lute.chunk.load("return read(frame)", { environment = { read = readCFrame, frame = frame } })()
 		expect({ x, y, z }):toEqual { 1, 2, 3 }
 	end)
 end)

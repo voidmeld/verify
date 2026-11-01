@@ -7,25 +7,33 @@ local Roblox = require "../src/roblox"
 local Environment = require "../src/roblox/environment"
 local Datatypes = require "../src/roblox/datatypes"
 
-type Fixture = Environment.Instance & {
-	Count: number,
-	Data: { [string]: unknown },
-	Pinged: Environment.Signal<()>,
-	Stopped: Environment.Signal<()>,
-	Ended: Environment.Signal<()>,
-	Double: (Environment.Instance, number) -> number,
-	Ping: (Environment.Instance) -> unknown,
-	Twice: (Environment.Instance, number) -> number,
-	WaitForChild: (Environment.Instance, string) -> Environment.Instance,
-	GetTextSize: (Environment.Instance, string, number) -> Datatypes.Vector2Value,
-	CaptureFocus: (Environment.Instance) -> (),
-	ApplyStyle: (Environment.Instance, string) -> (),
-	Clone: (Environment.Instance) -> Fixture,
-	LoadAnimation: (Environment.Instance, Environment.Instance) -> Fixture,
-	Play: (Environment.Instance) -> (),
-	Stop: (Environment.Instance) -> (),
-	AdjustSpeed: (Environment.Instance, number) -> (),
-}
+local function invoke(callback: unknown, ...: unknown): ...unknown
+	return Environment.vm.invoke(Environment.vm.value(callback), ...)
+end
+
+local function record(value: unknown): { [unknown]: unknown }
+	assert(type(value) == "table" or type(value) == "userdata")
+	return setmetatable({}, { __index = value, __newindex = value })
+end
+
+local function number(value: unknown): number
+	assert(type(value) == "number")
+	return value
+end
+
+local function signal(value: unknown): Environment.Signal
+	assert(type(value) == "table")
+	local view: { Environment.Signal } = setmetatable({}, {
+		__index = function(): unknown
+			return value
+		end,
+	})
+	local result = view[1]
+	assert(type(result.Connect) == "function")
+	assert(type(result.Wait) == "function")
+	assert(type(result.Fire) == "function")
+	return result
+end
 
 local function thrown(callback: () -> ...unknown): string
 	local ok, message = pcall(callback)
@@ -34,7 +42,7 @@ local function thrown(callback: () -> ...unknown): string
 end
 
 local function environment(): Roblox.Environment
-	local options = {
+	return Roblox.testEnvironment {
 		classes = {
 			Widget = {
 				super = "Instance",
@@ -42,14 +50,13 @@ local function environment(): Roblox.Environment
 				events = { "Pinged" },
 				methods = {
 					Ping = true,
-					Double = function(self: Fixture, value: number): number
-						return value * 2 + self.Count
+					Double = function(self: Environment.Instance, value: number): number
+						return value * 2 + number(self.Count)
 					end,
 				},
 			},
 		},
 	}
-	return Roblox.testEnvironment((options :: unknown) :: Roblox.EnvironmentOptions)
 end
 
 describe("roblox test environment", function()
@@ -116,7 +123,7 @@ describe("roblox test environment", function()
 		expect(thrown(function()
 			Roblox.assertInstance(object)
 		end)):toContain "expected a simulated Instance"
-		local members = (object :: unknown) :: { [string]: unknown }
+		local members = record(object)
 		for _, name in { "Name", "Archivable", "Parent", "Destroy", "GetChildren", "ChildAdded", "Destroying" } do
 			expect(thrown(function(): unknown
 				return members[name]
@@ -165,7 +172,7 @@ describe("roblox test environment", function()
 			return 3
 		end)
 		local function read(): unknown
-			return (object.Read :: Environment.Method)(object)
+			return (invoke(object.Read, object))
 		end
 		expect(read()):toEqual(3)
 		first()
@@ -191,7 +198,31 @@ describe("roblox test environment", function()
 			return 11
 		end
 		dispose()
-		expect((object.Read :: Environment.Method)(object)):toEqual(11)
+		expect(invoke(object.Read, object)):toEqual(11)
+	end)
+	it("cached native methods retain scoped overrides and computed member precedence", function()
+		local computed: { [string]: Environment.Computed } = {}
+		local env = Environment.create { computed = computed }
+		local object = env.createInstance "Folder"
+		object:SetAttribute("Value", 7)
+		local method = object.GetAttribute
+		assert(type(method) == "function")
+		expect(method(object, "Value")):toEqual(7)
+		local release = env.fakeOn(object, "GetAttribute", function(): number
+			return 11
+		end)
+		local overridden = object.GetAttribute
+		assert(type(overridden) == "function")
+		expect(overridden(object, "Value")):toEqual(11)
+		release()
+		expect(object.GetAttribute):toBe(method)
+		computed["Folder.GetAttribute"] = function(): unknown
+			return 13
+		end
+		expect(object.GetAttribute):toEqual(13)
+		computed["Folder.GetAttribute"] = nil
+		expect(object.GetAttribute):toBe(method)
+		expect(method(object, "Value")):toEqual(7)
 	end)
 	it("yielding signal listeners do not suspend the emitter or other listeners", function()
 		local env = environment()
@@ -406,7 +437,7 @@ describe("roblox test environment", function()
 		expect(thrown(function()
 			probe.Count = 2
 		end)):toContain "read-only"
-		local entry = {
+		local entry: { get: (Environment.Instance) -> unknown, writable: boolean? } = {
 			get = function(): unknown
 				return nil
 			end,
@@ -436,7 +467,7 @@ describe("roblox test environment", function()
 		env.fire(widget, "Pinged", "before")
 		local changed = widget:GetPropertyChangedSignal "Count"
 		local attribute = widget:GetAttributeChangedSignal "Probe"
-		local pinged = widget.Pinged :: Environment.Signal
+		local pinged = signal(widget.Pinged)
 		expect(env.firesOf(changed)):toEqual(2)
 		expect(env.firesOf(attribute)):toEqual(1)
 		expect(env.signalOf(widget, "Pinged").fires()):toEqual(1)
@@ -507,7 +538,7 @@ describe("roblox test environment", function()
 			},
 		})
 		local probe = env.createInstance "Probe"
-		expect(((probe.Clone :: unknown) :: (Environment.Instance) -> number)(probe)):toEqual(1)
+		expect(invoke(probe.Clone, probe)):toEqual(1)
 		expect(calls):toEqual(1)
 		expect(env.createInstance("Folder"):Clone() ~= nil):toEqual(true)
 	end)
@@ -741,14 +772,14 @@ describe("roblox test environment", function()
 
 	it("a property, event or method wins over a child of the same name", function()
 		local env = environment()
-		local parent = (env.createInstance("Widget", { Label = "own", Parent = env.root })) :: Fixture
+		local parent = env.createInstance("Widget", { Label = "own", Parent = env.root })
 		env.createInstance("Folder", { Name = "Label", Parent = parent })
 		env.createInstance("Folder", { Name = "Pinged", Parent = parent })
 		env.createInstance("Folder", { Name = "Double", Parent = parent })
 		env.createInstance("Folder", { Name = "Destroy", Parent = parent })
 		expect(parent.Label):toEqual "own"
-		expect((parent.Pinged).Connect ~= nil):toEqual(true)
-		expect((parent.Double :: (Environment.Instance, number) -> number)(parent, 1)):toEqual(2)
+		expect(signal(parent.Pinged).Connect ~= nil):toEqual(true)
+		expect(invoke(parent.Double, parent, 1)):toEqual(2)
 		expect(type(parent.Destroy)):toEqual "function"
 		expect(parent.ClassName):toEqual "Widget"
 	end)
@@ -800,15 +831,15 @@ describe("roblox test environment", function()
 	it("a declared method needs a simulation or a configured fake and never invents a result", function()
 		local env = environment()
 		local widget = (env.createInstance "Widget")
-		expect((widget.Double :: (Environment.Instance, number) -> number)(widget, 4)):toEqual(8)
+		expect(invoke(widget.Double, widget, 4)):toEqual(8)
 		expect(thrown(function()
-			return (widget.Ping :: (Environment.Instance) -> unknown)(widget)
+			return invoke(widget.Ping, widget)
 		end)):toContain "unsupported_method: Widget.Ping is declared but has no simulation or configured fake"
 		env.fake("Widget.Ping", function(): string
 			return "pong"
 		end)
-		expect((widget.Ping :: (Environment.Instance) -> unknown)(widget)):toEqual "pong"
-		local settings = {
+		expect(invoke(widget.Ping, widget)):toEqual "pong"
+		local configured = Roblox.testEnvironment {
 			classes = { Widget = { super = "Instance", methods = { Ping = true } } },
 			fakes = {
 				["Widget.Ping"] = function(): number
@@ -816,9 +847,8 @@ describe("roblox test environment", function()
 				end,
 			},
 		}
-		local configured = Roblox.testEnvironment((settings :: unknown) :: Roblox.EnvironmentOptions)
 		local configuredWidget = configured.createInstance "Widget"
-		expect((configuredWidget.Ping :: (Environment.Instance) -> unknown)(configuredWidget)):toEqual(7)
+		expect(invoke(configuredWidget.Ping, configuredWidget)):toEqual(7)
 	end)
 
 	it("opt-in defaults preserve false and allocate fresh property values per instance", function()
@@ -834,10 +864,10 @@ describe("roblox test environment", function()
 			end,
 		}
 		expect(env.createInstance("Frame").Visible):toEqual(false)
-		local first = (env.createInstance "Record") :: Fixture
-		local second = (env.createInstance "Record") :: Fixture
-		first.Data.Key = "first"
-		expect(second.Data.Key):toEqual(nil)
+		local first = env.createInstance "Record"
+		local second = env.createInstance "Record"
+		record(first.Data).Key = "first"
+		expect(record(second.Data).Key):toEqual(nil)
 		expect(first.Name):toEqual "Record"
 	end)
 
@@ -930,32 +960,29 @@ describe("roblox test environment", function()
 			super = "Widget",
 			properties = { CanFocus = true, HasFocus = false, Style = "plain" },
 			methods = {
-				CaptureFocus = function(self: Fixture)
+				CaptureFocus = function(self: Environment.Instance)
 					if not self.CanFocus then
 						error "focus is disabled"
 					end
 					self.HasFocus = true
 				end,
-				ApplyStyle = function(self: Fixture, style: string)
+				ApplyStyle = function(self: Environment.Instance, style: string)
 					self.Style = style
 				end,
 			},
 		})
 		local service = (env.createInstance "TextService")
-		expect(
-			(service.GetTextSize :: (Environment.Instance, string, number) -> Datatypes.Vector2Value)(service, "abc", 2)
-				== Roblox.datatypes.Vector2.new(6, 2)
-		):toEqual(true)
+		expect(invoke(service.GetTextSize, service, "abc", 2) == Roblox.datatypes.Vector2.new(6, 2)):toEqual(true)
 		local control = (env.createInstance("FixtureControl", { Label = "source", CanFocus = false }))
 		expect(thrown(function()
-			(control.CaptureFocus :: (Environment.Instance) -> ())(control)
+			invoke(control.CaptureFocus, control)
 		end)):toContain "focus is disabled"
 		control.CanFocus = true
-		local focus = control.CaptureFocus :: (Environment.Instance) -> ()
-		local apply = control.ApplyStyle :: (Environment.Instance, string) -> ()
-		focus(control)
-		apply(control, "accent")
-		local copy = (control.Clone :: (Environment.Instance) -> Fixture)(control)
+		local focus = control.CaptureFocus
+		local apply = control.ApplyStyle
+		invoke(focus, control)
+		invoke(apply, control, "accent")
+		local copy = assert(control:Clone())
 		expect(control.HasFocus):toEqual(true)
 		expect(copy ~= control and copy.Parent == nil):toEqual(true)
 		expect(copy.Label):toEqual "source"
@@ -1207,7 +1234,7 @@ describe("roblox test environment", function()
 		parent:ClearAllChildren()
 		parent:ClearAllChildren()
 		expect(#removed):toEqual(3)
-		expect(table.find(removed, first) < table.find(removed, leaf)):toEqual(true)
+		expect(assert(table.find(removed, first)) < assert(table.find(removed, leaf))):toEqual(true)
 		expect(env.isAlive(first) or env.isAlive(second) or env.isAlive(leaf)):toEqual(false)
 		expect(connection.Connected):toEqual(false)
 		expect(env.liveObjects()):toEqual(1)
@@ -1235,8 +1262,8 @@ describe("roblox test environment", function()
 	it("tracks live objects and connections so a disposal test can assert nothing leaked", function()
 		local env = environment()
 		local before = env.liveObjects()
-		local widget = (env.createInstance("Widget", { Parent = env.root })) :: Fixture
-		(widget.Pinged):Connect(function() end)
+		local widget = env.createInstance("Widget", { Parent = env.root })
+		signal(widget.Pinged):Connect(function() end)
 		widget:GetPropertyChangedSignal("Label"):Connect(function() end)
 		expect(env.liveObjects()):toEqual(before + 1)
 		expect(env.liveConnections()):toEqual(2)
@@ -1315,11 +1342,11 @@ describe("roblox test environment", function()
 
 	it("a signal handle fires an event and counts its connections and fires", function()
 		local env = environment()
-		local widget = (env.createInstance "Widget") :: Fixture
+		local widget = env.createInstance "Widget"
 		local handle = env.signalOf(widget, "Pinged")
 		expect(handle.connections()):toBe(0)
 		local calls = 0
-		local connection = widget.Pinged:Connect(function()
+		local connection = signal(widget.Pinged):Connect(function()
 			calls += 1
 		end)
 		handle.fire()
@@ -1484,14 +1511,11 @@ describe("roblox test environment", function()
 		local frame = (env.createInstance "Frame")
 		frame.Size = Roblox.datatypes.UDim2.fromOffset(10, 20)
 		frame.BackgroundColor3 = Roblox.datatypes.Color3.new(1, 0, 0)
-		expect((frame.Position :: Datatypes.UDim2Value) == Roblox.datatypes.UDim2.new()):toEqual(true)
+		expect(frame.Position == Roblox.datatypes.UDim2.new()):toEqual(true)
 		for _, name in { "UIListLayout", "ScrollingFrame", "TextBox", "CanvasGroup" } do
 			expect(env.createInstance(name).ClassName):toEqual(name)
 		end
-		expect(
-			(env.createInstance("ScrollingFrame").CanvasPosition :: Datatypes.Vector2Value)
-				== Roblox.datatypes.Vector2.new()
-		):toEqual(true)
+		expect(env.createInstance("ScrollingFrame").CanvasPosition == Roblox.datatypes.Vector2.new()):toEqual(true)
 	end)
 
 	it("an engine-side poke fires property changes only when the value changes", function()
@@ -1523,26 +1547,23 @@ describe("roblox test environment", function()
 		local env = Roblox.testEnvironment()
 		local animator = (env.createInstance "Animator")
 		local animation = (env.createInstance("Animation", { AnimationId = "rbxassetid://1" }))
-		local track = (animator.LoadAnimation :: (Environment.Instance, Environment.Instance) -> Fixture)(
-			animator,
-			animation
-		)
+		local track = Roblox.assertInstance(invoke(animator.LoadAnimation, animator, animation))
 		local seen: { string } = {}
-		track.Stopped:Connect(function()
+		signal(track.Stopped):Connect(function()
 			table.insert(seen, "stopped")
 		end)
-		track.Ended:Connect(function()
+		signal(track.Ended):Connect(function()
 			table.insert(seen, "ended")
 		end)
-		local play: (Environment.Instance) -> () = track.Play
-		play(track)
-		local speed: (Environment.Instance, number) -> () = track.AdjustSpeed
-		speed(track, 2)
+		local play = track.Play
+		invoke(play, track)
+		local speed = track.AdjustSpeed
+		invoke(speed, track, 2)
 		expect(track.IsPlaying):toEqual(true)
 		expect(track.Speed):toEqual(2)
-		local stop: (Environment.Instance) -> () = track.Stop
-		stop(track)
-		stop(track)
+		local stop = track.Stop
+		invoke(stop, track)
+		invoke(stop, track)
 		expect(track.IsPlaying):toEqual(false)
 		expect(seen):toEqual { "stopped", "ended" }
 	end)
@@ -1565,7 +1586,7 @@ describe("roblox test environment", function()
 				Gadget = {
 					super = "Instance",
 					methods = {
-						Twice = function(_self: Fixture, value: number): number
+						Twice = function(_self: Environment.Instance, value: number): number
 							return value * 2
 						end,
 						Missing = true,
@@ -1574,7 +1595,7 @@ describe("roblox test environment", function()
 			},
 		}
 		local gadget = env.createInstance "Gadget"
-		expect((gadget.Twice :: (Environment.Instance, number) -> number)(gadget, 4)):toEqual(8)
+		expect(invoke(gadget.Twice, gadget, 4)):toEqual(8)
 	end)
 end)
 

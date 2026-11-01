@@ -39,7 +39,13 @@ local function seal(report: Types.Report, options: SealOptions): Sealed
 	local build = Provenance.copyBuild(source, "build")
 	local copy = Report.decode(report)
 	local issues: { Issue } = {}
-	local function one(artifact: Artifact, caseId: string, actor: string?, checkpoint: string?, origin: Types.Origin)
+	local function one(
+		artifact: Artifact,
+		caseId: string,
+		actor: string?,
+		checkpoint: string?,
+		origin: Types.Origin
+	): Artifact
 		local subject = caseId
 			.. (if actor then " / " .. actor else "")
 			.. (if checkpoint then " / " .. checkpoint else "")
@@ -51,12 +57,12 @@ local function seal(report: Types.Report, options: SealOptions): Sealed
 		local readOk, bytes, readReason = pcall(options.read, artifact.reference)
 		if not readOk or bytes == nil or bytes == "" then
 			refuse("unreadable", tostring(if readOk then readReason or "artifact is empty" else bytes))
-			return
+			return artifact
 		end
 		local hashOk, digest = pcall(options.hash, bytes)
 		if not hashOk or not Provenance.sha256(digest) then
 			refuse("hash_failed", "the hash binding did not return a lowercase hex sha-256")
-			return
+			return artifact
 		end
 		local meta: Provenance.Meta = {
 			name = artifact.name,
@@ -68,7 +74,7 @@ local function seal(report: Types.Report, options: SealOptions): Sealed
 		local putOk, reference, putReason = pcall(options.sink.put, content, meta)
 		if not putOk or reference == nil then
 			refuse("sink_unavailable", tostring(if putOk then putReason or "sink refused the artifact" else reference))
-			return
+			return artifact
 		end
 		local statOk, stat = pcall(function(): Provenance.Stat?
 			local found = options.sink.stat(reference)
@@ -76,36 +82,42 @@ local function seal(report: Types.Report, options: SealOptions): Sealed
 		end)
 		if not statOk or stat == nil or stat.size ~= #bytes then
 			refuse("sink_unavailable", "the sink could not confirm the stored artifact")
-			return
+			return artifact
 		end
 		local at = options.now()
 		if not (type(at) == "number" and at == at and at >= 0 and at < math.huge) then
 			refuse("clock_invalid", "the injected clock returned a non-finite or negative time")
-			return
+			return artifact
 		end
-		artifact.reference = reference
-		artifact.sha256 = digest
-		artifact.size = #bytes
-		artifact.provenance = {
-			runId = runId,
-			caseId = caseId,
-			actor = actor,
-			checkpoint = checkpoint,
-			build = table.clone(build),
-			host = origin.executor,
-			capabilities = table.clone(origin.capabilities),
-			device = options.device,
-			capturedAt = at,
+		return {
+			name = artifact.name,
+			reference = reference,
+			mediaType = artifact.mediaType,
+			sha256 = digest,
+			size = #bytes,
+			content = artifact.content,
+			provenance = {
+				runId = runId,
+				caseId = caseId,
+				actor = actor,
+				checkpoint = checkpoint,
+				build = table.clone(build),
+				host = origin.executor,
+				capabilities = table.clone(origin.capabilities),
+				device = options.device,
+				capturedAt = at,
+			},
 		}
 	end
 	for _, result in copy.results do
-		for _, artifact in result.artifacts do
-			one(artifact, result.id, nil, nil, result.origin)
+		for index, artifact in result.artifacts do
+			result.artifacts[index] = one(artifact, result.id, nil, nil, result.origin)
 		end
 		if result.evidence ~= nil then
 			for _, checkpoint in result.evidence.checkpoints do
-				for _, artifact in checkpoint.artifacts do
-					one(artifact, result.id, checkpoint.actor, checkpoint.name, result.origin)
+				for index, artifact in checkpoint.artifacts do
+					checkpoint.artifacts[index] =
+						one(artifact, result.id, checkpoint.actor, checkpoint.name, result.origin)
 				end
 			end
 		end

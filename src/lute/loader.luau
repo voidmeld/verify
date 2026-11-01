@@ -181,15 +181,23 @@ local function new(options: Options?): Loader
 			if string.sub(request, 1, 5) == "@std/" or string.sub(request, 1, 6) == "@lute/" then
 				return requireRuntime(request)
 			end
-			local alias, tail = string.match(request, "^@([^/]+)/(.+)$")
-			if alias == "self" then
-				assert(tail ~= nil)
-				return import(file(normalize(join(module, tail))))
-			elseif alias ~= nil then
-				local root = aliases[alias]
-				assert(root ~= nil, `{path} requires an unknown alias: {request}`)
-				assert(tail ~= nil)
-				return import(file(normalize(join(root, tail))))
+			if string.sub(request, 1, 6) == "@self/" then
+				return import(file(normalize(join(module, string.sub(request, 7)))))
+			elseif string.sub(request, 1, 1) == "@" then
+				local requested = string.sub(request, 2)
+				local matched: string? = nil
+				for alias in aliases do
+					if
+						#alias > 0
+						and (matched == nil or #alias > #matched)
+						and (requested == alias or string.sub(requested, 1, #alias + 1) == alias .. "/")
+					then
+						matched = alias
+					end
+				end
+				assert(matched ~= nil, `{path} requires an unknown alias: {request}`)
+				local root = assert(aliases[matched])
+				return import(file(normalize(join(root, string.sub(requested, #matched + 2)))))
 			end
 			assert(
 				string.sub(request, 1, 2) == "./" or string.sub(request, 1, 3) == "../",

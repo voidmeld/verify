@@ -41,7 +41,7 @@ local function pointerFixture(raiseErrors: boolean?)
 		handlerErrors = if raiseErrors then "raise" else nil,
 		undeclaredWrites = true,
 		undeclaredReads = "nil",
-		classes = ({
+		classes = {
 			Object = { creatable = false },
 			Instance = instance,
 			GuiObject = guiObject,
@@ -91,7 +91,7 @@ local function pointerFixture(raiseErrors: boolean?)
 					Backward = library.Enum.KeyCode.None,
 				},
 			},
-		} :: unknown) :: { [string]: Environment.ClassSpec },
+		},
 	}
 	local env = Environment.create(options)
 	local gui = env.createEngineInstance "PlayerGui"
@@ -179,12 +179,12 @@ describe("semantic input adapter", function()
 			})
 			f.env.createInstance("InputBinding", { Parent = action, KeyCode = f.library.Enum.KeyCode[entry.key] })
 			for _, name in { "Pressed", "Released", "StateChanged" } do
-				(action[name] :: Environment.Signal):Connect(function()
+				(f.env.event(action, name)):Connect(function()
 					changes += 1
 				end)
 			end
 		end
-		(f.base.Activated :: Environment.Signal):Connect(function()
+		(f.env.event(f.base, "Activated")):Connect(function()
 			clicks += 1
 		end)
 		for _, tabEnabled in { false, true } do
@@ -214,7 +214,7 @@ describe("semantic input adapter", function()
 				binding.KeyCode = f.library.Enum.KeyCode[bindingKind]
 			end
 			local events = 0
-			(f.service.InputBegan :: Environment.Signal):Connect(function()
+			(f.env.event(f.service, "InputBegan")):Connect(function()
 				events += 1
 			end)
 			expect(function()
@@ -232,8 +232,8 @@ describe("semantic input adapter", function()
 			Parent = action,
 			KeyCode = f.library.Enum.KeyCode.MouseLeftButton,
 		})
-		local virtual = (f.service.CreateVirtualInput :: Environment.Method)(f.service) :: Environment.Instance
-		local move = virtual.SendMousePosition :: Environment.Method
+		local virtual = Environment.assertObject(f.env.method(f.service, "CreateVirtualInput")(f.service))
+		local move = f.env.method(virtual, "SendMousePosition")
 		move(virtual, f.library.Vector2.new(200, 140))
 		f.env.step(0.01)
 		expect(function()
@@ -254,14 +254,15 @@ describe("semantic input adapter", function()
 		local f = pointerFixture()
 		own(f.cleanup)
 		local counts: { number } = {}
-		local activated = f.base.Activated :: Environment.Signal<Environment.Instance, number>
+		local activated = f.env.event(f.base, "Activated")
 		activated:Connect(function(_input, count)
+			assert(type(count) == "number")
 			table.insert(counts, count)
 		end)
-		local create = f.service.CreateVirtualInput :: Environment.Method
-		local virtual = create(f.service) :: Environment.Instance
-		local move = virtual.SendMousePosition :: Environment.Method
-		local send = virtual.SendMouseButton :: Environment.Method
+		local create = f.env.method(f.service, "CreateVirtualInput")
+		local virtual = Environment.assertObject(create(f.service))
+		local move = f.env.method(virtual, "SendMousePosition")
+		local send = f.env.method(virtual, "SendMouseButton")
 		local at = f.library.Vector2.new(200, 140)
 		local button = f.library.Enum.UserInputType.MouseButton1
 		move(virtual, at)
@@ -287,8 +288,9 @@ describe("semantic input adapter", function()
 		other.Parent = f.screen
 		local counts: { string } = {}
 		for _, target in { f.base, other } do
-			local activated = target.Activated :: Environment.Signal<Environment.Instance, number>
+			local activated = f.env.event(target, "Activated")
 			activated:Connect(function(_input, count)
+				assert(type(count) == "number")
 				table.insert(counts, tostring(target.Name) .. ":" .. count)
 			end)
 		end
@@ -315,25 +317,32 @@ describe("semantic input adapter", function()
 	it("virtual input and typed pointer operations share the same press state", function(own)
 		local f = pointerFixture()
 		own(f.cleanup)
-		local create = f.service.CreateVirtualInput :: Environment.Method
-		local virtual = create(f.service) :: Environment.Instance
+		local create = f.env.method(f.service, "CreateVirtualInput")
+		local virtual = Environment.assertObject(create(f.service))
 		expect(virtual:IsA "VirtualInput"):toEqual(true)
 		expect(virtual:IsA "Instance"):toEqual(false)
-		local another = create(f.service) :: Environment.Instance
+		local another = Environment.assertObject(create(f.service))
 		expect(another == virtual):toEqual(false)
 		expect(Environment.isInstance(virtual)):toEqual(false)
-		expect(virtual.Destroy):toEqual(nil)
-		expect(virtual.Parent):toEqual(nil)
-		local move = virtual.SendMousePosition :: Environment.Method
-		local send = virtual.SendMouseButton :: Environment.Method
+		expect(f.env.propertyOf(virtual, "Destroy")):toEqual(nil)
+		expect(f.env.propertyOf(virtual, "Parent")):toEqual(nil)
+		local move = f.env.method(virtual, "SendMousePosition")
+		local send = f.env.method(virtual, "SendMouseButton")
 		move(virtual, f.library.Vector2.new(200, 140))
-		local pressedButtons = f.service.GetMouseButtonsPressed :: Environment.Method
-		expect(#(pressedButtons(f.service) :: { unknown })):toEqual(0)
+		local pressedButtons = f.env.method(f.service, "GetMouseButtonsPressed")
+		local pressed = pressedButtons(f.service)
+		assert(type(pressed) == "table")
+		expect(#pressed):toEqual(0)
 		send(virtual, f.library.Vector2.new(200, 140), f.library.Enum.UserInputType.MouseButton1, true, 0)
-		local held = pressedButtons(f.service) :: { Environment.Instance }
+		local heldValue = pressedButtons(f.service)
+		assert(type(heldValue) == "table")
+		local held: { Environment.Instance } = {}
+		for _, value in heldValue do
+			table.insert(held, Environment.assertInstance(value))
+		end
 		expect(#held):toEqual(1)
 		expect(held[1].UserInputType):toEqual(f.library.Enum.UserInputType.MouseButton1)
-		local anotherSend = another.SendMouseButton :: Environment.Method
+		local anotherSend = f.env.method(another, "SendMouseButton")
 		expect(pcall(function()
 			anotherSend(another, f.library.Vector2.new(200, 140), f.library.Enum.UserInputType.MouseButton1, true, 0)
 		end)):toEqual(false)
@@ -341,7 +350,9 @@ describe("semantic input adapter", function()
 			f.backend.pointer { x = 200, y = 140, button = "left", down = true }
 		end)):toEqual(false)
 		f.backend.pointer { x = 200, y = 140, button = "left", down = false }
-		expect(#(pressedButtons(f.service) :: { unknown })):toEqual(0)
+		local released = pressedButtons(f.service)
+		assert(type(released) == "table")
+		expect(#released):toEqual(0)
 		expect(pcall(function()
 			send(virtual, f.library.Vector2.new(200, 140), f.library.Enum.UserInputType.MouseButton1, false, 0)
 		end)):toEqual(false)
@@ -349,20 +360,20 @@ describe("semantic input adapter", function()
 	it("stationary scene changes invalidate hover silently until explicit movement", function(own)
 		local f = pointerFixture()
 		own(f.cleanup)
-		local create = f.service.CreateVirtualInput :: Environment.Method
-		local virtual = create(f.service) :: Environment.Instance
-		local move = virtual.SendMousePosition :: Environment.Method
+		local create = f.env.method(f.service, "CreateVirtualInput")
+		local virtual = Environment.assertObject(create(f.service))
+		local move = f.env.method(virtual, "SendMousePosition")
 		move(virtual, f.library.Vector2.new(200, 140))
 		local leaves, enters, inputChanged = 0, 0, 0
-		local leave = f.base.MouseLeave :: Environment.Signal
+		local leave = f.env.event(f.base, "MouseLeave")
 		leave:Connect(function()
 			leaves += 1
 		end)
-		local enter = f.base.MouseEnter :: Environment.Signal
+		local enter = f.env.event(f.base, "MouseEnter")
 		enter:Connect(function()
 			enters += 1
 		end)
-		local changed = f.service.InputChanged :: Environment.Signal
+		local changed = f.env.event(f.service, "InputChanged")
 		changed:Connect(function()
 			inputChanged += 1
 		end)
@@ -383,15 +394,16 @@ describe("semantic input adapter", function()
 	it("button input displacement follows button events while virtual movement Delta stays zero", function(own)
 		local f = pointerFixture()
 		own(f.cleanup)
-		local create = f.service.CreateVirtualInput :: Environment.Method
-		local device = create(f.service) :: Environment.Instance
-		local move = device.SendMousePosition :: Environment.Method
-		local send = device.SendMouseButton :: Environment.Method
+		local create = f.env.method(f.service, "CreateVirtualInput")
+		local device = Environment.assertObject(create(f.service))
+		local move = f.env.method(device, "SendMousePosition")
+		local send = f.env.method(device, "SendMouseButton")
 		local deltas: { unknown } = {}
 		local began: Environment.Instance? = nil
 		for _, name in { "InputBegan", "InputChanged", "InputEnded" } do
-			local signal = f.service[name] :: Environment.Signal<Environment.Instance>
-			signal:Connect(function(object)
+			local signal = f.env.event(f.service, name)
+			signal:Connect(function(value)
+				local object = Environment.assertInstance(value)
 				table.insert(deltas, object.Delta)
 				if name == "InputBegan" then
 					began = object
@@ -423,15 +435,17 @@ describe("semantic input adapter", function()
 		local began: unknown = nil
 		local ended: unknown = nil
 		for _, object in { f.overlay, f.child, f.base } do
-			local inputBegan = object.InputBegan :: Environment.Signal<Environment.Instance>
-			inputBegan:Connect(function(input)
+			local inputBegan = f.env.event(object, "InputBegan")
+			inputBegan:Connect(function(value)
+				local input = Environment.assertInstance(value)
 				if input.UserInputType == f.library.Enum.UserInputType.MouseButton1 then
 					table.insert(log, tostring(object.Name) .. ".InputBegan")
 					began = input
 				end
 			end)
-			local inputEnded = object.InputEnded :: Environment.Signal<Environment.Instance>
-			inputEnded:Connect(function(input)
+			local inputEnded = f.env.event(object, "InputEnded")
+			inputEnded:Connect(function(value)
+				local input = Environment.assertInstance(value)
 				if input.UserInputType == f.library.Enum.UserInputType.MouseButton1 then
 					table.insert(log, tostring(object.Name) .. ".InputEnded")
 					ended = input
@@ -439,7 +453,7 @@ describe("semantic input adapter", function()
 			end)
 		end
 		for _, event in { "MouseButton1Down", "MouseButton1Click", "MouseButton1Up", "Activated" } do
-			local signal = f.base[event] :: Environment.Signal
+			local signal = f.env.event(f.base, event)
 			signal:Connect(function()
 				table.insert(log, "Base." .. event)
 			end)
@@ -459,7 +473,7 @@ describe("semantic input adapter", function()
 			"Base.InputEnded",
 		}
 		expect(began == ended):toEqual(true)
-		local input = began :: Environment.Instance
+		local input = Environment.assertInstance(began)
 		expect(input:IsA "InputObject"):toEqual(true)
 		expect(input.Position):toEqual(f.library.Vector3.new(200, 82, 0))
 		expect(input.UserInputState):toEqual(f.library.Enum.UserInputState.End)
@@ -469,8 +483,8 @@ describe("semantic input adapter", function()
 		own(f.cleanup)
 		f.base.Active = false
 		local clicked, activated = 0, 0
-		local click = f.base.MouseButton1Click :: Environment.Signal
-		local activate = f.base.Activated :: Environment.Signal
+		local click = f.env.event(f.base, "MouseButton1Click")
+		local activate = f.env.event(f.base, "Activated")
 		click:Connect(function()
 			clicked += 1
 		end)
@@ -486,12 +500,13 @@ describe("semantic input adapter", function()
 		local f = pointerFixture()
 		own(f.cleanup)
 		local activated, ended = 0, 0
-		local activate = f.base.Activated :: Environment.Signal
-		local finish = f.base.InputEnded :: Environment.Signal<Environment.Instance>
+		local activate = f.env.event(f.base, "Activated")
+		local finish = f.env.event(f.base, "InputEnded")
 		activate:Connect(function()
 			activated += 1
 		end)
-		finish:Connect(function(input)
+		finish:Connect(function(value)
+			local input = Environment.assertInstance(value)
 			if input.UserInputType == f.library.Enum.UserInputType.MouseButton1 then
 				ended += 1
 			end
@@ -506,8 +521,8 @@ describe("semantic input adapter", function()
 		own(f.cleanup)
 		f.base.Interactable = false
 		local began = 0
-		local baseBegin = f.base.InputBegan :: Environment.Signal
-		local childBegin = f.child.InputBegan :: Environment.Signal
+		local baseBegin = f.env.event(f.base, "InputBegan")
+		local childBegin = f.env.event(f.child, "InputBegan")
 		baseBegin:Connect(function()
 			began += 1
 		end)
@@ -516,18 +531,18 @@ describe("semantic input adapter", function()
 		end)
 		f.backend.pointer { x = 200, y = 140, button = "left", down = true }
 		f.backend.pointer { x = 200, y = 140, button = "left", down = false }
-		local query = f.gui.GetGuiObjectsAtPosition :: Environment.Method
+		local query = f.env.method(f.gui, "GetGuiObjectsAtPosition")
 		expect(query(f.gui, 200, 82)):toEqual { f.overlay, f.child, f.base }
 		expect(began):toEqual(0)
 	end)
 	it("close cancels retained input and releases owned objects without activation", function()
 		local f = pointerFixture()
-		local create = f.service.CreateVirtualInput :: Environment.Method
+		local create = f.env.method(f.service, "CreateVirtualInput")
 		create(f.service)
 		create(f.service)
 		local baseline = f.env.liveObjects()
 		local activated = 0
-		(f.base.Activated :: Environment.Signal):Connect(function()
+		(f.env.event(f.base, "Activated")):Connect(function()
 			activated += 1
 		end)
 		f.backend.pointer { x = 200, y = 140, button = "left", down = true }
@@ -551,7 +566,7 @@ describe("semantic input adapter", function()
 			return "later-owner"
 		end)
 		f.backend.close()
-		expect((f.service.GetLastInputType :: Environment.Method)(f.service)):toEqual "later-owner"
+		expect((f.env.method(f.service, "GetLastInputType"))(f.service)):toEqual "later-owner"
 		restore()
 		expect(f.service.GetLastInputType):toEqual(nil)
 	end)
@@ -559,7 +574,7 @@ describe("semantic input adapter", function()
 		local f = pointerFixture()
 		own(f.cleanup)
 		local presses = 0
-		(f.base.MouseButton1Down :: Environment.Signal):Connect(function()
+		(f.env.event(f.base, "MouseButton1Down")):Connect(function()
 			presses += 1
 		end)
 		f.backend.pointer { x = 200, y = 140, button = "left", down = true }

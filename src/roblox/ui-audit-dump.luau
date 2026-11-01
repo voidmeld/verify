@@ -109,11 +109,15 @@ local function fail(label: string, message: string): never
 	error(("ui dump %s %s"):format(label, message), 0)
 end
 
-local function object(value: unknown, label: string): { [string]: unknown }
+local function object(value: unknown, label: string): { [unknown]: unknown }
 	if type(value) ~= "table" then
-		fail(label, "must be an object")
+		return fail(label, "must be an object")
 	end
-	return value :: { [string]: unknown }
+	local result: { [unknown]: unknown } = {}
+	for key, item in value do
+		result[key] = item
+	end
+	return result
 end
 
 local function present(value: unknown): boolean
@@ -170,11 +174,14 @@ local function array(value: unknown, label: string): { unknown }
 		return {}
 	end
 	if type(value) ~= "table" then
-		fail(label, "must be an array")
+		return fail(label, "must be an array")
 	end
+	local items = object(value, label)
 	local result: { unknown } = {}
-	for index, item in ipairs(value :: { unknown }) do
-		result[index] = item
+	local index = 1
+	while items[index] ~= nil do
+		result[index] = items[index]
+		index += 1
 	end
 	return result
 end

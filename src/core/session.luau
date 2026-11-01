@@ -12,29 +12,34 @@ type Selection = Harness.Selection
 export type Surface = { [string]: unknown }
 export type SurfaceFactory<S = Surface> = (harness: Harness.Harness) -> S
 
-export type Options<S = Surface> = {
+export type ProvidedOptions<S> = {
 	executor: string,
 	bind: ((Harness.Context) -> Operations.Host)?,
 	cancelled: (() -> boolean)?,
 	environment: { [string]: string },
 	capabilities: { string }?,
 	now: (() -> number)?,
-	surface: SurfaceFactory<S>?,
-
-	runtimeVerbs: { string }?,
+	surface: SurfaceFactory<S>,
 	prefixCaseIds: boolean?,
 	selection: Selection?,
 }
 
-export type ProvidedOptions<S> = Options<S> & { surface: SurfaceFactory<S> }
+export type DefaultOptions = {
+	executor: string,
+	bind: ((Harness.Context) -> Operations.Host)?,
+	cancelled: (() -> boolean)?,
+	environment: { [string]: string },
+	capabilities: { string }?,
+	now: (() -> number)?,
+	prefixCaseIds: boolean?,
+	selection: Selection?,
+}
 
-export type DefaultOptions = Options<Surface> & { surface: nil }
-
-export type Session<S = Surface> = {
-	verbs: S,
+export type Session<S = Harness.Harness> = {
 	open: (self: Session<S>, source: string) -> (),
 	close: (self: Session<S>) -> (),
 	current: (self: Session<S>) -> S,
+	active: (self: Session<S>) -> S,
 	harness: (self: Session<S>) -> Harness.Harness,
 	adoptReport: (self: Session<S>, source: string, report: Report) -> (),
 	sourceReport: (
@@ -63,9 +68,7 @@ type Entry<S> = Registered<S> | {
 	report: Report,
 }
 
-local DEFAULT_RUNTIME_VERBS: { string } = { "skip" }
-
-local function create<S>(options: Options<S>): Session<S>
+local function createSurface<S>(options: ProvidedOptions<S>): Session<S>
 	if type(options) ~= "table" or options.executor == "" then
 		error("a session needs a non-empty executor", 2)
 	end
@@ -75,17 +78,8 @@ local function create<S>(options: Options<S>): Session<S>
 	local now = options.now or function(): number
 		return 0
 	end
-	local build: SurfaceFactory<S> = options.surface
-		or function(harness: Harness.Harness): S
-			return (harness :: unknown) :: S
-		end
+	local build = options.surface
 	local prefixCaseIds = options.prefixCaseIds == true
-	local runtimeVerbs: { [string]: boolean } = {}
-	for _, verb in options.runtimeVerbs or DEFAULT_RUNTIME_VERBS do
-		runtimeVerbs[verb] = true
-	end
-
-	local session = {} :: Session<S>
 	local stack: { Registered<S> } = {}
 	local pending: { Entry<S> } = {}
 	local running: Entry<S>? = nil
@@ -100,33 +94,24 @@ local function create<S>(options: Options<S>): Session<S>
 		return entry
 	end
 
-	function session:current(): S
+	local function current(_self: Session<S>): S
 		return registering().surface
 	end
 
-	function session:harness(): Harness.Harness
-		local harness = registering().harness
-		assert(harness ~= nil)
-		return harness
+	local function active(_self: Session<S>): S
+		if running ~= nil then
+			local surface = running.surface
+			assert(surface ~= nil)
+			return surface
+		end
+		return registering().surface
 	end
 
-	session.verbs = (
-		setmetatable({}, {
-			__index = function(_, verb: string): unknown
-				return function(...: unknown): ...unknown
-					local entry = if runtimeVerbs[verb] then (running or registering()) else registering()
-					local surface = (entry.surface :: unknown) :: Surface
-					local callable = surface[verb]
-					if type(callable) ~= "function" then
-						error(("the session surface has no verb %q"):format(verb), 2)
-					end
-					return (callable :: (...unknown) -> ...unknown)(...)
-				end
-			end,
-		}) :: unknown
-	) :: S
+	local function harness(_self: Session<S>): Harness.Harness
+		return registering().harness
+	end
 
-	function session:open(source: string)
+	local function open(_self: Session<S>, source: string)
 		if source == "" then
 			error("a session source must not be empty", 2)
 		end
@@ -134,7 +119,7 @@ local function create<S>(options: Options<S>): Session<S>
 		table.insert(stack, { source = source, harness = harness, surface = build(harness), report = nil })
 	end
 
-	function session:close()
+	local function close(_self: Session<S>)
 		local entry = table.remove(stack)
 		if entry == nil then
 			error("close with no open session source", 2)
@@ -142,7 +127,13 @@ local function create<S>(options: Options<S>): Session<S>
 		table.insert(pending, entry)
 	end
 
-	function session:sourceReport(id: string, source: string, status: "failed" | "skipped", detail: string): Report
+	local function sourceReport(
+		_self: Session<S>,
+		id: string,
+		source: string,
+		status: "failed" | "skipped",
+		detail: string
+	): Report
 		if status == "skipped" then
 			return Harness.syntheticReport {
 				executor = executor,
@@ -168,11 +159,11 @@ local function create<S>(options: Options<S>): Session<S>
 		}
 	end
 
-	function session:adoptReport(source: string, report: Report)
+	local function adoptReport(_self: Session<S>, source: string, report: Report)
 		table.insert(pending, { source = source, harness = nil, surface = nil, report = report })
 	end
 
-	function session:setSelection(value: Selection?)
+	local function setSelection(_self: Session<S>, value: Selection?)
 		selection = value
 	end
 
@@ -215,7 +206,7 @@ local function create<S>(options: Options<S>): Session<S>
 		return ReportModel.merge(reports, executor, environment)
 	end
 
-	function session:run(): Report
+	local function run(_self: Session<S>): Report
 		if runInProgress then
 			error("a session run is already in progress", 2)
 		end
@@ -230,7 +221,7 @@ local function create<S>(options: Options<S>): Session<S>
 		return produced
 	end
 
-	function session:reset()
+	local function reset(_self: Session<S>)
 		if runInProgress then
 			error("a session cannot be reset while its run is in progress", 2)
 		end
@@ -239,11 +230,34 @@ local function create<S>(options: Options<S>): Session<S>
 		running = nil
 	end
 
-	return session
+	return {
+		current = current,
+		active = active,
+		harness = harness,
+		open = open,
+		close = close,
+		sourceReport = sourceReport,
+		adoptReport = adoptReport,
+		setSelection = setSelection,
+		run = run,
+		reset = reset,
+	}
 end
 
-type Creator = (<S>(options: ProvidedOptions<S>) -> Session<S>) & ((options: DefaultOptions) -> Session<Surface>)
+local function create(options: DefaultOptions): Session<Harness.Harness>
+	return createSurface {
+		executor = options.executor,
+		bind = options.bind,
+		cancelled = options.cancelled,
+		environment = options.environment,
+		capabilities = options.capabilities,
+		now = options.now,
+		prefixCaseIds = options.prefixCaseIds,
+		selection = options.selection,
+		surface = function(harness: Harness.Harness): Harness.Harness
+			return harness
+		end,
+	}
+end
 
-local creator = (create :: unknown) :: Creator
-
-return { create = creator }
+return { create = create, createSurface = createSurface }
