@@ -41,9 +41,13 @@ local function create(): Scheduler
 	local cleanups: { [thread]: () -> () } = {}
 	setmetatable(tags, WEAK_KEYS)
 	local active: unknown = nil
-	local describe: (thread, unknown) -> string
 	local scheduler = {}
 	local onFailure: (string) -> () = function() end
+	local function record(message: string)
+		failures[#failures + 1] = message
+		onFailure(message)
+	end
+
 	local function release(thread: thread)
 		local cleanup = cleanups[thread]
 		if cleanup then
@@ -53,36 +57,12 @@ local function create(): Scheduler
 				return nil
 			end)
 			if not ok then
-				local message = tostring(failure)
-				failures[#failures + 1] = message
-				onFailure(message)
+				record(tostring(failure))
 			end
 		end
 	end
 
-	local function withTag(thread: thread, ...: unknown): ...unknown
-		release(thread)
-		local previous = active
-		active = tags[thread]
-		local results = pack(coroutine.resume(thread, ...))
-		active = previous
-		return table.unpack(results, 1, results.n)
-	end
-
-	local function start(thread: thread, ...: unknown)
-		release(thread)
-		local previous = active
-		active = tags[thread]
-		local ok, message = coroutine.resume(thread, ...)
-		active = previous
-		if not ok then
-			local described = describe(thread, message)
-			failures[#failures + 1] = described
-			onFailure(described)
-		end
-	end
-
-	function describe(thread: thread, message: unknown): string
+	local function describe(thread: thread, message: unknown): string
 		local ok, trace = pcall(function(): unknown
 			return debug.traceback(thread)
 		end)
@@ -90,6 +70,22 @@ local function create(): Scheduler
 			return tostring(message) .. "\n" .. trace
 		end
 		return tostring(message)
+	end
+
+	local function run(thread: thread, ...: unknown): (boolean, unknown)
+		release(thread)
+		local previous = active
+		active = tags[thread]
+		local ok, message = coroutine.resume(thread, ...)
+		active = previous
+		return ok, message
+	end
+
+	local function start(thread: thread, ...: unknown)
+		local ok, message = run(thread, ...)
+		if not ok then
+			record(describe(thread, message))
+		end
 	end
 
 	local function push(thread: thread, depth: number, ...: unknown)
@@ -105,13 +101,8 @@ local function create(): Scheduler
 			end
 			local outer = running
 			running = entry.depth
-			local results = table.pack(withTag(entry.thread, table.unpack(entry.arguments, 1, entry.arguments.n)))
+			start(entry.thread, table.unpack(entry.arguments, 1, entry.arguments.n))
 			running = outer
-			if not results[1] then
-				local message = describe(entry.thread, results[2])
-				failures[#failures + 1] = message
-				onFailure(message)
-			end
 		end
 	end
 
@@ -160,7 +151,7 @@ local function create(): Scheduler
 			tags[thread] = active
 		end
 		local waiter = coroutine.create(function()
-			withTag(thread, table.unpack(arguments, 1, arguments.n))
+			run(thread, table.unpack(arguments, 1, arguments.n))
 		end)
 		timers[#timers + 1] = { at = now + math.max(seconds, 0), thread = waiter, owner = thread }
 		return thread

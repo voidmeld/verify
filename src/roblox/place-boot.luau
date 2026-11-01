@@ -740,7 +740,6 @@ end
 return {
 	COMMIT_TOKEN = COMMIT_TOKEN,
 	FRAME_SECONDS = FRAME_SECONDS,
-	STAGES = table.freeze { "server", "player", "client", "viewport", "character", "settled" },
 	stabilizeCommit = stabilizeCommit,
 	globToPattern = globToPattern,
 	scriptClass = scriptClass,
