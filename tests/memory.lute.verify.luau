@@ -230,6 +230,7 @@ describe("rehearsed lifecycles", function()
 			end,
 			growStringTable = function()
 				table.insert(steps, "grow")
+				return { "anchor" }
 			end,
 			pressure = function() end,
 		}
@@ -267,7 +268,7 @@ describe("rehearsed lifecycles", function()
 		expect(result.teardownRetainedKb < 256):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
 	end)
 
-	it("measures a mounted reading from the lower of its baseline and teardown", function()
+	it("measures a mounted reading from the teardown of the same lifecycle", function()
 		local heap = 100
 		local now = 0
 		local memory = Lute.memory.create {

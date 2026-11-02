@@ -29,7 +29,7 @@ export type Host = {
 	now: () -> number,
 	heap: () -> number,
 	witness: () -> Witness,
-	growStringTable: (() -> ())?,
+	growStringTable: (() -> { string })?,
 	pressure: () -> (),
 }
 export type Memory = {
@@ -37,8 +37,8 @@ export type Memory = {
 	measure: <T>(spec: Spec<T>, options: Options?) -> Result,
 }
 
-local METHOD = "gc-witness-low-water/4"
-local STRING_TABLE_GROWTH = 600000
+local METHOD = "gc-witness-low-water/5"
+local STRING_TABLE_GROWTH = 300000
 
 local function integer(value: number, minimum: number): boolean
 	return value >= minimum and value < math.huge and value % 1 == 0
@@ -114,8 +114,8 @@ local function create(host: Host): Memory
 				error("memory cleanup failed: " .. tostring(cleanupProblem), 0)
 			end
 		end
-		if host.growStringTable then
-			host.growStringTable()
+		local anchored = if host.growStringTable then host.growStringTable() else nil
+		if anchored then
 			settle(options)
 		end
 		for _ = 1, rehearsals do
@@ -126,12 +126,15 @@ local function create(host: Host): Memory
 		exercise()
 		local teardown = settle(options)
 		local held = assert(mounted)
+		if anchored then
+			assert(#anchored > 0, "memory string table anchor was released")
+		end
 		return {
 			method = METHOD,
 			baseline = baseline,
 			mounted = held,
 			teardown = teardown,
-			mountedRetainedKb = math.max(0, held.heapKb - math.min(baseline.heapKb, teardown.heapKb)),
+			mountedRetainedKb = math.max(0, held.heapKb - teardown.heapKb),
 			teardownRetainedKb = math.max(0, teardown.heapKb - baseline.heapKb),
 		}
 	end
@@ -149,6 +152,7 @@ local bound = create {
 			held[index] = `capacity{index}`
 		end
 		assert(#held == STRING_TABLE_GROWTH, "memory string table growth failed")
+		return held
 	end,
 	pressure = function()
 		local scratch = buffer.create(8192)
