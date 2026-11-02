@@ -608,9 +608,15 @@ local function create(
 				return true
 			end
 			local now = env.now()
-			for entry in pairs(timed) do
-				if geometryOnly and (entry.property:match "Color3$" or entry.property:match "Transparency$") then
-					continue
+			for entry, object in pairs(timed) do
+				if geometryOnly then
+					if entry.property:match "Color3$" or entry.property:match "Transparency$" then
+						continue
+					end
+					local component = entry.phantom or object.ClassName
+					if component == "UIGradient" or component == "UICorner" or component == "UIStroke" then
+						continue
+					end
 				end
 				local timing = entry.motion.timing
 				if stale[entry] or timing ~= nil and now - entry.motion.started - timing.delay < timing.time then
