@@ -61,6 +61,10 @@ assert(inner.CanvasPosition == Vector2.new(100,100) and math.abs(outer.CanvasPos
 inner.ScrollingEnabled = true
 reset()
 inner.ScrollingDirection = Enum.ScrollingDirection.X
+virtual:SendPointerAction(Vector2.new(250,250), {Wheel=-1})
+rest()
+assert(inner.CanvasPosition == Vector2.new(100,100) and math.abs(outer.CanvasPosition.Y-200)<0.1)
+reset()
 virtual:SendPointerAction(Vector2.new(250,250), {Pan=Vector2.new(30,30)})
 rest()
 assert(inner.CanvasPosition.X < 0.1 and inner.CanvasPosition.Y == 100)

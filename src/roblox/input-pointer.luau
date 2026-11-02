@@ -8,6 +8,7 @@ type Point = { X: number, Y: number }
 type Motion = { origin: Point, target: Point, last: Point, started: number? }
 export type Controller = {
 	send: (Point, { [string]: unknown }) -> boolean,
+	drag: ({ Instance }, number, number) -> boolean,
 	step: () -> (),
 	close: () -> (),
 }
@@ -35,57 +36,73 @@ local function create(env: Environment.Environment, options: Options): Controlle
 		)
 		return value
 	end
-	local function scroll(objects: { Instance }, x: number, y: number): boolean
+	local function scroll(objects: { Instance }, x: number, y: number, touch: boolean): boolean
 		local consumed = false
-		local seen: { [Instance]: boolean } = {}
 		local planned: { [Instance]: Motion } = {}
+		local current: Instance? = nil
 		for _, object in objects do
-			local current: Instance? = object
-			while current and (x ~= 0 or y ~= 0) and not seen[current] do
-				seen[current] = true
-				if current:IsA "ScrollingFrame" and read(current, "ScrollingEnabled") ~= false then
-					local canvas = Values.vector(read(current, "AbsoluteCanvasSize"))
-					local window = Values.vector(read(current, "AbsoluteWindowSize"))
-					local position = Values.vector(read(current, "CanvasPosition"))
-					local active = motions[current]
-					local target = if active then active.target else position
-					local direction = Values.enumName(read(current, "ScrollingDirection"), "ScrollingDirection")
-					local nextX = if direction ~= "Y"
-						then math.clamp(target.X + x, 0, math.max(0, canvas.X - window.X))
-						else target.X
-					local nextY = if direction ~= "X"
-						then math.clamp(target.Y + y, 0, math.max(0, canvas.Y - window.Y))
-						else target.Y
-					local extent = Values.vector(read(current, "AbsoluteSize"))
-					if
-						Values.enumName(read(current, "VerticalScrollBarInset"), "ScrollBarInset") == "None"
-							and nextX > math.max(0, canvas.X - extent.X)
-						or Values.enumName(read(current, "HorizontalScrollBarInset"), "ScrollBarInset")
-								== "None"
-							and nextY > math.max(0, canvas.Y - extent.Y)
-					then
-						error("unsupported_simulated_input: pointer scrolling beyond the authored layout clamp", 0)
-					end
-					if nextX ~= target.X or nextY ~= target.Y then
-						planned[current] = { origin = position, target = { X = nextX, Y = nextY }, last = position }
-						if nextX ~= target.X then
-							x = 0
-						end
-						if nextY ~= target.Y then
-							y = 0
-						end
-						consumed = true
-					end
-				end
-				current = current.Parent
+			if
+				object:IsA "ScrollingFrame"
+				or read(object, "Active") == true
+					and (object.ClassName ~= "Frame" or touch and Values.enumName(
+						read(object, "InputSink"),
+						"InputSink"
+					) == "All")
+			then
+				current = object
+				break
 			end
 		end
+		while current and (x ~= 0 or y ~= 0) do
+			if current:IsA "ScrollingFrame" and read(current, "ScrollingEnabled") ~= false then
+				local canvas = Values.vector(read(current, "AbsoluteCanvasSize"))
+				local window = Values.vector(read(current, "AbsoluteWindowSize"))
+				local position = Values.vector(read(current, "CanvasPosition"))
+				local active = motions[current]
+				local target = if active then active.target else position
+				local direction = Values.enumName(read(current, "ScrollingDirection"), "ScrollingDirection")
+				local nextX = if direction ~= "Y"
+					then math.clamp(target.X + x, 0, math.max(0, canvas.X - window.X))
+					else target.X
+				local nextY = if direction ~= "X"
+					then math.clamp(target.Y + y, 0, math.max(0, canvas.Y - window.Y))
+					else target.Y
+				local extent = Values.vector(read(current, "AbsoluteSize"))
+				if
+					Values.enumName(read(current, "VerticalScrollBarInset"), "ScrollBarInset") == "None"
+						and nextX > math.max(0, canvas.X - extent.X)
+					or Values.enumName(read(current, "HorizontalScrollBarInset"), "ScrollBarInset") == "None"
+						and nextY > math.max(0, canvas.Y - extent.Y)
+				then
+					error("unsupported_simulated_input: pointer scrolling beyond the authored layout clamp", 0)
+				end
+				if nextX ~= target.X or nextY ~= target.Y then
+					planned[current] = { origin = position, target = { X = nextX, Y = nextY }, last = position }
+					if nextX ~= target.X then
+						x = 0
+					end
+					if nextY ~= target.Y then
+						y = 0
+					end
+					consumed = true
+				end
+			end
+			current = current.Parent
+		end
 		for object, motion in planned do
-			motions[object] = motion
+			if touch then
+				motions[object] = nil
+				env.poke(object, "CanvasPosition", library.Vector2.new(motion.target.X, motion.target.Y))
+			else
+				motions[object] = motion
+			end
 		end
 		return consumed
 	end
 	return {
+		drag = function(objects: { Instance }, x: number, y: number): boolean
+			return scroll(objects, x, y, true)
+		end,
 		send = function(at: Point, action: { [string]: unknown }): boolean
 			for key in action do
 				assert(key == "Wheel" or key == "Pan" or key == "Pinch", "unknown pointer action")
@@ -105,7 +122,7 @@ local function create(env: Environment.Environment, options: Options): Controlle
 				"unsupported_simulated_input: combined pointer actions"
 			)
 			local objects = options.hits(at)
-			local consumed = scroll(objects, -pan.X * 100 / 30, -(wheel + pinch) * 100 - pan.Y * 100 / 30)
+			local consumed = scroll(objects, -pan.X * 100 / 30, -(wheel + pinch) * 100 - pan.Y * 100 / 30, false)
 			options.changed()
 			local object = wheelInput or options.input(library.Enum.UserInputType.MouseWheel)
 			wheelInput = object
