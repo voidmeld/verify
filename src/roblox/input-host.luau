@@ -680,21 +680,26 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		Left = { x = -1, y = 0, name = "Left" },
 		Right = { x = 1, y = 0, name = "Right" },
 	}
-	local function shown(object: Instance): boolean
-		local current: Instance? = object
-		while current and current ~= gui do
-			if current:IsA "GuiObject" and read(current, "Visible") == false then
-				return false
-			end
-			if current:IsA "LayerCollector" and read(current, "Enabled") == false then
-				return false
-			end
-			current = current.Parent
+	local function navigable(object: Instance, memo: { [Instance]: boolean }?): boolean
+		if object == gui then
+			return true
 		end
-		return current == gui
+		local known = if memo then memo[object] else nil
+		if known ~= nil then
+			return known
+		end
+		local parent = env.parentOf(object)
+		local result = parent ~= nil
+			and (not object:IsA "GuiObject" or read(object, "Visible") ~= false and read(object, "Interactable") ~= false)
+			and (not object:IsA "LayerCollector" or read(object, "Enabled") ~= false)
+			and navigable(parent, memo)
+		if memo then
+			memo[object] = result
+		end
+		return result
 	end
 	local function selectable(object: Instance): boolean
-		return object:IsA "GuiObject" and read(object, "Selectable") == true and shown(object) and interactable(object)
+		return object:IsA "GuiObject" and read(object, "Selectable") == true and navigable(object, nil)
 	end
 	local function onScreen(object: Instance): boolean
 		local at = Values.vector(read(object, "AbsolutePosition"))
@@ -735,11 +740,6 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		end)
 	end
-	local function center(object: Instance): Position
-		local at = Values.vector(read(object, "AbsolutePosition"))
-		local size = Values.vector(read(object, "AbsoluteSize"))
-		return { X = at.X + size.X / 2, Y = at.Y + size.Y / 2 }
-	end
 	local function groupOf(object: Instance): Instance?
 		local current = object.Parent
 		while current and current ~= gui do
@@ -751,20 +751,26 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		return nil
 	end
 	local function nearest(from: Instance, scope: Instance, direction: { x: number, y: number }): Instance?
-		local origin = center(from)
+		local origin = Values.vector(read(from, "AbsolutePosition"))
+		local extent = Values.vector(read(from, "AbsoluteSize"))
+		local x, y = origin.X + extent.X / 2, origin.Y + extent.Y / 2
 		local best: Instance? = nil
 		local bestScore = math.huge
+		local eligible: { [Instance]: boolean } = {}
 		for _, candidate in scope:GetDescendants() do
-			if candidate ~= from and selectable(candidate) then
-				local at = center(candidate)
-				local dx, dy = at.X - origin.X, at.Y - origin.Y
+			if
+				candidate ~= from
+				and candidate:IsA "GuiObject"
+				and read(candidate, "Selectable") == true
+				and navigable(candidate, eligible)
+			then
+				local at = Values.vector(read(candidate, "AbsolutePosition"))
+				local size = Values.vector(read(candidate, "AbsoluteSize"))
+				local dx, dy = at.X + size.X / 2 - x, at.Y + size.Y / 2 - y
 				local along = dx * direction.x + dy * direction.y
-				if along > 0 then
-					local across = math.abs(dx * direction.y - dy * direction.x)
-					local score = along + 2 * across
-					if score < bestScore then
-						best, bestScore = candidate, score
-					end
+				local score = along + 2 * math.abs(dx * direction.y - dy * direction.x)
+				if along > 0 and score < bestScore then
+					best, bestScore = candidate, score
 				end
 			end
 		end

@@ -212,6 +212,56 @@ return true
 			]=],
 		},
 		{ name = "held selection repeats and stops on release", source = require "./fixtures/input-selection-repeat" },
+		{
+			name = "navigation reevaluates shared ancestors after visibility interaction and ancestry changes",
+			source = [=[
+local gui = game.GuiService
+local screen = Instance.new("ScreenGui")
+screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
+local disabled = screen:Clone()
+disabled.Enabled, disabled.Parent = false, screen.Parent
+local function button(x, parent)
+	local target = Instance.new("TextButton")
+	target.Text, target.Size, target.Position = "", UDim2.fromOffset(30,30), UDim2.fromOffset(x,0)
+	target.Parent = parent
+	return target
+end
+local source = button(0, screen)
+local outside = button(120, screen)
+local parent = Instance.new("Frame")
+parent.Size, parent.Visible, parent.Parent = UDim2.fromOffset(100,100), false, screen
+local folder = Instance.new("Folder")
+folder.Parent = parent
+local inside = button(60, folder)
+button(90, folder)
+local virtual = game.UserInputService:CreateVirtualInput()
+local function right(expected)
+	task.wait(0.05)
+	gui.SelectedObject = source
+	virtual:SendKey(true, Enum.KeyCode.Right, false)
+	task.wait(0.05)
+	virtual:SendKey(false, Enum.KeyCode.Right, false)
+	task.wait(0.05)
+	assert(gui.SelectedObject == expected, "selection reflects current ancestor eligibility")
+end
+right(outside)
+parent.Visible = true
+right(inside)
+parent.Interactable = false
+right(outside)
+parent.Interactable, parent.Parent = true, disabled
+right(outside)
+disabled.Enabled = true
+right(inside)
+parent.Parent = screen
+inside.Selectable = false
+right(folder:GetChildren()[2])
+gui.SelectedObject = nil
+screen:Destroy()
+disabled:Destroy()
+return true
+]=],
+		},
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
 		{
 			name = "GuiService Select chooses eligible descendants by order",
