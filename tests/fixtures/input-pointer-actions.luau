@@ -46,6 +46,10 @@ virtual:SendPointerAction(Vector2.new(250,250), {})
 virtual:SendPointerAction(Vector2.new(250,250), {Wheel=0, Pan=Vector2.zero, Pinch=0})
 assert(#events == 0)
 virtual:SendPointerAction(Vector2.new(250,250), {Wheel=-1})
+for frame, expected in {100,108.2,124.3,141.5,156.2,168.3} do
+ game.RunService.RenderStepped:Wait()
+ assert(math.abs(inner.CanvasPosition.Y-expected)<1,`frame {frame}: {inner.CanvasPosition.Y}`)
+end
 rest()
 assert(math.abs(inner.CanvasPosition.Y-200)<0.1 and outer.CanvasPosition == Vector2.new(100,100))
 assert(table.concat(events,"|") == "inner|service/true|pointer/-1/0/0/0/true",table.concat(events,"|"))
