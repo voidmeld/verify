@@ -1,6 +1,7 @@
 --!strict
 
 local Environment = require "./environment"
+local Enum = require "./datatypes/enum"
 local Datatypes = require "./datatypes"
 local Grid = require "./ui-grid-layout"
 local List = require "./ui-list-layout"
@@ -36,19 +37,17 @@ export type Controller = {
 
 local function attach(environment: Environment.Environment, options: Options): Controller
 	local read: (Instance, string) -> unknown = options.read or environment.propertyOf
-	local vector: (number, number) -> unknown = options.vector
-		or function(x: number, y: number): unknown
-			return Datatypes.Vector2.new(x, y)
-		end
-	local function optional(object: Instance, property: string): unknown
-		return read(object, property)
-	end
+	local vector: (number, number) -> unknown = options.vector or Datatypes.Vector2.new
 	local function enum(object: Instance, property: string, fallback: string): string
-		local value = optional(object, property)
-		return if value == nil then fallback else tostring(value):match "([^%.]+)$" or fallback
+		local value = read(object, property)
+		local item = Enum.itemValue(value)
+		return if item
+			then item.Name
+			elseif value == nil then fallback
+			else tostring(value):match "([^%.]+)$" or fallback
 	end
 	local function number(object: Instance, property: string, fallback: number): number
-		local value = optional(object, property)
+		local value = read(object, property)
 		return if type(value) == "number" then value else fallback
 	end
 	local function dimension(unit: Values.Dimension, extent: number, scale: number): number
@@ -179,7 +178,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		if options.measureBounds == nil or not (isText(object)) then
 			return nil
 		end
-		if optional(object, "TextScaled") == true and optional(object, "TextWrapped") == true then
+		if read(object, "TextScaled") == true and read(object, "TextWrapped") == true then
 			return scaledBounds(object, rectangle)
 		end
 		local size = number(object, "TextSize", 14)
@@ -198,13 +197,13 @@ local function attach(environment: Environment.Environment, options: Options): C
 			maximumX = math.max(0, maximum.X * rectangle.scale - rectangle.width + content.width)
 			maximumY = math.max(0, maximum.Y * rectangle.scale - rectangle.height + content.height)
 		end
-		local wrapped = optional(object, "TextWrapped") == true
+		local wrapped = read(object, "TextWrapped") == true
 		local parameters: Values.TextParameters = {
 			Text = Values.string(read(object, "Text")),
 			Font = Values.font(read(object, "FontFace")),
 			Size = rendered,
 			Width = if wrapped then content.width else 0,
-			RichText = optional(object, "RichText") == true,
+			RichText = read(object, "RichText") == true,
 		}
 		local intrinsicX = content.width
 		if intrinsic and autoX then
@@ -416,7 +415,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local relativeX: Instance? = nil
 		local relativeY: Instance? = nil
 		for _, child in object:GetChildren() do
-			if child:IsA "GuiObject" and optional(child, "Visible") ~= false then
+			if child:IsA "GuiObject" and read(child, "Visible") ~= false then
 				local authoredChild = Values.dimensions(read(child, "Size"))
 				local position = Values.dimensions(read(child, "Position"))
 				local anchor = Values.vector(read(child, "AnchorPoint"))
@@ -475,7 +474,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				rectangle.height = math.max(rectangle.height, height)
 			end
 		end
-		if list and (relativeX or relativeY) and optional(list, "Wraps") ~= true then
+		if list and (relativeX or relativeY) and read(list, "Wraps") ~= true then
 			local projected = table.clone(rectangle)
 			if autoX and relativeX then
 				projected.width = math.max(projected.width, parent.width * factor)
@@ -506,7 +505,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			end
 			return rectangle
 		end
-		if list and optional(list, "Wraps") == true and not (if horizontal then autoX else autoY) then
+		if list and read(list, "Wraps") == true and not (if horizontal then autoX else autoY) then
 			local measured = List.measure(list, content, read, measuredSize, reflowSize)
 			grow(measured.width + paddingX, measured.height + paddingY)
 			return rectangle
@@ -529,7 +528,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				local inner = if padded then inset(object, frame) else table.clone(frame)
 				local farX, farY = 0, 0
 				for _, child in object:GetChildren() do
-					if child:IsA "GuiObject" and optional(child, "Visible") ~= false then
+					if child:IsA "GuiObject" and read(child, "Visible") ~= false then
 						local measured = if padded then size(child, inner) else firstSize(child, inner, true, true)
 						local position = Values.dimensions(read(child, "Position"))
 						local anchor = Values.vector(read(child, "AnchorPoint"))
@@ -573,7 +572,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			return rectangle
 		end
 		for _, child in object:GetChildren() do
-			if child:IsA "GuiObject" and optional(child, "Visible") ~= false then
+			if child:IsA "GuiObject" and read(child, "Visible") ~= false then
 				local position = Values.dimensions(read(child, "Position"))
 				local anchor = Values.vector(read(child, "AnchorPoint"))
 				local childSize = size(child, content)
@@ -599,7 +598,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			else
 				intrinsicHeight += math.max(0, count - 1) * gap
 			end
-			if horizontal and autoY and not autoX and optional(list, "Wraps") ~= true then
+			if horizontal and autoY and not autoX and read(list, "Wraps") ~= true then
 				intrinsicHeight = List.measure(list, content, read, measuredSize, reflowSize).height
 			end
 		end
@@ -735,7 +734,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				end
 				local farX, farY = 0, 0
 				for _, child in object:GetChildren() do
-					if child:IsA "GuiObject" and optional(child, "Visible") ~= false then
+					if child:IsA "GuiObject" and read(child, "Visible") ~= false then
 						local measured = size(child, inner)
 						local position = Values.dimensions(read(child, "Position"))
 						local anchor = Values.vector(read(child, "AnchorPoint"))
@@ -834,7 +833,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			if
 				placed
 				and (isText(object))
-				and optional(object, "TextWrapped") == true
+				and read(object, "TextWrapped") == true
 				and enum(object, "AutomaticSize", "None") ~= "None"
 				and not (object.Parent and object.Parent:FindFirstChildWhichIsA "UIGridLayout")
 			then
@@ -843,7 +842,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 					and (
 						(
 							enum(list, "FillDirection", "Vertical") == "Vertical"
-							and optional(list, "Wraps") ~= true
+							and read(list, "Wraps") ~= true
 							and enum(list, "HorizontalFlex", "None") == "Fill"
 						) or enum(list, "FillDirection", "Vertical") == "Horizontal"
 					)
@@ -1087,7 +1086,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local visit: (Instance, Instance?, { Order }, number, boolean) -> ()
 		visit = function(object: Instance, screen: Instance?, path: { Order }, sibling: number, clipped: boolean)
 			if object:IsA "ScreenGui" then
-				if optional(object, "Enabled") == false then
+				if read(object, "Enabled") == false then
 					return
 				end
 				screen = object
@@ -1096,7 +1095,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				unsupported(object, object.ClassName .. " hit testing")
 			end
 			if object:IsA "GuiObject" then
-				if optional(object, "Visible") == false then
+				if read(object, "Visible") == false then
 					return
 				end
 				if screen == nil then
@@ -1124,7 +1123,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				end
 				local around = turns[object]
 				local rotated = number(object, "Rotation", 0) ~= 0 or around ~= nil and #around > 0
-				clipped = clipped or optional(object, "ClipsDescendants") == true and not rotated and not inside
+				clipped = clipped or read(object, "ClipsDescendants") == true and not rotated and not inside
 			end
 			local folder = object:IsA "Folder"
 			for ordinal, child in object:GetChildren() do

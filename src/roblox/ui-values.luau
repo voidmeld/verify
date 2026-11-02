@@ -3,6 +3,7 @@
 local Datatypes = require "./datatypes"
 local Names = require "./datatypes/names"
 local Enum = require "./datatypes/enum"
+local UDim = require "./datatypes/udim"
 
 export type Vector = { X: number, Y: number }
 export type Dimension = { Scale: number, Offset: number }
@@ -36,8 +37,8 @@ local function dimension(value: unknown): Dimension
 end
 
 local function dimensions(value: unknown): Dimensions
-	local valueFields = fields(value, "UDim2")
-	return { X = dimension(valueFields.X), Y = dimension(valueFields.Y) }
+	local xs, xo, ys, yo = UDim.fieldParts(fields(value, "UDim2"))
+	return { X = { Scale = xs, Offset = xo }, Y = { Scale = ys, Offset = yo } }
 end
 
 local function font(value: unknown): Font

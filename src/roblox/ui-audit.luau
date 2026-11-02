@@ -365,17 +365,6 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 	end
 
-	local function within(element: Element, ancestor: number): boolean
-		local cursor = element.parent
-		while cursor ~= nil do
-			if cursor == ancestor then
-				return true
-			end
-			cursor = dump.elements[cursor].parent
-		end
-		return false
-	end
-
 	local function behind(element: Element, cursor: Element): Element?
 		local parent = cursor.parent
 		if parent == nil then
@@ -390,8 +379,8 @@ local function analyze(dump: Dump, options: Options?): Report
 				and other.background.transparency < 1
 				and visibleRects[other.index] ~= nil
 				and other.index ~= cursor.index
-				and not within(element, other.index)
-				and within(other, parent)
+				and not ancestorOf(other.index, element)
+				and ancestorOf(parent, other)
 				and x >= other.rect.x
 				and x <= other.rect.x + other.rect.width
 				and y >= other.rect.y

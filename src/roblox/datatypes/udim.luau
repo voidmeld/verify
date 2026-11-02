@@ -238,4 +238,4 @@ local Rect = {
 	end,
 }
 
-return { UDim = UDim, UDim2 = UDim2, Rect = Rect }
+return { UDim = UDim, UDim2 = UDim2, Rect = Rect, fieldParts = fieldParts }

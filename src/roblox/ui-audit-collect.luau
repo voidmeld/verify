@@ -39,12 +39,14 @@ local function read(object: unknown, key: string): unknown
 end
 
 local function call(object: unknown, method: string, ...: unknown): (boolean, unknown, unknown)
-	local callback = read(object, method)
-	if type(callback) ~= "function" then
+	local methods: Methods = setmetatable({}, { __index = object })
+	local found, callback = pcall(function()
+		return methods[method]
+	end)
+	if not found or type(callback) ~= "function" then
 		return false, nil, nil
 	end
-	local methods: Methods = setmetatable({}, { __index = object })
-	local ok, first, second = pcall(methods[method], object, ...)
+	local ok, first, second = pcall(callback, object, ...)
 	if not ok then
 		return false, nil, nil
 	end

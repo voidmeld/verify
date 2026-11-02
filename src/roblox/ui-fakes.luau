@@ -124,19 +124,15 @@ local classes: { [string]: Environment.ClassSpec } = {
 	},
 }
 
-local function hasClass(object: Instance, className: string): boolean
-	return object:IsA(className)
-end
-
 local function visible(object: Instance): boolean
 	local current: Instance? = object
 	while current ~= nil do
 		local node: Instance = current
 		local parent = node.Parent
-		if hasClass(node, "GuiObject") and node.Visible == false then
+		if node:IsA "GuiObject" and node.Visible == false then
 			return false
 		end
-		if hasClass(node, "ScreenGui") and node.Enabled == false then
+		if node:IsA "ScreenGui" and node.Enabled == false then
 			return false
 		end
 		current = parent
