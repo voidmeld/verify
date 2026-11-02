@@ -1110,7 +1110,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		return layout.objectsAtPosition(gui, x, y)
 	end)
 	local frame = env.heartbeat:Connect(function()
-		if not closed then
+		if not closed and #hovered > 0 then
 			local objects = hits(position, "movement")
 			local retained: { Instance } = {}
 			for _, object in hovered do

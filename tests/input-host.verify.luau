@@ -161,6 +161,31 @@ local function pointerFixture(raiseErrors: boolean?)
 end
 
 describe("semantic input adapter", function()
+	it("idle frames need no pointer geometry before movement", function(own)
+		local f = pointerFixture()
+		own(f.cleanup)
+		local queried = 0
+		local backend = Input.simulated(f.env, {
+			playerGui = f.gui,
+			inputService = f.service,
+			layout = {
+				step = function() end,
+				objectsAtPosition = function()
+					queried += 1
+					return {}
+				end,
+				close = function() end,
+			},
+			inset = function()
+				return { X = 0, Y = 0 }
+			end,
+			library = f.library,
+			activationWindowSeconds = 0.5,
+		})
+		own(backend.close)
+		f.env.step(1 / 60)
+		expect(queried):toEqual(0)
+	end)
 	it("native nonmatching Tab and Thumbstick contexts preserve pointer routing", function(own)
 		local f = pointerFixture(true)
 		own(f.cleanup)
