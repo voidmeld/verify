@@ -1,9 +1,9 @@
 --!strict
 
-local Lute = require "../src/lute"
+local Worker = require "../src/lute/worker"
 local Test = require "./harness"
 
-Lute.selfRegisteringWorker {
+Worker.mainSelfRegistering {
 	load = function(locator: string, harness)
 		Test.useHarness(harness, function()
 			local resolved, thrown: unknown = pcall(require, "../" .. string.sub(locator, 1, #locator - 5))
