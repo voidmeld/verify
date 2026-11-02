@@ -1152,10 +1152,12 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end)
 	local frame = env.heartbeat:Connect(function()
 		if not closed and #hovered > 0 then
-			local objects = hits(position, "movement")
+			layout.step()
+			local inset = options.inset()
+			local objects = layout.objectsAtPosition(gui, position.X - inset.X, position.Y - inset.Y, hovered)
 			local retained: { Instance } = {}
 			for _, object in hovered do
-				if table.find(objects, object) then
+				if table.find(objects, object) and interactable(object) then
 					table.insert(retained, object)
 				end
 			end

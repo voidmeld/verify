@@ -31,7 +31,7 @@ export type Options = {
 export type Controller = {
 	step: () -> (),
 	busy: (() -> boolean)?,
-	objectsAtPosition: (root: Instance, x: number, y: number) -> { Instance },
+	objectsAtPosition: (root: Instance, x: number, y: number, candidates: { Instance }?) -> { Instance },
 	close: () -> (),
 }
 
@@ -1035,13 +1035,37 @@ local function attach(environment: Environment.Environment, options: Options): C
 			settledAt, settledX, settledY, settledRoots = after, viewport.X, viewport.Y, rootCount
 		end
 	end
-	local function objectsAtPosition(root: Instance, rawX: number, rawY: number): { Instance }
+	local function objectsAtPosition(
+		root: Instance,
+		rawX: number,
+		rawY: number,
+		candidates: { Instance }?
+	): { Instance }
 		assert(
 			rawX == rawX and rawY == rawY and math.abs(rawX) < math.huge and math.abs(rawY) < math.huge,
 			"hit testing requires finite coordinates"
 		)
 		local x, y = math.floor(rawX + 0.5), math.floor(rawY + 0.5)
-		validate(root)
+		local wanted: { [Instance]: boolean }? = nil
+		if candidates then
+			local nodes: { [Instance]: boolean } = {}
+			for _, candidate in candidates do
+				if not environment.isAlive(candidate) then
+					continue
+				end
+				local current: Instance? = candidate
+				while current and not nodes[current] do
+					nodes[current] = true
+					current = environment.parentOf(current)
+				end
+			end
+			if not nodes[root] then
+				return {}
+			end
+			wanted = nodes
+		else
+			validate(root)
+		end
 		type Order = { z: number, index: number }
 		type Hit = {
 			object: Instance,
@@ -1106,7 +1130,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				table.insert(branch, { z = number(object, "ZIndex", 1), index = sibling })
 				path = branch
 				local inside = contains(object)
-				if inside and not clipped then
+				if inside and not clipped and (candidates == nil or table.find(candidates, object)) then
 					local mode = enum(assert(screen), "ZIndexBehavior", "Sibling")
 					if mode ~= "Sibling" and mode ~= "Global" then
 						unsupported(object, "ZIndexBehavior." .. mode)
@@ -1126,7 +1150,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 				clipped = clipped or read(object, "ClipsDescendants") == true and not rotated and not inside
 			end
 			local folder = object:IsA "Folder"
+			local required = wanted
 			for ordinal, child in object:GetChildren() do
+				if required and not required[child] then
+					continue
+				end
 				if
 					child:IsA "GuiObject"
 					and not object:IsA "GuiObject"

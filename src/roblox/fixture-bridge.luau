@@ -252,10 +252,15 @@ local function create(options: Options): Bridge
 			cached(step)
 		end
 		local objectsAtPosition = layout.objectsAtPosition
-		layout.objectsAtPosition = function(root: Environment.Instance, x: number, y: number): { Environment.Instance }
+		layout.objectsAtPosition = function(
+			root: Environment.Instance,
+			x: number,
+			y: number,
+			candidates: { Environment.Instance }?
+		): { Environment.Instance }
 			local result: { Environment.Instance } = {}
 			cached(function()
-				result = objectsAtPosition(root, x, y)
+				result = objectsAtPosition(root, x, y, candidates)
 			end)
 			return result
 		end
