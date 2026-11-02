@@ -9,24 +9,12 @@ type PlanUnit = Verify.PlanUnit
 local WIRE_VERSION = 1
 
 local function encode(batch: PlanBatch): string
-	local units: { PlanUnit } = {}
-	for _, unit in batch.units do
-		table.insert(units, {
-			id = unit.id,
-			locator = unit.locator,
-			group = unit.group,
-			tags = unit.tags,
-			requires = unit.requires,
-			deadlineSeconds = unit.deadlineSeconds,
-			weight = unit.weight,
-		})
-	end
 	return Wire.encode {
 		wireVersion = WIRE_VERSION,
 		id = batch.id,
 		index = batch.index,
 		deadlineSeconds = batch.deadlineSeconds,
-		units = units,
+		units = batch.units,
 	}
 end
 
