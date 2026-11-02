@@ -121,6 +121,12 @@ it("selection publication preserves authored layout changes in selection handler
 	expect(env.revision() > before):toBe(true)
 	expect(second.AbsolutePosition):toEqual(library.Vector2.new(80, 0))
 	expect(events):toBe(2)
+	move = false
+	local current = env.revision()
+	selection.SelectedObject = second
+	layout.step()
+	expect(env.revision()):toBe(current)
+	expect(events):toBe(3)
 	local scrolling = env.createInstance("ScrollingFrame", {
 		Parent = screen,
 		Size = library.UDim2.fromOffset(100, 100),
