@@ -33,6 +33,42 @@ local function controller(env: Environment.Environment, root: Environment.Instan
 end
 
 describe("simulated GUI layout", function()
+	it("gradient offsets keep layout cached while callback geometry writes reflow", function()
+		local env = fixture()
+		env.defineClass("UIGradient", { super = "Instance", properties = { Offset = Types.Vector2.zero } })
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(100, 100) })
+		local gradient = env.createInstance("UIGradient", { Parent = root })
+		local reads = 0
+		local layout = Layout.attach(env, {
+			roots = function()
+				return { root }
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+			read = function(object, property)
+				reads += 1
+				return env.propertyOf(object, property)
+			end,
+		})
+		layout.step()
+		layout.step()
+		local before = reads
+		gradient.Offset = Types.Vector2.new(0.5, 0)
+		layout.step()
+		expect(reads):toBe(before)
+		local changed = gradient:GetPropertyChangedSignal("Offset"):Connect(function()
+			root.Size = Types.UDim2.fromOffset(200, 80)
+		end)
+		gradient.Offset = Types.Vector2.new(1, 0)
+		layout.step()
+		expect(reads > before):toBe(true)
+		expect(root.AbsoluteSize):toEqual(Types.Vector2.new(200, 80))
+		changed:Disconnect()
+		layout.close()
+		root:Destroy()
+	end)
+
 	it("publication callbacks and later steps use current sizes", function()
 		local env = fixture()
 		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(100, 100) })

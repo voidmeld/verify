@@ -206,7 +206,11 @@ local function create(options: Options?): Environment
 	end
 
 	local function changed(object: Instance, state: State, property: string)
-		if publishing or property == "SelectedObject" and state.className == "GuiService" then
+		if
+			publishing
+			or property == "SelectedObject" and state.className == "GuiService"
+			or property == "Offset" and state.className == "UIGradient"
+		then
 			publishing = false
 			published += 1
 		else
