@@ -44,6 +44,7 @@ harness:case("native font metrics", function(check)
  for _, value in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do table.insert(tokens, value) end
  for _, value in {"þ", "ṽ", "ĥ", "東", "京", "速", "度", "制", "限", "標", "識", "と", "設", "定", "画", "面"} do table.insert(tokens, value) end
  for _, value in {"⇧", "⌘", "⌫", "〜", "◎", "⚡", "⛓", "▣", "□", "▢", "☰", "◉", "◩", "≡", "⬡", "■"} do table.insert(tokens, value) end
+ for _, value in {"Ñ", "ŵ", "e\u{0301}", "😀", "👨\u{200D}👩\u{200D}👧"} do table.insert(tokens, value) end
  if params.Font.Family == "rbxasset://fonts/families/BuilderSans.json" then
   for _, value in {"->", "-^", "–>", "–^", "—>", "—^", "<-", "<–", "<—", "^-", "^–", "^—"} do table.insert(tokens, value) end
  end
@@ -101,7 +102,8 @@ harness:case("native font metrics", function(check)
  local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
  local randomTokens = {"ffl", "ffi", "fl", "fi", "ff", "✓", "♦", "♥", "♡", "☆"}
  local strings = {"Hello world", "Office staff affiliation", "affluent waffle", "A very fine office staff", "The quick brown fox jumps over the lazy dog", "Never store expected test geometry as a font measurement", "Score: 1,250 (+15%) — ready…", "“Quoted” • 3×4 · 90°"}
- for _, symbol in {"›", "↑", "↓", "▸", "▾", "▶", "▼", "◀", "▲", "◆", "◇", "○", "●", "☆", "♡", "♥", "♦", "✓"} do
+ for index = 96, #tokens do
+  local symbol = tokens[index]
   table.insert(strings, symbol)
   table.insert(strings, "Layering " .. symbol .. " Makeup")
   table.insert(strings, "A" .. symbol .. "V" .. symbol .. "To")
@@ -126,11 +128,6 @@ harness:case("native font metrics", function(check)
   end
  end
  local differences = {}
- for _, symbol in {"⇧", "⌘", "⌫", "〜", "◎", "⚡", "⛓", "▣", "□", "▢", "☰", "◉", "◩", "≡", "⬡", "■"} do
-  table.insert(strings, symbol)
-  table.insert(strings, "Layering " .. symbol .. " Makeup")
-  table.insert(strings, "A" .. symbol .. "V" .. symbol .. "To")
- end
  for _, text in {"þ", "ṽ", "ĥ", "ṽþĥ", "東京", "速度制限", "標識と設定画面", "東京速度制限標識と設定画面"} do
   table.insert(strings, text)
   table.insert(strings, "A" .. text .. "V")
@@ -144,6 +141,17 @@ harness:case("native font metrics", function(check)
   end
  end
  captured.attach("differences.json", "application/json", game.HttpService:JSONEncode(differences))
+ local shaping = {}
+ for _, size in {7, 14, 18, 24, 28, 42, 56} do
+  for _, text in {"Ñóţ ñóŵ ··", "e\u{0301} 😀 👨\u{200D}👩\u{200D}👧", "<b>Lap record</b>", '<font weight="heavy">Lap record</font>', "Plain, <b>bold</b> and <i>italic</i>", "<b>e\u{0301}&amp;👨\u{200D}👩\u{200D}👧</b>", "<i>Next line</i>", "<b>Guide:</b> The gate is open. Follow the lights to the next camp."} do
+   for _, width in {0, 60, 240} do
+    params.Text, params.Size, params.Width, params.RichText = text, size, width, text:find("<", 1, true) ~= nil
+    local bounds = game.TextService:GetTextBoundsAsync(params)
+    table.insert(shaping, {text=text, size=size, width=width, rich=params.RichText, bounds={bounds.X, bounds.Y}})
+   end
+  end
+ end
+ captured.attach("shaping.json", "application/json", game.HttpService:JSONEncode({engineVersion=version(), family=params.Font.Family, weight=params.Font.Weight.Name, style=params.Font.Style.Name, rows=shaping}))
  captured.finish()
  check:expect(#differences):toBe(0)
  params:Destroy()

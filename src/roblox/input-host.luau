@@ -711,7 +711,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local function groupOf(object: Instance): Instance?
 		local current = object.Parent
 		while current and current ~= gui do
-			if current:IsA "GuiObject" and read(current, "SelectionGroup") == true then
+			if current:IsA "GuiBase2d" and read(current, "SelectionGroup") == true then
 				return current
 			end
 			current = current.Parent
@@ -871,6 +871,20 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			deliverActions(code, event == "InputBegan")
 		end
 	end)
+	local function deliverText(value: string)
+		local box = focusedBox()
+		if box == nil then
+			unsupported "text input without a focused TextBox"
+		end
+		local target = Environment.assertInstance(box)
+		local current = tostring(target.Text)
+		local length = utf8.len(current) or #current
+		local cursor = env.propertyOf(target, "CursorPosition")
+		local at = if type(cursor) == "number" and cursor >= 1 and cursor <= length + 1 then cursor else length + 1
+		local split = utf8.offset(current, at) or #current + 1
+		target.Text = current:sub(1, split - 1) .. value .. current:sub(split)
+		env.poke(target, "CursorPosition", at + (utf8.len(value) or #value))
+	end
 	local function deliverKey(value: Key)
 		if options.virtualController then
 			gamepad.key(value.code, value.down)
@@ -915,8 +929,9 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if (heldKeys.LeftShift or heldKeys.RightShift) and box.MultiLine == true then
 					unsupported "Shift+Return in a multiline TextBox"
 				end
-				local release = box.ReleaseFocus
-				if type(release) == "function" then
+				if box.MultiLine == true then
+					deliverText "\n"
+				else
 					env.method(box, "ReleaseFocus")(box, true)
 				end
 			end
@@ -936,20 +951,6 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		env.fire(service, if value.down then "InputBegan" else "InputEnded", object, false)
 		deliverActions(code, value.down)
-	end
-	local function deliverText(value: string)
-		local box = focusedBox()
-		if box == nil then
-			unsupported "text input without a focused TextBox"
-		end
-		local target = Environment.assertInstance(box)
-		local current = tostring(target.Text)
-		local length = utf8.len(current) or #current
-		local cursor = env.propertyOf(target, "CursorPosition")
-		local at = if type(cursor) == "number" and cursor >= 1 and cursor <= length + 1 then cursor else length + 1
-		local split = utf8.offset(current, at) or #current + 1
-		target.Text = current:sub(1, split - 1) .. value .. current:sub(split)
-		env.poke(target, "CursorPosition", at + (utf8.len(value) or #value))
 	end
 	local function sendKeyLater(value: Key)
 		ensureOpen()
@@ -1144,13 +1145,13 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if closed then
 				return
 			end
-			closed = true
 			frame:Disconnect()
 			touch.close()
 			if options.virtualController then
 				env.poke(service, "GamepadEnabled", previousGamepad)
 				env.poke(service, "PreferredInput", previousPreferred)
 			end
+			closed = true
 			for ordinal = #registrations, 1, -1 do
 				registrations[ordinal]()
 			end

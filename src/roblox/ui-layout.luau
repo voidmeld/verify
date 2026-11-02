@@ -543,8 +543,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 			local start: Rectangle = {
 				x = 0,
 				y = 0,
-				width = if autoX then math.max(rectangle.width, intrinsicWidth) else rectangle.width,
-				height = if autoY then math.max(rectangle.height, intrinsicHeight) else rectangle.height,
+				width = if autoX then math.max(rectangle.width, intrinsicWidth + paddingX) else rectangle.width,
+				height = if autoY then math.max(rectangle.height, intrinsicHeight + paddingY) else rectangle.height,
 				scale = scale,
 			}
 			local firstX, firstY = reach(

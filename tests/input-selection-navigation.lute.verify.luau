@@ -61,6 +61,63 @@ for _, case in
 			source = virtualControllerProbe,
 		},
 		{ name = "arrow keys move GuiService selection and Return activates it as Studio 0.744 does", source = probe },
+		{
+			name = "Return inserts a hard break at the multiline TextBox cursor",
+			source = [=[
+				local screen = Instance.new("ScreenGui")
+				screen.Parent = game.Players.LocalPlayer.PlayerGui
+				local box = Instance.new("TextBox")
+				box.Text, box.ClearTextOnFocus, box.MultiLine = "éx", false, true
+				box.Size, box.Parent = UDim2.fromOffset(200, 100), screen
+				box:CaptureFocus()
+				box.CursorPosition = 2
+				local virtual = game.UserInputService:CreateVirtualInput()
+				virtual:SendKey(true, Enum.KeyCode.Return, false)
+				task.wait(0.05)
+				virtual:SendKey(false, Enum.KeyCode.Return, false)
+				task.wait(0.05)
+				assert(box:IsFocused(), "multiline Return retains editing focus")
+				assert(box.Text == "é\nx", "multiline Return inserts at the UTF-8 cursor")
+				assert(box.CursorPosition == 3, "multiline Return advances the cursor")
+				box:ReleaseFocus()
+				screen:Destroy()
+				return true
+			]=],
+		},
+		{
+			name = "ScreenGui selection groups stop and release navigation",
+			source = [=[
+				local screen = Instance.new("ScreenGui")
+				screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
+				screen.SelectionGroup, screen.SelectionBehaviorRight = true, Enum.SelectionBehavior.Stop
+				local outside = screen:Clone()
+				outside.Parent = screen.Parent
+				local first = Instance.new("TextButton")
+				first.Text, first.Size, first.Position = "", UDim2.fromOffset(100, 40), UDim2.fromOffset(100, 100)
+				first.Parent = screen
+				local second = first:Clone()
+				second.Position, second.Parent = UDim2.fromOffset(300, 100), outside
+				local virtual = game.UserInputService:CreateVirtualInput()
+				local gui = game.GuiService
+				local function press()
+					virtual:SendKey(true, Enum.KeyCode.Right, false)
+					task.wait(0.05)
+					virtual:SendKey(false, Enum.KeyCode.Right, false)
+					task.wait(0.05)
+				end
+				task.wait(0.05)
+				gui.SelectedObject = first
+				press()
+				assert(gui.SelectedObject == first, "ScreenGui stops selection at its boundary")
+				screen.SelectionBehaviorRight = Enum.SelectionBehavior.Escape
+				press()
+				assert(gui.SelectedObject == second, "ScreenGui allows selection to escape")
+				gui.SelectedObject = nil
+				screen:Destroy()
+				outside:Destroy()
+				return true
+			]=],
+		},
 		{ name = "held selection repeats and stops on release", source = require "./fixtures/input-selection-repeat" },
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
 		{
@@ -134,7 +191,15 @@ do
 		expect(scheduler.failures):toEqual {}
 		expect(engine.diagnostics):toEqual {}
 		expect(complete):toBe(true)
+		local restored: unknown = nil
+		local restoreConnection = inputService:GetPropertyChangedSignal("PreferredInput"):Connect(function()
+			restored = bridge.environment.method(inputService, "GetLastInputType")(inputService)
+		end)
 		input.close()
+		restoreConnection:Disconnect()
+		if case.source == virtualControllerProbe or case.source == controllerSelectionProbe then
+			expect(restored ~= nil):toBe(true)
+		end
 		expect(inputService.GamepadEnabled):toBe(priorGamepad)
 		expect(inputService.PreferredInput):toBe(priorPreferred)
 	end)

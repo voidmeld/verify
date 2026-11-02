@@ -68,6 +68,46 @@ it("oversized words wrap across glyph boundaries", function(_, caseContext)
 	expect(complete):toBe(true)
 end)
 
+it("automatic text includes its padding when a child uses a relative position", function(_, caseContext)
+	local complete, messages = mountProbe(
+		caseContext,
+		[=[
+		local screen = Instance.new("ScreenGui")
+		screen.Parent = game.Players.LocalPlayer.PlayerGui
+		for _, automatic in {"X", "Y", "XY"} do
+			for _, relative in {false, true} do
+				local label = Instance.new("TextLabel")
+				label.FontFace, label.TextSize = Font.new("rbxasset://fonts/families/BuilderSans.json"), 18
+				label.Text, label.AutomaticSize = "Enable choices", Enum.AutomaticSize[automatic]
+				label.Size = UDim2.fromOffset(if automatic == "Y" then 180 else 0, if automatic == "X" then 80 else 0)
+				label.Parent = screen
+				local padding = Instance.new("UIPadding")
+				padding.PaddingLeft, padding.PaddingRight = UDim.new(0, 46), UDim.new(0, 3)
+				padding.PaddingTop, padding.PaddingBottom = UDim.new(0, 4), UDim.new(0, 6)
+				padding.Parent = label
+				if relative then
+					local child = Instance.new("Frame")
+					child.Size, child.Position = UDim2.fromOffset(10, 10), UDim2.fromScale(0, 0.5)
+					child.AnchorPoint, child.Parent = Vector2.new(0, 0.5), label
+				end
+				task.wait(0.05)
+				local text = label.TextBounds
+				local expectedX = if automatic == "Y" then 180 else text.X + 49
+				local expectedY = if automatic == "X" then 80 else text.Y + 10
+				assert(math.abs(label.AbsoluteSize.X - expectedX) < 0.001, "padded automatic width " .. automatic)
+				assert(math.abs(label.AbsoluteSize.Y - expectedY) < 0.001, "padded automatic height " .. automatic)
+				assert(label.TextFits, "text fits its padded automatic box " .. automatic)
+				label:Destroy()
+			end
+		end
+		screen:Destroy()
+		return true
+	]=]
+	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("truncation accepts exact and fractional width boundaries", function(_, caseContext)
 	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-truncation-boundary")
 	expect(table.concat(messages, "\n")):toBe ""
