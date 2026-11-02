@@ -44,10 +44,6 @@ local function isAllowed(sourcepath: path.Path?, options: { [string]: unknown })
 	return false
 end
 
-local function asGlobal(node: syntax.CstNode): Global?
-	return utils.isExprGlobal(node)
-end
-
 local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, context: unknown): { Violation }
 	local options: { [string]: unknown } = {}
 	if type(context) == "table" and type(context.options) == "table" then
@@ -63,7 +59,7 @@ local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, context: u
 	end
 
 	return query
-		.findAllFromRoot(cst, asGlobal)
+		.findAllFromRoot(cst, utils.isExprGlobal)
 		:filter(function(node: Global): boolean
 			return FLAGGED[node.name.text] == true
 		end)

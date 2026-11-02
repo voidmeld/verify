@@ -13,17 +13,8 @@ type Violation = {
 	sourcepath: path.Path?,
 }
 
-type Token = { text: string, location: syntax.Span }
 type ConstantString = syntax.CstExprConstantString
 type InterpString = syntax.CstExprInterpString
-
-local function asConstantString(node: syntax.CstNode): ConstantString?
-	return utils.isExprConstantString(node)
-end
-
-local function asInterpString(node: syntax.CstNode): InterpString?
-	return utils.isExprInterpString(node)
-end
 
 local WARNING: "warning" = "warning"
 
@@ -107,13 +98,13 @@ local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, _context: 
 		})
 	end
 
-	query.findAllFromRoot(cst, asConstantString):forEach(function(node: ConstantString)
+	query.findAllFromRoot(cst, utils.isExprConstantString):forEach(function(node: ConstantString)
 		if node.quoteStyle ~= "block" then
 			report(node.location, node.value.text)
 		end
 	end)
 
-	query.findAllFromRoot(cst, asInterpString):forEach(function(node: InterpString)
+	query.findAllFromRoot(cst, utils.isExprInterpString):forEach(function(node: InterpString)
 		for _, segment in node.strings do
 			report(segment.location, segment.text)
 		end
