@@ -15,7 +15,7 @@ The [terms](../../../docs/README.md#terms) define each word that this guide uses
 
 1. Find the public root that you need. The [README](../../../README.md#packages) lists every root.
 2. Find the committed manifest or plan and a nearby specification.
-3. Read the gate instructions of the consumer and the relevant [documentation entry](../../../docs/README.md).
+3. Read the gate instructions of the consumer and the relevant [documentation entry](../../../README.md#documentation).
 4. Run `lute run tools/verify-check.luau --ruleset <generic|roblox> <source-root>` when the consumer provides that command.
 
 Follow these rules:

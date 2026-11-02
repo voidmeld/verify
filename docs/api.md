@@ -1,40 +1,5 @@
 # API reference
 
-### `Roblox.contentFacts`
-
-`Roblox.contentFacts.requests(value)` checks a nonempty request array. Each request has a unique `key` and a `kind`. Use `{ kind = "model", key = "item", version = 123 }` for a pinned asset version. Use `{ kind = "mesh", key = "item", id = 123 }` for a mesh. Use `{ kind = "animation", key = "item", id = 123 }` for an animation or keyframe sequence. IDs must be positive safe integers. A model request cannot use an asset ID.
-
-Run `lute run tools/capture-native-content.luau request.json facts.json` from the Verify checkout. The request file contains `{ "requests": [...] }`. It can also contain `"identity": { "placeId": 123, "universeId": 456 }`. The caller owns permission to use that identity and to load each asset. The command uses the text metrics place builder, Studio worker and report route. It starts a local server harness. It refuses an existing output file.
-
-The command writes facts to `facts.json` and the native report to `facts.json.report.json`. It shares an attachment writer and disk reader with `tools/capture-text-metrics.luau`. The writer splits every attachment before it reaches the harness. Each part is less than 1 MiB and ends at a UTF-8 boundary. A manifest records the byte count and SHA-256 of each part and complete file. The reader refuses missing, duplicate, extra or mismatched parts. It verifies all files before it writes them to `facts.json.attachments`, then reads each file back and checks its bytes and SHA-256. The tools refuse existing output, report or attachment destinations. The capture route permits at most 4096 parts and 256 MiB in a report; it keeps the harness limit of 1 MiB per attachment. These limits do not change the defaults for other cases.
-
-The command checks the schema, request list and optional place identity before it writes facts. It does not print the facts to the console. Keep the report, attachment directory and facts together. A load refusal is a recorded result. Inspect each row before you accept a capture.
-
-`Roblox.contentFacts.validate(value)` checks a decoded capture and returns it. Use `Lute.fixture.host.decodeJson(text)` to decode a file into plain tables. Schema version 1 has `schemaVersion`, `engineVersion`, `placeId`, `placeVersion`, `gameId` and `rows`. Each row has `request`, `ok` and either `facts` or `refusal`. Successful facts are an array of nodes. A node has `className`, `name` and an optional `parent` index. The root has no parent. Each parent precedes its children. Reference indices point into the same array.
-
-| Class | Captured fields |
-| --- | --- |
-| Model | `pivot`, `box`, `size`, optional `primaryPart` |
-| BasePart | `cframe`, `pivotOffset`, `size`, `canCollide`, `canQuery`, `material`, `materialVariant` |
-| MeshPart | `meshId`, `textureId`, `meshSize`, `collisionFidelity` |
-| SurfaceAppearance | `colorMap`, `normalMap`, `metalnessMap`, `roughnessMap`, `alphaMode` |
-| SpecialMesh | `meshId`, `textureId`, `scale`, `offset` |
-| Attachment | `cframe` |
-| Bone | `transform` in addition to attachment fields |
-| Motor6D | `c0`, `c1`, `transform`, optional `part0`, `part1` |
-| AnimationConstraint | `transform`, optional `attachment0`, `attachment1` |
-| KeyframeSequence | `loop`, `priority` |
-| Keyframe | `time` |
-| Pose | `cframe`, `weight`, `easingStyle`, `easingDirection` |
-
-Vectors have three finite components. Frames have the twelve components from `CFrame:GetComponents()`. Enum fields use member names. Map fields contain durable URI strings. An empty string means no map. Mesh capture uses Box collision fidelity. It records native Size and MeshSize. Its part frame and Size define its bounds. Model `box` and `size` record the native bounding box. Animation parent indices retain nested poses. The capture loads sequences through KeyframeSequenceProvider. It does not sample playback.
-
-Pass `{ content = { facts = decodedCapture } }` to `Lute.fixture.bridge` to use the capture in the engine double. Do not also supply `assetVersion`. The bridge uses its own datatype library. For a standalone environment, call `Roblox.contentFacts.attach(environment, decodedCapture, library?)`. The optional library is a `Roblox.datatypes` library for that environment.
-
-The consumer installs InsertService.LoadAssetVersion, AssetService.CreateMeshPartAsync and KeyframeSequenceProvider.GetKeyframeSequenceAsync fakes. Each load builds new instances and remaps references. Model loads go under InsertService. Mesh loads accept URI Content values and no options or an empty options table. Options that could change geometry fail. Animation loads accept `rbxassetid://` strings. GetKeyframes, GetPoses and GetSubPoses return captured children. Missing IDs and captured refusals raise errors. Partial reconstruction destroys its objects before it raises an error.
-
-Captured bounds stay in the fact file. Model methods use the engine double's geometry rules over rebuilt parts. These methods do not simulate mesh collision or deformation. The capture keeps imported content outside a running hierarchy and never requires an imported module. It records no source. Rebuilt scripts are disabled. This format covers the listed fields. It is not a complete place serializer, an asset rights record or native playback proof.
-
 Verify gives each case an isolated lifecycle and records the result in a report. The case context exposes its registered case ID as `context.id`. Start with cases and assertions. Use sessions, plans and host adapters when you coordinate several sources or collect observations on another host.
 
 | Task | Start here |
@@ -48,6 +13,7 @@ Verify gives each case an isolated lifecycle and records the result in a report.
 | Plan captures or move reports from a native host | [Host adapters](#host-adapters) |
 | Test engine-facing logic without Roblox | [Simulated environment](#simulated-environment) |
 | Compose reflection, UI fakes and the engine seam | [Reflection and explicit UI fakes](#reflection-and-explicit-ui-fakes) |
+| Capture native models, meshes and animations for the engine double | [Native content facts](#native-content-facts) |
 | Score a Roblox interface or evaluate coding agents | [Agent evaluation](agent-eval.md) |
 
 Examples use these package names. Replace the paths with the locations of your mounted packages:
@@ -61,7 +27,7 @@ The optional packages are:
 
 - [`Lute`](../src/lute/init.luau) and [`Roblox`](../src/roblox/init.luau).
 - [`Gate`](../src/gate/init.luau), [`Evidence`](../src/evidence/init.luau) and [`Benchmark`](../src/benchmark.luau). They run on the host side. A place mounts only core.
-- [`Consumer`](../src/consumer/init.luau).
+- [`Consumer`](../src/consumer/init.luau), [`AgentEval`](../src/agent-eval/init.luau) and the Lute-only [`Checks`](../src/checks/init.luau). See [consumer diagnostics](#consumer-diagnostics), [agent evaluation](agent-eval.md) and [repository checks](checks.md).
 
 Each entry point exports its public functions and types. The [working example](../examples/basic.luau) is a case and report that you can run directly. The [laws](laws.md) define the lifecycle and evidence boundaries.
 
@@ -974,6 +940,43 @@ Measurement providers are required for measurement claims. Keep the controller a
 
 ---
 
+## Native content facts
+
+### `Roblox.contentFacts`
+
+`Roblox.contentFacts.requests(value)` checks a nonempty request array. Each request has a unique `key` and a `kind`. Use `{ kind = "model", key = "item", version = 123 }` for a pinned asset version. Use `{ kind = "mesh", key = "item", id = 123 }` for a mesh. Use `{ kind = "animation", key = "item", id = 123 }` for an animation or keyframe sequence. IDs must be positive safe integers. A model request cannot use an asset ID.
+
+Run `lute run tools/capture-native-content.luau request.json facts.json` from the Verify checkout. The request file contains `{ "requests": [...] }`. It can also contain `"identity": { "placeId": 123, "universeId": 456 }`. The caller owns permission to use that identity and to load each asset. The command uses the text metrics place builder, Studio worker and report route. It starts a local server harness. It refuses an existing output file.
+
+The command writes facts to `facts.json` and the native report to `facts.json.report.json`. It shares an attachment writer and disk reader with `tools/capture-text-metrics.luau`. The writer splits every attachment before it reaches the harness. Each part is less than 1 MiB and ends at a UTF-8 boundary. A manifest records the byte count and SHA-256 of each part and complete file. The reader refuses missing, duplicate, extra or mismatched parts. It verifies all files before it writes them to `facts.json.attachments`, then reads each file back and checks its bytes and SHA-256. The tools refuse existing output, report or attachment destinations. The capture route permits at most 4096 parts and 256 MiB in a report; it keeps the harness limit of 1 MiB per attachment. These limits do not change the defaults for other cases.
+
+The command checks the schema, request list and optional place identity before it writes facts. It does not print the facts to the console. Keep the report, attachment directory and facts together. A load refusal is a recorded result. Inspect each row before you accept a capture.
+
+`Roblox.contentFacts.validate(value)` checks a decoded capture and returns it. Use `Lute.fixture.host.decodeJson(text)` to decode a file into plain tables. Schema version 1 has `schemaVersion`, `engineVersion`, `placeId`, `placeVersion`, `gameId` and `rows`. Each row has `request`, `ok` and either `facts` or `refusal`. Successful facts are an array of nodes. A node has `className`, `name` and an optional `parent` index. The root has no parent. Each parent precedes its children. Reference indices point into the same array.
+
+| Class | Captured fields |
+| --- | --- |
+| Model | `pivot`, `box`, `size`, optional `primaryPart` |
+| BasePart | `cframe`, `pivotOffset`, `size`, `canCollide`, `canQuery`, `material`, `materialVariant` |
+| MeshPart | `meshId`, `textureId`, `meshSize`, `collisionFidelity` |
+| SurfaceAppearance | `colorMap`, `normalMap`, `metalnessMap`, `roughnessMap`, `alphaMode` |
+| SpecialMesh | `meshId`, `textureId`, `scale`, `offset` |
+| Attachment | `cframe` |
+| Bone | `transform` in addition to attachment fields |
+| Motor6D | `c0`, `c1`, `transform`, optional `part0`, `part1` |
+| AnimationConstraint | `transform`, optional `attachment0`, `attachment1` |
+| KeyframeSequence | `loop`, `priority` |
+| Keyframe | `time` |
+| Pose | `cframe`, `weight`, `easingStyle`, `easingDirection` |
+
+Vectors have three finite components. Frames have the twelve components from `CFrame:GetComponents()`. Enum fields use member names. Map fields contain durable URI strings. An empty string means no map. Mesh capture uses Box collision fidelity. It records native Size and MeshSize. Its part frame and Size define its bounds. Model `box` and `size` record the native bounding box. Animation parent indices retain nested poses. The capture loads sequences through KeyframeSequenceProvider. It does not sample playback.
+
+Pass `{ content = { facts = decodedCapture } }` to `Lute.fixture.bridge` to use the capture in the engine double. Do not also supply `assetVersion`. The bridge uses its own datatype library. For a standalone environment, call `Roblox.contentFacts.attach(environment, decodedCapture, library?)`. The optional library is a `Roblox.datatypes` library for that environment.
+
+The consumer installs InsertService.LoadAssetVersion, AssetService.CreateMeshPartAsync and KeyframeSequenceProvider.GetKeyframeSequenceAsync fakes. Each load builds new instances and remaps references. Model loads go under InsertService. Mesh loads accept URI Content values and no options or an empty options table. Options that could change geometry fail. Animation loads accept `rbxassetid://` strings. GetKeyframes, GetPoses and GetSubPoses return captured children. Missing IDs and captured refusals raise errors. Partial reconstruction destroys its objects before it raises an error.
+
+Captured bounds stay in the fact file. Model methods use the engine double's geometry rules over rebuilt parts. These methods do not simulate mesh collision or deformation. The capture keeps imported content outside a running hierarchy and never requires an imported module. It records no source. Rebuilt scripts are disabled. This format covers the listed fields. It is not a complete place serializer, an asset rights record or native playback proof.
+
 ## Consumer diagnostics
 
 `Consumer.scan(contents, path, ruleset)`, `scanTree` and `scanProductionPaths` inspect portable specifications and production graphs. Choose a ruleset: `Consumer.generic` or `Consumer.roblox`. [Consumer diagnostics](lint.md) describes the rules and their limits.
@@ -1584,4 +1587,4 @@ See the [terms](README.md#terms) for shared technical names.
 
 ## Type imports
 
-Types are defined beside their implementation. For example, `src/lute/studio` exports `Options` and `HostOptions`. `src/roblox/fixture-bridge` exports `Options`. Root packages expose selected aliases. Use the defining module for other types.
+Types are defined beside their implementation. For example, `src/lute/studio.luau` exports `Options` and `HostOptions`. `src/roblox/fixture-bridge.luau` exports `Options`. Root packages expose selected aliases. Use the defining module for other types.
