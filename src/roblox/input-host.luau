@@ -591,14 +591,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local heldKeys: { [string]: true } = {}
 	local heldInputs: { [string]: Instance } = {}
-	local keyActions: { [string]: { Instance } } = {}
+	type BoundAction = { action: Instance, context: Instance, binding: Instance }
+	local keyActions: { [string]: { BoundAction } } = {}
 	local selectionRepeats: { [string]: {} } = {}
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
 	end
-	local function boundActions(code: string): { { action: Instance, context: Instance } }
+	local function boundActions(code: string): { BoundAction }
 		local root = gui:FindFirstAncestorWhichIsA "DataModel" or gui
-		local found: { { action: Instance, context: Instance } } = {}
+		local found: { BoundAction } = {}
 		for _, binding in root:GetDescendants() do
 			if not binding:IsA "InputBinding" or codeName(env.propertyOf(binding, "KeyCode")) ~= code then
 				continue
@@ -638,7 +639,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				env.propertyOf(Environment.assertInstance(action), "Enabled") == true
 				and env.propertyOf(context, "Enabled") == true
 			then
-				table.insert(found, { action = Environment.assertInstance(action), context = context })
+				table.insert(
+					found,
+					{ action = Environment.assertInstance(action), context = context, binding = binding }
+				)
 			end
 		end
 		table.sort(found, function(left, right)
@@ -649,16 +653,25 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local function deliverActions(code: string, down: boolean)
 		if not down then
-			local actions = keyActions[code]
-			keyActions[code] = nil
-			for _, action in actions or {} do
-				if env.isAlive(action) then
-					env.method(action, "Fire")(action, false)
+			for key, actions in keyActions do
+				for _, entry in actions do
+					if key ~= code and env.isAlive(entry.binding) then
+						if
+							codeName(env.propertyOf(entry.binding, "PrimaryModifier")) ~= code
+							and codeName(env.propertyOf(entry.binding, "SecondaryModifier")) ~= code
+						then
+							continue
+						end
+					end
+					if env.isAlive(entry.action) then
+						env.method(entry.action, "Fire")(entry.action, false)
+					end
 				end
 			end
+			keyActions[code] = nil
 			return
 		end
-		local actions: { Instance } = {}
+		local actions: { BoundAction } = {}
 		keyActions[code] = actions
 		local sunk: number? = nil
 		for _, entry in boundActions(code) do
@@ -668,7 +681,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 			local fire = env.method(entry.action, "Fire")
 			fire(entry.action, down)
-			table.insert(actions, entry.action)
+			table.insert(actions, entry)
 			if env.propertyOf(entry.context, "Sink") == true then
 				sunk = priority
 			end
@@ -821,6 +834,13 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		elseif down and code == "Escape" then
 			env.poke(guiService, "SelectedObject", nil)
+		end
+		if code == "Return" and selected:IsA "TextBox" and read(selected, "TextEditable") ~= false then
+			if down then
+				accept(selected, object)
+			end
+			env.fire(service, if down then "InputBegan" else "InputEnded", object, not down and focusedBox() ~= nil)
+			return
 		end
 		env.fire(service, if down then "InputBegan" else "InputEnded", object, true)
 		if down and code == "Return" then

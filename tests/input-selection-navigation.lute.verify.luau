@@ -181,6 +181,7 @@ send(Enum.KeyCode.LeftControl, true)
 send(Enum.KeyCode.K, true)
 assert(counts.Plain == 2 and counts.Chord == 1, "qualified higher priority chord sinks the plain key")
 send(Enum.KeyCode.LeftShift, false)
+assert(not chord:GetState(), "releasing either required modifier releases the held action")
 send(Enum.KeyCode.K, false)
 assert(not chord:GetState(), "key release resets the chord after its modifier released")
 send(Enum.KeyCode.LeftShift, true)
@@ -200,6 +201,49 @@ return true
 ]=],
 		},
 		{ name = "Return accepts a selected TextBox without submitting the entering key", source = textSelectionProbe },
+		{
+			name = "Return TextBox focus and processed events match Studio 0.745",
+			source = [=[
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local box = Instance.new("TextBox")
+box.Text, box.ClearTextOnFocus = "seed", false
+box.Size, box.Parent = UDim2.fromOffset(200, 40), screen
+local input, gui = game.UserInputService, game.GuiService
+local virtual = input:CreateVirtualInput()
+local events = {}
+local function record(event)
+	table.insert(events, event .. "/" .. tostring(input:GetFocusedTextBox() == box) .. "/" .. box.CursorPosition)
+end
+local connections = {
+	box.Focused:Connect(function() record("focused") end),
+	box.FocusLost:Connect(function(submitted, cause)
+		assert(submitted and cause.KeyCode == Enum.KeyCode.Return)
+		record("lost")
+	end),
+	input.InputBegan:Connect(function(object, processed)
+		if object.KeyCode == Enum.KeyCode.Return then record("began/" .. tostring(processed)) end
+	end),
+	input.InputEnded:Connect(function(object, processed)
+		if object.KeyCode == Enum.KeyCode.Return then record("ended/" .. tostring(processed)) end
+	end),
+}
+task.wait(0.05)
+gui.SelectedObject = box
+for _ = 1, 2 do
+	virtual:SendKey(true, Enum.KeyCode.Return, false)
+	task.wait(0.05)
+	virtual:SendKey(false, Enum.KeyCode.Return, false)
+	task.wait(0.05)
+end
+assert(table.concat(events, "|") == "focused/true/5|began/false/true/5|ended/true/true/5|lost/false/-1|began/true/false/-1|ended/false/false/-1", table.concat(events, "|"))
+assert(box.Text == "seed" and gui.SelectedObject == box)
+for _, connection in connections do connection:Disconnect() end
+gui.SelectedObject = nil
+screen:Destroy()
+return true
+]=],
+		},
 		{ name = "ButtonA accepts a selected editable TextBox", source = padTextSelectionProbe },
 		{ name = "controller selection routes activation and DPad repeats", source = controllerSelectionProbe },
 		{

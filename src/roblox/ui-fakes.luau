@@ -212,6 +212,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 			focusConnection = nil
 		end
 		if previous and env.isAlive(previous) then
+			pcall(env.poke, previous, "CursorPosition", -1)
 			env.fire(previous, "FocusLost", enterPressed == true, cause)
 			if not transfer then
 				focusEvent(previous, "TextBoxFocusReleased")
