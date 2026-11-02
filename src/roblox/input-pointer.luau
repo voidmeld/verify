@@ -38,6 +38,7 @@ local function create(env: Environment.Environment, options: Options): Controlle
 	local function scroll(objects: { Instance }, x: number, y: number): boolean
 		local consumed = false
 		local seen: { [Instance]: boolean } = {}
+		local planned: { [Instance]: Motion } = {}
 		for _, object in objects do
 			local current: Instance? = object
 			while current and (x ~= 0 or y ~= 0) and not seen[current] do
@@ -66,7 +67,7 @@ local function create(env: Environment.Environment, options: Options): Controlle
 						error("unsupported_simulated_input: pointer scrolling beyond the authored layout clamp", 0)
 					end
 					if nextX ~= target.X or nextY ~= target.Y then
-						motions[current] = { origin = position, target = { X = nextX, Y = nextY }, last = position }
+						planned[current] = { origin = position, target = { X = nextX, Y = nextY }, last = position }
 						if nextX ~= target.X then
 							x = 0
 						end
@@ -78,6 +79,9 @@ local function create(env: Environment.Environment, options: Options): Controlle
 				end
 				current = current.Parent
 			end
+		end
+		for object, motion in planned do
+			motions[object] = motion
 		end
 		return consumed
 	end
@@ -101,8 +105,8 @@ local function create(env: Environment.Environment, options: Options): Controlle
 				"unsupported_simulated_input: combined pointer actions"
 			)
 			local objects = options.hits(at)
-			options.changed()
 			local consumed = scroll(objects, -pan.X * 100 / 30, -(wheel + pinch) * 100 - pan.Y * 100 / 30)
+			options.changed()
 			local object = wheelInput or options.input(library.Enum.UserInputType.MouseWheel)
 			wheelInput = object
 			local inset = options.inset()
