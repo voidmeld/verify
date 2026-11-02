@@ -267,6 +267,38 @@ describe("rehearsed lifecycles", function()
 		expect(result.teardownRetainedKb < 256):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
 	end)
 
+	it("measures a mounted reading from the lower of its baseline and teardown", function()
+		local heap = 100
+		local now = 0
+		local memory = Lute.memory.create {
+			now = function()
+				now += 1
+				return now
+			end,
+			heap = function()
+				return heap
+			end,
+			witness = function()
+				local weak: { token: {}? } = { token = nil }
+				return setmetatable(weak, { __mode = "" })
+			end,
+			pressure = function() end,
+		}
+		local result = memory.measure({
+			setup = function()
+				heap = 150
+				return true
+			end,
+			run = function(_state: boolean) end,
+			teardown = function(_state: boolean)
+				heap = 90
+			end,
+			iterations = 1,
+		}, { cycles = 2 })
+		expect(result.mountedRetainedKb):toEqual(60)
+		expect(result.teardownRetainedKb):toEqual(0)
+	end)
+
 	it("rejects a negative rehearsal count", function()
 		expect(function()
 			Lute.memory.measure {
