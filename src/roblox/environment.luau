@@ -485,6 +485,12 @@ local function create(options: Options?): Environment
 		if plain ~= nil and plain[key] and state.doubles[key] == nil then
 			return state.values[key]
 		end
+		if key == "ClassName" or key == "Parent" and state.class.instance then
+			local access = state.class.access[key]
+			if access == nil or access == "read" then
+				return if key == "ClassName" then state.className else state.parent
+			end
+		end
 		local class = state.class
 		local bound = state.bound
 		local cached = if bound ~= nil then bound[key] else nil
@@ -512,11 +518,6 @@ local function create(options: Options?): Environment
 			)
 		elseif access == "write" or access == "none" then
 			error(("%s cannot be read on %s"):format(key, describe(state)), 2)
-		end
-		if key == "ClassName" then
-			return state.className
-		elseif key == "Parent" and state.class.instance then
-			return state.parent
 		end
 		if
 			class.properties[key] ~= nil
