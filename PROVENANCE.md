@@ -6,10 +6,10 @@ Verify is licensed under the MIT License in [`LICENSE`](LICENSE). It is distribu
 ## Source and tools
 
 - Do not commit, vendor, generate or run third-party source as a Verify dependency.
-- Lute, Luau-LSP and StyLua are pinned development tools. Rokit fetches them. Verify does not distribute them.
+- Lute, Luau-LSP, StyLua and Rojo are pinned development tools in `rokit.toml`. Rokit fetches them. Verify does not distribute them.
 - This repository contains no implementation from another test framework.
 - Comparisons with other frameworks and their measurements stay outside this release tree.
-- The public adapters in the [README](README.md#packages) belong to Verify.
+- The public roots in the [README](README.md#packages) belong to Verify.
 
 ## Generated fixtures
 
@@ -28,4 +28,4 @@ The Studio files record the engine version that wrote them. Regenerate them afte
 ## Leakage checks
 
 `tools/check-leakage.luau` scans tracked text for product asset, place and universe identifiers.
-`tools/lib/denylist.luau` allows only exact literals in named files: URI constructors in the datatype implementation, synthetic IDs in tests and native conformance, and the engine-reported default font ID in the generated datatype probe fixture. The generated fixture's source and regeneration command are recorded above. Other literals in those files remain checked.
+`tools/checks-policy.luau` allows only exact literals in named files: URI constructors in the datatype implementation, synthetic IDs in tests and native conformance, and the engine-reported default font ID in the generated datatype probe fixture. The generated fixture's source and regeneration command are recorded above. Other literals in those files remain checked.

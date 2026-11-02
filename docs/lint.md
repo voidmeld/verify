@@ -4,7 +4,7 @@ Run `lute lint -c lint.config.luau` on maintained Luau code. The gate also runs 
 
 Give exported records and callbacks specific types. Use `unknown` for values that cross a dynamic boundary. Validate those values before use. A strict directive alone does not prove safety. Do not hide weak types behind aliases or casts that bypass validation.
 
-`tools/check-no-any.luau` parses maintained Luau files. Each file must start with `--!strict`. Explicit `any`, `--!nonstrict` and `--!nocheck` fail the gate. Use specific types and generics that preserve the relationship between inputs and outputs.
+`tools/check-no-any.luau` parses maintained Luau files. Each file must start with `--!strict`. Explicit `any`, type assertions (`::`), `--!nonstrict` and `--!nocheck` fail the gate. Use specific types and generics that preserve the relationship between inputs and outputs.
 
 The lint configuration enables Lute defect rules. It disables only `global_function_in_scope` and `unused_variable`. In the pinned runtime, these rules incorrectly report forward recursion and locals used as assignment bases. `luau-lsp` still reports unused locals.
 

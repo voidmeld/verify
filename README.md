@@ -33,7 +33,20 @@ The API reference defines public behavior. The laws define evidence requirements
 
 ## Packages
 
-Require a public root under `src`. See the [package APIs](docs/api.md) for entry points and types.
+Require one of these public roots. Do not require other modules under `src`. The [API reference](docs/api.md) lists each export.
+
+| Root | Entry | Host | Use |
+| --- | --- | --- | --- |
+| `Core` | `src/core` | Any | Cases, sessions, assertions, reports and plans |
+| `Bdd` | `src/bdd.luau` | Any | `describe` and `it` registration over Core |
+| `Roblox` | `src/roblox` | Any | Engine double, datatypes, reflection, UI fakes and Roblox hosts |
+| `Lute` | `src/lute` | Lute | Loader, fixtures, platform runs, Studio, Player and Open Cloud |
+| `Gate` | `src/gate` | Host side | Declarative gates and verdicts |
+| `Evidence` | `src/evidence` | Host side | Evidence provenance, sinks and reviews |
+| `Benchmark` | `src/benchmark.luau` | Host side | Benchmark cases, samples and comparisons |
+| `Consumer` | `src/consumer` | Any | Consumer specification diagnostics |
+| `AgentEval` | `src/agent-eval` | Lute | Coding-agent evaluation |
+| `Checks` | `src/checks` | Lute | [Repository checks](docs/checks.md) |
 
 ## Check changes
 
