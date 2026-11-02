@@ -79,6 +79,14 @@ for index,want in expected do
   end
  end
 end
+local lineScreen=Instance.new("ScreenGui"); lineScreen.Parent=game.Players.LocalPlayer.PlayerGui
+local lineTarget=Instance.new("Frame"); lineTarget.Position=UDim2.fromOffset(50,30); lineTarget.Size=UDim2.fromOffset(250,200); lineTarget.Parent=lineScreen
+local line=Instance.new("UIDragDetector"); line.ResponseStyle=Enum.UIDragDetectorResponseStyle.CustomOffset; line.DragStyle=Enum.UIDragDetectorDragStyle.TranslateLine; line.DragAxis=Vector2.new(2,0); line.Parent=lineTarget
+task.wait(.1)
+move(120,140); press(true,120,140); move(150,150); press(false,150,150)
+assert(line.DragUDim2==UDim2.fromOffset(30,0), "touch line projects motion onto its axis")
+assert(lineTarget.Position==UDim2.fromOffset(50,30), "custom line leaves its parent position untouched")
+lineScreen:Destroy()
 simulator:StopSimulationAsync()
 return true
 ]==]

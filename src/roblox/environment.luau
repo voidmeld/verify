@@ -538,7 +538,7 @@ local function create(options: Options?): Environment
 			else
 				local builtin = Vm.value(universal(object, state, key))
 				if type(builtin) == "function" then
-					resolved = operation(builtin)
+					resolved = if key == "IsA" then builtin else operation(builtin)
 				else
 					local method = memberMethod(object, state, key)
 					if method ~= nil then

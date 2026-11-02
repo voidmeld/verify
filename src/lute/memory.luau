@@ -93,8 +93,9 @@ local function create(host: Host): Memory
 						spec.afterRun(state)
 					end
 				end
+				local reading = settle(options)
 				if measuring then
-					mounted = settle(options)
+					mounted = reading
 				end
 			end)
 			local cleaned, cleanupProblem = pcall(function()

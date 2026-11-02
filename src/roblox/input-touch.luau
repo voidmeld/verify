@@ -11,6 +11,7 @@ export type Options = {
 	targets: (Point) -> ({ Instance }, Instance?),
 	processed: ({ Instance }, boolean) -> boolean,
 	detector: ({ Instance }) -> Instance?,
+	dragOffset: (Instance, number, number) -> unknown,
 	read: (Instance, string) -> unknown,
 	changed: () -> (),
 	activationWindowSeconds: number,
@@ -45,7 +46,7 @@ local function create(env: Environment.Environment, options: Options)
 	local function drag(at: Point, event: string)
 		local active = detector
 		if active and env.isAlive(active) then
-			env.poke(active, "DragUDim2", library.UDim2.fromOffset(at.X - origin.X, at.Y - origin.Y))
+			env.poke(active, "DragUDim2", options.dragOffset(active, at.X - origin.X, at.Y - origin.Y))
 			env.fire(active, event, library.Vector2.new(at.X, at.Y))
 		end
 	end
