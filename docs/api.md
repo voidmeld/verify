@@ -1469,6 +1469,8 @@ With a selected GuiObject, D-pad input moves selection and repeats while held. B
 
 Controller emulation sets `GamepadEnabled` and `PreferredInput` to gamepad. It preserves the viewport and keyboard and mouse availability. Closing the input host restores the previous gamepad and preferred-input values.
 
+`connectGamepad()` starts controller emulation on an open host, as when a player connects a pad. It sets `GamepadEnabled`, fires `GamepadConnected` with `Gamepad1` and answers `GetConnectedGamepads` and `GetGamepadConnected`. It does not change `PreferredInput`. `disconnectGamepad()` stops emulation, restores the values from before the connection and fires `GamepadDisconnected`. Keys then reach the keyboard again. A second connection or a disconnection without a pad is unsupported. In either mode, gamepad input sets `PreferredInput` to gamepad. Keyboard and mouse input do not change `PreferredInput` back.
+
 Repeated thumbstick key presses accumulate axis values, including values outside -1 to 1. Each release subtracts one press. The system menu remains unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
 
 ### `Roblox.instanceHost`

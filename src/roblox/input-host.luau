@@ -18,6 +18,7 @@ local MODIFIERS = { "PrimaryModifier", "SecondaryModifier" }
 export type Key = { code: string, down: boolean }
 export type Pointer = { x: number, y: number, button: "left" | "right" | "middle", down: boolean }
 export type Backend = { key: (Key) -> (), pointer: (Pointer) -> (), text: (string) -> (), close: () -> () }
+export type Simulated = Backend & { connectGamepad: () -> (), disconnectGamepad: () -> () }
 export type SimulatedOptions = {
 	playerGui: Environment.Instance,
 	inputService: Environment.Instance,
@@ -189,7 +190,7 @@ local function native(): Backend?
 		end,
 	}
 end
-local function simulated(env: Environment.Environment, options: SimulatedOptions): Backend
+local function simulated(env: Environment.Environment, options: SimulatedOptions): Simulated
 	type Instance = Environment.Instance
 	type Position = { X: number, Y: number }
 	local gui, service, layout = options.playerGui, options.inputService, options.layout
@@ -875,6 +876,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local controllerPress: Instance? = nil
 	local stickDirection: string? = nil
+	local controllerActive = options.virtualController == true
 	local gamepad = Gamepad.create(env, library, input, function(event, object)
 		local code = codeName(env.propertyOf(object, "KeyCode"))
 		local direction = code:match "^DPad(.+)$"
@@ -887,6 +889,9 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		if lastInput ~= inputTypes.Gamepad1 then
 			lastInput = inputTypes.Gamepad1
 			env.fire(service, "LastInputTypeChanged", lastInput)
+		end
+		if env.propertyOf(service, "PreferredInput") ~= library.Enum.PreferredInput.Gamepad then
+			env.poke(service, "PreferredInput", library.Enum.PreferredInput.Gamepad)
 		end
 		local guiService = (gui:FindFirstAncestorWhichIsA "DataModel" or gui):FindFirstChildOfClass "GuiService"
 		local selected = if guiService then env.propertyOf(guiService, "SelectedObject") else nil
@@ -961,7 +966,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		env.poke(target, "CursorPosition", at + (utf8.len(value) or #value))
 	end
 	local function deliverKey(value: Key)
-		if options.virtualController then
+		if controllerActive then
 			gamepad.key(value.code, value.down)
 			return
 		end
@@ -1182,17 +1187,57 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end)
 	local previousGamepad = env.propertyOf(service, "GamepadEnabled")
 	local previousPreferred = env.propertyOf(service, "PreferredInput")
+	local pluggedGamepad, pluggedPreferred = previousGamepad, previousPreferred
+	local connectedQueries: { () -> () } = {}
+	local function answerConnected()
+		table.insert(
+			connectedQueries,
+			env.fakeOn(service, "GetConnectedGamepads", function(): { unknown }
+				ensureOpen()
+				return { inputTypes.Gamepad1 }
+			end)
+		)
+		table.insert(
+			connectedQueries,
+			env.fakeOn(service, "GetGamepadConnected", function(_self: Instance, kind: unknown): boolean
+				ensureOpen()
+				return kind == inputTypes.Gamepad1
+			end)
+		)
+	end
+	local function forgetConnected()
+		for ordinal = #connectedQueries, 1, -1 do
+			connectedQueries[ordinal]()
+		end
+		table.clear(connectedQueries)
+	end
 	if options.virtualController then
 		env.poke(service, "GamepadEnabled", true)
 		env.poke(service, "PreferredInput", library.Enum.PreferredInput.Gamepad)
-		install(service, "GetConnectedGamepads", function(): { unknown }
-			ensureOpen()
-			return { inputTypes.Gamepad1 }
-		end)
-		install(service, "GetGamepadConnected", function(_self: Instance, kind: unknown): boolean
-			ensureOpen()
-			return kind == inputTypes.Gamepad1
-		end)
+		answerConnected()
+	end
+	local function connectGamepad()
+		ensureOpen()
+		if controllerActive then
+			unsupported "a second virtual controller"
+		end
+		controllerActive = true
+		pluggedGamepad = env.propertyOf(service, "GamepadEnabled")
+		pluggedPreferred = env.propertyOf(service, "PreferredInput")
+		answerConnected()
+		env.poke(service, "GamepadEnabled", true)
+		env.fire(service, "GamepadConnected", inputTypes.Gamepad1)
+	end
+	local function disconnectGamepad()
+		ensureOpen()
+		if not controllerActive then
+			unsupported "disconnecting an absent virtual controller"
+		end
+		controllerActive = false
+		forgetConnected()
+		env.poke(service, "GamepadEnabled", pluggedGamepad)
+		env.poke(service, "PreferredInput", pluggedPreferred)
+		env.fire(service, "GamepadDisconnected", inputTypes.Gamepad1)
 	end
 	install(service, "GetKeysPressed", function(): { Instance }
 		ensureOpen()
@@ -1237,6 +1282,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			sendKeyLater(key(value))
 		end,
 		text = sendTextLater,
+		connectGamepad = connectGamepad,
+		disconnectGamepad = disconnectGamepad,
 		pointer = function(value: Pointer)
 			local current = pointer(value)
 			if current.button ~= "left" then
@@ -1261,10 +1308,12 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				pointerInput.close()
 			end
 			touch.close()
-			if options.virtualController then
+			if controllerActive then
 				env.poke(service, "GamepadEnabled", previousGamepad)
 				env.poke(service, "PreferredInput", previousPreferred)
 			end
+			controllerActive = false
+			forgetConnected()
 			closed = true
 			for ordinal = #registrations, 1, -1 do
 				registrations[ordinal]()

@@ -145,6 +145,86 @@ it("selection publication preserves authored layout changes in selection handler
 	expect(second.AbsolutePosition):toEqual(library.Vector2.new(0, 300 - observed.Y))
 end)
 
+it("a hot-plugged virtual controller connects, takes primacy on pad input and disconnects", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(bridge.close)
+	local env, engine = bridge.environment, bridge.placeEngine()
+	local library = engine.datatypes
+	local gui = env.createEngineInstance("PlayerGui", { Parent = engine.game })
+	own(function()
+		gui:Destroy()
+	end)
+	table.insert(roots, gui)
+	local service = engine.service "UserInputService"
+	local preferred = library.Enum.PreferredInput
+	env.poke(service, "GamepadEnabled", false)
+	env.poke(service, "PreferredInput", preferred.KeyboardAndMouse)
+	local input = Roblox.inputHost.simulated(env, {
+		playerGui = gui,
+		inputService = service,
+		layout = assert(bridge.layout),
+		library = library,
+		activationWindowSeconds = 0.5,
+		inset = function()
+			return { X = 0, Y = 0 }
+		end,
+		read = assert(bridge.ui).styled,
+	})
+	own(input.close)
+	local devices: { string } = {}
+	local kinds: { string } = {}
+	local connections = {
+		env.event(service, "GamepadConnected"):Connect(function(gamepad)
+			table.insert(devices, "connected " .. tostring(gamepad))
+		end),
+		env.event(service, "GamepadDisconnected"):Connect(function(gamepad)
+			table.insert(devices, "disconnected " .. tostring(gamepad))
+		end),
+		env.event(service, "InputBegan"):Connect(function(object)
+			table.insert(kinds, tostring(env.propertyOf(Roblox.assertInstance(object), "UserInputType")))
+		end),
+	}
+	own(function()
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+	end)
+	local function press(code: string)
+		for _, down in { true, false } do
+			input.key { code = code, down = down }
+			env.step(1 / 60)
+		end
+	end
+	press "Nine"
+	expect(kinds):toEqual { "Enum.UserInputType.Keyboard" }
+	input.connectGamepad()
+	expect(devices):toEqual { "connected Enum.UserInputType.Gamepad1" }
+	expect(service.GamepadEnabled):toBe(true)
+	expect(env.method(service, "GetConnectedGamepads")(service)):toEqual { library.Enum.UserInputType.Gamepad1 }
+	expect(service.PreferredInput):toBe(preferred.KeyboardAndMouse)
+	expect(pcall(input.connectGamepad)):toBe(false)
+	press "Nine"
+	expect(kinds[2]):toBe "Enum.UserInputType.Gamepad1"
+	expect(service.PreferredInput):toBe(preferred.Gamepad)
+	input.disconnectGamepad()
+	expect(devices[2]):toBe "disconnected Enum.UserInputType.Gamepad1"
+	expect(service.GamepadEnabled):toBe(false)
+	expect(service.PreferredInput):toBe(preferred.KeyboardAndMouse)
+	expect(pcall(input.disconnectGamepad)):toBe(false)
+	press "Nine"
+	expect(kinds[3]):toBe "Enum.UserInputType.Keyboard"
+end)
+
 it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
