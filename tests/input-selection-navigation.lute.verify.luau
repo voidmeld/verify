@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
+local Gamepad = require "../src/roblox/input-gamepad"
 local virtualControllerProbe = require "./fixtures/input-virtual-controller"
 local controllerSelectionProbe = require "./fixtures/input-controller-selection"
 
@@ -46,6 +47,58 @@ screen:Destroy()
 return true
 ]=]
 local padTextSelectionProbe = string.gsub(textSelectionProbe, "local pad = false", "local pad = true", 1)
+
+it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(bridge.close)
+	local env, library = bridge.environment, bridge.placeEngine().datatypes
+	local screen = env.createInstance "ScreenGui"
+	table.insert(roots, screen)
+	own(function()
+		screen:Destroy()
+	end)
+	local target = env.createInstance("Frame", { Parent = screen, Size = library.UDim2.fromOffset(100, 40) })
+	local events, move = 0, false
+	local gamepad = Gamepad.create(env, library, function(kind: unknown): Roblox.Instance
+		local object = env.createEngineInstance "InputObject"
+		env.poke(object, "UserInputType", kind)
+		env.poke(object, "Position", library.Vector3.zero)
+		own(function()
+			env.releaseObject(object)
+		end)
+		return object
+	end, function()
+		events += 1
+		if move then
+			target.Position = library.UDim2.fromOffset(40, 30)
+		end
+	end)
+	gamepad.state(library.Enum.UserInputType.Gamepad1)
+	local layout = assert(bridge.layout)
+	layout.step()
+	local before, published = env.revision()
+	gamepad.key("Eight", true)
+	gamepad.key("Eight", false)
+	local after, updated = env.revision()
+	expect(after):toBe(before)
+	expect(updated > published):toBe(true)
+	expect(events):toBe(2)
+	move = true
+	gamepad.key("Eight", true)
+	expect(env.revision() > after):toBe(true)
+	layout.step()
+	expect(target.AbsolutePosition):toEqual(library.Vector2.new(40, 30))
+end)
 
 local probe = [==[
 local RS = game:GetService("RunService")
