@@ -249,6 +249,14 @@ local function create(options: Options): Bridge
 			stepStyles()
 			cached(step)
 		end
+		local objectsAtPosition = layout.objectsAtPosition
+		layout.objectsAtPosition = function(root: Environment.Instance, x: number, y: number): { Environment.Instance }
+			local result: { Environment.Instance } = {}
+			cached(function()
+				result = objectsAtPosition(root, x, y)
+			end)
+			return result
+		end
 	end
 	local place: PlaceRuntime.Engine? = nil
 	local function placeEngine(): PlaceRuntime.Engine
