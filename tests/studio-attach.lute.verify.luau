@@ -579,6 +579,59 @@ describe("attach to an open Studio", function()
 		expect(outcome.text):toEqual(expected)
 	end)
 
+	it("reads a run that the place runner owns and ignores a request for another context", function()
+		local function engineFor(runId: string, context: string): StudioEngine.Engine
+			local request = Wire.parse(Detached.request(runId, context, "token-1"))
+			local engine = StudioEngine.new({
+				require = function(_module: unknown): unknown
+					return function(id: string, token: string): string
+						return "ran " .. id .. " " .. token
+					end
+				end,
+			}, {
+				RunService = {
+					IsServer = function(_self: unknown): boolean
+						return true
+					end,
+				},
+				HttpService = {
+					JSONEncode = function(_self: unknown, value: unknown): string
+						return Wire.encode(value)
+					end,
+					JSONDecode = function(_self: unknown, _text: string): unknown
+						return request
+					end,
+				},
+			})
+			engine.run(
+				"Server",
+				"local RS = game:GetService('ReplicatedStorage'); local root = Instance.new('Folder'); root.Name = 'VerifyModules'; root.Parent = RS; local module = Instance.new('Folder'); module.Name = 'VerifyRequest'; module.Parent = root; RS:SetAttribute('VerifyRequest', 'r')"
+			)
+			engine.run("Server", Detached.runnerSource "VerifyModules")
+			return engine
+		end
+		local engine = engineFor("runner-1", "Server")
+		local sent: { string } = {}
+		local outcome = Detached.run {
+			execute = function(datamodel: string, code: string): Detached.Reply
+				table.insert(sent, code)
+				return { ok = true, text = engine.run(datamodel, code), lost = false, expired = false }
+			end,
+			datamodel = "Server",
+			code = "error('the runner owns the code')",
+			runId = "runner-1",
+			deadline = os.clock() + 5,
+			runner = true,
+		}
+		expect(outcome.status):toEqual "done"
+		expect(outcome.text):toEqual "ran runner-1 token-1"
+		for _, code in sent do
+			expect(string.find(code, "the runner owns the code", 1, true)):toBeNil()
+		end
+		local other = engineFor("runner-2", "Client")
+		expect(other.run("Server", "return #game:GetService('ReplicatedStorage'):GetChildren()")):toBe "1"
+	end)
+
 	it("fails closed on a corrupted, missing, repeated or mismatched segment", function()
 		local function failing(change: (segment: number, reply: string) -> string): string
 			local self = fake(ONE)

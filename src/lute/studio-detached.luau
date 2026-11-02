@@ -1,6 +1,7 @@
 --!strict
 
 local digest = require "./hash"
+local json = require "@std/json"
 local task = require "@std/task"
 local Core = require "../core"
 local Transport = require "../core/transport"
@@ -25,6 +26,7 @@ export type Options = {
 	pollSeconds: number?,
 	segmentBytes: number?,
 	onPoll: (() -> ())?,
+	runner: boolean?,
 }
 
 export type Outcome = {
@@ -48,19 +50,7 @@ local function header(prefix: string): string
 	return "local RS = game:GetService('ReplicatedStorage')\nlocal P = " .. string.format("%q", prefix) .. "\n"
 end
 
-local function startSource(prefix: string, code: string, segmentBytes: number): string
-	return header(prefix)
-		.. "local SIZE = "
-		.. tostring(segmentBytes)
-		.. [==[
-
-local R = RS:FindFirstChild(P)
-if R ~= nil then
-	return 'started'
-end
-R = Instance.new("Folder")
-R.Name = P
-R.Parent = RS
+local publisher = [==[
 R:SetAttribute("state", "running")
 local function payload(name, text)
 	local value = R:FindFirstChild(name)
@@ -115,10 +105,24 @@ local function publish(ok, value)
 	R:SetAttribute("digest", fingerprint(text))
 	R:SetAttribute("state", "done")
 end
-task.spawn(function()
-	local published, reason = pcall(function()
-		publish(pcall(function()
 ]==]
+
+local function startSource(prefix: string, code: string, segmentBytes: number): string
+	return header(prefix)
+		.. "local SIZE = "
+		.. tostring(segmentBytes)
+		.. [==[
+
+local R = RS:FindFirstChild(P)
+if R ~= nil then
+	return 'started'
+end
+R = Instance.new("Folder")
+R.Name = P
+R.Parent = RS
+]==]
+		.. publisher
+		.. "task.spawn(function()\n\tlocal published, reason = pcall(function()\n\t\tpublish(pcall(function()\n"
 		.. code
 		.. "\n"
 		.. [==[
@@ -131,6 +135,66 @@ end
 end)
 return 'started'
 ]==]
+end
+
+local REQUEST = "VerifyRequest"
+
+local function runnerSource(rootName: string): string
+	return "local RS = game:GetService('ReplicatedStorage')\nlocal ROOT = "
+		.. string.format("%q", rootName)
+		.. "\nlocal REQUEST = "
+		.. string.format("%q", REQUEST)
+		.. [==[
+
+local context = if game:GetService('RunService'):IsServer() then 'Server' else 'Client'
+local text = RS:GetAttribute(REQUEST)
+local waited = 0
+while type(text) ~= 'string' and context == 'Client' and waited < 10 do
+	waited += task.wait(0.1)
+	text = RS:GetAttribute(REQUEST)
+end
+if type(text) ~= 'string' then
+	return
+end
+local request = game:GetService('HttpService'):JSONDecode(text)
+local function work()
+	return require(RS:WaitForChild(ROOT):WaitForChild(REQUEST))(request.runId, request.progressToken)
+end
+if request.context == 'Multiplayer' then
+	if context == 'Server' then
+		local ok, result = pcall(work)
+		game:GetService('StudioTestService'):EndTest(if ok then result else { error = tostring(result) })
+	end
+	return
+end
+if request.context ~= context or RS:FindFirstChild(request.prefix) ~= nil then
+	return
+end
+local SIZE = request.size
+local R = Instance.new("Folder")
+R.Name = request.prefix
+R.Parent = RS
+]==]
+		.. publisher
+		.. [==[
+task.spawn(function()
+	local published, reason = pcall(function()
+		publish(pcall(work))
+	end)
+	if not published then
+		payload("error", string.sub(tostring(reason), 1, 4000))
+		R:SetAttribute("state", "raised")
+	end
+end)
+]==]
+end
+
+local function requestSource(code: string): string
+	return "return function(runId, progressToken)\n" .. code .. "\nend\n"
+end
+
+local function waitSource(prefix: string): string
+	return header(prefix) .. "return if RS:WaitForChild(P, 10) ~= nil then 'started' else 'waiting'"
 end
 
 local function statusSource(prefix: string): string
@@ -264,13 +328,27 @@ end
 
 local function run(options: Options): Outcome
 	local prefix = prefixFor(options.runId)
-	local started = options.execute(
-		options.datamodel,
-		startSource(prefix, options.code, options.segmentBytes or SEGMENT_BYTES),
-		true
-	)
+	local started = if options.runner == true
+		then options.execute(options.datamodel, waitSource(prefix), true)
+		else options.execute(
+			options.datamodel,
+			startSource(prefix, options.code, options.segmentBytes or SEGMENT_BYTES),
+			true
+		)
+	while
+		options.runner == true
+		and started.ok
+		and started.text ~= nil
+		and string.find(started.text, "waiting", 1, true) ~= nil
+		and os.clock() < options.deadline
+	do
+		started = options.execute(options.datamodel, waitSource(prefix), true)
+	end
 	if not started.ok then
 		return failure(started, "the detached run did not start")
+	end
+	if options.runner == true and string.find(started.text or "", "started", 1, true) == nil then
+		return { status = "timed_out", detail = "the place runner did not start the run before its deadline" }
 	end
 	if started.text == nil or string.find(started.text, "started", 1, true) == nil then
 		return {
@@ -328,9 +406,23 @@ local function run(options: Options): Outcome
 	end
 end
 
+local function request(runId: string, context: string, progressToken: string?): string
+	return json.serialize {
+		context = context,
+		prefix = prefixFor(runId),
+		runId = runId,
+		progressToken = progressToken,
+		size = SEGMENT_BYTES,
+	}
+end
+
 return {
 	run = run,
 	digest = digest,
+	request = request,
+	requestSource = requestSource,
+	runnerSource = runnerSource,
+	REQUEST = REQUEST,
 	SEGMENT_BYTES = SEGMENT_BYTES,
 	tokenFor = tokenFor,
 }

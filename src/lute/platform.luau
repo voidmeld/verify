@@ -190,7 +190,9 @@ local function run(options: Options): Result
 			assert(options.basePlace == nil or options.place == nil, "choose place or basePlace, not both")
 			assert(options.basePlace == nil or options.attach == nil, "an attached Studio has no base place to merge")
 			local place = options.place or directory .. "/fixture.rbxlx"
-			if options.place == nil and options.attach == nil then
+			local code = engineCode(framework, options.entry, options.caseIds, nil, progressPath ~= nil)
+			local runner = options.place == nil and options.attach == nil
+			if runner then
 				local roots = { framework .. "/src/core", framework .. "/src/roblox" }
 				local additionalRoots: { string } = options.roots or {}
 				for _, root in additionalRoots do
@@ -214,13 +216,15 @@ local function run(options: Options): Result
 					verbatim = options.verbatim,
 					clientSource = clientSource,
 					logCollectors = true,
+					request = code,
 					serverSource = serverSource,
 				}
 			end
 			outcome = Studio.run {
 				attach = options.attach,
 				place = place,
-				code = engineCode(framework, options.entry, options.caseIds, nil, progressPath ~= nil),
+				code = code,
+				runner = runner,
 				worker = framework .. "/tools/studio-worker.luau",
 				deadlineSeconds = seconds,
 				directory = directory .. "/studio",
