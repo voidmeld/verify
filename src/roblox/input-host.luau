@@ -711,7 +711,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local function groupOf(object: Instance): Instance?
 		local current = object.Parent
 		while current and current ~= gui do
-			if current:IsA "GuiObject" and read(current, "SelectionGroup") == true then
+			if current:IsA "GuiBase2d" and read(current, "SelectionGroup") == true then
 				return current
 			end
 			current = current.Parent
