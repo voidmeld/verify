@@ -17,11 +17,17 @@ export type Controller = {
 	invalidate: () -> (),
 	animating: (boolean?) -> boolean,
 }
-type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
-type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
+type Animated = {
+	property: string,
+	phantom: string?,
+	motion: Transition.Motion,
+	dirty: number?,
+	generation: number,
+	sheet: Instance?,
+}
 local PHANTOMS = { UIPadding = true, UICorner = true, UIStroke = true, UIGradient = true }
-local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true }
+local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true, Interactable = true }
 
 local function unsupported(detail: string): never
 	error("unsupported_ui_style: " .. detail, 0)
@@ -120,7 +126,6 @@ local function create(
 		dirty()
 	end
 	local frameScopes: { [Instance]: { sheet: Instance? } }? = nil
-	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
 	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
 	local function ownSheet(object: Instance): Instance?
 		local link: Instance? = nil
@@ -247,31 +252,11 @@ local function create(
 		indexes[sheet] = index
 		return index
 	end
-	local resolveFresh: (Instance, string?, string?) -> (Instance?, unknown, boolean, unknown)
 	local function resolve(
 		object: Instance,
 		property: string?,
 		phantom: string?
 	): (Instance?, unknown, boolean, unknown)
-		local values = frameValues
-		if values == nil then
-			return resolveFresh(object, property, phantom)
-		end
-		local entries = values[object]
-		if entries == nil then
-			entries = {}
-			values[object] = entries
-		end
-		local key = (property or "") .. "|" .. (phantom or "")
-		local found = entries[key]
-		if found == nil then
-			local sheet, value, present, transition = resolveFresh(object, property, phantom)
-			found = { sheet = sheet, value = value, present = present, transition = transition }
-			entries[key] = found
-		end
-		return found.sheet, found.value, found.present, found.transition
-	end
-	function resolveFresh(object: Instance, property: string?, phantom: string?): (Instance?, unknown, boolean, unknown)
 		local sheet = scope(object)
 		local result: unknown = if phantom or property == nil then nil else env.defaultPropertyOf(object, property)
 		if sheet == nil then
@@ -354,6 +339,12 @@ local function create(
 		return sheet, result, present, token(sheet, transition)
 	end
 	local function animatedValue(object: Instance, property: string, phantom: string?): (Instance?, unknown)
+		local key = property .. "|" .. (phantom or "")
+		local entries = animated[object]
+		local entry = if entries then entries[key] else nil
+		if entry and entry.generation == styleGeneration then
+			return entry.sheet, Transition.sample(entry.motion, env.now())
+		end
 		local sheet, target, _, parameters = resolve(object, property, phantom)
 		if target == nil and phantom then
 			target = env.defaultClassProperty(phantom, property)
@@ -363,24 +354,24 @@ local function create(
 			return nil, target
 		end
 		local timing = Transition.timing(parameters)
-		local key = property .. "|" .. (phantom or "")
-		local entries = animated[object]
 		if entries == nil then
 			entries = {}
 			animated[object] = entries
 		end
-		local entry: Animated? = entries[key]
 		if entry == nil then
 			observe()
 			local created: Animated = {
 				property = property,
 				phantom = phantom,
+				generation = styleGeneration,
+				sheet = sheet,
 				motion = { target = target, origin = target, started = env.now() },
 			}
 			entry = created
 			entries[key] = created
 		else
 			local active: Animated = entry
+			active.generation, active.sheet = styleGeneration, sheet
 			Transition.retarget(active.motion, target, timing, active.dirty or env.now())
 			active.dirty = nil
 			stale[active] = nil
@@ -590,13 +581,13 @@ local function create(
 			end
 		end,
 		cached = function(body: () -> ())
-			if frameValues ~= nil then
+			if frameStyled ~= nil then
 				body()
 				return
 			end
-			frameScopes, frameValues, frameStyled = {}, {}, {}
+			frameScopes, frameStyled = {}, {}
 			local outcome = table.pack(pcall(body))
-			frameScopes, frameValues, frameStyled = nil, nil, nil
+			frameScopes, frameStyled = nil, nil
 			if not outcome[1] then
 				error(outcome[2], 0)
 			end

@@ -9,6 +9,53 @@ local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local probe = require "./fixtures/ui-style-properties"
 
+it("retained style targets follow scope, selector, token and override changes", function(own)
+	local bridge = Lute.fixture.bridge(nil, { ui = { measureBounds = false, measureText = false } })
+	own(bridge.close)
+	local env, ui = bridge.environment, assert(bridge.ui)
+	local root = env.createInstance "Folder"
+	local frame = env.createInstance("Frame", { Parent = root })
+	local sheet = env.createInstance "StyleSheet"
+	local rule = env.createInstance("StyleRule", { Parent = sheet, Selector = "Frame" })
+	sheet:SetAttribute("Alpha", 0.25)
+	env.method(rule, "SetProperty")(rule, "BackgroundTransparency", "$Alpha")
+	local function value(expected: number)
+		ui.cached(function()
+			expect(ui.styled(frame, "BackgroundTransparency")):toBe(expected)
+		end)
+	end
+	value(0)
+	local link = env.createInstance("StyleLink", { Parent = root, StyleSheet = sheet })
+	value(0.25)
+	value(0.25)
+	frame.BackgroundTransparency = 0.75
+	value(0.75)
+	frame:ResetPropertyToDefault "BackgroundTransparency"
+	sheet:SetAttribute("Alpha", 0.5)
+	value(0.5)
+	rule.Selector = ".Hot"
+	value(0)
+	frame:AddTag "Hot"
+	value(0.5)
+	frame:RemoveTag "Hot"
+	value(0)
+	rule.Selector = "#Chosen"
+	frame.Name = "Chosen"
+	value(0.5)
+	frame.Parent = nil
+	value(0)
+	frame.Parent = root
+	value(0.5)
+	rule.Selector = "Frame:NonInteractable"
+	value(0)
+	frame.Interactable = false
+	value(0.5)
+	frame.Interactable = true
+	value(0)
+	link:Destroy()
+	value(0)
+end)
+
 it("hit queries observe style changes between queries", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
