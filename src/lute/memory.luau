@@ -29,6 +29,7 @@ export type Host = {
 	now: () -> number,
 	heap: () -> number,
 	witness: () -> Witness,
+	growStringTable: (() -> ())?,
 	pressure: () -> (),
 }
 export type Memory = {
@@ -36,7 +37,8 @@ export type Memory = {
 	measure: <T>(spec: Spec<T>, options: Options?) -> Result,
 }
 
-local METHOD = "gc-witness-low-water/2"
+local METHOD = "gc-witness-low-water/3"
+local STRING_TABLE_GROWTH = 600000
 
 local function integer(value: number, minimum: number): boolean
 	return value >= minimum and value < math.huge and value % 1 == 0
@@ -112,6 +114,10 @@ local function create(host: Host): Memory
 				error("memory cleanup failed: " .. tostring(cleanupProblem), 0)
 			end
 		end
+		if host.growStringTable then
+			host.growStringTable()
+			settle(options)
+		end
 		for _ = 1, rehearsals do
 			exercise()
 		end
@@ -137,6 +143,13 @@ local bound = create {
 	now = os.clock,
 	heap = gcinfo,
 	witness = witness,
+	growStringTable = function()
+		local held = table.create(STRING_TABLE_GROWTH, "")
+		for index = 1, STRING_TABLE_GROWTH do
+			held[index] = `capacity{index}`
+		end
+		assert(#held == STRING_TABLE_GROWTH, "memory string table growth failed")
+	end,
 	pressure = function()
 		local scratch = buffer.create(8192)
 		assert(buffer.len(scratch) == 8192, "memory pressure allocation failed")

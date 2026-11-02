@@ -212,6 +212,61 @@ describe("rehearsed lifecycles", function()
 		expect(table.concat(steps, " ")):toEqual(`{rehearsal} {baseline} {measured}`)
 	end)
 
+	it("grows the string table before anything it would otherwise count as retained", function()
+		local steps: { string } = {}
+		local now = 0
+		local memory = Lute.memory.create {
+			now = function()
+				now += 1
+				return now
+			end,
+			heap = function()
+				return 1
+			end,
+			witness = function()
+				table.insert(steps, "settle")
+				local weak: { token: {}? } = { token = nil }
+				return setmetatable(weak, { __mode = "" })
+			end,
+			growStringTable = function()
+				table.insert(steps, "grow")
+			end,
+			pressure = function() end,
+		}
+		memory.measure({
+			setup = function()
+				table.insert(steps, "setup")
+				return true
+			end,
+			run = function(_state: boolean) end,
+			teardown = function(_state: boolean) end,
+			iterations = 1,
+			rehearsals = 1,
+		}, { cycles = 2 })
+		expect(table.concat(steps, " ", 1, 4)):toEqual "grow settle settle setup"
+	end)
+
+	it("does not count string table capacity reached during a lifecycle as retained", function()
+		local held: { string } = {}
+		local result = Lute.memory.measure({
+			setup = function()
+				held = table.create(70000, "")
+				return true
+			end,
+			run = function(_state: boolean)
+				for index = 1, 70000 do
+					held[index] = `retained{index}`
+				end
+			end,
+			teardown = function(_state: boolean)
+				held = {}
+			end,
+			iterations = 1,
+			rehearsals = 1,
+		}, { cycles = 4 })
+		expect(result.teardownRetainedKb < 256):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
+	end)
+
 	it("rejects a negative rehearsal count", function()
 		expect(function()
 			Lute.memory.measure {
