@@ -11,19 +11,16 @@ local probe = require "./fixtures/ui-style-properties"
 
 it("hit queries observe style changes between queries", function(own)
 	local roots: { Roblox.Instance } = {}
-	local bridge = Lute.fixture.bridge(
-		nil,
-		{
-			layout = {
-				roots = function()
-					return roots
-				end,
-				viewport = function()
-					return { X = 800, Y = 600 }
-				end,
-			},
-		}
-	)
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
 	own(bridge.close)
 	local env = bridge.environment
 	local library = bridge.placeEngine().datatypes
