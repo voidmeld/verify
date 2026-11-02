@@ -7,6 +7,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local Gamepad = require "../src/roblox/input-gamepad"
+local Vector = require "../src/roblox/datatypes/vector"
 local virtualControllerProbe = require "./fixtures/input-virtual-controller"
 local controllerSelectionProbe = require "./fixtures/input-controller-selection"
 
@@ -50,19 +51,16 @@ local padTextSelectionProbe = string.gsub(textSelectionProbe, "local pad = false
 
 it("selection publication preserves authored layout changes in selection handlers", function(own)
 	local roots: { Roblox.Instance } = {}
-	local bridge = Lute.fixture.bridge(
-		nil,
-		{
-			layout = {
-				roots = function()
-					return roots
-				end,
-				viewport = function()
-					return { X = 800, Y = 600 }
-				end,
-			},
-		}
-	)
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
 	own(bridge.close)
 	local env, engine = bridge.environment, bridge.placeEngine()
 	local library = engine.datatypes
@@ -123,6 +121,22 @@ it("selection publication preserves authored layout changes in selection handler
 	expect(env.revision() > before):toBe(true)
 	expect(second.AbsolutePosition):toEqual(library.Vector2.new(80, 0))
 	expect(events):toBe(2)
+	local scrolling = env.createInstance("ScrollingFrame", {
+		Parent = screen,
+		Size = library.UDim2.fromOffset(100, 100),
+		CanvasSize = library.UDim2.fromOffset(100, 400),
+		ScrollingDirection = library.Enum.ScrollingDirection.Y,
+	})
+	second.Parent, second.Position = scrolling, library.UDim2.fromOffset(0, 300)
+	first.NextSelectionRight = second
+	env.poke(selection, "SelectedObject", first)
+	move = false
+	layout.step()
+	press "Four"
+	expect(env.propertyOf(selection, "SelectedObject")):toBe(second)
+	local observed = Vector.expect2(scrolling.CanvasPosition, 1)
+	expect(observed.Y > 0):toBe(true)
+	expect(second.AbsolutePosition):toEqual(library.Vector2.new(0, 300 - observed.Y))
 end)
 
 it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
