@@ -1083,28 +1083,33 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		end,
 	})
-	local pointerInput = PointerInput.create(env, {
-		service = service,
-		library = library,
-		input = input,
-		hits = function(at)
-			return hits(at, "movement")
-		end,
-		inset = options.inset,
-		read = read,
-		changed = function()
-			if lastInput ~= inputTypes.MouseWheel then
-				lastInput = inputTypes.MouseWheel
-				env.fire(service, "LastInputTypeChanged", lastInput)
-			end
-		end,
-	})
+	local pointerInput: PointerInput.Controller? = nil
 	local function createDevice(): Environment.Object
 		local device = env.createEngineObject "VirtualInput"
 		table.insert(owned, device)
 		install(device, "SendPointerAction", function(_self: Environment.Object, at: Position, action: unknown)
 			ensureOpen()
-			pointerInput.send(at, fields(action))
+			local active = pointerInput
+			if active == nil then
+				active = PointerInput.create(env, {
+					service = service,
+					library = library,
+					input = input,
+					hits = function(at)
+						return hits(at, "movement")
+					end,
+					inset = options.inset,
+					read = read,
+					changed = function()
+						if lastInput ~= inputTypes.MouseWheel then
+							lastInput = inputTypes.MouseWheel
+							env.fire(service, "LastInputTypeChanged", lastInput)
+						end
+					end,
+				})
+				pointerInput = active
+			end
+			assert(active).send(at, fields(action))
 		end)
 		install(device, "SendMousePosition", function(_self: Environment.Object, at: Position)
 			if touchMode() then
@@ -1198,7 +1203,9 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		return layout.objectsAtPosition(gui, x, y)
 	end)
 	local frame = env.heartbeat:Connect(function()
-		pointerInput.step()
+		if pointerInput then
+			pointerInput.step()
+		end
 		if not closed and #hovered > 0 then
 			layout.step()
 			local inset = options.inset()
@@ -1237,7 +1244,9 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				return
 			end
 			frame:Disconnect()
-			pointerInput.close()
+			if pointerInput then
+				pointerInput.close()
+			end
 			touch.close()
 			if options.virtualController then
 				env.poke(service, "GamepadEnabled", previousGamepad)

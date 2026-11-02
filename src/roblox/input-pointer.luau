@@ -6,6 +6,11 @@ local Values = require "./ui-values"
 type Instance = Environment.Instance
 type Point = { X: number, Y: number }
 type Motion = { origin: Point, target: Point, last: Point, started: number? }
+export type Controller = {
+	send: (Point, { [string]: unknown }) -> boolean,
+	step: () -> (),
+	close: () -> (),
+}
 export type Options = {
 	service: Instance,
 	library: Datatypes.Library,
@@ -16,7 +21,7 @@ export type Options = {
 	changed: () -> (),
 }
 
-local function create(env: Environment.Environment, options: Options)
+local function create(env: Environment.Environment, options: Options): Controller
 	local library, read = options.library, options.read
 	local motions: { [Instance]: Motion } = {}
 	local wheelInput: Instance? = nil
