@@ -134,7 +134,15 @@ do
 		expect(scheduler.failures):toEqual {}
 		expect(engine.diagnostics):toEqual {}
 		expect(complete):toBe(true)
+		local restored: unknown = nil
+		local restoreConnection = inputService:GetPropertyChangedSignal("PreferredInput"):Connect(function()
+			restored = bridge.environment.method(inputService, "GetLastInputType")(inputService)
+		end)
 		input.close()
+		restoreConnection:Disconnect()
+		if case.source == virtualControllerProbe or case.source == controllerSelectionProbe then
+			expect(restored ~= nil):toBe(true)
+		end
 		expect(inputService.GamepadEnabled):toBe(priorGamepad)
 		expect(inputService.PreferredInput):toBe(priorPreferred)
 	end)

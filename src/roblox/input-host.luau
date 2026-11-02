@@ -1144,13 +1144,13 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if closed then
 				return
 			end
-			closed = true
 			frame:Disconnect()
 			touch.close()
 			if options.virtualController then
 				env.poke(service, "GamepadEnabled", previousGamepad)
 				env.poke(service, "PreferredInput", previousPreferred)
 			end
+			closed = true
 			for ordinal = #registrations, 1, -1 do
 				registrations[ordinal]()
 			end
