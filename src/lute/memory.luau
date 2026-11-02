@@ -37,7 +37,7 @@ export type Memory = {
 	measure: <T>(spec: Spec<T>, options: Options?) -> Result,
 }
 
-local METHOD = "gc-witness-low-water/3"
+local METHOD = "gc-witness-low-water/4"
 local STRING_TABLE_GROWTH = 600000
 
 local function integer(value: number, minimum: number): boolean
@@ -131,7 +131,7 @@ local function create(host: Host): Memory
 			baseline = baseline,
 			mounted = held,
 			teardown = teardown,
-			mountedRetainedKb = math.max(0, held.heapKb - baseline.heapKb),
+			mountedRetainedKb = math.max(0, held.heapKb - math.min(baseline.heapKb, teardown.heapKb)),
 			teardownRetainedKb = math.max(0, teardown.heapKb - baseline.heapKb),
 		}
 	end

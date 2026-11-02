@@ -83,7 +83,7 @@ If no mechanism works, the run does not start the command. It returns `unsupport
 
 Options are `cycles` (default 4, at least 2), `maxAllocations` (default 1000000) and `deadlineSeconds` (default 5). Invalid readings and incomplete collection progress raise an error. They do not produce a passing measurement. Each endpoint has its own allocation and time bounds. Each pressure allocation is one 8 KiB buffer. Version 1 used one 64-entry table per allocation. Compare measurements collected with the same method version. `Lute.memory.create({ now, heap, witness, pressure })` injects the host operations. `witness()` returns a weak table with a `token` field that becomes nil after its object is collected.
 
-`measure` grows the string table to its settled size before the first rehearsal. That table resizes in large steps when a lifecycle crosses a size boundary. Without this, a change of a few strings can read as megabytes of retained heap.
+`measure` grows the string table to its settled size before the first rehearsal. That table resizes in large steps when a lifecycle crosses a size boundary. Without this, a change of a few strings can read as megabytes of retained heap. A mounted reading is measured from the lower of the baseline and the teardown, because a baseline taken soon after churn can still hold memory the next lifecycle releases.
 
 The consumer owns comparison thresholds and unchanged-versus-unchanged noise validation. A small heap difference alone does not establish a regression.
 
