@@ -21,7 +21,7 @@ type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
 type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
 local PHANTOMS = { UIPadding = true, UICorner = true, UIStroke = true, UIGradient = true }
-local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true }
+local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true, Interactable = true }
 
 local function unsupported(detail: string): never
 	error("unsupported_ui_style: " .. detail, 0)
