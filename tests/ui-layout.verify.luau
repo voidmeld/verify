@@ -54,6 +54,22 @@ describe("simulated GUI layout", function()
 		layout.step()
 		layout.step()
 		local before = reads
+		for _, property in
+			{
+				"BackgroundTransparency",
+				"BackgroundColor3",
+				"TextTransparency",
+				"TextColor3",
+				"ImageTransparency",
+				"ImageColor3",
+				"GroupTransparency",
+				"GroupColor3",
+			}
+		do
+			root[property] = 0.5
+			layout.step()
+			expect(reads):toBe(before)
+		end
 		gradient.Offset = Types.Vector2.new(0.5, 0)
 		layout.step()
 		expect(reads):toBe(before)

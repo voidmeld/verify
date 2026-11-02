@@ -17,6 +17,19 @@ local InputActionFakes = require "./input-action-fakes"
 local HapticFakes = require "./haptic-fakes"
 local TweenFakes = require "./tween-fakes"
 local SpatialQueryFakes = require "./spatial-query-fakes"
+local PAINT_PROPERTIES: { [string]: boolean } = {
+	BackgroundColor3 = true,
+	BackgroundTransparency = true,
+	BorderColor3 = true,
+	TextColor3 = true,
+	TextTransparency = true,
+	TextStrokeColor3 = true,
+	TextStrokeTransparency = true,
+	ImageColor3 = true,
+	ImageTransparency = true,
+	GroupColor3 = true,
+	GroupTransparency = true,
+}
 
 export type Connection = Types.Connection
 export type Signal<A... = ...unknown> = Types.Signal<A...>
@@ -210,6 +223,7 @@ local function create(options: Options?): Environment
 			publishing
 			or property == "SelectedObject" and state.className == "GuiService"
 			or property == "Offset" and state.className == "UIGradient"
+			or PAINT_PROPERTIES[property] and isA(state.className, "GuiObject")
 		then
 			publishing = false
 			published += 1
