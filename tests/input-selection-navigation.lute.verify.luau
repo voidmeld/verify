@@ -9,6 +9,44 @@ local Lute = require "../src/lute"
 local virtualControllerProbe = require "./fixtures/input-virtual-controller"
 local controllerSelectionProbe = require "./fixtures/input-controller-selection"
 
+local textSelectionProbe = [=[
+local pad = false
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local box = Instance.new("TextBox")
+box.Text, box.ClearTextOnFocus, box.TextEditable = "seed", false, false
+box.Size, box.Parent = UDim2.fromOffset(200, 40), screen
+local input, gui = game.UserInputService, game.GuiService
+local virtual = input:CreateVirtualInput()
+local focused, released = 0, 0
+box.Focused:Connect(function() focused += 1 end)
+box.FocusLost:Connect(function(submitted, cause)
+	released += 1
+	if not pad then assert(submitted and cause.KeyCode == Enum.KeyCode.Return, "submit carries its input") end
+end)
+local function press()
+	local code = if pad then Enum.KeyCode.Nine else Enum.KeyCode.Return
+	virtual:SendKey(true, code, false)
+	task.wait(0.05)
+	virtual:SendKey(false, code, false)
+	task.wait(0.05)
+end
+task.wait(0.05)
+gui.SelectedObject = box
+press()
+assert(not box:IsFocused() and focused == 0, "noneditable selection does not enter editing")
+box.TextEditable = true
+press()
+assert(box:IsFocused() and focused == 1 and released == 0, "accept enters editing once without submitting")
+assert(box.Text == "seed", "selection entry retains text when ClearTextOnFocus is false")
+if pad then box:ReleaseFocus() else press() end
+assert(not box:IsFocused() and released == 1, "the edit releases once")
+gui.SelectedObject = nil
+screen:Destroy()
+return true
+]=]
+local padTextSelectionProbe = string.gsub(textSelectionProbe, "local pad = false", "local pad = true", 1)
+
 local probe = [==[
 local RS = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -55,6 +93,8 @@ return true
 
 for _, case in
 	{
+		{ name = "Return accepts a selected TextBox without submitting the entering key", source = textSelectionProbe },
+		{ name = "ButtonA accepts a selected editable TextBox", source = padTextSelectionProbe },
 		{ name = "controller selection routes activation and DPad repeats", source = controllerSelectionProbe },
 		{
 			name = "virtual controller events match native button trigger and stick traces",
@@ -160,7 +200,9 @@ do
 		local priorGamepad, priorPreferred = inputService.GamepadEnabled, inputService.PreferredInput
 		local priorKeyboard, priorMouse = inputService.KeyboardEnabled, inputService.MouseEnabled
 		local input = Roblox.inputHost.simulated(bridge.environment, {
-			virtualController = case.source == virtualControllerProbe or case.source == controllerSelectionProbe,
+			virtualController = case.source == virtualControllerProbe
+				or case.source == controllerSelectionProbe
+				or case.source == padTextSelectionProbe,
 			playerGui = playerGui,
 			inputService = engine.service "UserInputService",
 			layout = assert(bridge.layout),
@@ -197,7 +239,11 @@ do
 		end)
 		input.close()
 		restoreConnection:Disconnect()
-		if case.source == virtualControllerProbe or case.source == controllerSelectionProbe then
+		if
+			case.source == virtualControllerProbe
+			or case.source == controllerSelectionProbe
+			or case.source == padTextSelectionProbe
+		then
 			expect(restored ~= nil):toBe(true)
 		end
 		expect(inputService.GamepadEnabled):toBe(priorGamepad)

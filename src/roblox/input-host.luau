@@ -759,6 +759,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		return nearest(from, gui, direction)
 	end
+	local function accept(selected: Instance, object: Instance)
+		if interactable(selected) then
+			if button(selected) then
+				env.fire(selected, "Activated", object, 1)
+			elseif selected:IsA "TextBox" and read(selected, "TextEditable") ~= false then
+				env.method(selected, "CaptureFocus")(selected)
+			end
+		end
+	end
 	local function deliverSelection(
 		guiService: Instance,
 		selected: Instance,
@@ -776,8 +785,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			env.poke(guiService, "SelectedObject", nil)
 		end
 		env.fire(service, if down then "InputBegan" else "InputEnded", object, true)
-		if down and code == "Return" and button(selected) and interactable(selected) then
-			env.fire(selected, "Activated", object, 1)
+		if down and code == "Return" then
+			accept(selected, object)
 		end
 	end
 	local navigationKeys: { [string]: boolean } = {
@@ -854,8 +863,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if event == "InputBegan" then
 					controllerPress = target
 				elseif event == "InputEnded" then
-					if controllerPress == target and button(target) and interactable(target) then
-						env.fire(target, "Activated", object, 1)
+					if controllerPress == target then
+						accept(target, object)
 					end
 					controllerPress = nil
 				end
@@ -932,7 +941,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if box.MultiLine == true then
 					deliverText "\n"
 				else
-					env.method(box, "ReleaseFocus")(box, true)
+					env.method(box, "ReleaseFocus")(box, true, object)
 				end
 			end
 			env.fire(service, if value.down then "InputBegan" else "InputEnded", object, true)
