@@ -213,6 +213,7 @@ local function run(options: Options): Result
 					modules = modules,
 					verbatim = options.verbatim,
 					clientSource = clientSource,
+					logCollectors = true,
 					serverSource = serverSource,
 				}
 			end

@@ -4,6 +4,7 @@ local fs = require "@std/fs"
 
 local Paths = require "../core/path"
 local Xml = require "../codec/xml"
+local Logs = require "./studio-logs"
 
 export type BundleOptions = {
 	roots: { string },
@@ -16,6 +17,7 @@ export type Options = BundleOptions & {
 	clientSource: string?,
 	serverSource: string?,
 	basePlace: string?,
+	logCollectors: boolean?,
 }
 local function normalize(path: string): string
 	return Paths.collapse(path, "module path escapes its root")
@@ -334,6 +336,11 @@ local function build(options: Options)
 			.. xml(options.serverSource)
 			.. "</ProtectedString></Properties></Item>"
 		else nil
+	local collector = '<Properties><string name="Name">VerifyEngineLogCollector</string><ProtectedString name="Source">'
+		.. xml(Logs.source)
+		.. "</ProtectedString></Properties></Item>"
+	local clientCollector = if options.logCollectors then '<Item class="LocalScript">' .. collector else nil
+	local serverCollector = if options.logCollectors then '<Item class="Script">' .. collector else nil
 	if options.basePlace ~= nil then
 		local additions: { Addition } = {
 			{ path = { "ReplicatedStorage" }, item = tree, unique = rootName },
@@ -348,6 +355,18 @@ local function build(options: Options)
 		if serverItem then
 			table.insert(additions, { path = { "ServerScriptService" }, item = serverItem, unique = "VerifyServer" })
 		end
+		if clientCollector and serverCollector then
+			table.insert(additions, {
+				path = { "StarterPlayer", "StarterPlayerScripts" },
+				item = clientCollector,
+				unique = "VerifyEngineLogCollector",
+			})
+			table.insert(additions, {
+				path = { "ServerScriptService" },
+				item = serverCollector,
+				unique = "VerifyEngineLogCollector",
+			})
+		end
 		fs.writeStringToFile(path, merge(fs.readFileToString(options.basePlace), additions))
 		return
 	end
@@ -358,10 +377,14 @@ local function build(options: Options)
 			.. "</Item>"
 			.. '<Item class="Lighting"><Properties><token name="Technology">4</token></Properties></Item>'
 			.. '<Item class="TextChatService"><Properties><token name="ChatVersion">1</token></Properties></Item>'
-			.. (if clientItem
-				then '<Item class="StarterPlayer"><Item class="StarterPlayerScripts">' .. clientItem .. "</Item></Item>"
-				else "")
-			.. (if serverItem then '<Item class="ServerScriptService">' .. serverItem .. "</Item>" else "")
+			.. '<Item class="StarterPlayer"><Item class="StarterPlayerScripts">'
+			.. (clientItem or "")
+			.. (clientCollector or "")
+			.. "</Item></Item>"
+			.. '<Item class="ServerScriptService">'
+			.. (serverItem or "")
+			.. (serverCollector or "")
+			.. "</Item>"
 			.. '<Item class="Workspace"><Item class="Part"><Properties><string name="Name">Floor</string><bool name="Anchored">true</bool><Vector3 name="size"><X>200</X><Y>1</Y><Z>200</Z></Vector3></Properties></Item><Item class="SpawnLocation"><Properties><bool name="Anchored">true</bool><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>'
 	)
 end
