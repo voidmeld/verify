@@ -13,9 +13,6 @@ type Violation = {
 	sourcepath: path.Path?,
 }
 
-type Global = syntax.CstExprGlobal
-type Group = syntax.CstExprGroup
-type Binary = syntax.CstExprBinary
 type Call = syntax.CstExprCall
 
 local WARNING: "warning" = "warning"
@@ -33,26 +30,10 @@ local COMPARISONS: { [string]: boolean } = {
 	[">="] = true,
 }
 
-local function asCall(node: syntax.CstNode): Call?
-	return utils.isExprCall(node)
-end
-
-local function asGroup(node: syntax.CstExpr): Group?
-	return utils.isExprGroup(node)
-end
-
-local function asGlobal(node: syntax.CstExpr): Global?
-	return utils.isExprGlobal(node)
-end
-
-local function asBinary(node: syntax.CstExpr): Binary?
-	return utils.isExprBinary(node)
-end
-
 local function unwrapGroups(expr: syntax.CstExpr): syntax.CstExpr
 	local current = expr
 	while true do
-		local group = asGroup(current)
+		local group = utils.isExprGroup(current)
 		if group == nil then
 			return current
 		end
@@ -74,7 +55,7 @@ local function soleArgument(call: Call): syntax.CstExpr?
 end
 
 local function checkerName(call: Call): string?
-	local func = asGlobal(call.func)
+	local func = utils.isExprGlobal(call.func)
 	if func == nil or not CHECKERS[func.name.text] then
 		return nil
 	end
@@ -82,7 +63,7 @@ local function checkerName(call: Call): string?
 end
 
 local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, _context: unknown): { Violation }
-	return query.findAllFromRoot(cst, asCall):mapToArray(function(call: Call): Violation?
+	return query.findAllFromRoot(cst, utils.isExprCall):mapToArray(function(call: Call): Violation?
 		local name = checkerName(call)
 		if name == nil then
 			return nil
@@ -93,7 +74,7 @@ local function lint(cst: syntax.CstStatBlock, sourcepath: path.Path?, _context: 
 			return nil
 		end
 
-		local binary = asBinary(unwrapGroups(argument))
+		local binary = utils.isExprBinary(unwrapGroups(argument))
 		if binary == nil or not COMPARISONS[binary.operator.text] then
 			return nil
 		end

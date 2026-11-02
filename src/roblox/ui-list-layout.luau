@@ -4,8 +4,6 @@ local Environment = require "./environment"
 local Values = require "./ui-values"
 
 type Instance = Environment.Instance
-type Vector = { X: number, Y: number }
-type Dimension = { Scale: number, Offset: number }
 export type Rectangle = {
 	x: number,
 	y: number,

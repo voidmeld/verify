@@ -373,10 +373,17 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local function recipients(objects: { Instance }): ({ Instance }, Instance?)
 		local result: { Instance } = {}
+		local barrier: Instance? = nil
 		for _, object in objects do
+			if barrier and not barrier:IsDescendantOf(object) then
+				continue
+			end
 			table.insert(result, object)
 			if button(object) then
 				return result, object
+			end
+			if read(object, "Active") == true then
+				barrier = object
 			end
 		end
 		return result, nil
@@ -1063,6 +1070,28 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local minimum = Values.vector(Names.fields(area).Min)
 		return { X = at.X + minimum.X, Y = at.Y + minimum.Y }
 	end
+	local pointerInput: PointerInput.Controller? = nil
+	local function pointerController(): PointerInput.Controller
+		if pointerInput == nil then
+			pointerInput = PointerInput.create(env, {
+				service = service,
+				library = library,
+				input = input,
+				hits = function(at)
+					return hits(at, "movement")
+				end,
+				inset = options.inset,
+				read = read,
+				changed = function()
+					if lastInput ~= inputTypes.MouseWheel then
+						lastInput = inputTypes.MouseWheel
+						env.fire(service, "LastInputTypeChanged", lastInput)
+					end
+				end,
+			})
+		end
+		return assert(pointerInput)
+	end
 	local touch = Touch.create(env, {
 		service = service,
 		activationWindowSeconds = activationWindow,
@@ -1070,7 +1099,12 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		createInput = input,
 		targets = function(at)
 			local inset = options.inset()
-			return recipients(hits({ X = at.X + inset.X, Y = at.Y + inset.Y }, "button"))
+			local objects = hits({ X = at.X + inset.X, Y = at.Y + inset.Y }, "button")
+			local targets, targetButton = recipients(objects)
+			return targets, targetButton, objects
+		end,
+		scroll = function(objects, x, y)
+			return pointerController().drag(objects, x, y)
 		end,
 		processed = processed,
 		detector = detectorFor,
@@ -1083,33 +1117,12 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		end,
 	})
-	local pointerInput: PointerInput.Controller? = nil
 	local function createDevice(): Environment.Object
 		local device = env.createEngineObject "VirtualInput"
 		table.insert(owned, device)
 		install(device, "SendPointerAction", function(_self: Environment.Object, at: Position, action: unknown)
 			ensureOpen()
-			local active = pointerInput
-			if active == nil then
-				active = PointerInput.create(env, {
-					service = service,
-					library = library,
-					input = input,
-					hits = function(at)
-						return hits(at, "movement")
-					end,
-					inset = options.inset,
-					read = read,
-					changed = function()
-						if lastInput ~= inputTypes.MouseWheel then
-							lastInput = inputTypes.MouseWheel
-							env.fire(service, "LastInputTypeChanged", lastInput)
-						end
-					end,
-				})
-				pointerInput = active
-			end
-			assert(active).send(at, fields(action))
+			pointerController().send(at, fields(action))
 		end)
 		install(device, "SendMousePosition", function(_self: Environment.Object, at: Position)
 			if touchMode() then

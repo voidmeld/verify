@@ -8,7 +8,8 @@ export type Options = {
 	service: Instance,
 	library: Datatypes.Library,
 	createInput: (unknown) -> Instance,
-	targets: (Point) -> ({ Instance }, Instance?),
+	targets: (Point) -> ({ Instance }, Instance?, { Instance }),
+	scroll: ({ Instance }, number, number) -> boolean,
 	processed: ({ Instance }, boolean) -> boolean,
 	detector: ({ Instance }) -> Instance?,
 	dragOffset: (Instance, number, number) -> unknown,
@@ -26,6 +27,7 @@ local function create(env: Environment.Environment, options: Options)
 	local hovered: { Instance } = {}
 	local pressed: Instance? = nil
 	local detector: Instance? = nil
+	local scrollHits: { Instance } = {}
 	local activations: { [Instance]: { released: number, count: number } } = {}
 	do
 		local weak = activations
@@ -76,6 +78,9 @@ local function create(env: Environment.Environment, options: Options)
 				return
 			end
 			local targets = options.targets(at)
+			if not detector and options.scroll(scrollHits, previous.X - at.X, previous.Y - at.Y) then
+				pressed = nil
+			end
 			update(object, at, states.Change, true)
 			drag(at, "DragContinue")
 			transition(at, targets, object, false)
@@ -85,12 +90,13 @@ local function create(env: Environment.Environment, options: Options)
 		end,
 		press = function(at: Point, down: boolean)
 			assert(down == (contact == nil), "VirtualInput::SendMouseButton: duplicate button state.")
-			local targets, targetButton = options.targets(at)
+			local targets, targetButton, objects = options.targets(at)
 			local object = contact or options.createInput(library.Enum.UserInputType.Touch)
 			update(object, at, if down then states.Begin else states.End, false)
 			options.changed()
 			if down then
 				contact, origin, pressed = object, at, targetButton
+				scrollHits = objects
 				detector = options.detector(targets)
 				if detector then
 					pressed = nil
@@ -122,6 +128,7 @@ local function create(env: Environment.Environment, options: Options)
 				env.fire(service, "InputEnded", object, consumed)
 				env.fire(service, "TouchEnded", object, consumed)
 				contact, detector, pressed = nil, nil, nil
+				table.clear(scrollHits)
 			end
 		end,
 		close = function()
@@ -130,6 +137,7 @@ local function create(env: Environment.Environment, options: Options)
 			end
 			contact, detector, pressed = nil, nil, nil
 			table.clear(hovered)
+			table.clear(scrollHits)
 			table.clear(activations)
 		end,
 	}
