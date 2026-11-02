@@ -455,6 +455,33 @@ it("hover tags interpolate for 0.2 seconds on virtual frames and return through 
 	expect(frame.BackgroundTransparency):toBe(0)
 end)
 
+it("layout animation queries exclude color and transparency while retaining geometry", function(own)
+	local env, ui, frame, base, hot = fixture(own)
+	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(1, Enum.EasingStyle.Linear))
+	invoke(env, base, "SetProperty", "BackgroundColor3", Datatypes.Color3.new(1, 0, 0))
+	invoke(env, hot, "SetProperty", "BackgroundColor3", Datatypes.Color3.new(0, 0, 1))
+	ui.styled(frame, "BackgroundColor3")
+	ui.styled(frame, "BackgroundTransparency")
+	frame:AddTag "Hot"
+	env.step(0.1)
+	near(ui.styled(frame, "BackgroundTransparency"), 0.1)
+	expect(ui.styled(frame, "BackgroundColor3")):toEqual(Datatypes.Color3.new(0.9, 0, 0.1))
+	expect(ui.animating()):toBe(true)
+	expect(ui.animating(true)):toBe(false)
+	invoke(env, base, "SetProperty", "Size", Datatypes.UDim2.fromOffset(100, 40))
+	invoke(env, hot, "SetProperty", "Size", Datatypes.UDim2.fromOffset(200, 40))
+	frame:RemoveTag "Hot"
+	ui.styled(frame, "Size")
+	frame:AddTag "Hot"
+	expect(ui.animating(true)):toBe(true)
+	env.step(0.5)
+	expect(ui.styled(frame, "Size")):toEqual(Datatypes.UDim2.fromOffset(150, 40))
+	expect(ui.animating(true)):toBe(true)
+	env.step(0.5)
+	expect(ui.styled(frame, "Size")):toEqual(Datatypes.UDim2.fromOffset(200, 40))
+	expect(ui.animating(true)):toBe(false)
+end)
+
 it("retargeting samples the current interpolation even without an intervening read", function(own)
 	local env, ui, frame, base, hot = fixture(own)
 	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))

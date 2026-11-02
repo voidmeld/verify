@@ -244,7 +244,9 @@ local function create(options: Options): Bridge
 		local step = layout.step
 		local stepStyles = controller.step
 		local cached = controller.cached
-		layout.busy = controller.animating
+		layout.busy = function()
+			return controller.animating(true)
+		end
 		layout.step = function()
 			stepStyles()
 			cached(step)
