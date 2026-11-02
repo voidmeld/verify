@@ -18,10 +18,10 @@ export type Controller = {
 	animating: (boolean?) -> boolean,
 }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
-type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
+type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown, generation: number }
 type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
 local PHANTOMS = { UIPadding = true, UICorner = true, UIStroke = true, UIGradient = true }
-local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true }
+local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true, Interactable = true }
 
 local function unsupported(detail: string): never
 	error("unsupported_ui_style: " .. detail, 0)
@@ -56,6 +56,8 @@ local function create(
 	local staleSince: number? = nil
 	local styleGeneration = 0
 	local readsGeneration = -1
+	local wasAnimating = false
+	local controller: Controller
 	local function mark(subtree: Instance?)
 		styleGeneration += 1
 		local now = env.now()
@@ -433,7 +435,11 @@ local function create(
 				)
 			then
 				local operation = event.operation
-				if operation == "setParent" or (operation == "setProperty" and STYLE_MEMBERS[event.member or ""]) then
+				if
+					operation == "setParent"
+					or operation == "destroy" and watches[object] ~= nil
+					or (operation == "setProperty" and STYLE_MEMBERS[event.member or ""])
+				then
 					subtree = object
 				else
 					return
@@ -534,7 +540,7 @@ local function create(
 			reads[object] = nil
 		end
 	end
-	return {
+	controller = {
 		styled = styled,
 		component = function(object: Instance, className: string, property: string): unknown
 			local physical = object:FindFirstChildWhichIsA(className)
@@ -545,12 +551,18 @@ local function create(
 			watches[object] = entries
 			if entries[property] == nil then
 				local sheet, value = animatedValue(object, property, nil)
-				entries[property] = { signal = env.newSignal(), sheet = sheet, value = value }
+				entries[property] =
+					{ signal = env.newSignal(), sheet = sheet, value = value, generation = styleGeneration }
 			end
 			return entries[property].signal
 		end,
 		step = function()
 			refresh()
+			local generation = styleGeneration
+			local animating = controller.animating()
+			if observed ~= nil and readsGeneration == styleGeneration and not animating and not wasAnimating then
+				return
+			end
 			for object, entries in pairs(watches) do
 				if not env.isAlive(object) then
 					for _, watch in entries do
@@ -559,7 +571,16 @@ local function create(
 					watches[object] = nil
 				else
 					for property, watch in entries do
+						local motion = if animated[object] then animated[object][property .. "|"] else nil
+						if
+							observed ~= nil
+							and watch.generation == styleGeneration
+							and (motion == nil or watch.value == motion.motion.target)
+						then
+							continue
+						end
 						local sheet, value = animatedValue(object, property, nil)
+						watch.generation = styleGeneration
 						if sheet ~= watch.sheet or value ~= watch.value then
 							watch.sheet, watch.value = sheet, value
 							watch.signal:Fire()
@@ -567,10 +588,11 @@ local function create(
 					end
 				end
 			end
+			wasAnimating = controller.animating()
 			if observed ~= nil and readsGeneration == styleGeneration then
 				return
 			end
-			readsGeneration = styleGeneration
+			readsGeneration = generation
 			for object, properties in pairs(reads) do
 				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
 					reads[object] = nil
@@ -626,6 +648,7 @@ local function create(
 			return false
 		end,
 	}
+	return controller
 end
 
 return { create = create }

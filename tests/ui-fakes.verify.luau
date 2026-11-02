@@ -436,6 +436,44 @@ local function fixture(own: (() -> ()) -> ())
 	return env, ui, frame, base, hot, sheet, link
 end
 
+it("settled style watches skip resolution and still publish final motion and destruction", function(own)
+	local env, ui, frame, base = fixture(own)
+	local fires, reads = 0, 0
+	local signal = invoke(env, frame, "GetStyledPropertyChangedSignal", "BackgroundTransparency")
+	local connection = env.connect(signal, function()
+		fires += 1
+	end)
+	ui.step()
+	local default = env.defaultPropertyOf
+	env.defaultPropertyOf = function(object, property)
+		reads += 1
+		return default(object, property)
+	end
+	ui.step()
+	ui.step()
+	expect(reads):toBe(0)
+	invoke(env, base, "SetProperty", "BackgroundTransparency", 0.5)
+	ui.step()
+	expect(fires):toBe(1)
+	invoke(
+		env,
+		base,
+		"SetPropertyTransition",
+		"BackgroundTransparency",
+		Datatypes.TweenInfo.new(1, Enum.EasingStyle.Linear)
+	)
+	invoke(env, base, "SetProperty", "BackgroundTransparency", 1)
+	ui.step()
+	env.step(1)
+	ui.step()
+	expect(fires):toBe(2)
+	frame.Parent = nil
+	ui.step()
+	frame:Destroy()
+	ui.step()
+	expect(connection.Connected):toBe(false)
+end)
+
 it("hover tags interpolate for 0.2 seconds on virtual frames and return through the base transition", function(own)
 	local env, ui, frame, base = fixture(own)
 	invoke(env, base, "SetDefaultPropertyTransition", Datatypes.TweenInfo.new(0.2, Enum.EasingStyle.Linear))

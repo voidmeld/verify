@@ -7,6 +7,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local Gamepad = require "../src/roblox/input-gamepad"
+local Vector = require "../src/roblox/datatypes/vector"
 local virtualControllerProbe = require "./fixtures/input-virtual-controller"
 local controllerSelectionProbe = require "./fixtures/input-controller-selection"
 
@@ -47,6 +48,102 @@ screen:Destroy()
 return true
 ]=]
 local padTextSelectionProbe = string.gsub(textSelectionProbe, "local pad = false", "local pad = true", 1)
+
+it("selection publication preserves authored layout changes in selection handlers", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(bridge.close)
+	local env, engine = bridge.environment, bridge.placeEngine()
+	local library = engine.datatypes
+	local gui = env.createEngineInstance("PlayerGui", { Parent = engine.game })
+	local screen = env.createInstance("ScreenGui", { Parent = gui, IgnoreGuiInset = true })
+	own(function()
+		gui:Destroy()
+	end)
+	local first =
+		env.createInstance("TextButton", { Parent = screen, Text = "", Size = library.UDim2.fromOffset(30, 30) })
+	local second = assert(first:Clone())
+	second.Position, second.Parent = library.UDim2.fromOffset(50, 0), screen
+	table.insert(roots, gui)
+	local service, selection = engine.service "UserInputService", engine.service "GuiService"
+	env.poke(service, "GamepadEnabled", false)
+	env.poke(service, "PreferredInput", library.Enum.PreferredInput.KeyboardAndMouse)
+	local layout = assert(bridge.layout)
+	local input = Roblox.inputHost.simulated(env, {
+		playerGui = gui,
+		inputService = service,
+		layout = layout,
+		library = library,
+		activationWindowSeconds = 0.5,
+		virtualController = true,
+		inset = function()
+			return { X = 0, Y = 0 }
+		end,
+		read = assert(bridge.ui).styled,
+	})
+	own(input.close)
+	env.method(service, "GetGamepadState")(service, library.Enum.UserInputType.Gamepad1)
+	env.poke(selection, "SelectedObject", first)
+	layout.step()
+	local events, move = 0, false
+	local changed = selection:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+		events += 1
+		if move then
+			second.Position = library.UDim2.fromOffset(80, 0)
+		end
+	end)
+	own(function()
+		changed:Disconnect()
+	end)
+	local function press(code: string)
+		for _, down in { true, false } do
+			input.key { code = code, down = down }
+			env.step(1 / 60)
+			layout.step()
+		end
+	end
+	local before = env.revision()
+	press "Four"
+	expect(env.revision()):toBe(before)
+	expect(env.propertyOf(selection, "SelectedObject")):toBe(second)
+	expect(events):toBe(1)
+	move = true
+	press "Two"
+	expect(env.revision() > before):toBe(true)
+	expect(second.AbsolutePosition):toEqual(library.Vector2.new(80, 0))
+	expect(events):toBe(2)
+	move = false
+	local current = env.revision()
+	selection.SelectedObject = second
+	layout.step()
+	expect(env.revision()):toBe(current)
+	expect(events):toBe(3)
+	local scrolling = env.createInstance("ScrollingFrame", {
+		Parent = screen,
+		Size = library.UDim2.fromOffset(100, 100),
+		CanvasSize = library.UDim2.fromOffset(100, 400),
+		ScrollingDirection = library.Enum.ScrollingDirection.Y,
+	})
+	second.Parent, second.Position = scrolling, library.UDim2.fromOffset(0, 300)
+	first.NextSelectionRight = second
+	env.poke(selection, "SelectedObject", first)
+	move = false
+	layout.step()
+	press "Four"
+	expect(env.propertyOf(selection, "SelectedObject")):toBe(second)
+	local observed = Vector.expect2(scrolling.CanvasPosition, 1)
+	expect(observed.Y > 0):toBe(true)
+	expect(second.AbsolutePosition):toEqual(library.Vector2.new(0, 300 - observed.Y))
+end)
 
 it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
 	local roots: { Roblox.Instance } = {}
@@ -181,6 +278,7 @@ send(Enum.KeyCode.LeftControl, true)
 send(Enum.KeyCode.K, true)
 assert(counts.Plain == 2 and counts.Chord == 1, "qualified higher priority chord sinks the plain key")
 send(Enum.KeyCode.LeftShift, false)
+assert(not chord:GetState(), "releasing either required modifier releases the held action")
 send(Enum.KeyCode.K, false)
 assert(not chord:GetState(), "key release resets the chord after its modifier released")
 send(Enum.KeyCode.LeftShift, true)
@@ -200,6 +298,49 @@ return true
 ]=],
 		},
 		{ name = "Return accepts a selected TextBox without submitting the entering key", source = textSelectionProbe },
+		{
+			name = "Return TextBox focus and processed events match Studio 0.745",
+			source = [=[
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local box = Instance.new("TextBox")
+box.Text, box.ClearTextOnFocus = "seed", false
+box.Size, box.Parent = UDim2.fromOffset(200, 40), screen
+local input, gui = game.UserInputService, game.GuiService
+local virtual = input:CreateVirtualInput()
+local events = {}
+local function record(event)
+	table.insert(events, event .. "/" .. tostring(input:GetFocusedTextBox() == box) .. "/" .. box.CursorPosition)
+end
+local connections = {
+	box.Focused:Connect(function() record("focused") end),
+	box.FocusLost:Connect(function(submitted, cause)
+		assert(submitted and cause.KeyCode == Enum.KeyCode.Return)
+		record("lost")
+	end),
+	input.InputBegan:Connect(function(object, processed)
+		if object.KeyCode == Enum.KeyCode.Return then record("began/" .. tostring(processed)) end
+	end),
+	input.InputEnded:Connect(function(object, processed)
+		if object.KeyCode == Enum.KeyCode.Return then record("ended/" .. tostring(processed)) end
+	end),
+}
+task.wait(0.05)
+gui.SelectedObject = box
+for _ = 1, 2 do
+	virtual:SendKey(true, Enum.KeyCode.Return, false)
+	task.wait(0.05)
+	virtual:SendKey(false, Enum.KeyCode.Return, false)
+	task.wait(0.05)
+end
+assert(table.concat(events, "|") == "focused/true/5|began/false/true/5|ended/true/true/5|lost/false/-1|began/true/false/-1|ended/false/false/-1", table.concat(events, "|"))
+assert(box.Text == "seed" and gui.SelectedObject == box)
+for _, connection in connections do connection:Disconnect() end
+gui.SelectedObject = nil
+screen:Destroy()
+return true
+]=],
+		},
 		{ name = "ButtonA accepts a selected editable TextBox", source = padTextSelectionProbe },
 		{ name = "controller selection routes activation and DPad repeats", source = controllerSelectionProbe },
 		{

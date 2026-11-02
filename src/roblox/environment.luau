@@ -17,6 +17,19 @@ local InputActionFakes = require "./input-action-fakes"
 local HapticFakes = require "./haptic-fakes"
 local TweenFakes = require "./tween-fakes"
 local SpatialQueryFakes = require "./spatial-query-fakes"
+local PAINT_PROPERTIES: { [string]: boolean } = {
+	BackgroundColor3 = true,
+	BackgroundTransparency = true,
+	BorderColor3 = true,
+	TextColor3 = true,
+	TextTransparency = true,
+	TextStrokeColor3 = true,
+	TextStrokeTransparency = true,
+	ImageColor3 = true,
+	ImageTransparency = true,
+	GroupColor3 = true,
+	GroupTransparency = true,
+}
 
 export type Connection = Types.Connection
 export type Signal<A... = ...unknown> = Types.Signal<A...>
@@ -206,7 +219,12 @@ local function create(options: Options?): Environment
 	end
 
 	local function changed(object: Instance, state: State, property: string)
-		if publishing then
+		if
+			publishing
+			or property == "SelectedObject" and state.className == "GuiService"
+			or property == "Offset" and state.className == "UIGradient"
+			or PAINT_PROPERTIES[property] and isA(state.className, "GuiObject")
+		then
 			publishing = false
 			published += 1
 		else
@@ -467,6 +485,12 @@ local function create(options: Options?): Environment
 		if plain ~= nil and plain[key] and state.doubles[key] == nil then
 			return state.values[key]
 		end
+		if key == "ClassName" or key == "Parent" and state.class.instance then
+			local access = state.class.access[key]
+			if access == nil or access == "read" then
+				return if key == "ClassName" then state.className else state.parent
+			end
+		end
 		local class = state.class
 		local bound = state.bound
 		local cached = if bound ~= nil then bound[key] else nil
@@ -494,11 +518,6 @@ local function create(options: Options?): Environment
 			)
 		elseif access == "write" or access == "none" then
 			error(("%s cannot be read on %s"):format(key, describe(state)), 2)
-		end
-		if key == "ClassName" then
-			return state.className
-		elseif key == "Parent" and state.class.instance then
-			return state.parent
 		end
 		if
 			class.properties[key] ~= nil

@@ -9,6 +9,33 @@ local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local probe = require "./fixtures/ui-style-properties"
 
+it("settled style watches follow inherited Interactable state", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local env, ui = bridge.environment, assert(bridge.ui)
+	local parent = env.createInstance "Frame"
+	local frame = env.createInstance("Frame", { Parent = parent })
+	local sheet = env.createInstance "StyleSheet"
+	env.createInstance("StyleLink", { Parent = parent, StyleSheet = sheet })
+	local rule = env.createInstance("StyleRule", { Parent = sheet, Selector = "Frame:NonInteractable" })
+	env.method(rule, "SetProperty")(rule, "BackgroundTransparency", 0.75)
+	local fires = 0
+	local signal = env.method(frame, "GetStyledPropertyChangedSignal")(frame, "BackgroundTransparency")
+	env.connect(signal, function()
+		fires += 1
+	end)
+	ui.step()
+	ui.step()
+	parent.Interactable = false
+	ui.step()
+	expect(fires):toBe(1)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0.75)
+	parent.Interactable = true
+	ui.step()
+	expect(fires):toBe(2)
+	expect(ui.styled(frame, "BackgroundTransparency")):toBe(0)
+end)
+
 it("hit queries observe style changes between queries", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {
