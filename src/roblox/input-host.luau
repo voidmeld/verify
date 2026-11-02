@@ -10,6 +10,7 @@ local Values = require "./ui-values"
 local EnumTypes = require "./datatypes/enum"
 local Gamepad = require "./input-gamepad"
 local Touch = require "./input-touch"
+local PointerInput = require "./input-pointer"
 local VectorTypes = require "./datatypes/vector"
 local Names = require "./datatypes/names"
 local MODIFIERS = { "PrimaryModifier", "SecondaryModifier" }
@@ -1082,9 +1083,29 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 		end,
 	})
+	local pointerInput = PointerInput.create(env, {
+		service = service,
+		library = library,
+		input = input,
+		hits = function(at)
+			return hits(at, "movement")
+		end,
+		inset = options.inset,
+		read = read,
+		changed = function()
+			if lastInput ~= inputTypes.MouseWheel then
+				lastInput = inputTypes.MouseWheel
+				env.fire(service, "LastInputTypeChanged", lastInput)
+			end
+		end,
+	})
 	local function createDevice(): Environment.Object
 		local device = env.createEngineObject "VirtualInput"
 		table.insert(owned, device)
+		install(device, "SendPointerAction", function(_self: Environment.Object, at: Position, action: unknown)
+			ensureOpen()
+			pointerInput.send(at, fields(action))
+		end)
 		install(device, "SendMousePosition", function(_self: Environment.Object, at: Position)
 			if touchMode() then
 				position = at
@@ -1177,6 +1198,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		return layout.objectsAtPosition(gui, x, y)
 	end)
 	local frame = env.heartbeat:Connect(function()
+		pointerInput.step()
 		if not closed and #hovered > 0 then
 			layout.step()
 			local inset = options.inset()
@@ -1215,6 +1237,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				return
 			end
 			frame:Disconnect()
+			pointerInput.close()
 			touch.close()
 			if options.virtualController then
 				env.poke(service, "GamepadEnabled", previousGamepad)

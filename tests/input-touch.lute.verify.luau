@@ -10,6 +10,10 @@ for _, case in
 			source = require "./fixtures/input-touch-button",
 		},
 		{ name = "touch drag capture matches native input", source = require "./fixtures/input-touch-drag" },
+		{
+			name = "pointer actions route nested scrolling and preserve native events",
+			source = require "./fixtures/input-pointer-actions",
+		},
 	}
 do
 	Test.it(case.name, function(own)
