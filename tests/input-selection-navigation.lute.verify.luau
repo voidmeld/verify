@@ -48,6 +48,83 @@ return true
 ]=]
 local padTextSelectionProbe = string.gsub(textSelectionProbe, "local pad = false", "local pad = true", 1)
 
+it("selection publication preserves authored layout changes in selection handlers", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(
+		nil,
+		{
+			layout = {
+				roots = function()
+					return roots
+				end,
+				viewport = function()
+					return { X = 800, Y = 600 }
+				end,
+			},
+		}
+	)
+	own(bridge.close)
+	local env, engine = bridge.environment, bridge.placeEngine()
+	local library = engine.datatypes
+	local gui = env.createEngineInstance("PlayerGui", { Parent = engine.game })
+	local screen = env.createInstance("ScreenGui", { Parent = gui, IgnoreGuiInset = true })
+	own(function()
+		gui:Destroy()
+	end)
+	local first =
+		env.createInstance("TextButton", { Parent = screen, Text = "", Size = library.UDim2.fromOffset(30, 30) })
+	local second = assert(first:Clone())
+	second.Position, second.Parent = library.UDim2.fromOffset(50, 0), screen
+	table.insert(roots, gui)
+	local service, selection = engine.service "UserInputService", engine.service "GuiService"
+	env.poke(service, "GamepadEnabled", false)
+	env.poke(service, "PreferredInput", library.Enum.PreferredInput.KeyboardAndMouse)
+	local layout = assert(bridge.layout)
+	local input = Roblox.inputHost.simulated(env, {
+		playerGui = gui,
+		inputService = service,
+		layout = layout,
+		library = library,
+		activationWindowSeconds = 0.5,
+		virtualController = true,
+		inset = function()
+			return { X = 0, Y = 0 }
+		end,
+		read = assert(bridge.ui).styled,
+	})
+	own(input.close)
+	env.method(service, "GetGamepadState")(service, library.Enum.UserInputType.Gamepad1)
+	env.poke(selection, "SelectedObject", first)
+	layout.step()
+	local events, move = 0, false
+	local changed = selection:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+		events += 1
+		if move then
+			second.Position = library.UDim2.fromOffset(80, 0)
+		end
+	end)
+	own(function()
+		changed:Disconnect()
+	end)
+	local function press(code: string)
+		for _, down in { true, false } do
+			input.key { code = code, down = down }
+			env.step(1 / 60)
+			layout.step()
+		end
+	end
+	local before = env.revision()
+	press "Four"
+	expect(env.revision()):toBe(before)
+	expect(env.propertyOf(selection, "SelectedObject")):toBe(second)
+	expect(events):toBe(1)
+	move = true
+	press "Two"
+	expect(env.revision() > before):toBe(true)
+	expect(second.AbsolutePosition):toEqual(library.Vector2.new(80, 0))
+	expect(events):toBe(2)
+end)
+
 it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {

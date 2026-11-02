@@ -749,7 +749,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				end
 			end
 			if chosen then
-				env.poke(self, "SelectedObject", chosen)
+				env.publish(self, "SelectedObject", chosen)
 			end
 		end)
 	end
@@ -830,10 +830,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		if down and direction then
 			local target = navigate(selected, direction)
 			if target then
-				env.poke(guiService, "SelectedObject", target)
+				env.publish(guiService, "SelectedObject", target)
 			end
 		elseif down and code == "Escape" then
-			env.poke(guiService, "SelectedObject", nil)
+			env.publish(guiService, "SelectedObject", nil)
 		end
 		if code == "Return" and selected:IsA "TextBox" and read(selected, "TextEditable") ~= false then
 			if down then
@@ -860,7 +860,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		if guiService and Environment.isInstance(selected) and not focusedBox() then
 			local target = navigate(Environment.assertInstance(selected), directions[code])
 			if target then
-				env.poke(guiService, "SelectedObject", target)
+				env.publish(guiService, "SelectedObject", target)
 			end
 		end
 		env.scheduler.delay(0.12, repeatSelection, code, token)
@@ -898,7 +898,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if current and current ~= stickDirection then
 					local nextTarget = navigate(target, directions[current])
 					if nextTarget then
-						env.poke(guiService, "SelectedObject", nextTarget)
+						env.publish(guiService, "SelectedObject", nextTarget)
 					end
 				end
 				stickDirection = current
@@ -909,7 +909,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if event == "InputBegan" then
 					local nextTarget = navigate(target, directions[direction])
 					if nextTarget then
-						env.poke(guiService, "SelectedObject", nextTarget)
+						env.publish(guiService, "SelectedObject", nextTarget)
 					end
 					local token = {}
 					selectionRepeats[direction] = token
