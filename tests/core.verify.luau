@@ -498,6 +498,12 @@ describe("verify matchers", function()
 	end)
 
 	it("keeps negation satisfiable and composable", function()
+		local first, second = Verify.expect(1), Verify.expect(2)
+		local unequal = first.never.toBe
+		second.never:toBe(1)
+		unequal(first.never, 2)
+		first:toBe(1)
+		assert(first.never.never == first and first.never ~= second.never)
 		Verify.expect(nil).never:toBeNear(1, 0.5)
 		Verify.expect("text").never:toBeFloat32(1)
 		Verify.expect(1).never.never:toBe(1)
