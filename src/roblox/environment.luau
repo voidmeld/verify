@@ -283,33 +283,21 @@ local function create(options: Options?): Environment
 		return objects
 	end
 
-	local function without(list: { Instance }, removed: { Instance }): { Instance }
-		local excluded: { [Instance]: true } = {}
-		for _, item in removed do
-			excluded[item] = true
-		end
-		local kept: { Instance } = {}
-		for _, item in list do
-			if not excluded[item] then
-				table.insert(kept, item)
-			end
-		end
-		return kept
-	end
-
 	local function move(object: Instance, state: State, parent: Instance?)
 		local previous = state.parent
 		if previous == parent then
 			return
 		end
 		local objects = subtree(object)
-		local before = ancestors(previous)
-		local after = ancestors(parent)
+		local leaving = ancestors(previous)
+		local joining = ancestors(parent)
+		while #leaving > 0 and #joining > 0 and leaving[#leaving] == joining[#joining] do
+			table.remove(leaving)
+			table.remove(joining)
+		end
 		for _, descendant in objects do
 			stateOf(descendant).removing = true
 		end
-		local leaving = without(before, after)
-		local joining = without(after, before)
 		for _, descendant in objects do
 			for _, ancestor in leaving do
 				fireSignal(stateOf(ancestor), "DescendantRemoving", descendant)
