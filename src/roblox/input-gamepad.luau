@@ -77,8 +77,8 @@ local function create(
 			entries = {}
 			for _, code in controls do
 				local object = input(kind)
-				env.poke(object, "KeyCode", library.Enum.KeyCode:FromName(code))
-				env.poke(object, "UserInputState", library.Enum.UserInputState.End)
+				env.publish(object, "KeyCode", library.Enum.KeyCode:FromName(code))
+				env.publish(object, "UserInputState", library.Enum.UserInputState.End)
 				table.insert(entries, object)
 			end
 			states[name] = entries
@@ -125,18 +125,18 @@ local function create(
 		if beforeX == x and beforeY == y and beforeZ == z then
 			return
 		end
-		env.poke(target, "Position", library.Vector3.new(x, y, z))
-		env.poke(target, "Delta", library.Vector3.new(x - beforeX, y - beforeY, z - beforeZ))
+		env.publish(target, "Position", library.Vector3.new(x, y, z))
+		env.publish(target, "Delta", library.Vector3.new(x - beforeX, y - beforeY, z - beforeZ))
 		local analog = sticks[code] ~= nil
 		local trigger = control == "ButtonL2" or control == "ButtonR2"
 		if trigger then
-			env.poke(target, "UserInputState", library.Enum.UserInputState.Change)
+			env.publish(target, "UserInputState", library.Enum.UserInputState.Change)
 			emit("InputChanged", target)
-			env.poke(target, "Delta", library.Vector3.zero)
+			env.publish(target, "Delta", library.Vector3.zero)
 		end
 		local ended = x == 0 and y == 0 and z == 0
 		local phase = if ended then "End" elseif analog then "Change" else "Begin"
-		env.poke(target, "UserInputState", library.Enum.UserInputState:FromName(phase))
+		env.publish(target, "UserInputState", library.Enum.UserInputState:FromName(phase))
 		emit(if ended then "InputEnded" elseif analog then "InputChanged" else "InputBegan", target)
 	end
 	return { state = state, key = key }

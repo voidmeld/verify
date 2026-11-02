@@ -9,6 +9,43 @@ local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local probe = require "./fixtures/ui-style-properties"
 
+it("hit queries observe style changes between queries", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(bridge.close)
+	local env = bridge.environment
+	local library = bridge.placeEngine().datatypes
+	local screen = env.createInstance("ScreenGui", { ZIndexBehavior = library.Enum.ZIndexBehavior.Global })
+	table.insert(roots, screen)
+	local front = env.createInstance("Frame", { Parent = screen, Size = library.UDim2.fromOffset(100, 40) })
+	local back = env.createInstance("Frame", { Parent = screen, Size = library.UDim2.fromOffset(100, 40) })
+	front:AddTag "front"
+	local sheet = env.createInstance("StyleSheet", { Parent = screen })
+	local rule = env.createInstance("StyleRule", { Parent = sheet, Selector = ".front" })
+	env.createInstance("StyleLink", { Parent = screen, StyleSheet = sheet })
+	local set = env.method(rule, "SetProperty")
+	set(rule, "ZIndex", 3)
+	local layout = assert(bridge.layout)
+	layout.step()
+	expect(layout.objectsAtPosition(screen, 10, 10)):toEqual { front, back }
+	set(rule, "Visible", false)
+	expect(layout.objectsAtPosition(screen, 10, 10)):toEqual { back }
+	set(rule, "Visible", true)
+	set(rule, "ZIndex", 0)
+	expect(layout.objectsAtPosition(screen, 10, 10)):toEqual { back, front }
+	set(rule, "ZIndex", 3)
+	expect(layout.objectsAtPosition(screen, 10, 10)):toEqual { front, back }
+end)
+
 it("style property resolution matches the same native conformance assertions", function(own)
 	local roots: { Roblox.Instance } = {}
 	local bridge = Lute.fixture.bridge(nil, {

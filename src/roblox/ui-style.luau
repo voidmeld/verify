@@ -15,7 +15,7 @@ export type Controller = {
 	cached: (() -> ()) -> (),
 	close: () -> (),
 	invalidate: () -> (),
-	animating: () -> boolean,
+	animating: (boolean?) -> boolean,
 }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
@@ -603,14 +603,23 @@ local function create(
 		end,
 		close = close,
 		invalidate = invalidate,
-		animating = function(): boolean
-			if next(stale) ~= nil then
+		animating = function(geometryOnly: boolean?): boolean
+			if not geometryOnly and next(stale) ~= nil then
 				return true
 			end
 			local now = env.now()
-			for entry in pairs(timed) do
+			for entry, object in pairs(timed) do
+				if geometryOnly then
+					if entry.property:match "Color3$" or entry.property:match "Transparency$" then
+						continue
+					end
+					local component = entry.phantom or object.ClassName
+					if component == "UIGradient" or component == "UICorner" or component == "UIStroke" then
+						continue
+					end
+				end
 				local timing = entry.motion.timing
-				if timing ~= nil and now - entry.motion.started - timing.delay < timing.time then
+				if stale[entry] or timing ~= nil and now - entry.motion.started - timing.delay < timing.time then
 					return true
 				end
 			end

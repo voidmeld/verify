@@ -28,7 +28,7 @@ export type Controller = {
 	component: (Instance, string, string) -> unknown,
 	step: () -> (),
 	cached: (() -> ()) -> (),
-	animating: () -> boolean,
+	animating: (boolean?) -> boolean,
 	rejectedSelections: () -> { Rejection },
 	close: () -> (),
 }

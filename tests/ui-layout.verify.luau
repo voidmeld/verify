@@ -149,14 +149,17 @@ describe("simulated GUI layout", function()
 		local layout = controller(env, root)
 		layout.step()
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual { base, overlay, child }
+		expect(layout.objectsAtPosition(root, 200, 140, { base, child })):toEqual { base, child }
 		root.ZIndexBehavior = Types.Enum.ZIndexBehavior.Sibling
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual { child, base, overlay }
+		expect(layout.objectsAtPosition(root, 200, 140, { base, child })):toEqual { child, base }
 		overlay.ZIndex = 10
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual { overlay, child, base }
 		root.ZIndexBehavior = Types.Enum.ZIndexBehavior.Global
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual { overlay, base, child }
 		base.Interactable = false
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual { overlay, base, child }
+		expect(layout.objectsAtPosition(root, 200, 140, { base })):toEqual { base }
 	end)
 	it("matches native inclusive edges, clipping and hidden hit exclusion", function()
 		local env = fixture()
@@ -175,13 +178,32 @@ describe("simulated GUI layout", function()
 		expect(layout.objectsAtPosition(root, 200, 200)):toEqual { base }
 		expect(layout.objectsAtPosition(root, 281, 180)):toEqual {}
 		expect(layout.objectsAtPosition(root, 300, 140)):toEqual { child }
+		expect(layout.objectsAtPosition(root, 300, 140, { child })):toEqual { child }
 		base.ClipsDescendants = true
 		expect(layout.objectsAtPosition(root, 300, 140)):toEqual {}
+		expect(layout.objectsAtPosition(root, 300, 140, { child })):toEqual {}
 		base.Visible = false
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual {}
+		expect(layout.objectsAtPosition(root, 270, 140, { child })):toEqual {}
 		base.Visible = true
 		root.Enabled = false
 		expect(layout.objectsAtPosition(root, 200, 140)):toEqual {}
+		expect(layout.objectsAtPosition(root, 270, 140, { child })):toEqual {}
+		root.Enabled = true
+		child.Parent = root
+		layout.step()
+		expect(layout.objectsAtPosition(root, 100, 20, { child })):toEqual { child }
+		child:Destroy()
+		expect(layout.objectsAtPosition(root, 200, 140, { child })):toEqual {}
+		local rotated = env.createInstance("Frame", {
+			Parent = root,
+			Position = Types.UDim2.fromOffset(100, 100),
+			Size = Types.UDim2.fromOffset(100, 20),
+			Rotation = 90,
+		})
+		layout.step()
+		expect(layout.objectsAtPosition(root, 150, 65, { rotated })):toEqual { rotated }
+		expect(layout.objectsAtPosition(root, 105, 110, { rotated })):toEqual {}
 	end)
 	it("matches native scale and padding observations at a nonzero screen origin", function()
 		local env = fixture()

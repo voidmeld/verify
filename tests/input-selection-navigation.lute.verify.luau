@@ -6,8 +6,99 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
+local Gamepad = require "../src/roblox/input-gamepad"
 local virtualControllerProbe = require "./fixtures/input-virtual-controller"
 local controllerSelectionProbe = require "./fixtures/input-controller-selection"
+
+local textSelectionProbe = [=[
+local pad = false
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local box = Instance.new("TextBox")
+box.Text, box.ClearTextOnFocus, box.TextEditable = "seed", false, false
+box.Size, box.Parent = UDim2.fromOffset(200, 40), screen
+local input, gui = game.UserInputService, game.GuiService
+local virtual = input:CreateVirtualInput()
+local focused, released = 0, 0
+box.Focused:Connect(function() focused += 1 end)
+box.FocusLost:Connect(function(submitted, cause)
+	released += 1
+	if not pad then assert(submitted and cause.KeyCode == Enum.KeyCode.Return, "submit carries its input") end
+end)
+local function press()
+	local code = if pad then Enum.KeyCode.Nine else Enum.KeyCode.Return
+	virtual:SendKey(true, code, false)
+	task.wait(0.05)
+	virtual:SendKey(false, code, false)
+	task.wait(0.05)
+end
+task.wait(0.05)
+gui.SelectedObject = box
+press()
+assert(not box:IsFocused() and focused == 0, "noneditable selection does not enter editing")
+box.TextEditable = true
+press()
+assert(box:IsFocused() and focused == 1 and released == 0, "accept enters editing once without submitting")
+assert(box.Text == "seed", "selection entry retains text when ClearTextOnFocus is false")
+if pad then box:ReleaseFocus() else press() end
+assert(not box:IsFocused() and released == 1, "the edit releases once")
+gui.SelectedObject = nil
+screen:Destroy()
+return true
+]=]
+local padTextSelectionProbe = string.gsub(textSelectionProbe, "local pad = false", "local pad = true", 1)
+
+it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
+	local roots: { Roblox.Instance } = {}
+	local bridge = Lute.fixture.bridge(nil, {
+		layout = {
+			roots = function()
+				return roots
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+		},
+	})
+	own(bridge.close)
+	local env, library = bridge.environment, bridge.placeEngine().datatypes
+	local screen = env.createInstance "ScreenGui"
+	table.insert(roots, screen)
+	own(function()
+		screen:Destroy()
+	end)
+	local target = env.createInstance("Frame", { Parent = screen, Size = library.UDim2.fromOffset(100, 40) })
+	local events, move = 0, false
+	local gamepad = Gamepad.create(env, library, function(kind: unknown): Roblox.Instance
+		local object = env.createEngineInstance "InputObject"
+		env.poke(object, "UserInputType", kind)
+		env.poke(object, "Position", library.Vector3.zero)
+		own(function()
+			env.releaseObject(object)
+		end)
+		return object
+	end, function()
+		events += 1
+		if move then
+			target.Position = library.UDim2.fromOffset(40, 30)
+		end
+	end)
+	gamepad.state(library.Enum.UserInputType.Gamepad1)
+	local layout = assert(bridge.layout)
+	layout.step()
+	local before, published = env.revision()
+	gamepad.key("Eight", true)
+	gamepad.key("Eight", false)
+	local after, updated = env.revision()
+	expect(after):toBe(before)
+	expect(updated > published):toBe(true)
+	expect(events):toBe(2)
+	move = true
+	gamepad.key("Eight", true)
+	expect(env.revision() > after):toBe(true)
+	layout.step()
+	expect(target.AbsolutePosition):toEqual(library.Vector2.new(40, 30))
+end)
 
 local probe = [==[
 local RS = game:GetService("RunService")
@@ -55,6 +146,61 @@ return true
 
 for _, case in
 	{
+		{
+			name = "keyboard bindings require both modifiers before the key and release their original actions",
+			source = [=[
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local counts = {Plain = 0, Chord = 0}
+local function action(name, priority, primary, secondary)
+	local context = Instance.new("InputContext")
+	context.Priority, context.Sink, context.Parent = priority, true, screen
+	local target = Instance.new("InputAction")
+	target.Parent = context
+	local binding = Instance.new("InputBinding")
+	binding.KeyCode, binding.Parent = Enum.KeyCode.K, target
+	if primary then binding.PrimaryModifier = primary end
+	if secondary then binding.SecondaryModifier = secondary end
+	target.Pressed:Connect(function() counts[name] += 1 end)
+	return target
+end
+action("Plain", 1)
+local chord = action("Chord", 2, Enum.KeyCode.LeftShift, Enum.KeyCode.LeftControl)
+local virtual = game.UserInputService:CreateVirtualInput()
+local function send(code, down)
+	virtual:SendKey(down, code, false)
+	task.wait(0.05)
+end
+local function tap() send(Enum.KeyCode.K, true) send(Enum.KeyCode.K, false) end
+tap()
+assert(counts.Plain == 1 and counts.Chord == 0, "plain key excludes the chord")
+send(Enum.KeyCode.LeftShift, true)
+tap()
+assert(counts.Plain == 2 and counts.Chord == 0, "one modifier does not satisfy two")
+send(Enum.KeyCode.LeftControl, true)
+send(Enum.KeyCode.K, true)
+assert(counts.Plain == 2 and counts.Chord == 1, "qualified higher priority chord sinks the plain key")
+send(Enum.KeyCode.LeftShift, false)
+send(Enum.KeyCode.K, false)
+assert(not chord:GetState(), "key release resets the chord after its modifier released")
+send(Enum.KeyCode.LeftShift, true)
+tap()
+assert(counts.Chord == 2, "the chord can activate again")
+send(Enum.KeyCode.LeftShift, false)
+send(Enum.KeyCode.LeftControl, false)
+send(Enum.KeyCode.K, true)
+send(Enum.KeyCode.LeftShift, true)
+send(Enum.KeyCode.LeftControl, true)
+assert(counts.Plain == 3 and counts.Chord == 2, "late modifiers do not steal an existing key")
+send(Enum.KeyCode.K, false)
+send(Enum.KeyCode.LeftShift, false)
+send(Enum.KeyCode.LeftControl, false)
+screen:Destroy()
+return true
+]=],
+		},
+		{ name = "Return accepts a selected TextBox without submitting the entering key", source = textSelectionProbe },
+		{ name = "ButtonA accepts a selected editable TextBox", source = padTextSelectionProbe },
 		{ name = "controller selection routes activation and DPad repeats", source = controllerSelectionProbe },
 		{
 			name = "virtual controller events match native button trigger and stick traces",
@@ -119,6 +265,56 @@ for _, case in
 			]=],
 		},
 		{ name = "held selection repeats and stops on release", source = require "./fixtures/input-selection-repeat" },
+		{
+			name = "navigation reevaluates shared ancestors after visibility interaction and ancestry changes",
+			source = [=[
+local gui = game.GuiService
+local screen = Instance.new("ScreenGui")
+screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
+local disabled = screen:Clone()
+disabled.Enabled, disabled.Parent = false, screen.Parent
+local function button(x, parent)
+	local target = Instance.new("TextButton")
+	target.Text, target.Size, target.Position = "", UDim2.fromOffset(30,30), UDim2.fromOffset(x,0)
+	target.Parent = parent
+	return target
+end
+local source = button(0, screen)
+local outside = button(120, screen)
+local parent = Instance.new("Frame")
+parent.Size, parent.Visible, parent.Parent = UDim2.fromOffset(100,100), false, screen
+local folder = Instance.new("Folder")
+folder.Parent = parent
+local inside = button(60, folder)
+button(90, folder)
+local virtual = game.UserInputService:CreateVirtualInput()
+local function right(expected)
+	task.wait(0.05)
+	gui.SelectedObject = source
+	virtual:SendKey(true, Enum.KeyCode.Right, false)
+	task.wait(0.05)
+	virtual:SendKey(false, Enum.KeyCode.Right, false)
+	task.wait(0.05)
+	assert(gui.SelectedObject == expected, "selection reflects current ancestor eligibility")
+end
+right(outside)
+parent.Visible = true
+right(inside)
+parent.Interactable = false
+right(outside)
+parent.Interactable, parent.Parent = true, disabled
+right(outside)
+disabled.Enabled = true
+right(inside)
+parent.Parent = screen
+inside.Selectable = false
+right(folder:GetChildren()[2])
+gui.SelectedObject = nil
+screen:Destroy()
+disabled:Destroy()
+return true
+]=],
+		},
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
 		{
 			name = "GuiService Select chooses eligible descendants by order",
@@ -160,7 +356,9 @@ do
 		local priorGamepad, priorPreferred = inputService.GamepadEnabled, inputService.PreferredInput
 		local priorKeyboard, priorMouse = inputService.KeyboardEnabled, inputService.MouseEnabled
 		local input = Roblox.inputHost.simulated(bridge.environment, {
-			virtualController = case.source == virtualControllerProbe or case.source == controllerSelectionProbe,
+			virtualController = case.source == virtualControllerProbe
+				or case.source == controllerSelectionProbe
+				or case.source == padTextSelectionProbe,
 			playerGui = playerGui,
 			inputService = engine.service "UserInputService",
 			layout = assert(bridge.layout),
@@ -197,7 +395,11 @@ do
 		end)
 		input.close()
 		restoreConnection:Disconnect()
-		if case.source == virtualControllerProbe or case.source == controllerSelectionProbe then
+		if
+			case.source == virtualControllerProbe
+			or case.source == controllerSelectionProbe
+			or case.source == padTextSelectionProbe
+		then
 			expect(restored ~= nil):toBe(true)
 		end
 		expect(inputService.GamepadEnabled):toBe(priorGamepad)

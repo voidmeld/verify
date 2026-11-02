@@ -467,6 +467,19 @@ local function create(options: Options?): Environment
 		if plain ~= nil and plain[key] and state.doubles[key] == nil then
 			return state.values[key]
 		end
+		local class = state.class
+		local bound = state.bound
+		local cached = if bound ~= nil then bound[key] else nil
+		if
+			cached ~= nil
+			and state.doubles[key] == nil
+			and (
+				class.methods[key] ~= nil
+				or (class.properties[key] == nil and computedFor(state.className, key) == nil)
+			)
+		then
+			return cached
+		end
 		if not state.class.instance and (key == "Name" or key == "Archivable") then
 			memberError(state, key)
 		end
@@ -487,7 +500,6 @@ local function create(options: Options?): Environment
 		elseif key == "Parent" and state.class.instance then
 			return state.parent
 		end
-		local class = state.class
 		if
 			class.properties[key] ~= nil
 			and state.doubles[key] == nil
@@ -504,18 +516,6 @@ local function create(options: Options?): Environment
 				known[key] = true
 			end
 			return state.values[key]
-		end
-		local bound = state.bound
-		local cached = if bound ~= nil then bound[key] else nil
-		if
-			cached ~= nil
-			and state.doubles[key] == nil
-			and (
-				class.methods[key] ~= nil
-				or (class.properties[key] == nil and computedFor(state.className, key) == nil)
-			)
-		then
-			return cached
 		end
 		local double = doubleHandler(state.doubles[key])
 		if double ~= nil then
