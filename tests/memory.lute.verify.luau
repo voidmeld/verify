@@ -176,6 +176,42 @@ describe("rehearsed lifecycles", function()
 		expect(#held):toEqual(2)
 	end)
 
+	it("settles a rehearsal the same way as the measured lifecycle", function()
+		local steps: { string } = {}
+		local now = 0
+		local memory = Lute.memory.create {
+			now = function()
+				now += 1
+				return now
+			end,
+			heap = function()
+				return 1
+			end,
+			witness = function()
+				table.insert(steps, "settle")
+				local weak: { token: {}? } = { token = nil }
+				return setmetatable(weak, { __mode = "" })
+			end,
+			pressure = function() end,
+		}
+		memory.measure({
+			setup = function()
+				table.insert(steps, "setup")
+				return true
+			end,
+			run = function(_state: boolean) end,
+			teardown = function(_state: boolean)
+				table.insert(steps, "teardown")
+			end,
+			iterations = 1,
+			rehearsals = 1,
+		}, { cycles = 2 })
+		local rehearsal = "setup settle settle teardown"
+		local baseline = "settle settle"
+		local measured = "setup settle settle teardown settle settle"
+		expect(table.concat(steps, " ")):toEqual(`{rehearsal} {baseline} {measured}`)
+	end)
+
 	it("rejects a negative rehearsal count", function()
 		expect(function()
 			Lute.memory.measure {
