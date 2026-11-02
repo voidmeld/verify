@@ -20,14 +20,7 @@ export type Segment = {
 	payload: string,
 }
 
-local function fingerprint(text: string): string
-	local hash = 2166136261
-	for index = 1, #text do
-		hash = bit32.bxor(hash, string.byte(text, index))
-		hash = bit32.band(hash * 16777619, 0xFFFFFFFF)
-	end
-	return ("%08x-%d"):format(hash, #text)
-end
+local fingerprint = Shape.fingerprint
 
 local function checkedTag(tag: string): string
 	if tag == "" then

@@ -24,6 +24,15 @@ local function sortedUnique(values: { string }?, label: string): { string }
 	return result
 end
 
+local function intersects(values: { string }, wanted: { [string]: boolean }): boolean
+	for _, value in values do
+		if wanted[value] then
+			return true
+		end
+	end
+	return false
+end
+
 local function setOf(values: { string }?): { [string]: boolean }
 	local result: { [string]: boolean } = {}
 	local supplied: { string } = values or {}
@@ -68,6 +77,7 @@ local function explain(negotiation: Negotiation): string
 end
 
 return {
+	intersects = intersects,
 	negotiate = negotiate,
 	union = union,
 	explain = explain,

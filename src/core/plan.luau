@@ -2,6 +2,7 @@
 
 local Capability = require "./capability"
 local Types = require "./types"
+local Shape = require "./shape"
 
 type Plan = Types.Plan
 type PlanDraft = Types.PlanDraft
@@ -160,23 +161,9 @@ local function validate(draft: PlanDraft | Plan): Plan
 	}
 end
 
-local function set(values: { string }?): { [string]: boolean }
-	local result: { [string]: boolean } = {}
-	local source: { string } = if values ~= nil then values else {}
-	for _, value in source do
-		result[value] = true
-	end
-	return result
-end
+local set = Capability.set
 
-local function intersects(values: { string }, wanted: { [string]: boolean }): boolean
-	for _, value in values do
-		if wanted[value] then
-			return true
-		end
-	end
-	return false
-end
+local intersects = Capability.intersects
 
 local function select(plan: PlanDraft | Plan, selection: PlanSelection?): Plan
 	local checked = validate(plan)
@@ -328,13 +315,7 @@ local function digest(plan: PlanDraft | Plan): string
 			)
 		)
 	end
-	local text = table.concat(pieces, "\n")
-	local hash = 2166136261
-	for index = 1, #text do
-		hash = bit32.bxor(hash, string.byte(text, index))
-		hash = bit32.band(hash * 16777619, 0xFFFFFFFF)
-	end
-	return ("%08x-%d"):format(hash, #text)
+	return Shape.fingerprint(table.concat(pieces, "\n"))
 end
 
 return {

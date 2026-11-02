@@ -80,14 +80,7 @@ end
 
 local selectionSet = Capability.set
 
-local function intersects(values: { string }, wanted: { [string]: boolean }): boolean
-	for _, value in values do
-		if wanted[value] then
-			return true
-		end
-	end
-	return false
-end
+local intersects = Capability.intersects
 
 local function startsWithAny(value: string, prefixes: { string }?): boolean
 	local sourcePrefixes: { string } = if prefixes ~= nil then prefixes else {}

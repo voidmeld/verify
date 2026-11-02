@@ -6,6 +6,7 @@ local GateJob = require "./gate-job"
 local GateTypes = require "./gate-types"
 local Plan = require "../core/plan"
 local Types = require "../core/types"
+local Shape = require "../core/shape"
 
 type Producer = GateTypes.Producer
 type ProducerRecord = GateTypes.ProducerRecord
@@ -298,14 +299,7 @@ local function checkGraph(producers: { Producer })
 	end
 end
 
-local function fingerprint(text: string): string
-	local hash = 2166136261
-	for index = 1, #text do
-		hash = bit32.bxor(hash, string.byte(text, index))
-		hash = bit32.band(hash * 16777619, 0xFFFFFFFF)
-	end
-	return ("%08x-%d"):format(hash, #text)
-end
+local fingerprint = Shape.fingerprint
 
 local function digestOf(id: string, producers: { Producer }, policy: GateTypes.Policy): string
 	local pieces: { string } = {

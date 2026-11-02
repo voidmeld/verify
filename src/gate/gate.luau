@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "../core/shape"
 local Capability = require "../core/capability"
 local Execution = require "../core/execution"
 local GateDefine = require "./gate-define"
@@ -170,9 +171,7 @@ local function resolve(gate: Gate, selection: GateTypes.Selection?): Resolved
 	return resolved
 end
 
-local function micros(seconds: number): number
-	return math.max(0, math.floor(seconds * 1e6 + 0.5))
-end
+local micros = Shape.micros
 
 type Running = {
 	id: string,

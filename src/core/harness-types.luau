@@ -1,5 +1,6 @@
 --!strict
 
+local Shape = require "./shape"
 local Attachment = require "./attachment"
 local Matchers = require "./matchers"
 local Progress = require "./progress"
@@ -173,8 +174,6 @@ local function suitePath(chain: { Suite }): { string }
 	return path
 end
 
-local function micros(seconds: number): number
-	return math.max(0, math.floor(seconds * 1e6 + 0.5))
-end
+local micros = Shape.micros
 
 return { checkedName = checkedName, ancestors = ancestors, suitePath = suitePath, micros = micros }
