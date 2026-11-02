@@ -12,6 +12,7 @@ local Gamepad = require "./input-gamepad"
 local Touch = require "./input-touch"
 local VectorTypes = require "./datatypes/vector"
 local Names = require "./datatypes/names"
+local MODIFIERS = { "PrimaryModifier", "SecondaryModifier" }
 
 export type Key = { code: string, down: boolean }
 export type Pointer = { x: number, y: number, button: "left" | "right" | "middle", down: boolean }
@@ -201,6 +202,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	)
 	local inputTypes, states = library.Enum.UserInputType, library.Enum.UserInputState
 	local none = library.Enum.KeyCode.None
+	local unknownKey = library.Enum.KeyCode:FromName "Unknown"
 	local closed, held = false, false
 	local position: Position = { X = 0, Y = 0 }
 	local buttonPosition: Position = { X = 0, Y = 0 }
@@ -589,6 +591,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	end
 	local heldKeys: { [string]: true } = {}
 	local heldInputs: { [string]: Instance } = {}
+	local keyActions: { [string]: { Instance } } = {}
 	local selectionRepeats: { [string]: {} } = {}
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
@@ -598,6 +601,22 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local found: { { action: Instance, context: Instance } } = {}
 		for _, binding in root:GetDescendants() do
 			if not binding:IsA "InputBinding" or codeName(env.propertyOf(binding, "KeyCode")) ~= code then
+				continue
+			end
+			local matched = true
+			for _, property in MODIFIERS do
+				local modifier = env.propertyOf(binding, property)
+				if
+					modifier ~= nil
+					and modifier ~= none
+					and modifier ~= unknownKey
+					and not heldKeys[codeName(modifier)]
+				then
+					matched = false
+					break
+				end
+			end
+			if not matched then
 				continue
 			end
 			if codeName(env.propertyOf(binding, "Type")) ~= "Automatic" then
@@ -629,6 +648,18 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		return found
 	end
 	local function deliverActions(code: string, down: boolean)
+		if not down then
+			local actions = keyActions[code]
+			keyActions[code] = nil
+			for _, action in actions or {} do
+				if env.isAlive(action) then
+					env.method(action, "Fire")(action, false)
+				end
+			end
+			return
+		end
+		local actions: { Instance } = {}
+		keyActions[code] = actions
 		local sunk: number? = nil
 		for _, entry in boundActions(code) do
 			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
@@ -637,6 +668,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			end
 			local fire = env.method(entry.action, "Fire")
 			fire(entry.action, down)
+			table.insert(actions, entry.action)
 			if env.propertyOf(entry.context, "Sink") == true then
 				sunk = priority
 			end
@@ -1171,6 +1203,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			held = false
 			pressed, hovered, pressedButton = {}, {}, nil
 			table.clear(activations)
+			table.clear(keyActions)
 			for _, object in owned do
 				if env.isAlive(object) then
 					env.releaseObject(object)

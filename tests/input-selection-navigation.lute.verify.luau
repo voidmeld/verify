@@ -93,6 +93,59 @@ return true
 
 for _, case in
 	{
+		{
+			name = "keyboard bindings require both modifiers before the key and release their original actions",
+			source = [=[
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local counts = {Plain = 0, Chord = 0}
+local function action(name, priority, primary, secondary)
+	local context = Instance.new("InputContext")
+	context.Priority, context.Sink, context.Parent = priority, true, screen
+	local target = Instance.new("InputAction")
+	target.Parent = context
+	local binding = Instance.new("InputBinding")
+	binding.KeyCode, binding.Parent = Enum.KeyCode.K, target
+	if primary then binding.PrimaryModifier = primary end
+	if secondary then binding.SecondaryModifier = secondary end
+	target.Pressed:Connect(function() counts[name] += 1 end)
+	return target
+end
+action("Plain", 1)
+local chord = action("Chord", 2, Enum.KeyCode.LeftShift, Enum.KeyCode.LeftControl)
+local virtual = game.UserInputService:CreateVirtualInput()
+local function send(code, down)
+	virtual:SendKey(down, code, false)
+	task.wait(0.05)
+end
+local function tap() send(Enum.KeyCode.K, true) send(Enum.KeyCode.K, false) end
+tap()
+assert(counts.Plain == 1 and counts.Chord == 0, "plain key excludes the chord")
+send(Enum.KeyCode.LeftShift, true)
+tap()
+assert(counts.Plain == 2 and counts.Chord == 0, "one modifier does not satisfy two")
+send(Enum.KeyCode.LeftControl, true)
+send(Enum.KeyCode.K, true)
+assert(counts.Plain == 2 and counts.Chord == 1, "qualified higher priority chord sinks the plain key")
+send(Enum.KeyCode.LeftShift, false)
+send(Enum.KeyCode.K, false)
+assert(not chord:GetState(), "key release resets the chord after its modifier released")
+send(Enum.KeyCode.LeftShift, true)
+tap()
+assert(counts.Chord == 2, "the chord can activate again")
+send(Enum.KeyCode.LeftShift, false)
+send(Enum.KeyCode.LeftControl, false)
+send(Enum.KeyCode.K, true)
+send(Enum.KeyCode.LeftShift, true)
+send(Enum.KeyCode.LeftControl, true)
+assert(counts.Plain == 3 and counts.Chord == 2, "late modifiers do not steal an existing key")
+send(Enum.KeyCode.K, false)
+send(Enum.KeyCode.LeftShift, false)
+send(Enum.KeyCode.LeftControl, false)
+screen:Destroy()
+return true
+]=],
+		},
 		{ name = "Return accepts a selected TextBox without submitting the entering key", source = textSelectionProbe },
 		{ name = "ButtonA accepts a selected editable TextBox", source = padTextSelectionProbe },
 		{ name = "controller selection routes activation and DPad repeats", source = controllerSelectionProbe },
