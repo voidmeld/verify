@@ -56,6 +56,8 @@ local function create(
 	local staleSince: number? = nil
 	local styleGeneration = 0
 	local readsGeneration = -1
+	local wasAnimating = false
+	local controller: Controller
 	local function mark(subtree: Instance?)
 		styleGeneration += 1
 		local now = env.now()
@@ -433,7 +435,11 @@ local function create(
 				)
 			then
 				local operation = event.operation
-				if operation == "setParent" or (operation == "setProperty" and STYLE_MEMBERS[event.member or ""]) then
+				if
+					operation == "setParent"
+					or operation == "destroy" and watches[object] ~= nil
+					or (operation == "setProperty" and STYLE_MEMBERS[event.member or ""])
+				then
 					subtree = object
 				else
 					return
@@ -534,7 +540,7 @@ local function create(
 			reads[object] = nil
 		end
 	end
-	return {
+	controller = {
 		styled = styled,
 		component = function(object: Instance, className: string, property: string): unknown
 			local physical = object:FindFirstChildWhichIsA(className)
@@ -551,6 +557,10 @@ local function create(
 		end,
 		step = function()
 			refresh()
+			local animating = controller.animating()
+			if observed ~= nil and readsGeneration == styleGeneration and not animating and not wasAnimating then
+				return
+			end
 			for object, entries in pairs(watches) do
 				if not env.isAlive(object) then
 					for _, watch in entries do
@@ -567,6 +577,7 @@ local function create(
 					end
 				end
 			end
+			wasAnimating = controller.animating()
 			if observed ~= nil and readsGeneration == styleGeneration then
 				return
 			end
@@ -626,6 +637,7 @@ local function create(
 			return false
 		end,
 	}
+	return controller
 end
 
 return { create = create }
