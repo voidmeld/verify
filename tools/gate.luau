@@ -3,7 +3,7 @@
 local process = require "@std/process"
 
 local Gate = require "../src/gate"
-local Lute = require "../src/lute"
+local GateRuntime = require "../src/lute/gate"
 
 local USAGE =
 	"usage: lute run tools/gate.luau [--native] [--only producer]... [--tier name]... [--case id]... [--file spec]... [--name text] [--rerun] [--explain id] [--list]"
@@ -142,7 +142,7 @@ if not native then
 	deferrals["native-multiplayer"] = "the portable gate does not run the reference Studio host; use --native"
 end
 
-local exitCode = Lute.gate.cli(
+local exitCode = GateRuntime.cli(
 	{
 		id = "verify-gate",
 		producers = producers,

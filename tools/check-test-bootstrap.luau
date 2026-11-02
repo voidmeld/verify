@@ -4,7 +4,7 @@ local fs = require "@std/fs"
 
 local Gate = require "../src/gate"
 local Verify = require "../src/core"
-local Lute = require "../src/lute"
+local GateRuntime = require "../src/lute/gate"
 
 local root = ".lute/tmp/verify-test-bootstrap"
 local fixtures: { { name: string, source: string?, passes: boolean, output: string } } = {
@@ -50,7 +50,7 @@ for _, fixture in fixtures do
 			id = "bootstrap-" .. fixture.name,
 			producers = { { id = "specs", kind = "tests", worker = "tests/worker.luau", locators = locators } },
 		}
-		return Lute.gate.run(gate, { directory = directory .. "/gate" })
+		return GateRuntime.run(gate, { directory = directory .. "/gate" })
 	end)
 	local output = if ran then Verify.format(outcome.execution.report) else tostring(outcome)
 	if ran then

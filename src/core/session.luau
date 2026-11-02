@@ -12,18 +12,6 @@ type Selection = Harness.Selection
 export type Surface = { [string]: unknown }
 export type SurfaceFactory<S = Surface> = (harness: Harness.Harness) -> S
 
-export type ProvidedOptions<S> = {
-	executor: string,
-	bind: ((Harness.Context) -> Operations.Host)?,
-	cancelled: (() -> boolean)?,
-	environment: { [string]: string },
-	capabilities: { string }?,
-	now: (() -> number)?,
-	surface: SurfaceFactory<S>,
-	prefixCaseIds: boolean?,
-	selection: Selection?,
-}
-
 export type DefaultOptions = {
 	executor: string,
 	bind: ((Harness.Context) -> Operations.Host)?,
@@ -34,6 +22,8 @@ export type DefaultOptions = {
 	prefixCaseIds: boolean?,
 	selection: Selection?,
 }
+
+export type ProvidedOptions<S> = DefaultOptions & { surface: SurfaceFactory<S> }
 
 export type Session<S = Harness.Harness> = {
 	open: (self: Session<S>, source: string) -> (),
@@ -185,18 +175,17 @@ local function createSurface<S>(options: ProvidedOptions<S>): Session<S>
 				continue
 			end
 			running = entry
-			local ok, produced = pcall(function(): Report
-				local harness = entry.harness
-				assert(harness ~= nil)
-				return harness:run {
-					executor = executor,
-					capabilities = capabilities,
-					environment = environment,
-					selection = selection,
-					bind = options.bind,
-					cancelled = options.cancelled,
-				}
-			end)
+			local harness = entry.harness
+			assert(harness ~= nil)
+			local settings: Harness.RunOptions = {
+				executor = executor,
+				capabilities = capabilities,
+				environment = environment,
+				selection = selection,
+				bind = options.bind,
+				cancelled = options.cancelled,
+			}
+			local ok, produced = pcall(harness.run, harness, settings)
 			running = nil
 			if not ok then
 				error(produced, 0)

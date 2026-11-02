@@ -182,15 +182,11 @@ local function create(runtime: Runtime): Gate
 					end
 					local bounded = table.clone(batch)
 					bounded.deadlineSeconds = math.min(remaining, batch.deadlineSeconds or remaining)
-					local returned: Verify.BatchOutcome? = nil
-					local ran, problem = pcall(function()
-						returned = runBatch(bounded)
-					end)
+					local ran, outcome = pcall(runBatch, bounded)
 					active -= 1
 					if not ran then
-						error(problem, 0)
+						error(outcome, 0)
 					end
-					local outcome = assert(returned)
 					if job.isolate and outcome.status == "returned" and outcome.report ~= nil then
 						table.insert(reports, Verify.decode(outcome.report))
 					end

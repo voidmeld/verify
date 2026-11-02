@@ -1,5 +1,18 @@
 --!strict
 
+local function fingerprint(text: string): string
+	local hash = 2166136261
+	for index = 1, #text do
+		hash = bit32.bxor(hash, string.byte(text, index))
+		hash = bit32.band(hash * 16777619, 0xFFFFFFFF)
+	end
+	return ("%08x-%d"):format(hash, #text)
+end
+
+local function micros(seconds: number): number
+	return math.max(0, math.floor(seconds * 1e6 + 0.5))
+end
+
 local function sortedKeys<T>(map: { [string]: T }): { string }
 	local keys: { string } = {}
 	for key in map do
@@ -100,6 +113,8 @@ local function nonnegativeNumber(value: unknown, label: string): number
 end
 
 return {
+	fingerprint = fingerprint,
+	micros = micros,
 	record = record,
 	sortedKeys = sortedKeys,
 	copyStrings = copyStrings,

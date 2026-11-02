@@ -129,14 +129,12 @@ local function create(options: Options, runtime: Runtime?): Verify.Host
 						if batch == nil then
 							break
 						end
-						local outcome: BatchOutcome? = nil
-						local _, reason = pcall(function()
-							outcome = host.runBatch(batch)
-						end)
-						local result: BatchOutcome = outcome
-							or {
+						local ok, outcome = pcall(host.runBatch, batch)
+						local result: BatchOutcome = if ok
+							then outcome
+							else {
 								status = "faulted",
-								detail = "the host raised while running a batch: " .. tostring(reason),
+								detail = "the host raised while running a batch: " .. tostring(outcome),
 							}
 						deliver(batch.index, result)
 					end

@@ -85,9 +85,7 @@ local function checkedHost(host: Host): Host
 	return host
 end
 
-local function micros(seconds: number): number
-	return math.max(0, math.floor(seconds * 1e6 + 0.5))
-end
+local micros = Shape.micros
 
 local function unitIds(units: { PlanUnit }): { string }
 	local ids: { string } = {}
