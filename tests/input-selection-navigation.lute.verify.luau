@@ -62,6 +62,29 @@ for _, case in
 		},
 		{ name = "arrow keys move GuiService selection and Return activates it as Studio 0.744 does", source = probe },
 		{
+			name = "Return inserts a hard break at the multiline TextBox cursor",
+			source = [=[
+				local screen = Instance.new("ScreenGui")
+				screen.Parent = game.Players.LocalPlayer.PlayerGui
+				local box = Instance.new("TextBox")
+				box.Text, box.ClearTextOnFocus, box.MultiLine = "éx", false, true
+				box.Size, box.Parent = UDim2.fromOffset(200, 100), screen
+				box:CaptureFocus()
+				box.CursorPosition = 2
+				local virtual = game.UserInputService:CreateVirtualInput()
+				virtual:SendKey(true, Enum.KeyCode.Return, false)
+				task.wait(0.05)
+				virtual:SendKey(false, Enum.KeyCode.Return, false)
+				task.wait(0.05)
+				assert(box:IsFocused(), "multiline Return retains editing focus")
+				assert(box.Text == "é\nx", "multiline Return inserts at the UTF-8 cursor")
+				assert(box.CursorPosition == 3, "multiline Return advances the cursor")
+				box:ReleaseFocus()
+				screen:Destroy()
+				return true
+			]=],
+		},
+		{
 			name = "ScreenGui selection groups stop and release navigation",
 			source = [=[
 				local screen = Instance.new("ScreenGui")
