@@ -62,6 +62,28 @@ for _, case in { {"Frame", "Frame", false, "start end"}, {"Frame", "TextButton",
 	expect(`{case[1]} over {case[2]} active {case[3]}`, table.concat(log, " "), case[4])
 	target:Destroy()
 end
+for _, row in { {Vector2.new(1, 0), 30, 0}, {Vector2.new(0, 2), 0, 10}, {Vector2.new(1, 1), 20, 20} } do
+ local target = Instance.new("Frame"); target.Size = UDim2.fromOffset(100, 40); target.Position = UDim2.fromOffset(100, 200); target.Parent = g
+ local d = Instance.new("UIDragDetector"); d.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomOffset; d.DragStyle = Enum.UIDragDetectorDragStyle.TranslateLine; d.DragAxis = row[1]; d.Parent = target
+ RS.RenderStepped:Wait()
+ local p = Vector2.new(150, 220) + inset
+ v:SendMousePosition(p); v:SendMouseButton(p, Enum.UserInputType.MouseButton1, true)
+ local q = p + Vector2.new(30, 10); v:SendMousePosition(q); v:SendMouseButton(q, Enum.UserInputType.MouseButton1, false)
+ expect("line projection", d.DragUDim2, UDim2.fromOffset(row[2], row[3]))
+ expect("line custom response", target.Position, UDim2.fromOffset(100, 200))
+ target:Destroy()
+end
+for _, kind in {"zero", "reference", "rotation", "scale"} do
+ local target = Instance.new("Frame"); target.Size = UDim2.fromOffset(100, 40); target.Position = UDim2.fromOffset(100, 200); target.Parent = g
+ local d = Instance.new("UIDragDetector"); d.ResponseStyle = Enum.UIDragDetectorResponseStyle.CustomOffset; d.DragStyle = Enum.UIDragDetectorDragStyle.TranslateLine; d.Parent = target
+ if kind == "zero" then d.DragAxis = Vector2.zero elseif kind == "reference" then d.ReferenceUIInstance = target elseif kind == "rotation" then target.Rotation = 20 else local s = Instance.new("UIScale"); s.Scale = 2; s.Parent = target end
+ RS.RenderStepped:Wait()
+ local p = target.AbsolutePosition + target.AbsoluteSize / 2 + inset; v:SendMousePosition(p)
+ local ok, message = pcall(function() v:SendMouseButton(p, Enum.UserInputType.MouseButton1, true) end)
+ expect(kind .. " refuses unmodeled line coordinates", ok, false)
+ assert(string.find(tostring(message), "unsupported_simulated_input", 1, true))
+ d.Enabled = false; v:SendMouseButton(p, Enum.UserInputType.MouseButton1, false); target:Destroy()
+end
 g:Destroy()
 assert(#failures == 0, table.concat(failures, "\n"))
 return true

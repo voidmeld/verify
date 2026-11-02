@@ -412,8 +412,25 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 					if tostring(read(child, "ResponseStyle")) ~= "Enum.UIDragDetectorResponseStyle.CustomOffset" then
 						unsupported "UIDragDetector response other than CustomOffset"
 					end
-					if tostring(read(child, "DragStyle")) ~= "Enum.UIDragDetectorDragStyle.TranslatePlane" then
-						unsupported "UIDragDetector drag style other than TranslatePlane"
+					local style = tostring(read(child, "DragStyle"))
+					if style == "Enum.UIDragDetectorDragStyle.TranslateLine" then
+						local axis = Values.vector(read(child, "DragAxis"))
+						if axis.X == 0 and axis.Y == 0 or read(child, "ReferenceUIInstance") ~= nil then
+							unsupported "UIDragDetector line axis or reference"
+						end
+						local ancestor: Instance? = target
+						while ancestor and ancestor ~= gui do
+							local scale = ancestor:FindFirstChildWhichIsA "UIScale"
+							if
+								ancestor:IsA "GuiObject" and read(ancestor, "Rotation") ~= 0
+								or scale and read(scale, "Scale") ~= 1
+							then
+								unsupported "UIDragDetector transformed line axis"
+							end
+							ancestor = ancestor.Parent
+						end
+					elseif style ~= "Enum.UIDragDetectorDragStyle.TranslatePlane" then
+						unsupported "UIDragDetector drag style other than translation"
 					end
 					for _, limit in { "MinDragTranslation", "MaxDragTranslation" } do
 						local value = Values.dimensions(read(child, limit))
@@ -427,12 +444,24 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		return nil
 	end
+	local function dragOffset(detector: Instance, x: number, y: number): unknown
+		if tostring(read(detector, "DragStyle")) == "Enum.UIDragDetectorDragStyle.TranslateLine" then
+			local axis = Values.vector(read(detector, "DragAxis"))
+			local distance = (x * axis.X + y * axis.Y) / (axis.X * axis.X + axis.Y * axis.Y)
+			x, y = axis.X * distance, axis.Y * distance
+		end
+		return library.UDim2.fromOffset(x, y)
+	end
 	local function dragTo(at: Position, signal: string)
 		local active = dragging
 		if active == nil or not env.isAlive(active.detector) then
 			return
 		end
-		env.poke(active.detector, "DragUDim2", library.UDim2.fromOffset(at.X - active.origin.X, at.Y - active.origin.Y))
+		env.poke(
+			active.detector,
+			"DragUDim2",
+			dragOffset(active.detector, at.X - active.origin.X, at.Y - active.origin.Y)
+		)
 		env.fire(active.detector, signal, gui2d(at))
 	end
 	local function move(at: Position, objects: { Instance })
@@ -976,6 +1005,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end,
 		processed = processed,
 		detector = detectorFor,
+		dragOffset = dragOffset,
 		read = read,
 		changed = function()
 			if lastInput ~= inputTypes.Touch then
