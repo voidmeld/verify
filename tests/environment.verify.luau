@@ -1123,8 +1123,9 @@ describe("roblox test environment", function()
 
 	it("reparenting removes the subtree before mutation and notifies only lost or gained ancestors", function()
 		local env = environment()
-		local previous = (env.createInstance("Folder", { Parent = env.root }))
-		local destination = (env.createInstance("Folder", { Parent = env.root }))
+		local common = env.createInstance("Folder", { Parent = env.root })
+		local previous = (env.createInstance("Folder", { Parent = common }))
+		local destination = (env.createInstance("Folder", { Parent = common }))
 		local branch = (env.createInstance("Folder", { Parent = previous }))
 		local child = (env.createInstance("Folder", { Parent = branch }))
 		local removals: { Environment.Instance } = {}
@@ -1152,12 +1153,14 @@ describe("roblox test environment", function()
 		destination.DescendantAdded:Connect(function(object: Environment.Instance)
 			table.insert(additions, object)
 		end)
-		env.root.DescendantRemoving:Connect(function()
-			shared += 1
-		end)
-		env.root.DescendantAdded:Connect(function()
-			shared += 1
-		end)
+		for _, ancestor in { common, env.root } do
+			ancestor.DescendantRemoving:Connect(function()
+				shared += 1
+			end)
+			ancestor.DescendantAdded:Connect(function()
+				shared += 1
+			end)
+		end
 		branch.Parent = destination
 		expect(removals[1] == branch and removals[2] == child):toEqual(true)
 		expect(#removals):toEqual(2)
