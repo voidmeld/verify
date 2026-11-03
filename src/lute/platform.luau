@@ -39,6 +39,7 @@ export type Options = {
 	serverEntry: string?,
 	players: number?,
 	studioIdentity: Studio.Identity?,
+	studioDevice: string?,
 	context: ("Server" | "Client")?,
 	finalCapture: boolean?,
 	attachments: Attachments_Limits?,
@@ -135,6 +136,7 @@ local function run(options: Options): Result
 		assert(options.entry ~= "", "entry module is required")
 		if options.host ~= "studio" then
 			assert(options.studioIdentity == nil, "studioIdentity requires the Studio host")
+			assert(options.studioDevice == nil, "studioDevice requires the Studio host")
 		end
 		assert(
 			options.host == "simulator"
@@ -230,6 +232,7 @@ local function run(options: Options): Result
 				directory = directory .. "/studio",
 				players = options.players,
 				identity = options.studioIdentity,
+				device = options.studioDevice,
 				context = options.context,
 				finalCapture = options.finalCapture,
 				progressFile = if progressPath ~= nil then absolute(progressPath) else nil,

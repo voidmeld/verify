@@ -188,6 +188,8 @@ Limits:
 
 For a local place that needs native storage, `identity = {placeId, universeId}` sets both IDs in the owned Edit model before Play or multiplayer starts. Both IDs must be positive safe integers. The launcher checks their readback and closes the owned session if setup fails. It refuses this option with `attach`. `Lute.platform.run` exposes the same option as `studioIdentity` for its Studio host only. The caller owns permission to use that universe and must isolate test data. This option does not publish, change API access or give credentials. Roblox owns the PluginSecurity `DataModel:SetPlaceId` and `SetUniverseId` calls.
 
+`device = "hd_1080"` sets the Studio device simulator to that device in the owned Edit model before Play or multiplayer starts, and checks the readback. Studio keeps the last device across launches, so a run that measures layout, input or timing names its device. `Lute.platform.run` exposes the same option as `studioDevice` for its Studio host only. The launcher refuses it with `attach`.
+
 1. It copies a binary or XML Roblox place into an isolated run directory. The copy keeps the format and all file bytes.
 2. It starts a disposable Studio and selects its unique document through the official Studio MCP.
 3. It starts play and executes `code` in `Server` (default) or `Client`.

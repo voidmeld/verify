@@ -37,6 +37,7 @@ export type Options = {
 	directory: string?,
 	progressFile: string?,
 	identity: Identity?,
+	device: string?,
 }
 
 local function worker(path: string)
@@ -101,6 +102,19 @@ local function worker(path: string)
 			assert(
 				string.find(Reply.texts(configured.result), "verify-studio-identity-ok", 1, true),
 				"Studio did not acknowledge place identity"
+			)
+		end
+		if type(fields.device) == "string" then
+			local configured = session.execute(
+				"Edit",
+				"local simulator = game:GetService('StudioDeviceSimulatorService')\nsimulator:SetDeviceAsync("
+					.. string.format("%q", fields.device)
+					.. ")\nreturn 'verify-studio-device:' .. tostring(simulator:GetDeviceAsync())"
+			)
+			assert(configured.ok, configured.detail)
+			assert(
+				string.find(Reply.texts(configured.result), "verify-studio-device:" .. fields.device, 1, true),
+				"Studio did not acknowledge device " .. fields.device
 			)
 		end
 		if not runner then
@@ -179,6 +193,11 @@ end
 
 local function run(options: Options): Core.BatchOutcome
 	assert(options.identity == nil or options.attach == nil, "Studio identity requires a launched disposable Studio")
+	assert(options.device == nil or options.attach == nil, "Studio device requires a launched disposable Studio")
+	assert(
+		options.device == nil or string.match(options.device, "^[%w_]+$") ~= nil,
+		"Studio device must be a simulator device id such as hd_1080"
+	)
 	if options.identity ~= nil then
 		Identity.read(options.identity)
 	end
@@ -233,6 +252,7 @@ local function run(options: Options): Core.BatchOutcome
 			players = options.players,
 			directory = directory,
 			identity = options.identity,
+			device = options.device,
 			runId = directory,
 			place = placePath,
 			placeName = placeName,
