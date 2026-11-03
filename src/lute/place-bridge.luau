@@ -10,6 +10,7 @@ export type Outcome = { ok: boolean, text: string?, detail: string? }
 local PREFIX = "VerifyBridge"
 local SEGMENT_BYTES = 100000
 local MARK = "verify-bridge:"
+local INLINE_WAIT_SECONDS = 5
 local counter = 0
 
 local function scriptSource(module: string): string
@@ -95,22 +96,36 @@ local function call(options: Options): Outcome
 	local function run(source: string, what: string): (string?, string?)
 		return marked(options.execute(options.context, folder(options.context) .. source), what)
 	end
+	local wait = math.max(0, math.min(INLINE_WAIT_SECONDS, deadline - os.clock()))
 	local sent, problem = run(
 		"F:SetAttribute('request', "
 			.. string.format("%q", id .. "\n" .. options.text)
-			.. ")\nreturn '"
+			.. ")\nlocal ID = "
+			.. string.format("%q", id)
+			.. "\nlocal started = os.clock()\nlocal R = F:FindFirstChild(ID)\nwhile (R == nil or R:GetAttribute('state') ~= 'done') and os.clock() - started < "
+			.. tostring(wait)
+			.. " do\n\ttask.wait()\n\tR = F:FindFirstChild(ID)\nend\nif R == nil or R:GetAttribute('state') ~= 'done' then return '"
 			.. MARK
-			.. "sent'",
+			.. "sent' end\nlocal head = '"
+			.. MARK
+			.. "' .. (if R:GetAttribute('ok') then 'ok ' else 'error ') .. tostring(R:GetAttribute('count'))\nif R:GetAttribute('count') ~= 1 then return head end\nlocal text = R:FindFirstChild('p1').Value\nF:SetAttribute('ack', ID)\nreturn head .. '\\n' .. text",
 		"request"
 	)
-	if sent ~= "sent" then
+	if sent == nil or sent == "missing" then
 		return {
 			ok = false,
 			detail = problem or "the place has no " .. PREFIX .. options.context .. " bridge",
 		}
 	end
-	local state: string? = nil
-	while true do
+	local inlineStatus, inlineText = string.match(sent, "^(%a+) 1\n(.*)$")
+	if inlineStatus ~= nil and inlineText ~= nil then
+		if inlineStatus ~= "ok" then
+			return { ok = false, text = inlineText, detail = "the bridge module raised: " .. inlineText }
+		end
+		return { ok = true, text = inlineText }
+	end
+	local state: string? = if sent ~= "sent" then sent else nil
+	while state == nil do
 		state, problem = run(
 			"local R = F:FindFirstChild("
 				.. string.format("%q", id)
@@ -127,6 +142,7 @@ local function call(options: Options): Outcome
 		if state ~= "waiting" then
 			break
 		end
+		state = nil
 		if os.clock() >= deadline then
 			return { ok = false, detail = "the bridge did not answer before its deadline" }
 		end
