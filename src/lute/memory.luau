@@ -7,7 +7,8 @@ export type Result = {
 	baseline: Reading,
 	mounted: Reading,
 	teardown: Reading,
-	mountedRetainedKb: number,
+	mountedKb: number,
+	releasedKb: number,
 	teardownRetainedKb: number,
 }
 export type Spec<T> = {
@@ -134,7 +135,8 @@ local function create(host: Host): Memory
 			baseline = baseline,
 			mounted = held,
 			teardown = teardown,
-			mountedRetainedKb = math.max(0, held.heapKb - teardown.heapKb),
+			mountedKb = math.max(0, held.heapKb - baseline.heapKb),
+			releasedKb = math.max(0, held.heapKb - teardown.heapKb),
 			teardownRetainedKb = math.max(0, teardown.heapKb - baseline.heapKb),
 		}
 	end
