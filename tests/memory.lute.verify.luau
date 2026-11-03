@@ -19,8 +19,8 @@ describe("retained heap estimates", function()
 			end,
 			iterations = 1,
 		}, { cycles = 8 })
-		expect(result.mountedRetainedKb > 960 and result.mountedRetainedKb < 1088):toBeTrueWith(
-			`mounted {result.mountedRetainedKb} teardown {result.teardownRetainedKb} baseline {result.baseline.heapKb}`
+		expect(result.mountedKb > 960 and result.mountedKb < 1088):toBeTrueWith(
+			`mounted {result.mountedKb} teardown {result.teardownRetainedKb} baseline {result.baseline.heapKb}`
 		)
 		expect(result.teardownRetainedKb < 32):toEqual(true)
 	end)
@@ -40,7 +40,7 @@ describe("retained heap estimates", function()
 			iterations = 3,
 		}
 		expect(result.method):toEqual(Lute.memory.METHOD)
-		expect(result.mountedRetainedKb > 3968 and result.mountedRetainedKb < 4224):toEqual(true)
+		expect(result.mountedKb > 3968 and result.mountedKb < 4224):toEqual(true)
 		expect(result.teardownRetainedKb < 128):toEqual(true)
 		expect(result.mounted.cycles):toEqual(4)
 	end)
@@ -61,6 +61,8 @@ describe("retained heap estimates", function()
 			iterations = 1,
 		}
 		expect(result.teardownRetainedKb > 3968):toEqual(true)
+		expect(result.mountedKb > 3968):toBeTrueWith(`mounted {result.mountedKb}`)
+		expect(result.releasedKb < 128):toBeTrueWith(`released {result.releasedKb}`)
 		expect(#held):toEqual(1)
 	end)
 
@@ -268,7 +270,7 @@ describe("rehearsed lifecycles", function()
 		expect(result.teardownRetainedKb < 256):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
 	end)
 
-	it("measures a mounted reading from the teardown of the same lifecycle", function()
+	it("measures the mounted footprint from the baseline and the release from the teardown", function()
 		local heap = 100
 		local now = 0
 		local memory = Lute.memory.create {
@@ -296,7 +298,8 @@ describe("rehearsed lifecycles", function()
 			end,
 			iterations = 1,
 		}, { cycles = 2 })
-		expect(result.mountedRetainedKb):toEqual(60)
+		expect(result.mountedKb):toEqual(50)
+		expect(result.releasedKb):toEqual(60)
 		expect(result.teardownRetainedKb):toEqual(0)
 	end)
 
