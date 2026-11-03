@@ -65,6 +65,7 @@ return table.freeze {
 	"tests/operation-deadline.verify.luau",
 	"tests/performance-collector.verify.luau",
 	"tests/performance.verify.luau",
+	"tests/place-bridge.lute.verify.luau",
 	"tests/place-cache.lute.verify.luau",
 	"tests/place-runtime.lute.verify.luau",
 	"tests/place.lute.verify.luau",

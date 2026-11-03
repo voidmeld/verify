@@ -4,6 +4,7 @@ local fs = require "@std/fs"
 
 local Paths = require "../core/path"
 local Xml = require "../codec/xml"
+local Bridge = require "./place-bridge"
 local Detached = require "./studio-detached"
 local Logs = require "./studio-logs"
 
@@ -20,6 +21,7 @@ export type Options = BundleOptions & {
 	basePlace: string?,
 	logCollectors: boolean?,
 	request: string?,
+	bridges: { Client: string?, Server: string? }?,
 }
 local function normalize(path: string): string
 	return Paths.collapse(path, "module path escapes its root")
@@ -354,6 +356,20 @@ local function build(options: Options)
 		.. "</ProtectedString></Properties></Item>"
 	local clientRunner = if options.request ~= nil then '<Item class="LocalScript">' .. runner else nil
 	local serverRunner = if options.request ~= nil then '<Item class="Script">' .. runner else nil
+	local bridges: { Client: string?, Server: string? } = options.bridges or {}
+	local function bridge(class: string, module: string?): string?
+		return if module ~= nil
+			then '<Item class="'
+				.. class
+				.. '"><Properties><string name="Name">'
+				.. Bridge.PREFIX
+				.. '</string><ProtectedString name="Source">'
+				.. xml(Bridge.scriptSource(moduleExpression(module, rootName)))
+				.. "</ProtectedString></Properties></Item>"
+			else nil
+	end
+	local clientBridge = bridge("LocalScript", bridges.Client)
+	local serverBridge = bridge("Script", bridges.Server)
 	if options.basePlace ~= nil then
 		local additions: { Addition } = {
 			{ path = { "ReplicatedStorage" }, item = tree, unique = rootName },
@@ -388,6 +404,16 @@ local function build(options: Options)
 			})
 			table.insert(additions, { path = { "ServerScriptService" }, item = serverRunner, unique = "VerifyRunner" })
 		end
+		if clientBridge then
+			table.insert(additions, {
+				path = { "StarterPlayer", "StarterPlayerScripts" },
+				item = clientBridge,
+				unique = Bridge.PREFIX,
+			})
+		end
+		if serverBridge then
+			table.insert(additions, { path = { "ServerScriptService" }, item = serverBridge, unique = Bridge.PREFIX })
+		end
 		fs.writeStringToFile(path, merge(fs.readFileToString(options.basePlace), additions))
 		return
 	end
@@ -402,11 +428,13 @@ local function build(options: Options)
 			.. (clientItem or "")
 			.. (clientCollector or "")
 			.. (clientRunner or "")
+			.. (clientBridge or "")
 			.. "</Item></Item>"
 			.. '<Item class="ServerScriptService">'
 			.. (serverItem or "")
 			.. (serverCollector or "")
 			.. (serverRunner or "")
+			.. (serverBridge or "")
 			.. "</Item>"
 			.. '<Item class="Workspace"><Item class="Part"><Properties><string name="Name">Floor</string><bool name="Anchored">true</bool><Vector3 name="size"><X>200</X><Y>1</Y><Z>200</Z></Vector3></Properties></Item><Item class="SpawnLocation"><Properties><bool name="Anchored">true</bool><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>'
 	)
