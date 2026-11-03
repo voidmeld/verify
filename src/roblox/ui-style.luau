@@ -50,6 +50,8 @@ local function create(
 	end
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
+	local settledMotion: { [Animated]: boolean } = {}
+	setmetatable(settledMotion, { __mode = "k" })
 	setmetatable(timed, { __mode = "k" })
 	local stale: { [Animated]: Instance } = {}
 	setmetatable(stale, { __mode = "k" })
@@ -137,7 +139,7 @@ local function create(
 		end
 	end
 	local function invalidate()
-		env.touch()
+		env.invalidateLayout()
 		for sheet in indexes do
 			forget(sheet)
 		end
@@ -614,6 +616,21 @@ local function create(
 		end,
 		step = function()
 			refresh()
+			local now = env.now()
+			for entry, object in pairs(timed) do
+				if not (entry.property:match "Color3$" or entry.property:match "Transparency$") then
+					local timing = entry.motion.timing
+					local running = stale[entry] ~= nil
+						or timing ~= nil and now - entry.motion.started - timing.delay < timing.time
+					if running then
+						settledMotion[entry] = nil
+						env.stampLayout(object)
+					elseif not settledMotion[entry] then
+						settledMotion[entry] = true
+						env.stampLayout(object)
+					end
+				end
+			end
 			local generation = styleGeneration
 			local animating = controller.animating()
 			if observed ~= nil and readsGeneration == styleGeneration and not animating and not wasAnimating then
