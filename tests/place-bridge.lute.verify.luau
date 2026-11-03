@@ -11,7 +11,7 @@ local Place = require "../src/lute/place"
 
 type Response = { ok: boolean, count: number, parts: { string } }
 
-local function fake(handler: (string) -> (boolean, string)): (Bridge.Execute, { string })
+local function fake(handler: (string) -> (boolean, string), inline: boolean?): (Bridge.Execute, { string })
 	local responses: { [string]: Response } = {}
 	local contexts: { string } = {}
 	local function execute(datamodel: string, source: string): Bridge.Reply
@@ -26,6 +26,14 @@ local function fake(handler: (string) -> (boolean, string)): (Bridge.Execute, { 
 				table.insert(parts, string.sub(out, index, index + Bridge.SEGMENT_BYTES - 1))
 			end
 			responses[assert(id)] = { ok = ok, count = #parts, parts = parts }
+			if inline then
+				local head = "verify-bridge:" .. (if ok then "ok " else "error ") .. tostring(#parts)
+				if #parts ~= 1 then
+					return { ok = true, text = head }
+				end
+				responses[assert(id)] = nil
+				return { ok = true, text = head .. "\n" .. parts[1] }
+			end
 			return { ok = true, text = "verify-bridge:sent" }
 		end
 		local acknowledged = string.match(source, "F:SetAttribute%('ack', \"(%w+)\"%)")
@@ -59,6 +67,35 @@ describe("place bridge", function()
 		for _, context in contexts do
 			expect(context):toBe "Client"
 		end
+	end)
+
+	it("answers a single-segment reply in the request call", function()
+		local execute, contexts = fake(function(text: string): (boolean, string)
+			return true, "echo\n" .. text
+		end, true)
+		local outcome = Bridge.call { execute = execute, context = "Client", text = "ping" }
+		expect(outcome.ok):toBe(true)
+		expect(outcome.text):toBe "echo\nping"
+		expect(#contexts):toBe(1)
+	end)
+
+	it("reads a multi-segment reply after an answered request call", function()
+		local long = string.rep("y", Bridge.SEGMENT_BYTES + 5)
+		local execute = fake(function(): (boolean, string)
+			return true, long
+		end, true)
+		local outcome = Bridge.call { execute = execute, context = "Server", text = "{}" }
+		expect(outcome.ok):toBe(true)
+		expect(outcome.text):toBe(long)
+	end)
+
+	it("reports an inline module error with its message", function()
+		local execute = fake(function(): (boolean, string)
+			return false, "probe exploded"
+		end, true)
+		local outcome = Bridge.call { execute = execute, context = "Client", text = "{}" }
+		expect(outcome.ok):toBe(false)
+		expect(outcome.text):toBe "probe exploded"
 	end)
 
 	it("reports a module error with its message", function()
