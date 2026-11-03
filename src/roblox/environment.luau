@@ -183,9 +183,41 @@ local function create(options: Options?): Environment
 
 	local mutations, published = 0, 0
 	local publishing = false
+	local layoutStamps: { [Instance]: number } = {}
+	setmetatable(layoutStamps, { __mode = "k" })
+	local layoutEpoch = 0
 
 	local function touch()
 		mutations += 1
+	end
+
+	local function stampUp(object: Instance?)
+		local at = object
+		while at ~= nil do
+			if layoutStamps[at] == mutations then
+				return
+			end
+			layoutStamps[at] = mutations
+			local state = stateOf(at)
+			at = if state then state.parent else nil
+		end
+	end
+
+	local function stampDown(object: Instance)
+		local pending: { Instance } = { object }
+		while #pending > 0 do
+			local at = pending[#pending]
+			pending[#pending] = nil
+			layoutStamps[at] = mutations
+			local state = stateOf(at)
+			if state then
+				for _, child in state.children do
+					table.insert(pending, child)
+				end
+			end
+		end
+		local state = stateOf(object)
+		stampUp(if state then state.parent else nil)
 	end
 
 	local function isObject(value: unknown): boolean
@@ -240,6 +272,19 @@ local function create(options: Options?): Environment
 			published += 1
 		else
 			mutations += 1
+			local className = state.className
+			if
+				className == "StyleRule"
+				or className == "StyleSheet"
+				or className == "StyleLink"
+				or className == "StyleDerive"
+			then
+				layoutEpoch = mutations
+			elseif property == "GuiState" then
+				stampDown(object)
+			else
+				stampUp(object)
+			end
 		end
 		if inputActions then
 			inputActions.changed(object, property, next(state.children) ~= nil)
@@ -368,6 +413,8 @@ local function create(options: Options?): Environment
 			end
 		end
 		changed(object, state, "Parent")
+		stampUp(previous)
+		stampDown(object)
 		for _, descendant in objects do
 			fireSignal(stateOf(descendant), "AncestryChanged", object, parent)
 		end
@@ -481,6 +528,14 @@ local function create(options: Options?): Environment
 			return newObject(...)
 		end,
 		touch = touch,
+		attributeChanged = function(object: Instance)
+			local className = stateOf(object).className
+			if string.sub(className, 1, 5) == "Style" then
+				layoutEpoch = mutations
+			else
+				stampDown(object)
+			end
+		end,
 		setTag = function(object: Instance, tag: string, present: boolean)
 			setTag(object, tag, present)
 		end,
@@ -934,6 +989,7 @@ local function create(options: Options?): Environment
 		else
 			state.tags[tag] = nil
 		end
+		stampDown(object)
 		environment.tagChanged:Fire(object, tag, present)
 	end
 	environment.setTag = setTag
@@ -982,6 +1038,20 @@ local function create(options: Options?): Environment
 		publishing = false
 	end
 	environment.touch = touch
+	environment.layoutStamp = function(object: Instance): number
+		return layoutStamps[object] or 0
+	end
+	environment.layoutEpoch = function(): number
+		return layoutEpoch
+	end
+	environment.invalidateLayout = function()
+		touch()
+		layoutEpoch = mutations
+	end
+	environment.stampLayout = function(object: Instance)
+		touch()
+		stampUp(object)
+	end
 	environment.revision = function(): (number, number)
 		return mutations, published
 	end

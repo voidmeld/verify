@@ -33,6 +33,7 @@ export type Dependencies = {
 	newObject: (string, { [unknown]: unknown }?, boolean, boolean?) -> Instance,
 	setTag: (Instance, string, boolean) -> (),
 	touch: () -> (),
+	attributeChanged: (Instance) -> (),
 }
 local function create(dependencies: Dependencies)
 	local settings = dependencies.settings
@@ -57,6 +58,7 @@ local function create(dependencies: Dependencies)
 	local newObject = dependencies.newObject
 	local setTag = dependencies.setTag
 	local touch = dependencies.touch
+	local attributeChanged = dependencies.attributeChanged
 	local function validAttribute(name: unknown, value: unknown)
 		local nameLimit = limits.attributeNameLength or ATTRIBUTE_NAME_LIMIT
 		if type(name) ~= "string" or name == "" or string.match(name, "^[%w_]+$") == nil then
@@ -364,6 +366,7 @@ local function create(dependencies: Dependencies)
 				end
 				touch()
 				state.attributes[name] = value
+				attributeChanged(object)
 				fireSignal(state, "attr:" .. name)
 				fireSignal(state, "AttributeChanged", name)
 			end

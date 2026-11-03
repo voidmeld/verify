@@ -548,6 +548,61 @@ describe("simulated GUI layout", function()
 		expect(env.propertyOf(automatic, "AbsoluteSize")):toEqual(Types.Vector2.new(2, 2))
 		expect(env.propertyOf(child, "AbsoluteSize")):toEqual(Types.Vector2.new(2, 2))
 	end)
+
+	it("a write inside one branch updates that branch and keeps its unchanged sibling", function()
+		local env = fixture()
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(200, 100) })
+		local left = env.createInstance("Frame", { Parent = root, Size = Types.UDim2.fromScale(0.5, 1) })
+		local right = env.createInstance(
+			"Frame",
+			{ Parent = root, Size = Types.UDim2.fromScale(0.5, 1), Position = Types.UDim2.fromScale(0.5, 0) }
+		)
+		local inner = env.createInstance("Frame", { Parent = left, Size = Types.UDim2.fromScale(0.5, 0.5) })
+		local other = env.createInstance("Frame", { Parent = right, Size = Types.UDim2.fromScale(0.25, 0.25) })
+		local layout = controller(env, root)
+		layout.step()
+		expect(inner.AbsoluteSize):toEqual(Types.Vector2.new(50, 50))
+		expect(other.AbsoluteSize):toEqual(Types.Vector2.new(25, 25))
+		inner.Size = Types.UDim2.fromScale(1, 0.25)
+		layout.step()
+		expect(inner.AbsoluteSize):toEqual(Types.Vector2.new(100, 25))
+		expect(other.AbsoluteSize):toEqual(Types.Vector2.new(25, 25))
+		expect(other.AbsolutePosition):toEqual(Types.Vector2.new(100, 0))
+	end)
+
+	it("an automatic parent grows when a descendant grows", function()
+		local env = fixture()
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(400, 400) })
+		local holder =
+			env.createInstance("Frame", { Parent = root, Size = Types.UDim2.fromOffset(0, 0), AutomaticSize = "XY" })
+		local middle =
+			env.createInstance("Frame", { Parent = holder, Size = Types.UDim2.fromOffset(0, 0), AutomaticSize = "XY" })
+		local leaf = env.createInstance("Frame", { Parent = middle, Size = Types.UDim2.fromOffset(30, 20) })
+		local layout = controller(env, root)
+		layout.step()
+		expect(holder.AbsoluteSize):toEqual(Types.Vector2.new(30, 20))
+		leaf.Size = Types.UDim2.fromOffset(60, 45)
+		layout.step()
+		expect(holder.AbsoluteSize):toEqual(Types.Vector2.new(60, 45))
+	end)
+
+	it("a reparented subtree takes its new parent's geometry", function()
+		local env = fixture()
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(400, 200) })
+		local small = env.createInstance("Frame", { Parent = root, Size = Types.UDim2.fromOffset(100, 100) })
+		local large = env.createInstance(
+			"Frame",
+			{ Parent = root, Size = Types.UDim2.fromOffset(200, 200), Position = Types.UDim2.fromOffset(200, 0) }
+		)
+		local moving = env.createInstance("Frame", { Parent = small, Size = Types.UDim2.fromScale(0.5, 0.5) })
+		local layout = controller(env, root)
+		layout.step()
+		expect(moving.AbsoluteSize):toEqual(Types.Vector2.new(50, 50))
+		moving.Parent = large
+		layout.step()
+		expect(moving.AbsoluteSize):toEqual(Types.Vector2.new(100, 100))
+		expect(moving.AbsolutePosition):toEqual(Types.Vector2.new(200, 0))
+	end)
 end)
 
 return nil

@@ -609,9 +609,83 @@ local function attach(environment: Environment.Environment, options: Options): C
 		return rectangle
 	end
 	local calculateSize = size
+	type KeptSize = {
+		width: number,
+		height: number,
+		scale: number,
+		override: number?,
+		value: Rectangle,
+		writes: { BasisWrite },
+	}
+	local keptSizes: { [Instance]: { stamp: number, epoch: number, entries: { KeptSize } } } = {}
+	setmetatable(keptSizes, { __mode = "k" })
+	local measuredTrees: { [Instance]: { unknown } } = {}
+	setmetatable(measuredTrees, { __mode = "k" })
+	local placedTrees: { [Instance]: { unknown } } = {}
+	setmetatable(placedTrees, { __mode = "k" })
+	local function unchangedSince(
+		store: { [Instance]: { unknown } },
+		object: Instance,
+		parent: Rectangle,
+		placed: Rectangle?,
+		around: { Turn }?
+	): boolean
+		local key: { unknown } = {
+			environment.layoutStamp(object),
+			environment.layoutEpoch(),
+			parent.x,
+			parent.y,
+			parent.width,
+			parent.height,
+			parent.scale,
+			if placed then placed.x else false,
+			if placed then placed.y else false,
+			if placed then placed.width else false,
+			if placed then placed.height else false,
+			if placed then placed.scale else false,
+		}
+		if around then
+			for _, turn in around do
+				table.insert(key, turn.x)
+				table.insert(key, turn.y)
+				table.insert(key, turn.angle)
+			end
+		end
+		local previous = store[object]
+		store[object] = key
+		if previous == nil or #previous ~= #key then
+			return false
+		end
+		for index, value in key do
+			if previous[index] ~= value then
+				return false
+			end
+		end
+		return true
+	end
 	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
 		local cache = measurements
 		if cache == nil then
+			local kept = keptSizes[object]
+			if
+				kept ~= nil
+				and kept.stamp == environment.layoutStamp(object)
+				and kept.epoch == environment.layoutEpoch()
+			then
+				for _, entry in kept.entries do
+					if
+						entry.width == parent.width
+						and entry.height == parent.height
+						and entry.scale == parent.scale
+						and entry.override == widthOverride
+					then
+						for _, write in entry.writes do
+							bases[write.object] = write.value
+						end
+						return table.clone(entry.value)
+					end
+				end
+			end
 			return calculateSize(object, parent, widthOverride)
 		end
 		local entries = cache[object]
@@ -635,8 +709,38 @@ local function attach(environment: Environment.Environment, options: Options): C
 			entries = {}
 			cache[object] = entries
 		end
+		local stamp, epoch = environment.layoutStamp(object), environment.layoutEpoch()
+		local kept = keptSizes[object]
+		if kept == nil or kept.stamp ~= stamp or kept.epoch ~= epoch then
+			kept = { stamp = stamp, epoch = epoch, entries = {} }
+			keptSizes[object] = kept
+		end
 		local first = #basisWrites + 1
+		for _, entry in kept.entries do
+			if
+				entry.width == parent.width
+				and entry.height == parent.height
+				and entry.scale == parent.scale
+				and entry.override == widthOverride
+			then
+				for _, write in entry.writes do
+					bases[write.object] = write.value
+					table.insert(basisWrites, write)
+				end
+				table.insert(entries, {
+					width = parent.width,
+					height = parent.height,
+					scale = parent.scale,
+					override = widthOverride,
+					value = entry.value,
+					first = first,
+					last = #basisWrites,
+				})
+				return table.clone(entry.value)
+			end
+		end
 		local value = calculateSize(object, parent, widthOverride)
+		local writes = table.move(basisWrites, first, #basisWrites, 1, {})
 		table.insert(entries, {
 			width = parent.width,
 			height = parent.height,
@@ -645,6 +749,14 @@ local function attach(environment: Environment.Environment, options: Options): C
 			value = table.clone(value),
 			first = first,
 			last = #basisWrites,
+		})
+		table.insert(kept.entries, {
+			width = parent.width,
+			height = parent.height,
+			scale = parent.scale,
+			override = widthOverride,
+			value = table.clone(value),
+			writes = writes,
 		})
 		return value
 	end
@@ -827,6 +939,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		local measureTree: (Instance, Rectangle, Rectangle?) -> ()
 		measureTree = function(object: Instance, parent: Rectangle, placed: Rectangle?)
+			if unchangedSince(measuredTrees, object, parent, placed, nil) then
+				return
+			end
 			local rectangle = if object:IsA "GuiObject" then placed or size(object, parent) else area(object, parent)
 			if
 				placed
@@ -916,6 +1031,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		local visit: (Instance, Rectangle, Rectangle?, { Turn }) -> ()
 		visit = function(object: Instance, parent: Rectangle, placed: Rectangle?, around: { Turn })
+			if unchangedSince(placedTrees, object, parent, placed, around) then
+				return
+			end
 			local rectangle = area(object, parent)
 			if object:IsA "GuiObject" then
 				rectangle = placed or size(object, parent)
