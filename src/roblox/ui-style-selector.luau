@@ -95,14 +95,41 @@ local function nativeHasTag(object: Instance, tag: string): boolean
 	return object:HasTag(tag)
 end
 
-local function matches(branch: Branch, object: Instance, hasTag: ((Instance, string) -> boolean)?): boolean
+type Probe = {
+	isA: (Instance, string) -> boolean,
+	parentOf: (Instance) -> Instance?,
+	nameOf: (Instance) -> string,
+}
+
+local function nativeIsA(object: Instance, className: string): boolean
+	return object:IsA(className)
+end
+
+local function nativeParent(object: Instance): Instance?
+	return object.Parent
+end
+
+local function nativeName(object: Instance): string
+	local name: unknown = object.Name
+	return if type(name) == "string" then name else ""
+end
+
+local NATIVE: Probe = { isA = nativeIsA, parentOf = nativeParent, nameOf = nativeName }
+
+local function matches(
+	branch: Branch,
+	object: Instance,
+	hasTag: ((Instance, string) -> boolean)?,
+	probe: Probe?
+): boolean
 	local tagTest = hasTag or nativeHasTag
+	local view = probe or NATIVE
 	local function at(index: number, candidate: Instance): boolean
 		local segment = branch.segments[index]
-		if segment.className and not candidate:IsA(segment.className) then
+		if segment.className and not view.isA(candidate, segment.className) then
 			return false
 		end
-		if segment.name and candidate.Name ~= segment.name then
+		if segment.name and view.nameOf(candidate) ~= segment.name then
 			return false
 		end
 		for _, tag in segment.tags do
@@ -122,7 +149,7 @@ local function matches(branch: Branch, object: Instance, hasTag: ((Instance, str
 		if index == 1 then
 			return true
 		end
-		local parent = candidate.Parent
+		local parent = view.parentOf(candidate)
 		while parent do
 			if at(index - 1, parent) then
 				return true
@@ -130,7 +157,7 @@ local function matches(branch: Branch, object: Instance, hasTag: ((Instance, str
 			if branch.relations[index - 1] == "child" then
 				return false
 			end
-			parent = parent.Parent
+			parent = view.parentOf(parent)
 		end
 		return false
 	end

@@ -46,7 +46,7 @@ local function create(
 				and previous.object == object
 				and previous.tag == tag
 			then previous.present
-			else object:HasTag(tag)
+			else env.hasTag(object, tag)
 	end
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
@@ -58,11 +58,32 @@ local function create(
 	local readsGeneration = -1
 	local wasAnimating = false
 	local controller: Controller
+	local keptValues: { [Instance]: { [string]: Resolved } } = {}
+	setmetatable(keptValues, { __mode = "k" })
+	local keptScopes: { [Instance]: { sheet: Instance? } } = {}
+	setmetatable(keptScopes, { __mode = "k" })
+	local function forgetKept(subtree: Instance)
+		local pending = { subtree }
+		while #pending > 0 do
+			local object = table.remove(pending)
+			assert(object ~= nil)
+			if keptValues[object] ~= nil or keptScopes[object] ~= nil then
+				keptValues[object] = nil
+				keptScopes[object] = nil
+			end
+			for _, child in env.childrenOf(object) do
+				table.insert(pending, child)
+			end
+		end
+	end
+	local writes: Environment.Connection? = nil
 	local function mark(subtree: Instance?)
 		styleGeneration += 1
 		local now = env.now()
 		staleSince = staleSince or now
 		if subtree == nil then
+			table.clear(keptValues)
+			table.clear(keptScopes)
 			for entry, object in pairs(timed) do
 				entry.dirty = entry.dirty or now
 				stale[entry] = object
@@ -73,6 +94,8 @@ local function create(
 		while #pending > 0 do
 			local object = table.remove(pending)
 			assert(object ~= nil)
+			keptValues[object] = nil
+			keptScopes[object] = nil
 			local entries = animated[object]
 			if entries then
 				for _, entry in entries do
@@ -124,17 +147,15 @@ local function create(
 	local frameScopes: { [Instance]: { sheet: Instance? } }? = nil
 	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
 	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
+	local frameMatches: { [Instance]: { [Instance]: { [string]: boolean } } }? = nil
 	local function ownSheet(object: Instance): Instance?
-		local link: Instance? = nil
-		for _, child in env.childrenOf(object) do
-			if child:IsA "StyleLink" then
-				if link then
+		local link = env.childWhichIsA(object, "StyleLink")
+		if link then
+			for _, child in env.childrenOf(object) do
+				if child ~= link and env.isA(child, "StyleLink") then
 					unsupported "multiple StyleLinks"
 				end
-				link = child
 			end
-		end
-		if link then
 			local sheet = env.propertyOf(link, "StyleSheet")
 			if sheet ~= nil then
 				local instance = Environment.assertInstance(sheet)
@@ -145,7 +166,7 @@ local function create(
 		return nil
 	end
 	local function scope(object: Instance): Instance?
-		local scopes = frameScopes
+		local scopes = if observed ~= nil then keptScopes else frameScopes
 		local walked: { Instance } = {}
 		local found: Instance? = nil
 		local current: Instance? = object
@@ -255,7 +276,7 @@ local function create(
 		property: string?,
 		phantom: string?
 	): (Instance?, unknown, boolean, unknown)
-		local values = frameValues
+		local values = if observed ~= nil then keptValues else frameValues
 		if values == nil then
 			return resolveFresh(object, property, phantom)
 		end
@@ -319,9 +340,31 @@ local function create(
 				unsupported "nested StyleRules"
 			end
 			local matches = false
-			for _, branch in branches(candidate) do
-				if branch.phantom == phantom and Selector.matches(branch, object, hasTag) then
-					matches = true
+			local remembered = frameMatches
+			local byRule = if remembered then remembered[object] else nil
+			local byPhantom = if byRule then byRule[candidate] else nil
+			local phantomKey = phantom or ""
+			local known = if byPhantom then byPhantom[phantomKey] else nil
+			if known ~= nil then
+				matches = known
+			else
+				for _, branch in branches(candidate) do
+					if branch.phantom == phantom and Selector.matches(branch, object, hasTag, env) then
+						matches = true
+					end
+				end
+				if remembered then
+					if byRule == nil then
+						byRule = {}
+						remembered[object] = byRule
+					end
+					assert(byRule)
+					if byPhantom == nil then
+						byPhantom = {}
+						byRule[candidate] = byPhantom
+					end
+					assert(byPhantom)
+					byPhantom[phantomKey] = matches
 				end
 			end
 			if not matches then
@@ -428,10 +471,10 @@ local function create(
 			local subtree: Instance? = nil
 			if
 				not (
-					object:IsA "StyleRule"
-					or object:IsA "StyleSheet"
-					or object:IsA "StyleLink"
-					or object:IsA "StyleDerive"
+					env.isA(object, "StyleRule")
+					or env.isA(object, "StyleSheet")
+					or env.isA(object, "StyleLink")
+					or env.isA(object, "StyleDerive")
 				)
 			then
 				local operation = event.operation
@@ -453,6 +496,11 @@ local function create(
 			refresh(true)
 			dirty(subtree)
 			pendingAt = now
+		end)
+		writes = env.onMemberWrite({ "Name", "GuiState", "Interactable", "Parent" }, function(object: Instance)
+			if env.isAlive(object) then
+				forgetKept(object)
+			end
 		end)
 		tags = env.tagChanged:Connect(function(object: Instance, tag: string, present: boolean)
 			previousTag = { object = object, tag = tag, present = not present }
@@ -490,7 +538,9 @@ local function create(
 		local memoEntries = if memo ~= nil then memo[object] else nil
 		local remembered = if memoEntries ~= nil then memoEntries[property] else nil
 		if remembered ~= nil then
-			return if object:IsPropertyModified(property) then env.propertyOf(object, property) else remembered.value
+			return if env.isPropertyModified(object, property)
+				then env.propertyOf(object, property)
+				else remembered.value
 		end
 		local _, value = animatedValue(object, property, nil)
 		if memo ~= nil then
@@ -513,7 +563,7 @@ local function create(
 				observe()
 			end
 		end
-		return if object:IsPropertyModified(property) then env.propertyOf(object, property) else value
+		return if env.isPropertyModified(object, property) then env.propertyOf(object, property) else value
 	end
 	local function close()
 		if observed then
@@ -524,6 +574,12 @@ local function create(
 			tags:Disconnect()
 			tags = nil
 		end
+		if writes then
+			writes:Disconnect()
+			writes = nil
+		end
+		table.clear(keptValues)
+		table.clear(keptScopes)
 		for object in pairs(animated) do
 			animated[object] = nil
 		end
@@ -543,7 +599,7 @@ local function create(
 	controller = {
 		styled = styled,
 		component = function(object: Instance, className: string, property: string): unknown
-			local physical = object:FindFirstChildWhichIsA(className)
+			local physical = env.childWhichIsA(object, className)
 			return if physical then styled(physical, property) else phantomValue(object, className, property)
 		end,
 		signal = function(object: Instance, property: string): Environment.Signal<()>
@@ -605,7 +661,7 @@ local function create(
 							changed = true
 						end
 					end
-					if changed and object:IsA "GuiObject" then
+					if changed and env.isA(object, "GuiObject") then
 						env.fire(object, "StyledPropertiesChanged")
 					end
 				end
@@ -616,9 +672,9 @@ local function create(
 				body()
 				return
 			end
-			frameScopes, frameValues, frameStyled = {}, {}, {}
+			frameScopes, frameValues, frameStyled, frameMatches = {}, {}, {}, {}
 			local outcome = table.pack(pcall(body))
-			frameScopes, frameValues, frameStyled = nil, nil, nil
+			frameScopes, frameValues, frameStyled, frameMatches = nil, nil, nil, nil
 			if not outcome[1] then
 				error(outcome[2], 0)
 			end
