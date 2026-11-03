@@ -23,7 +23,7 @@ local function text(value: unknown): string
 	return Wire.encode(value)
 end
 
-local function new(globals: { [string]: unknown }): Engine
+local function new(globals: { [string]: unknown }, extra: { [string]: unknown }?): Engine
 	local stores: { [string]: Environment.Environment } = {}
 	local function store(datamodel: string): Environment.Environment
 		local existing = stores[datamodel]
@@ -45,6 +45,9 @@ local function new(globals: { [string]: unknown }): Engine
 			end,
 		}
 		local services: { [string]: unknown } = { ReplicatedStorage = replicated, HttpService = http }
+		for name, service in extra or {} do
+			services[name] = service
+		end
 		local env: { [string]: unknown } = {
 			Instance = { new = instances.createInstance },
 			game = {

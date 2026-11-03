@@ -4,6 +4,9 @@ local fs = require "@std/fs"
 
 local Paths = require "../core/path"
 local Xml = require "../codec/xml"
+local Bridge = require "./place-bridge"
+local Detached = require "./studio-detached"
+local Logs = require "./studio-logs"
 
 export type BundleOptions = {
 	roots: { string },
@@ -16,6 +19,9 @@ export type Options = BundleOptions & {
 	clientSource: string?,
 	serverSource: string?,
 	basePlace: string?,
+	logCollectors: boolean?,
+	request: string?,
+	bridges: { Client: string?, Server: string? }?,
 }
 local function normalize(path: string): string
 	return Paths.collapse(path, "module path escapes its root")
@@ -323,7 +329,13 @@ end
 local function build(options: Options)
 	local path, clientSource = options.output, options.clientSource
 	local rootName = options.rootName or "VerifyModules"
-	local tree = moduleTree(options)
+	local verbatim = table.clone(options.verbatim or {})
+	if options.request ~= nil then
+		assert(verbatim[Detached.REQUEST] == nil, "duplicate module mount: " .. Detached.REQUEST)
+		verbatim[Detached.REQUEST] = Detached.requestSource(options.request)
+	end
+	local tree =
+		moduleTree { roots = options.roots, modules = options.modules, verbatim = verbatim, rootName = rootName }
 	local clientItem = if clientSource
 		then '<Item class="LocalScript"><Properties><string name="Name">VerifyClient</string><ProtectedString name="Source">'
 			.. xml(clientSource)
@@ -334,6 +346,30 @@ local function build(options: Options)
 			.. xml(options.serverSource)
 			.. "</ProtectedString></Properties></Item>"
 		else nil
+	local collector = '<Properties><string name="Name">VerifyEngineLogCollector</string><ProtectedString name="Source">'
+		.. xml(Logs.source)
+		.. "</ProtectedString></Properties></Item>"
+	local clientCollector = if options.logCollectors then '<Item class="LocalScript">' .. collector else nil
+	local serverCollector = if options.logCollectors then '<Item class="Script">' .. collector else nil
+	local runner = '<Properties><string name="Name">VerifyRunner</string><ProtectedString name="Source">'
+		.. xml(Detached.runnerSource(rootName))
+		.. "</ProtectedString></Properties></Item>"
+	local clientRunner = if options.request ~= nil then '<Item class="LocalScript">' .. runner else nil
+	local serverRunner = if options.request ~= nil then '<Item class="Script">' .. runner else nil
+	local bridges: { Client: string?, Server: string? } = options.bridges or {}
+	local function bridge(class: string, module: string?): string?
+		return if module ~= nil
+			then '<Item class="'
+				.. class
+				.. '"><Properties><string name="Name">'
+				.. Bridge.PREFIX
+				.. '</string><ProtectedString name="Source">'
+				.. xml(Bridge.scriptSource(moduleExpression(module, rootName)))
+				.. "</ProtectedString></Properties></Item>"
+			else nil
+	end
+	local clientBridge = bridge("LocalScript", bridges.Client)
+	local serverBridge = bridge("Script", bridges.Server)
 	if options.basePlace ~= nil then
 		local additions: { Addition } = {
 			{ path = { "ReplicatedStorage" }, item = tree, unique = rootName },
@@ -348,6 +384,36 @@ local function build(options: Options)
 		if serverItem then
 			table.insert(additions, { path = { "ServerScriptService" }, item = serverItem, unique = "VerifyServer" })
 		end
+		if clientCollector and serverCollector then
+			table.insert(additions, {
+				path = { "StarterPlayer", "StarterPlayerScripts" },
+				item = clientCollector,
+				unique = "VerifyEngineLogCollector",
+			})
+			table.insert(additions, {
+				path = { "ServerScriptService" },
+				item = serverCollector,
+				unique = "VerifyEngineLogCollector",
+			})
+		end
+		if clientRunner and serverRunner then
+			table.insert(additions, {
+				path = { "StarterPlayer", "StarterPlayerScripts" },
+				item = clientRunner,
+				unique = "VerifyRunner",
+			})
+			table.insert(additions, { path = { "ServerScriptService" }, item = serverRunner, unique = "VerifyRunner" })
+		end
+		if clientBridge then
+			table.insert(additions, {
+				path = { "StarterPlayer", "StarterPlayerScripts" },
+				item = clientBridge,
+				unique = Bridge.PREFIX,
+			})
+		end
+		if serverBridge then
+			table.insert(additions, { path = { "ServerScriptService" }, item = serverBridge, unique = Bridge.PREFIX })
+		end
 		fs.writeStringToFile(path, merge(fs.readFileToString(options.basePlace), additions))
 		return
 	end
@@ -358,10 +424,18 @@ local function build(options: Options)
 			.. "</Item>"
 			.. '<Item class="Lighting"><Properties><token name="Technology">4</token></Properties></Item>'
 			.. '<Item class="TextChatService"><Properties><token name="ChatVersion">1</token></Properties></Item>'
-			.. (if clientItem
-				then '<Item class="StarterPlayer"><Item class="StarterPlayerScripts">' .. clientItem .. "</Item></Item>"
-				else "")
-			.. (if serverItem then '<Item class="ServerScriptService">' .. serverItem .. "</Item>" else "")
+			.. '<Item class="StarterPlayer"><Item class="StarterPlayerScripts">'
+			.. (clientItem or "")
+			.. (clientCollector or "")
+			.. (clientRunner or "")
+			.. (clientBridge or "")
+			.. "</Item></Item>"
+			.. '<Item class="ServerScriptService">'
+			.. (serverItem or "")
+			.. (serverCollector or "")
+			.. (serverRunner or "")
+			.. (serverBridge or "")
+			.. "</Item>"
 			.. '<Item class="Workspace"><Item class="Part"><Properties><string name="Name">Floor</string><bool name="Anchored">true</bool><Vector3 name="size"><X>200</X><Y>1</Y><Z>200</Z></Vector3></Properties></Item><Item class="SpawnLocation"><Properties><bool name="Anchored">true</bool><CoordinateFrame name="CFrame"><X>0</X><Y>3</Y><Z>0</Z><R00>1</R00><R01>0</R01><R02>0</R02><R10>0</R10><R11>1</R11><R12>0</R12><R20>0</R20><R21>0</R21><R22>1</R22></CoordinateFrame></Properties></Item></Item></roblox>'
 	)
 end

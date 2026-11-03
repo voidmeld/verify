@@ -3,6 +3,7 @@
 local json = require "@std/json"
 local task = require "@std/task"
 local Core = require "../core"
+local Bridge = require "./place-bridge"
 local Detached = require "./studio-detached"
 local Files = require "./files"
 local Install = require "./studio-install"
@@ -87,7 +88,8 @@ export type Session = {
 	play: (start: boolean) -> Response,
 	capture: (options: CaptureOptions?) -> Response,
 	console: () -> Response,
-	report: (datamodel: string, code: string, runId: string, onPoll: (() -> ())?) -> ReportResponse,
+	report: (datamodel: string, code: string, runId: string, onPoll: (() -> ())?, runner: boolean?) -> ReportResponse,
+	bridge: (context: string, text: string, deadlineSeconds: number?) -> Bridge.Outcome,
 	close: () -> Cleanup,
 }
 
@@ -394,7 +396,13 @@ local function attach(options: Options): (Session?, Refusal?)
 		return dispatch(CONSOLE_READ, argumentsFor "", false)
 	end
 
-	local function report(datamodel: string, code: string, runId: string, onPoll: (() -> ())?): ReportResponse
+	local function report(
+		datamodel: string,
+		code: string,
+		runId: string,
+		onPoll: (() -> ())?,
+		runner: boolean?
+	): ReportResponse
 		local last: Response? = nil
 		local outcome = Detached.run {
 			execute = function(model: string, source: string, replaySafe: boolean?): Detached.Reply
@@ -414,6 +422,7 @@ local function attach(options: Options): (Session?, Refusal?)
 			deadline = runDeadline,
 			pollSeconds = if onPoll ~= nil then 1 else nil,
 			onPoll = onPoll,
+			runner = runner,
 		}
 		local answered = last
 		local response: Response = if answered ~= nil
@@ -477,6 +486,17 @@ local function attach(options: Options): (Session?, Refusal?)
 		capture = capture,
 		console = console,
 		report = report,
+		bridge = function(context: string, text: string, deadlineSeconds: number?): Bridge.Outcome
+			return Bridge.call {
+				execute = function(model: string, source: string): Bridge.Reply
+					local response = execute(model, source)
+					return { ok = response.ok, text = response.text, detail = response.detail }
+				end,
+				context = context,
+				text = text,
+				deadlineSeconds = deadlineSeconds,
+			}
+		end,
 		close = close,
 	},
 		nil
@@ -491,10 +511,11 @@ export type SessionRun = {
 	context: string?,
 	progressFile: string?,
 	finalCapture: boolean?,
+	runner: boolean?,
 }
 
 local function runSession(opened: Session, options: SessionRun, directory: string, runId: string): Core.BatchOutcome
-	if options.context ~= "Edit" then
+	if options.context ~= "Edit" and options.runner ~= true then
 		for _, model in { "Server", "Client" } do
 			local prepared = opened.execute(model, Logs.source)
 			if not prepared.ok then
@@ -525,7 +546,8 @@ local function runSession(opened: Session, options: SessionRun, directory: strin
 		options.context or "Server",
 		"local runId = " .. token .. "; " .. injected .. options.code,
 		runId,
-		if listening ~= nil then (listening).poll else nil
+		if listening ~= nil then (listening).poll else nil,
+		options.runner
 	)
 	if listening ~= nil then
 		(listening).finish()

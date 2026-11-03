@@ -57,8 +57,8 @@ return 'logging'
 local drain =
 	"function() local RS = game:GetService('ReplicatedStorage'); local name = if game:GetService('RunService'):IsServer() then 'VerifyEngineLogsServer' else 'VerifyEngineLogsClient'; return RS:WaitForChild(name, 10):Invoke() end"
 
-local install = "for _, spec in {{'Script', game:GetService('ServerScriptService')}, {'LocalScript', game:GetService('StarterPlayer').StarterPlayerScripts}} do local script = Instance.new(spec[1]); script.Name = 'VerifyEngineLogCollector'; script.Source = "
+local install = "for _, spec in {{'Script', game:GetService('ServerScriptService')}, {'LocalScript', game:GetService('StarterPlayer').StarterPlayerScripts}} do if spec[2]:FindFirstChild('VerifyEngineLogCollector') == nil then local script = Instance.new(spec[1]); script.Name = 'VerifyEngineLogCollector'; script.Source = "
 	.. string.format("%q", source)
-	.. "; script.Parent = spec[2] end return 'installed'"
+	.. "; script.Parent = spec[2] end end return 'installed'"
 
 return { source = source, drain = drain, install = install }

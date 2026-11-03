@@ -217,6 +217,7 @@ describe("native place bundler", function()
 			clientSource = "print('c')",
 			serverSource = "print('s')",
 			rootName = "Mounted",
+			request = "return 'request body'",
 		}
 		local merged = fs.readFileToString(root .. "/merged.rbxlx")
 		expect(merged:find("Base &lt;part&gt;", 1, true) ~= nil):toBe(true)
@@ -234,6 +235,14 @@ describe("native place bundler", function()
 			merged:find("game:GetService(&quot;ReplicatedStorage&quot;):WaitForChild(&quot;Mounted&quot;)", 1, true)
 				~= nil
 		):toBe(true)
+		expect(select(2, merged:gsub('<string name="Name">VerifyRunner</string>', ""))):toBe(2)
+		expect(merged:find("return function(runId, progressToken)\nreturn 'request body'", 1, true) ~= nil):toBe(true)
+		expect(merged:find("local ROOT = &quot;Mounted&quot;", 1, true) ~= nil):toBe(true)
+		local plain = root .. "/plain.rbxlx"
+		Place.build { output = plain, roots = { root .. "/lib" }, request = "return 1" }
+		expect(select(2, fs.readFileToString(plain):gsub('<string name="Name">VerifyRunner</string>', ""))):toBe(2)
+		Place.build { output = plain, roots = { root .. "/lib" } }
+		expect(fs.readFileToString(plain):find("VerifyRunner", 1, true)):toBeNil()
 		expect(base):toBe(fs.readFileToString(root .. "/base.rbxlx"))
 	end)
 	it("refuses a base that holds the module root name, a binary base and a clashing script", function(_, caseContext)
