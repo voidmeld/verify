@@ -107,13 +107,22 @@ local function worker(path: string)
 		if type(fields.device) == "string" then
 			local configured = session.execute(
 				"Edit",
-				"local simulator = game:GetService('StudioDeviceSimulatorService')\nsimulator:SetDeviceAsync("
+				"local camera = workspace.CurrentCamera\nlocal waited = os.clock()\nwhile (camera == nil or camera.ViewportSize.X <= 1 or camera.ViewportSize.Y <= 1) and os.clock() - waited < 10 do\n\ttask.wait(0.1)\n\tcamera = workspace.CurrentCamera\nend\nif camera == nil or camera.ViewportSize.X <= 1 or camera.ViewportSize.Y <= 1 then\n\treturn 'verify-studio-viewport:' .. (if camera then tostring(camera.ViewportSize) else 'none')\nend\n"
+					.. "local simulator = game:GetService('StudioDeviceSimulatorService')\nsimulator:SetDeviceAsync("
 					.. string.format("%q", fields.device)
 					.. ")\nreturn 'verify-studio-device:' .. tostring(simulator:GetDeviceAsync())"
 			)
 			assert(configured.ok, configured.detail)
+			local reply = Reply.texts(configured.result)
+			local viewport = string.match(reply, "verify%-studio%-viewport:([^\n]*)")
 			assert(
-				string.find(Reply.texts(configured.result), "verify-studio-device:" .. fields.device, 1, true),
+				viewport == nil,
+				"Studio has no usable game viewport ("
+					.. tostring(viewport)
+					.. "); its window may be minimized, its display asleep, or its saved layout broken"
+			)
+			assert(
+				string.find(reply, "verify-studio-device:" .. fields.device, 1, true),
 				"Studio did not acknowledge device " .. fields.device
 			)
 		end
