@@ -91,7 +91,27 @@ local function create(face: Face): Model
 		row[pair[2]] = index
 		pairs[pair[1]] = row
 	end
-	local function exact(text: string, size: number): number
+	local measured: { [number]: { [string]: number } } = {}
+	local measuredCount = 0
+	local exact: (string, number) -> number
+	local function remembered(text: string, size: number): number
+		local bySize = measured[size]
+		local known = if bySize then bySize[text] else nil
+		if known ~= nil then
+			return known
+		end
+		if measuredCount >= 8192 then
+			table.clear(measured)
+			measuredCount = 0
+		end
+		local value = exact(text, size)
+		local entries = measured[size] or {}
+		measured[size] = entries
+		entries[text] = value
+		measuredCount += 1
+		return value
+	end
+	function exact(text: string, size: number): number
 		local row = assert(face.sizes[math.clamp(math.floor(size), 1, 100)])
 		local cursor, total = 1, 0
 		local previous: number? = nil
@@ -143,7 +163,7 @@ local function create(face: Face): Model
 			- (if previous and row.starts and letter(face.tokens[previous]) then row.starts[previous] else 0)
 	end
 	local function width(text: string, size: number): number
-		return scaled(math.ceil(exact(text, size)))
+		return scaled(math.ceil(remembered(text, size)))
 	end
 	local function fit(text: string, size: number, limit: number): (number, number)
 		local maximum, count = 0, 0
@@ -152,7 +172,7 @@ local function create(face: Face): Model
 			if measured > limit then
 				local _, gap = paragraph:match "^(.*[^ ])( +)[^ ]*$"
 				if gap then
-					local compact = scaled(math.ceil(exact(paragraph, size) - exact(gap, size)))
+					local compact = scaled(math.ceil(remembered(paragraph, size) - remembered(gap, size)))
 					if compact <= limit then
 						measured = compact
 					end
@@ -215,11 +235,11 @@ local function create(face: Face): Model
 		return maximum, count
 	end
 	local function cut(text: string, size: number, limit: number, mode: string): number?
-		local mark = exact("…", size)
+		local mark = remembered("…", size)
 		local function shown(prefix: string, following: string?): number
 			local advance = if following
-				then exact(prefix .. following, size) - exact(following, size)
-				else exact(prefix, size)
+				then remembered(prefix .. following, size) - remembered(following, size)
+				else remembered(prefix, size)
 			return scaled(math.ceil(advance) + math.ceil(mark))
 		end
 		local function fits(prefix: string, following: string?): boolean

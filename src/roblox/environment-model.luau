@@ -181,23 +181,44 @@ local function create(settings: Types.Options)
 		return if settings.defaultProperty ~= nil then settings.defaultProperty(className, key, fallback) else fallback
 	end
 
-	local classDefaults: { [Resolved]: { values: { [string]: unknown }, fresh: { string } } } = {}
+	local classDefaults: {
+		[Resolved]: { values: { [string]: unknown }, fresh: { string }, isFresh: { [string]: boolean } },
+	} =
+		{}
 
-	local function defaultsOf(className: string, class: Resolved): { [string]: unknown }
+	local function cachedDefaults(
+		className: string,
+		class: Resolved
+	): { values: { [string]: unknown }, fresh: { string }, isFresh: { [string]: boolean } }
 		local cached = classDefaults[class]
 		if cached == nil then
 			local values: { [string]: unknown } = {}
 			local fresh: { string } = {}
+			local isFresh: { [string]: boolean } = {}
 			for key in class.properties do
 				local value = defaultOf(className, class, key)
 				values[key] = value
 				if type(value) == "table" and Names.of(value) == nil then
 					table.insert(fresh, key)
+					isFresh[key] = true
 				end
 			end
-			cached = { values = values, fresh = fresh }
+			cached = { values = values, fresh = fresh, isFresh = isFresh }
 			classDefaults[class] = cached
 		end
+		return cached
+	end
+
+	local function defaultValueOf(className: string, class: Resolved, key: string): unknown
+		local cached = cachedDefaults(className, class)
+		if cached.isFresh[key] then
+			return defaultOf(className, class, key)
+		end
+		return cached.values[key]
+	end
+
+	local function defaultsOf(className: string, class: Resolved): { [string]: unknown }
+		local cached = cachedDefaults(className, class)
 		local values = table.clone(cached.values)
 		for _, key in cached.fresh do
 			values[key] = defaultOf(className, class, key)
@@ -217,6 +238,7 @@ local function create(settings: Types.Options)
 		writableComputed = writableComputed,
 		defaultOf = defaultOf,
 		defaultsOf = defaultsOf,
+		defaultValueOf = defaultValueOf,
 	}
 end
 

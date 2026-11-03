@@ -111,6 +111,7 @@ local function create(options: Options?): Environment
 	local writableComputed = model.writableComputed
 	local defaultOf = model.defaultOf
 	local defaultsOf = model.defaultsOf
+	local defaultValueOf = model.defaultValueOf
 
 	type Observer = {
 		callback: (event: Event) -> (),
@@ -218,7 +219,17 @@ local function create(options: Options?): Environment
 		error(("%s is not a valid member of %s"):format(key, describe(state)), 3)
 	end
 
+	local memberWrites: { [string]: { { callback: (Instance, string) -> (), connected: boolean } } } = {}
+
 	local function changed(object: Instance, state: State, property: string)
+		local writes = memberWrites[property]
+		if writes ~= nil then
+			for _, entry in table.clone(writes) do
+				if entry.connected then
+					entry.callback(object, property)
+				end
+			end
+		end
 		if
 			publishing
 			or property == "SelectedObject" and state.className == "GuiService"
@@ -859,6 +870,31 @@ local function create(options: Options?): Environment
 	environment.parentOf = function(object: Instance): Instance?
 		return stateOf(object).parent
 	end
+	environment.isA = function(object: Instance, className: string): boolean
+		return isA(stateOf(object).className, className)
+	end
+	environment.nameOf = function(object: Instance): string
+		local name = stateOf(object).values.Name
+		return if type(name) == "string" then name else stateOf(object).className
+	end
+	environment.hasTag = function(object: Instance, tag: string): boolean
+		return stateOf(object).tags[tag] == true
+	end
+	environment.childWhichIsA = function(object: Instance, className: string): Instance?
+		for _, child in stateOf(object).children do
+			if isA(stateOf(child).className, className) then
+				return child
+			end
+		end
+		return nil
+	end
+	environment.isPropertyModified = function(object: Instance, property: string): boolean
+		local state = stateOf(object)
+		if state.class.properties[property] == nil then
+			memberError(state, property)
+		end
+		return state.values[property] ~= defaultValueOf(state.className, state.class, property)
+	end
 	environment.descendantOrderOf = function(ancestor: Instance, object: Instance): number?
 		return stateOf(object).ancestryOrders[ancestor]
 	end
@@ -1084,6 +1120,22 @@ local function create(options: Options?): Environment
 	end
 	environment.onCreate = function(hook: CreateHook): Connection
 		return subscribe(createHooks, hook)
+	end
+	environment.onMemberWrite = function(members: { string }, callback: (Instance, string) -> ()): Connection
+		local connections: { Connection } = {}
+		for _, member in members do
+			local entries = memberWrites[member] or {}
+			memberWrites[member] = entries
+			table.insert(connections, subscribe(entries, callback))
+		end
+		local connection = { Connected = true }
+		function connection.Disconnect(_self: Connection)
+			connection.Connected = false
+			for _, each in connections do
+				each:Disconnect()
+			end
+		end
+		return connection
 	end
 
 	environment.signalOf = function(object: Instance, event: string): SignalHandle
