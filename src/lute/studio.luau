@@ -103,8 +103,10 @@ local function worker(path: string)
 				"Studio did not acknowledge place identity"
 			)
 		end
-		local installedLogs = session.execute("Edit", Logs.install)
-		assert(installedLogs.ok, installedLogs.detail)
+		if not runner then
+			local installedLogs = session.execute("Edit", Logs.install)
+			assert(installedLogs.ok, installedLogs.detail)
+		end
 		local players = fields.players
 		local datamodel = textField "context"
 		local code: string
