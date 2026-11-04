@@ -107,6 +107,18 @@ local function preload()
 	sources = read
 end
 
+local function resolved(key: string): string
+	local family, weight, style = key:match "^rbxasset://fonts/families/(%w+)%.json/(%w+)/(%w+)$"
+	if weight == "Heavy" and style == "Normal" then
+		if family == "BuilderSans" then
+			return "rbxasset://fonts/families/BuilderSans.json/Bold/Normal"
+		elseif family == "Fondamento" or family == "Michroma" then
+			return "rbxasset://fonts/families/" .. family .. ".json/Regular/Normal"
+		end
+	end
+	return key
+end
+
 local function load(key: string): Metrics.Model?
 	local loaded = models[key]
 	if loaded then
@@ -128,6 +140,11 @@ end
 local ENTITIES: { [string]: string } = { lt = "<", gt = ">", amp = "&", quot = '"', apos = "'" }
 local NEUTRAL_TAGS: { [string]: boolean } = { u = true, s = true, stroke = true, mark = true }
 local NEUTRAL_FONT: { [string]: boolean } = { color = true, transparency = true }
+local WEIGHTS: { [string]: string } = {}
+for index, name in { "Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Heavy" } do
+	WEIGHTS[string.lower(name)] = name
+	WEIGHTS[tostring(index * 100)] = name
+end
 
 local function unescape(text: string): string
 	return (string.gsub(text, "&(%a+);", function(name: string): string
@@ -138,13 +155,14 @@ end
 local function plain(text: string, weight: string): (string, string)
 	local source = string.gsub(text, "<!%-%-.-%-%->", "")
 	local out: { string } = {}
-	local upper, bold = 0, 0
+	local upper = 0
+	local weights = { weight }
 	local selected: string? = nil
 	local function append(chunk: string)
 		if chunk == "" then
 			return
 		end
-		local current = if bold > 0 then "Bold" else weight
+		local current = weights[#weights]
 		if selected ~= nil and selected ~= current then
 			error("unsupported_text_metrics: RichText mixed font weights", 0)
 		end
@@ -163,14 +181,44 @@ local function plain(text: string, weight: string): (string, string)
 		if tag == "br" then
 			append "\n"
 		elseif tag == "b" then
-			bold = math.max(0, bold + (if closing == "/" then -1 else 1))
+			if closing == "/" then
+				if #weights > 1 then
+					table.remove(weights)
+				end
+			else
+				table.insert(weights, "Bold")
+			end
 		elseif tag == "uc" or tag == "uppercase" then
 			upper = math.max(0, upper + (if closing == "/" then -1 else 1))
 		elseif tag == "font" then
+			local current = weights[#weights]
+			local hasWeight, parsedWeight = false, false
 			for attribute in string.gmatch(attributes or "", "([%w_]+)%s*=") do
-				if not NEUTRAL_FONT[string.lower(attribute)] then
+				if string.lower(attribute) == "weight" then
+					hasWeight = true
+				elseif not NEUTRAL_FONT[string.lower(attribute)] then
 					error("unsupported_text_metrics: RichText <font " .. attribute .. ">", 0)
 				end
+			end
+			for attribute, _, value in string.gmatch(attributes or "", "([%w_]+)%s*=%s*([\"'])(.-)%2") do
+				if string.lower(attribute) == "weight" then
+					local declared = WEIGHTS[string.lower(value or "")]
+					if declared == nil then
+						error("unsupported_text_metrics: RichText <font weight>", 0)
+					end
+					current = declared
+					parsedWeight = true
+				end
+			end
+			if hasWeight and not parsedWeight then
+				error("unsupported_text_metrics: RichText <font weight>", 0)
+			end
+			if closing == "/" then
+				if #weights > 1 then
+					table.remove(weights)
+				end
+			else
+				table.insert(weights, current)
 			end
 		elseif not NEUTRAL_TAGS[tag] then
 			error("unsupported_text_metrics: RichText <" .. tag .. ">", 0)
@@ -182,11 +230,19 @@ end
 
 local function modelFor(parameters: Values.TextParameters): (Metrics.Model, number, string)
 	local font = parameters.Font
+	local missing = font.Family == "rbxasset://fonts/families/DoesNotExist.json"
+	if missing and not parameters.Gui then
+		error("Temp read failed.", 0)
+	end
 	local text, weight = parameters.Text, Values.enumName(font.Weight, "FontWeight")
 	if parameters.RichText then
 		text, weight = plain(text, weight)
 	end
-	local key = font.Family .. "/" .. weight .. "/" .. Values.enumName(font.Style, "FontStyle")
+	local family = if missing then "rbxasset://fonts/families/SourceSansPro.json" else font.Family
+	if missing and weight == "Heavy" then
+		weight = "Bold"
+	end
+	local key = resolved(family .. "/" .. weight .. "/" .. Values.enumName(font.Style, "FontStyle"))
 	local model = load(key)
 	if model ~= nil and parameters.RichText then
 		model = richModels[key] or Metrics.create(richFace(faces[key]))

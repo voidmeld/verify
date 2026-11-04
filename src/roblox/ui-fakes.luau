@@ -266,7 +266,13 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		env.fake(
 			"TextService.GetTextBoundsAsync",
 			function(_object: Instance, parameters: Values.TextParameters): unknown
-				return measure(parameters)
+				return measure {
+					Text = parameters.Text,
+					Font = parameters.Font,
+					Size = parameters.Size,
+					Width = parameters.Width,
+					RichText = parameters.RichText,
+				}
 			end
 		)
 	end

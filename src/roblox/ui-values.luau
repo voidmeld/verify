@@ -9,7 +9,8 @@ export type Vector = { X: number, Y: number }
 export type Dimension = { Scale: number, Offset: number }
 export type Dimensions = { X: Dimension, Y: Dimension }
 export type Font = { Family: string, Weight: unknown, Style: unknown }
-export type TextParameters = { Text: string, Size: number, Font: Font, Width: number, RichText: boolean? }
+export type TextParameters =
+	{ Text: string, Size: number, Font: Font, Width: number, RichText: boolean?, Gui: boolean? }
 
 local function number(value: unknown): number
 	assert(type(value) == "number", "expected a number")

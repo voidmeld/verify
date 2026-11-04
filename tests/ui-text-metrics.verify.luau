@@ -113,6 +113,108 @@ it("uniform bold rich text uses the captured bold face across measurement operat
 	end
 end)
 
+it("uniform font weights preserve native Heavy selection and nested weight scopes", function()
+	local measure, truncate, height = NativeMetrics.create(), NativeMetrics.truncator(), NativeMetrics.heights()
+	for _, face in { { "BuilderSans", "Bold" }, { "Fondamento", "Regular" }, { "Michroma", "Regular" } } do
+		local family = `rbxasset://fonts/families/{face[1]}.json`
+		local parameters: Values.TextParameters = {
+			Font = Values.font(Roblox.datatypes.Font.new(family)),
+			Size = 14,
+			Width = 0,
+			Text = "",
+			RichText = true,
+		}
+		local expected = table.clone(parameters)
+		expected.Font = Values.font(Roblox.datatypes.Font.new(family, Roblox.datatypes.Enum.FontWeight[face[2]]))
+		expected.Text = "Lap record & SAVE"
+		for _, size in { 1, 7, 14, 18, 28, 100 } do
+			parameters.Size, expected.Size = size, size
+			for _, width in { 0, 40, 120 } do
+				parameters.Width, expected.Width = width, width
+				for _, text in
+					{
+						'<font weight="heavy">Lap record &amp; SAVE</font>',
+						"<font weight='900'>Lap record &amp; SAVE</font>",
+						'<font weight="HeAvY"><font color="#ffffff">Lap record</font> &amp; <uc>save</uc></font>',
+					}
+				do
+					parameters.Text = text
+					expect(measure(parameters)):toEqual(measure(expected))
+					expect(height(parameters, 3, 1.2)):toBe(height(expected, 3, 1.2))
+					if width > 0 then
+						expect(truncate(parameters, "AtEnd", 1, false)):toBe(truncate(expected, "AtEnd", 1, false))
+					end
+				end
+			end
+		end
+		parameters.Font = Values.font(Roblox.datatypes.Font.new(family, Roblox.datatypes.Enum.FontWeight.Heavy))
+		parameters.Text = expected.Text
+		expect(measure(parameters)):toEqual(measure(expected))
+	end
+	local parameters: Values.TextParameters = {
+		Font = Values.font(Roblox.datatypes.Font.new "rbxasset://fonts/families/BuilderSans.json"),
+		Size = 14,
+		Width = 0,
+		Text = "",
+		RichText = true,
+	}
+	for _, text in
+		{
+			'<font weight="heavy">Lap</font> record',
+			'<font weight="invalid">Lap record</font>',
+			"<font weight=heavy>Lap record</font>",
+			'<font weight="heavy" size="20">Lap record</font>',
+		}
+	do
+		parameters.Text = text
+		expect(function()
+			measure(parameters)
+		end):toThrow "unsupported_text_metrics"
+	end
+end)
+
+it("the captured missing family fails in the service and uses the native GUI fallback", function()
+	local measure, truncate, height = NativeMetrics.create(), NativeMetrics.truncator(), NativeMetrics.heights()
+	for _, weight in { "Regular", "Bold", "Heavy" } do
+		local parameters: Values.TextParameters = {
+			Font = Values.font(
+				Roblox.datatypes.Font.new(
+					"rbxasset://fonts/families/DoesNotExist.json",
+					Roblox.datatypes.Enum.FontWeight[weight]
+				)
+			),
+			Size = 14,
+			Width = 0,
+			Text = "Unknown family text",
+		}
+		expect(function()
+			measure(parameters)
+		end):toThrow "Temp read failed."
+		parameters.Gui = true
+		local expected = table.clone(parameters)
+		expected.Font = Values.font(
+			Roblox.datatypes.Font.new(
+				"rbxasset://fonts/families/SourceSansPro.json",
+				Roblox.datatypes.Enum.FontWeight[if weight == "Heavy" then "Bold" else weight]
+			)
+		)
+		for _, size in { 7, 14, 28 } do
+			parameters.Size, expected.Size = size, size
+			for _, width in { 0, 40, 120 } do
+				parameters.Width, expected.Width = width, width
+				for _, rich in { false, true } do
+					parameters.RichText, expected.RichText = rich, rich
+					expect(measure(parameters)):toEqual(measure(expected))
+					expect(height(parameters, 3, 1.2)):toBe(height(expected, 3, 1.2))
+					if width > 0 then
+						expect(truncate(parameters, "AtEnd", 1, false)):toBe(truncate(expected, "AtEnd", 1, false))
+					end
+				end
+			end
+		end
+	end
+end)
+
 it("text measurements refuse unmodeled shaping and split narrow words", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(function()

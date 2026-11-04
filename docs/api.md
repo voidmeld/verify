@@ -1357,6 +1357,10 @@ TextChatService.OnIncomingMessage uses write-only callback storage. A host can i
 
 Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 
+Uniform RichText weights use the captured face selected by `<b>` or `<font weight="...">`. Weight names are case insensitive; quoted numeric weights use 100 through 900. Native captures establish that Heavy selects Bold for BuilderSans and Regular for Fondamento and Michroma. Other weights need their own captured facts. Text that changes effective weights between runs still raises `unsupported_text_metrics`.
+
+`measureBounds`, `truncateBounds` and `measureLineHeight` receive `Gui = true` for GUI observations. Service parameters omit it. For the captured missing family `rbxasset://fonts/families/DoesNotExist.json`, service measurement raises `Temp read failed.` while GUI measurement uses SourceSansPro. Its Heavy GUI weight selects Bold. Other uncaptured families still raise `unsupported_text_metrics`.
+
 Truncation compares the rendered prefix and ellipsis with the available width, including fractional widths. An exact fit is accepted. The combined raster width is converted to a float32 result once. The shared Studio case checks widths on both sides of these boundaries.
 
 When `SplitWord` ends at a space boundary, its bounds include the trailing space instead of an ellipsis. Wrapped truncation also retains the natural width of the last visible line. The shared boundary fixture checks both rules with wrapped and unwrapped labels at several widths and heights.
