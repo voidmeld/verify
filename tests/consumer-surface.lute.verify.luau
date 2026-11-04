@@ -24,8 +24,7 @@ type ConsumerTypes = {
 
 describe("consumer surface", function()
 	it("keeps the types and helpers that consumers import", function()
-		local types: ConsumerTypes = {}
-		expect(types):toEqual {}
+		local _types: ConsumerTypes = {}
 		expect(Lute.typePolicy.explicitAny "local value: any = 1"):toEqual { 1 }
 		expect(Lute.typePolicy.explicitAny "local value: number = 1"):toEqual {}
 	end)
@@ -43,10 +42,6 @@ describe("consumer surface", function()
 end)
 
 describe("matcher runtime input validation", function()
-	it("rejects a nonnumeric tolerance", function()
-		assert(not pcall(Lute.chunk.load('Core.expect(1):toBeNear(1, "wide")', { environment = { Core = Core } })))
-	end)
-
 	it("requires the authored float32 number", function()
 		local _, misuse: unknown =
 			pcall(Lute.chunk.load('Core.expect(0.55):toBeFloat32("0.55")', { environment = { Core = Core } }))
@@ -54,12 +49,13 @@ describe("matcher runtime input validation", function()
 	end)
 
 	it("locates runtime matcher misuse at the calling source", function()
-		local _, misuse: unknown = pcall(
+		local ok, misuse: unknown = pcall(
 			Lute.chunk.load(
 				'Core.expect(1):toBeNear(1, "wide")',
 				{ name = "tests/core.verify.luau", environment = { Core = Core } }
 			)
 		)
+		expect(ok):toEqual(false)
 		expect(tostring(misuse)):toContain "core.verify.luau"
 	end)
 
