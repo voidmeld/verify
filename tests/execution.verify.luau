@@ -434,6 +434,9 @@ describe("execution fixtures", function()
 		expect((statusOf(execution.report, "execution:fixture-setup-failed:broken"))):toEqual "failed"
 		expect((statusOf(execution.report, "unit:alpha/one:not-dispatched"))):toEqual "cancelled"
 		expect(execution.report.cancelled):toEqual(4)
+		expect(execution.report.total):toEqual(5)
+		expect(execution.report.results[5].id):toEqual "execution:fixture-setup-failed:broken"
+		expect(execution.report.results[5].failures[1].message):toEqual "no environment"
 	end)
 
 	it("keeps releasing after a release fails, and names the one that failed", function()
@@ -466,6 +469,9 @@ describe("execution fixtures", function()
 		expect(releases):toEqual { "inner", "outer" }
 		expect((statusOf(execution.report, "execution:fixture-cleanup-failed:middle"))):toEqual "failed"
 		expect(execution.report.passed):toEqual(4)
+		expect(execution.report.total):toEqual(5)
+		expect(execution.report.results[5].id):toEqual "execution:fixture-cleanup-failed:middle"
+		expect(execution.report.results[5].failures[1].message):toEqual "release refused"
 	end)
 end)
 
