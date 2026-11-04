@@ -105,6 +105,20 @@ it("shares identical columns and faces while preserving metadata and optional bo
 	end
 end)
 
+it("decodes raw capture JSON and archived rows into the same face and key", function()
+	local original = capture()
+	local rows = assert(json.asArray(original.sizes))
+	local sizes: json.Array = {}
+	for index = 1, 100 do
+		table.insert(sizes, rows[(index - 1) % #rows + 1])
+	end
+	original.sizes = sizes
+	local before, beforeKey = NativeMetrics.decode(json.serialize(original))
+	local after, afterKey = NativeMetrics.decode(Archive.open(Archive.pack { captured = original }).captured())
+	expect(after):toEqual(before)
+	expect(afterKey):toBe(beforeKey)
+end)
+
 it("rejects missing fractional and out-of-range vector references and truncated columns", function()
 	local packed = Archive.pack { first = capture() }
 	for _, reference in { 0, 0.5, 10000 } do

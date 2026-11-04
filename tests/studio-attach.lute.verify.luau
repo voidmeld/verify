@@ -15,7 +15,7 @@ local json = require "@std/json"
 local process = require "@std/process"
 local system = require "@std/system"
 local task = require "@std/task"
-local crypto = require "@lute/crypto"
+local sha256 = require "../src/lute/hash"
 local Verify = require "../src/core"
 local Channel = require "../src/roblox/report-channel"
 local StudioEngine = require "./studio-engine"
@@ -236,15 +236,6 @@ local function attached(self: Fake, patch: ((Lute.StudioAttachOptions) -> ())?):
 	local session, refusal = Lute.studio.attach(options)
 	assert(session ~= nil, refusal and refusal.detail or "attach failed")
 	return session
-end
-
-local function sha256(bytes: string): string
-	local value = crypto.digest(crypto.hash.sha256, bytes)
-	local out: { string } = {}
-	for index = 0, buffer.len(value) - 1 do
-		table.insert(out, string.format("%02x", buffer.readu8(value, index)))
-	end
-	return table.concat(out)
 end
 
 local function segmentCalls(self: Fake): number
