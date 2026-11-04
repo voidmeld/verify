@@ -6,6 +6,7 @@ local Metrics = require "../roblox/text-metrics"
 local Datatypes = require "../roblox/datatypes"
 local json = require "@std/json"
 local Values = require "../roblox/ui-values"
+local Archive = require "./text-metrics-archive"
 
 local function numbers(value: json.Value): { number }
 	local result: { number } = {}
@@ -15,8 +16,8 @@ local function numbers(value: json.Value): { number }
 	return result
 end
 
-local function decode(source: string): (Metrics.Face, string)
-	local root = assert(json.asObject(json.deserialize(source)))
+local function decode(source: string | json.Object): (Metrics.Face, string)
+	local root = if type(source) == "string" then assert(json.asObject(json.deserialize(source))) else source
 	local tokens: { string } = {}
 	for _, entry in assert(json.asArray(root.tokens)) do
 		table.insert(tokens, Values.string(entry))
@@ -91,20 +92,13 @@ local function richFace(face: Metrics.Face): Metrics.Face
 	return result
 end
 
-local sources: { [string]: string }? = nil
+local sources: { [string]: () -> json.Object }? = nil
 
 local function preload()
 	if sources then
 		return
 	end
-	local read: { [string]: string } = {}
-	for _, entry in fs.listDirectory(DIRECTORY) do
-		local name = entry.name:match "^(.+)%.json$"
-		if entry.type == "file" and name then
-			read[name] = fs.readFileToString(`{DIRECTORY}/{entry.name}`)
-		end
-	end
-	sources = read
+	sources = Archive.open(fs.readFileToString(`{DIRECTORY}/metrics.json`))
 end
 
 local function resolved(key: string): string
@@ -129,7 +123,7 @@ local function load(key: string): Metrics.Model?
 	if source == nil then
 		return nil
 	end
-	local face, declared = decode(source)
+	local face, declared = decode(source())
 	assert(declared == key, "text metrics face does not match its key: " .. key)
 	faces[key] = face
 	local model = Metrics.create(face)

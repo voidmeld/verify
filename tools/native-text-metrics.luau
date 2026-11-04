@@ -1,9 +1,11 @@
 --!strict
 
 local fs = require "@std/fs"
+local json = require "@std/json"
 local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
+local Archive = require "../src/lute/text-metrics-archive"
 
 return function()
 	local directory = ".lute/tmp/text-metrics-native"
@@ -11,14 +13,11 @@ return function()
 	for _, entry in fs.listDirectory(directory) do
 		fs.remove(directory .. "/" .. entry.name)
 	end
-	for _, entry in fs.listDirectory "src/lute/fixtures/text" do
-		if entry.name:match "%.json$" then
-			local raw = fs.readFileToString("src/lute/fixtures/text/" .. entry.name)
-			fs.writeStringToFile(
-				directory .. "/" .. entry.name:gsub("%.json$", ".luau"),
-				"return " .. string.format("%q", raw)
-			)
-		end
+	for name, read in Archive.open(fs.readFileToString "src/lute/fixtures/text/metrics.json") do
+		fs.writeStringToFile(
+			directory .. "/" .. name .. ".luau",
+			"return " .. string.format("%q", json.serialize(read()))
+		)
 	end
 	local place = Files.temporary "Verify-Text-Metrics-Conformance.rbxlx"
 	Lute.place.build {

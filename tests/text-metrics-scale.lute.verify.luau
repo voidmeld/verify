@@ -5,6 +5,7 @@ local it, expect = Test.it, Test.expect
 local fs = require "@std/fs"
 local Wire = require "../src/lute/wire"
 local NativeMetrics = require "../src/lute/text-metrics"
+local Archive = require "../src/lute/text-metrics-archive"
 local Shape = require "../src/core/shape"
 local Metrics = require "../src/roblox/text-metrics"
 
@@ -57,6 +58,7 @@ local function decodeSample(value: unknown): Sample
 	return { pixelScale = scale, tokens = Shape.copyStrings(root.tokens, "tokens"), pairs = pairs, rows = rows }
 end
 local sample = decodeSample(Wire.parse(fs.readFileToString "tests/fixtures/source-sans-pro-bold.json"))
+local faces = Archive.open(fs.readFileToString "src/lute/fixtures/text/metrics.json")
 
 it("SourceSansPro Bold preserves native raster scaling and float32 widths at captured sizes", function()
 	for _, row in sample.rows do
@@ -90,7 +92,7 @@ it("scaled text compares wrap and truncation limits in returned units", function
 end)
 
 it("Guru period-prefixed ligatures preserve native kerning and text boundaries", function()
-	local face = NativeMetrics.decode(fs.readFileToString "src/lute/fixtures/text/Guru-Regular-Normal.json")
+	local face = NativeMetrics.decode(faces["Guru-Regular-Normal"]())
 	local model = Metrics.create(face)
 	for _, entry in
 		{
@@ -109,7 +111,7 @@ it("Guru period-prefixed ligatures preserve native kerning and text boundaries",
 end)
 
 it("BuilderSans arrow ligatures retain native spacing around punctuation", function()
-	local face = NativeMetrics.decode(fs.readFileToString "src/lute/fixtures/text/BuilderSans-Regular-Normal.json")
+	local face = NativeMetrics.decode(faces["BuilderSans-Regular-Normal"]())
 	local model = Metrics.create(face)
 	for _, row in
 		{
