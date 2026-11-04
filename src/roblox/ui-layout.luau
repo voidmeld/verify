@@ -303,7 +303,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end
 	local bases: { [Instance]: { width: number, height: number } } = {}
 	setmetatable(bases, { __mode = "k" })
-	type BasisWrite = { object: Instance, value: { width: number, height: number } }
+	type BasisWrite = { object: Instance, value: { width: number, height: number }? }
 	type Measurement = {
 		width: number,
 		height: number,
@@ -330,6 +330,10 @@ local function attach(environment: Environment.Environment, options: Options): C
 		return size(object, parent, width)
 	end
 	size = function(object: Instance, parent: Rectangle, widthOverride: number?): Rectangle
+		bases[object] = nil
+		if measurements then
+			table.insert(basisWrites, { object = object })
+		end
 		local authored = Values.dimensions(read(object, "Size"))
 		local scale = parent.scale
 		local modifier = object:FindFirstChildWhichIsA "UIScale"

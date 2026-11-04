@@ -517,6 +517,28 @@ describe("simulated GUI layout", function()
 		expect(env.propertyOf(child, "AbsoluteSize")):toEqual(Types.Vector2.new(392, 40))
 	end)
 
+	it("automatic lists discard relative bounds from an earlier free layout", function()
+		local env = fixture()
+		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(400, 300) })
+		local automatic = env.createInstance("Frame", { Parent = root, AutomaticSize = "X" })
+		local fixed = env.createInstance("Frame", { Parent = automatic, Size = Types.UDim2.fromOffset(100, 20) })
+		local child = env.createInstance("Frame", { Parent = automatic, Size = Types.UDim2.new(0.5, 0, 0, 20) })
+		local layout = controller(env, root)
+		layout.step()
+		expect(automatic.AbsoluteSize):toEqual(Types.Vector2.new(100, 0))
+		expect(child.AbsoluteSize):toEqual(Types.Vector2.new(50, 20))
+		fixed:Destroy()
+		child.Size = Types.UDim2.fromOffset(20, 20)
+		env.createInstance("UIListLayout", {
+			Parent = automatic,
+			FillDirection = "Horizontal",
+			HorizontalAlignment = "Center",
+		})
+		layout.step()
+		expect(automatic.AbsoluteSize):toEqual(Types.Vector2.new(20, 0))
+		expect(child.AbsolutePosition):toEqual(Types.Vector2.zero)
+	end)
+
 	it("centres a child in a padded automatic parent as Studio 0.744 does", function()
 		local env = fixture()
 		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(400, 300) })
