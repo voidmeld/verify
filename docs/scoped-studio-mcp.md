@@ -14,6 +14,8 @@ Set an arm's `studio` field instead of `mcp`:
 
 The consumer owns the build command. Verify runs it in that run's workspace before the agent starts. `{workspace}` and `{evidence}` refer only to that run. Build or launch failure prevents agent startup. A host without the optional `Services.studio` binding rejects this setup.
 
+`"device": "hd_1080"` sets the Studio device simulator in the launched Studio's Edit model before the agent starts and checks the readback. Studio keeps the last device across launches, and a Studio that never rendered can report a 1 by 1 viewport, so a run whose agent tests layout, input or captures names its device. A device that Studio does not acknowledge prevents agent startup.
+
 The Lute binding launches a new Studio. It finds that Studio by its unique place name. It writes an MCP configuration outside the workspace for `tools/scoped-studio-mcp.luau`. The proxy keeps one fixed Studio ID. It lists only that Studio and never sends a global listing request. It inserts the ID when absent. It rejects other IDs, unknown methods, unknown tools and unknown argument fields before forwarding.
 
 The agent gets play, stop, capture, execute, console output and input tools. `input` runs the given native VirtualInput code on Client through `execute_luau`. It accepts `{ code, studio_id? }`. It does not simulate computer or browser input. Captures pass through with image content. The proxy does not convert images to text.

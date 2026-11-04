@@ -23,7 +23,7 @@ export type Device = {
 }
 
 export type ArmSetup = {
-	studio: { place: string, build: { string }, keep: boolean? }?,
+	studio: { place: string, build: { string }, keep: boolean?, device: string? }?,
 	overlay: { string },
 	instructions: { string },
 	mcp: string?,
@@ -173,14 +173,15 @@ local function armSetup(value: unknown, label: string, directory: string, files:
 		label,
 		{ "id", "overlay", "instructions", "mcp", "studio", "allowedTools", "disallowedTools", "env" }
 	)
-	local studio: { place: string, build: { string }, keep: boolean? }? = nil
+	local studio: { place: string, build: { string }, keep: boolean?, device: string? }? = nil
 	if not Schema.absent(raw.studio) then
 		local config = Schema.record(raw.studio, label .. ".studio")
-		Schema.only(config, label .. ".studio", { "place", "build", "keep" })
-		local configured: { place: string, build: { string }, keep: boolean? } = {
+		Schema.only(config, label .. ".studio", { "place", "build", "keep", "device" })
+		local configured: { place: string, build: { string }, keep: boolean?, device: string? } = {
 			place = Schema.text(config.place, label .. ".studio.place"),
 			build = Schema.texts(config.build, label .. ".studio.build"),
 			keep = Schema.flag(config.keep, label .. ".studio.keep", false),
+			device = Schema.optionalText(config.device, label .. ".studio.device"),
 		}
 		studio = configured
 	end

@@ -360,6 +360,7 @@ it("scoped Studio releases before checks and never keeps an adapter error", func
 				place = "{evidence}/agent.rbxlx",
 				build = { "build", "{workspace}" },
 				keep = configuration.keep,
+				device = "hd_1080",
 			}
 		end
 		local services = Fakes.services(memory.files, {})
@@ -369,9 +370,11 @@ it("scoped Studio releases before checks and never keeps an adapter error", func
 			directory: string,
 			place: string,
 			build: { string },
-			_seconds: number
+			_seconds: number,
+			device: string?
 		): { config: string, close: (boolean?) -> () }
 			opened += 1
+			expect(device):toBe "hd_1080"
 			expect(place):toBe(directory .. "/agent.rbxlx")
 			expect(build[2]):toBe(workspace)
 			local config = directory .. "/mcp.json"
