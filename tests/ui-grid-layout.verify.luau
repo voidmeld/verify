@@ -90,11 +90,11 @@ it("unmodeled grid constraints fail before geometry changes", function(_, caseCo
 		else
 			grid.CellSize = library.UDim2.fromOffset(-1, 20)
 		end
-		local before = root.AbsoluteSize
+		local before = env.propertyOf(root, "AbsoluteSize")
 		expect(function()
 			assert(bridge.layout).step()
 		end):toThrow "unsupported_ui_layout"
-		expect(root.AbsoluteSize):toEqual(before)
+		expect(env.propertyOf(root, "AbsoluteSize")):toEqual(before)
 	end
 end)
 

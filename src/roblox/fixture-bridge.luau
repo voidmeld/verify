@@ -124,6 +124,31 @@ local function create(options: Options): Bridge
 	local serviceClasses: { [string]: boolean } = {}
 	local resolveService: ((string) -> Environment.Instance)? = nil
 	local computed: { [string]: Environment.Computed } = table.clone(settings.computed or {})
+	local readLayout: ((Environment.Instance, string) -> unknown)? = nil
+	if settings.layout then
+		local layoutProperties: { [string]: { string } } = {
+			GuiBase2d = { "AbsolutePosition", "AbsoluteSize", "AbsoluteRotation" },
+			UIGridStyleLayout = { "AbsoluteContentSize" },
+			UIGridLayout = { "AbsoluteCellSize", "AbsoluteCellCount" },
+			ScrollingFrame = { "AbsoluteCanvasSize", "AbsoluteWindowSize" },
+			TextLabel = { "TextBounds", "TextFits" },
+			TextButton = { "TextBounds", "TextFits" },
+			TextBox = { "TextBounds", "TextFits" },
+		}
+		for className, properties in layoutProperties do
+			for _, property in properties do
+				local key = className .. "." .. property
+				if computed[key] == nil then
+					computed[key] = {
+						get = function(object: Environment.Instance): unknown
+							return if readLayout then readLayout(object, property) else nil
+						end,
+						writable = true,
+					}
+				end
+			end
+		end
+	end
 	for _, name in settings.database:GetClassNames() do
 		local class = settings.database:GetClass(name)
 		if class and table.find(class.Tags, "Service") then
@@ -263,6 +288,37 @@ local function create(options: Options): Bridge
 				result = objectsAtPosition(root, x, y, candidates)
 			end)
 			return result
+		end
+	end
+	if layout then
+		local refreshing = false
+		local readAt: number? = nil
+		local readTime, readX, readY, readRoots = 0, 0, 0, 0
+		local geometry = assert(layoutOptions)
+		readLayout = function(object: Environment.Instance, property: string): unknown
+			if not refreshing then
+				local revision = environment.revision()
+				local now = environment.now()
+				local viewport = geometry.viewport()
+				local count = #geometry.roots()
+				if
+					readAt ~= revision
+					or readTime ~= now
+					or readX ~= viewport.X
+					or readY ~= viewport.Y
+					or readRoots ~= count
+				then
+					refreshing = true
+					local ok, failure = pcall(layout.step)
+					refreshing = false
+					if not ok then
+						error(failure, 0)
+					end
+					readAt = environment.revision()
+					readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
+				end
+			end
+			return environment.propertyOf(object, property)
 		end
 	end
 	local place: PlaceRuntime.Engine? = nil

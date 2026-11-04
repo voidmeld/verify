@@ -466,7 +466,7 @@ return true
 				box.Text, box.ClearTextOnFocus, box.MultiLine = "éx", false, true
 				box.Size, box.Parent = UDim2.fromOffset(200, 100), screen
 				box:CaptureFocus()
-				box.CursorPosition = 2
+				box.CursorPosition = 3
 				local virtual = game.UserInputService:CreateVirtualInput()
 				virtual:SendKey(true, Enum.KeyCode.Return, false)
 				task.wait(0.05)
@@ -474,7 +474,7 @@ return true
 				task.wait(0.05)
 				assert(box:IsFocused(), "multiline Return retains editing focus")
 				assert(box.Text == "é\nx", "multiline Return inserts at the UTF-8 cursor")
-				assert(box.CursorPosition == 3, "multiline Return advances the cursor")
+				assert(box.CursorPosition == 4, "multiline Return advances the byte cursor")
 				box:ReleaseFocus()
 				screen:Destroy()
 				return true
@@ -567,6 +567,16 @@ return true
 		},
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
 		{
+			name = "action teardown retains its last preferred binding",
+			source = require "./fixtures/input-action-teardown",
+		},
+		{ name = "pointer focus respects native GUI barriers", source = require "./fixtures/input-pointer-focus" },
+		{ name = "text selections edit complete byte ranges", source = require "./fixtures/input-text-editing" },
+		{
+			name = "directional selection prioritizes overlapping rectangles",
+			source = require "./fixtures/input-selection-geometry",
+		},
+		{
 			name = "GuiService Select chooses eligible descendants by order",
 			source = require "./fixtures/input-gui-select",
 		},
@@ -630,7 +640,7 @@ do
 		own(function()
 			scheduler.cancel(thread)
 		end)
-		for _ = 1, 360 do
+		for _ = 1, 600 do
 			if complete or #scheduler.failures > 0 then
 				break
 			end

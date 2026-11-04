@@ -10,6 +10,10 @@ local cases: { { name: string, source: string, limitations: { string }? } } = {
 	},
 	{ name = "touch drag capture matches native input", source = require "./fixtures/input-touch-drag" },
 	{
+		name = "touch long press matches native gesture boundaries",
+		source = require "./fixtures/input-touch-long-press",
+	},
+	{
 		name = "touch taps transfer text focus and preserve the accepted edit",
 		source = [=[
 local simulator = game:GetService("StudioDeviceSimulatorService")

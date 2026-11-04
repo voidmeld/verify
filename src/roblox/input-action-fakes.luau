@@ -7,6 +7,7 @@ type Instance = Environment.Instance
 type State = { kind: string, value: unknown }
 export type Controller = {
 	changed: (Instance, string, boolean) -> (),
+	destroying: (Instance) -> (),
 	released: (Instance) -> (),
 }
 
@@ -15,9 +16,14 @@ local function attach(environment: Environment.Environment)
 	setmetatable(states, { __mode = "k" })
 	local actions: { [Instance]: boolean } = {}
 	local owners: { [Instance]: Instance } = {}
+	local destroying: { [Instance]: boolean } = {}
 	setmetatable(actions, { __mode = "k" })
 	setmetatable(owners, { __mode = "kv" })
+	setmetatable(destroying, { __mode = "k" })
 	local function preferred(action: Instance)
+		if destroying[action] then
+			return
+		end
 		actions[action] = true
 		local root = action:FindFirstAncestorWhichIsA "DataModel"
 		local input = if root then root:FindFirstChildOfClass "UserInputService" else nil
@@ -160,8 +166,25 @@ local function attach(environment: Environment.Environment)
 		states[action] = nil
 		actions[action] = nil
 		owners[action] = nil
+		destroying[action] = nil
 	end
-	return { changed = changed, released = released }
+	return {
+		changed = changed,
+		destroying = function(object: Instance)
+			if object:IsA "InputAction" then
+				destroying[object] = true
+				return
+			elseif #environment.childrenOf(object) == 0 then
+				return
+			end
+			for action in actions do
+				if action == object or action:IsDescendantOf(object) then
+					destroying[action] = true
+				end
+			end
+		end,
+		released = released,
+	}
 end
 
 return { attach = attach }

@@ -45,7 +45,7 @@ it("list spacing matches the same native conformance assertions", function(own)
 	own(function()
 		scheduler.cancel(thread)
 	end)
-	for _ = 1, 240 do
+	for _ = 1, 600 do
 		if complete or #scheduler.failures > 0 then
 			break
 		end

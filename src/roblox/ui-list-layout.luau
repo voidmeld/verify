@@ -282,17 +282,18 @@ local function measure(
 		local cursor = alignment(mainAlignment, available, main)
 		local spacing = mainFlex == "SpaceBetween" or mainFlex == "SpaceAround" or mainFlex == "SpaceEvenly"
 		if spacing and not changed and #items > 0 then
-			if main - gaps > available then
-				error("unsupported_ui_layout: " .. list:GetFullName() .. " requires overflowing list spacing", 0)
-			end
 			cursor = 0
 			local spaces = if mainFlex == "SpaceBetween"
 				then #items - 1
 				elseif mainFlex == "SpaceAround" then #items
 				else #items + 1
-			local extra = math.max(0, available - main + gaps)
-			gap = if spaces > 0 then extra / spaces else 0
-			cursor = if mainFlex == "SpaceAround" then gap / 2 elseif mainFlex == "SpaceEvenly" then gap else 0
+			if main > available then
+				cursor = if mainFlex == "SpaceBetween" then 0 else (available - main) / 2
+			else
+				local extra = math.max(0, available - main + gaps)
+				gap = if spaces > 0 then extra / spaces else 0
+				cursor = if mainFlex == "SpaceAround" then gap / 2 elseif mainFlex == "SpaceEvenly" then gap else 0
+			end
 		end
 		local alignments: { string } = {}
 		for index, item in items do

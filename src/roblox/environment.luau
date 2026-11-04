@@ -332,6 +332,13 @@ local function create(options: Options?): Environment
 		end
 		state.values[key] = value
 		changed(object, state, key)
+		if state.class.properties.TextScaled ~= nil and state.class.properties.TextWrapped ~= nil then
+			if key == "TextScaled" and value == true and state.values.TextWrapped ~= true then
+				assign(object, state, "TextWrapped", true)
+			elseif key == "TextWrapped" and value == false and state.values.TextScaled == true then
+				assign(object, state, "TextScaled", false)
+			end
+		end
 		if selecting then
 			if isObject(previous) then
 				local old = stateOf(previous)
@@ -475,6 +482,9 @@ local function create(options: Options?): Environment
 			inject("destroy", state, nil, object, nil, nil)
 		end
 		state.destroying = true
+		if inputActions then
+			inputActions.destroying(object)
+		end
 		fireSignal(state, "Destroying")
 		move(object, state, nil)
 		for _, child in table.clone(state.children) do

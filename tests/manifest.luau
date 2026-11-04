@@ -113,6 +113,7 @@ return table.freeze {
 	"tests/ui-folder-hits.lute.verify.luau",
 	"tests/ui-grid-layout.lute.verify.luau",
 	"tests/ui-grid-layout.verify.luau",
+	"tests/ui-layout-boundaries.lute.verify.luau",
 	"tests/ui-layout.verify.luau",
 	"tests/ui-legacy-text.lute.verify.luau",
 	"tests/ui-list-flex.lute.verify.luau",

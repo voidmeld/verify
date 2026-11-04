@@ -35,7 +35,7 @@ for _, axis in { "X", "Y", "XY", "invalid" } do
 		end
 		root.Size = library.UDim2.fromOffset(200, 100)
 		expect(layout.step):toThrow "unsupported_ui_layout"
-		expect(root.AbsoluteSize):toEqual(before)
+		expect(env.propertyOf(root, "AbsoluteSize")):toEqual(before)
 	end)
 end
 

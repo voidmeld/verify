@@ -211,6 +211,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local hovered: { Instance } = {}
 	local pressed: { Instance } = {}
 	local pressedButton: Instance? = nil
+	local pressedText: Instance? = nil
+	local textAnchor: number? = nil
 	type Drag = { detector: Instance, origin: Position }
 	local dragging: Drag? = nil
 	type Activation = { released: number, count: number }
@@ -523,12 +525,77 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local instance = Environment.assertInstance(found)
 		return if env.isAlive(instance) then instance else nil
 	end
-	local function focus(clicked: Instance?, object: Instance)
+	local function textTarget(objects: { Instance }): Instance?
+		for _, object in objects do
+			if object:IsA "TextBox" then
+				return object
+			elseif button(object) then
+				return nil
+			end
+		end
+		return nil
+	end
+	local function textCursor(box: Instance, at: Position): number
+		local value = tostring(box.Text)
+		if value == "" or focusedBox() ~= box and read(box, "ClearTextOnFocus") == true then
+			return 1
+		end
+		if read(box, "TextWrapped") == true or read(box, "TextScaled") == true or value:find "\n" then
+			unsupported "wrapped TextBox click placement"
+		end
+		local scale = 1
+		local ancestor: Instance? = box
+		while ancestor and ancestor ~= gui do
+			if ancestor:IsA "GuiObject" and read(ancestor, "Rotation") ~= 0 then
+				unsupported "rotated TextBox click placement"
+			end
+			local scaler = ancestor:FindFirstChildWhichIsA "UIScale"
+			if scaler then
+				scale *= Values.number(read(scaler, "Scale"))
+			end
+			ancestor = ancestor.Parent
+		end
+		local position = Values.vector(read(box, "AbsolutePosition"))
+		local size = Values.vector(read(box, "AbsoluteSize"))
+		local bounds = Values.vector(read(box, "TextBounds"))
+		local padding = box:FindFirstChildWhichIsA "UIPadding"
+		local function inset(property: string): number
+			if padding == nil then
+				return 0
+			end
+			local unit = Values.dimension(read(padding, property))
+			return unit.Scale * size.X + unit.Offset * scale
+		end
+		local left, right = inset "PaddingLeft", inset "PaddingRight"
+		local alignment = tostring(read(box, "TextXAlignment")):match "([^%.]+)$"
+		local room = size.X - left - right
+		local start = position.X
+			+ left
+			+ (
+				if alignment == "Right"
+					then room - bounds.X
+					elseif alignment == "Center" then (room - bounds.X) / 2
+					else 0
+			)
+		local x = at.X - options.inset().X
+		if x >= start + bounds.X then
+			return #value + 1
+		elseif x <= start and focusedBox() == box then
+			return 1
+		end
+		return unsupported "TextBox click placement inside existing text"
+	end
+	local function focus(clicked: Instance?, object: Instance, allowReadOnly: boolean?)
 		local box = focusedBox()
 		if box and box ~= clicked then
 			env.method(box, "ReleaseFocus")(box, false, object)
 		end
-		if clicked and clicked:IsA "TextBox" and read(clicked, "TextEditable") ~= false and box ~= clicked then
+		if
+			clicked
+			and clicked:IsA "TextBox"
+			and (allowReadOnly == true or read(clicked, "TextEditable") ~= false)
+			and box ~= clicked
+		then
 			env.method(clicked, "CaptureFocus")(clicked)
 		end
 	end
@@ -564,23 +631,13 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			if targetButton then
 				env.fire(targetButton, "MouseButton1Down", at.X, at.Y)
 			end
-			local box = focusedBox()
-			local clicked = targets[1]
-			if box and box ~= clicked then
-				local release = box.ReleaseFocus
-				if type(release) == "function" then
-					env.method(box, "ReleaseFocus")(box, false, object)
-				end
-			end
-			if clicked and clicked:IsA "TextBox" and read(clicked, "TextEditable") ~= false and box ~= clicked then
-				local capture = clicked.CaptureFocus
-				if type(capture) == "function" then
-					env.method(clicked, "CaptureFocus")(clicked)
-				end
-				if tostring(clicked.Text) ~= "" then
-					unsupported "TextBox click placement inside existing text"
-				end
-				env.poke(clicked, "CursorPosition", 1)
+			local clicked = textTarget(objects)
+			local cursor = if clicked and read(clicked, "TextEditable") ~= false then textCursor(clicked, at) else nil
+			focus(clicked, object, true)
+			pressedText, textAnchor = clicked, cursor
+			if clicked and cursor then
+				env.poke(clicked, "CursorPosition", cursor)
+				env.poke(clicked, "SelectionStart", cursor)
 			end
 			for _, target in targets do
 				env.fire(target, "InputBegan", object)
@@ -588,6 +645,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			env.fire(service, "InputBegan", object, processed(targets, true))
 		else
 			held = false
+			local box, anchor = pressedText, textAnchor
+			pressedText, textAnchor = nil, nil
+			if box and anchor and env.isAlive(box) and focusedBox() == box and box.SelectionStart == anchor then
+				env.poke(box, "SelectionStart", -1)
+			end
 			if dragging then
 				dragTo(at, "DragEnd")
 				dragging = nil
@@ -810,6 +872,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local x, y = origin.X + extent.X / 2, origin.Y + extent.Y / 2
 		local best: Instance? = nil
 		local bestScore = math.huge
+		local bestBeam = false
 		local eligible: { [Instance]: boolean } = {}
 		for _, candidate in scope:GetDescendants() do
 			if
@@ -822,9 +885,12 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				local size = Values.vector(read(candidate, "AbsoluteSize"))
 				local dx, dy = at.X + size.X / 2 - x, at.Y + size.Y / 2 - y
 				local along = dx * direction.x + dy * direction.y
-				local score = along + 2 * math.abs(dx * direction.y - dy * direction.x)
-				if along > 0 and score < bestScore then
-					best, bestScore = candidate, score
+				local beam = if direction.x ~= 0
+					then math.max(origin.Y, at.Y) < math.min(origin.Y + extent.Y, at.Y + size.Y)
+					else math.max(origin.X, at.X) < math.min(origin.X + extent.X, at.X + size.X)
+				local score = along + (if beam then 0 else 2 * math.abs(dx * direction.y - dy * direction.x))
+				if along > 0 and (beam and not bestBeam or beam == bestBeam and score < bestScore) then
+					best, bestScore, bestBeam = candidate, score, beam
 				end
 			end
 		end
@@ -985,19 +1051,29 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			deliverActions(code, event == "InputBegan")
 		end
 	end)
+	local function editRange(box: Instance, value: string): (number, number)
+		local cursor, selection = box.CursorPosition, box.SelectionStart
+		local at = if type(cursor) == "number" and cursor >= 1 and cursor <= #value + 1 then cursor else #value + 1
+		if type(selection) == "number" and selection >= 1 then
+			local start = math.clamp(selection, 1, #value + 1)
+			return math.min(at, start), math.max(at, start)
+		end
+		return at, at
+	end
 	local function deliverText(value: string)
 		local box = focusedBox()
 		if box == nil then
 			unsupported "text input without a focused TextBox"
 		end
 		local target = Environment.assertInstance(box)
+		if read(target, "TextEditable") == false then
+			return
+		end
 		local current = tostring(target.Text)
-		local length = utf8.len(current) or #current
-		local cursor = env.propertyOf(target, "CursorPosition")
-		local at = if type(cursor) == "number" and cursor >= 1 and cursor <= length + 1 then cursor else length + 1
-		local split = utf8.offset(current, at) or #current + 1
-		target.Text = current:sub(1, split - 1) .. value .. current:sub(split)
-		env.poke(target, "CursorPosition", at + (utf8.len(value) or #value))
+		local start, finish = editRange(target, current)
+		target.Text = current:sub(1, start - 1) .. value .. current:sub(finish)
+		env.poke(target, "CursorPosition", start + #value)
+		env.poke(target, "SelectionStart", -1)
 	end
 	local function deliverKey(value: Key)
 		if controllerActive then
@@ -1024,20 +1100,16 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			selectionRepeats[code] = nil
 		end
 		if box then
-			if value.down and code == "Backspace" then
+			if value.down and code == "Backspace" and read(box, "TextEditable") ~= false then
 				local current = tostring(box.Text)
-				local length = utf8.len(current) or #current
-				local cursor = env.propertyOf(box, "CursorPosition")
-				local at = if type(cursor) == "number"
-						and cursor >= 1
-						and cursor <= length + 1
-					then cursor
-					else length + 1
-				if at > 1 then
-					local start = utf8.offset(current, at - 1) or 1
-					local finish = utf8.offset(current, at) or #current + 1
+				local start, finish = editRange(box, current)
+				if start == finish and start > 1 then
+					start = utf8.offset(current, -1, start) or 1
+				end
+				if start ~= finish then
 					box.Text = current:sub(1, start - 1) .. current:sub(finish)
-					env.poke(box, "CursorPosition", at - 1)
+					env.poke(box, "CursorPosition", start)
+					env.poke(box, "SelectionStart", -1)
 				end
 			elseif value.down and code == "Return" then
 				if (heldKeys.LeftShift or heldKeys.RightShift) and box.MultiLine == true then
@@ -1146,7 +1218,13 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			return pointerController().drag(objects, x, y)
 		end,
 		processed = processed,
-		focus = focus,
+		focus = function(clicked, object)
+			focus(clicked, object)
+		end,
+		toScreen = function(at)
+			local inset = options.inset()
+			return { X = at.X + inset.X, Y = at.Y + inset.Y }
+		end,
 		detector = detectorFor,
 		dragOffset = dragOffset,
 		read = read,
@@ -1289,6 +1367,10 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	install(service, "GetMouseButtonsPressed", function(): { Instance }
 		ensureOpen()
 		return if held and buttonInput then { buttonInput } else {}
+	end)
+	install(service, "IsMouseButtonPressed", function(_self: Instance, kind: unknown): boolean
+		ensureOpen()
+		return kind == inputTypes.MouseButton1 and held
 	end)
 	install(gui, "GetGuiObjectsAtPosition", function(_self: Instance, x: number, y: number): { Instance }
 		ensureOpen()

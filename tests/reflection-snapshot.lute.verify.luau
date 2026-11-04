@@ -233,13 +233,16 @@ describe("reflection snapshot loaded under Lute", function()
 		local root = env.createInstance("Frame", { Size = types.UDim2.fromOffset(120, 80) })
 		env.createInstance("TextLabel", { Parent = root, AutomaticSize = types.Enum.AutomaticSize.XY })
 		table.insert(roots, root)
-		local before = root.AbsoluteSize
+		local before = env.propertyOf(root, "AbsoluteSize")
 		local ok, message = pcall(function()
 			assert(bridge.layout).step()
 		end)
 		expect(ok):toBe(false)
 		expect(tostring(message)):toContain "AutomaticSize text measurement"
-		expect(root.AbsoluteSize):toEqual(before)
+		expect(function(): unknown
+			return root.AbsoluteSize
+		end):toThrow "AutomaticSize text measurement"
+		expect(env.propertyOf(root, "AbsoluteSize")):toEqual(before)
 	end)
 
 	it("accepts and refuses writes like the real database did when it was exported", function()
