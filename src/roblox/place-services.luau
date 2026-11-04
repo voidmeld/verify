@@ -201,7 +201,7 @@ local function install<B>(
 			end,
 		}
 		local current: DeviceCatalog.Device? = if options.client
-			then DeviceCatalog.desktop(options.client.viewport.x, options.client.viewport.y)
+			then DeviceCatalog.desktop(options.client.viewport.x, options.client.viewport.y, options.client.displaySize)
 			else nil
 		local function device(api: string): DeviceCatalog.Device
 			local active = current
@@ -217,6 +217,7 @@ local function install<B>(
 			current = entry
 			local Enum = engine.datatypes.Enum
 			local input = engine.service "UserInputService"
+			environment.poke(engine.service "GuiService", "ViewportDisplaySize", Enum.DisplaySize[entry.displaySize])
 			environment.poke(input, "PreferredInput", Enum.PreferredInput[entry.preferredInput])
 			environment.poke(input, "TouchEnabled", entry.touch)
 			environment.poke(input, "KeyboardEnabled", entry.keyboard)
@@ -313,7 +314,7 @@ local function install<B>(
 			StopSimulationAsync = function()
 				local client = options.client
 				if client then
-					apply(DeviceCatalog.desktop(client.viewport.x, client.viewport.y))
+					apply(DeviceCatalog.desktop(client.viewport.x, client.viewport.y, client.displaySize))
 				end
 			end,
 		}

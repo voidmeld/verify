@@ -38,6 +38,8 @@ local fixtures = {
 	{ name = "native wrapping mutations", source = require "../tests/fixtures/ui-wrap-mutations" },
 	{ name = "native aspect flex", source = require "../tests/fixtures/ui-aspect-flex" },
 	{ name = "native aspect layout", source = require "../tests/fixtures/ui-aspect-layout" },
+	{ name = "native size constraint axes", source = require "../tests/fixtures/ui-size-constraint" },
+	{ name = "native device display size", source = require "../tests/fixtures/device-display-size" },
 	{ name = "native aspect interactions", source = require "../tests/fixtures/ui-aspect-interactions" },
 	{ name = "native list wrapping", source = require "../tests/fixtures/ui-list-wrap" },
 	{ name = "native wrapping interactions", source = require "../tests/fixtures/ui-wrap-interactions" },

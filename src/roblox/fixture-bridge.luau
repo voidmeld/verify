@@ -15,6 +15,7 @@ local TextContent = require "./text-content"
 
 local SERVICE_DEFAULTS: { [string]: { [string]: unknown } } = {
 	GuiService = {
+		ViewportDisplaySize = Datatypes.Enum.DisplaySize.Medium,
 		AutoSelectGuiEnabled = true,
 		GuiNavigationEnabled = true,
 		TouchControlsEnabled = true,

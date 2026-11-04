@@ -610,10 +610,15 @@ describe("semantic input adapter", function()
 		f.backend.pointer { x = 200, y = 140, button = "left", down = false }
 		expect(presses):toEqual(2)
 		f.base.SizeConstraint = "RelativeXX"
+		f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+		f.backend.pointer { x = 200, y = 140, button = "left", down = false }
+		expect(presses):toEqual(3)
+		f.env.defineClass("UITableLayout", { super = "Instance" })
+		f.env.createInstance("UITableLayout", { Parent = f.base })
 		expect(pcall(function()
 			f.backend.pointer { x = 200, y = 140, button = "left", down = true }
 		end)):toEqual(false)
-		expect(presses):toEqual(2)
+		expect(presses):toEqual(3)
 	end)
 	it("rejects malformed keys, pointers and text", function()
 		local badKeys: { unknown } = { {}, { code = "", down = true }, { code = "A", down = 1 } }

@@ -70,15 +70,24 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		if object:IsA "GuiObject" then
 			number(object, "Rotation", 0)
+			local parent = object.Parent
+			if
+				enum(object, "SizeConstraint", "RelativeXY") ~= "RelativeXY"
+				and parent ~= nil
+				and parent:IsA "GuiObject"
+				and enum(parent, "AutomaticSize", "None") ~= "None"
+			then
+				local authored = Values.dimensions(read(object, "Size"))
+				if authored.X.Scale ~= 0 or authored.Y.Scale ~= 0 then
+					unsupported(object, "SizeConstraint under automatic size")
+				end
+			end
 			if enum(object, "AutomaticSize", "None") ~= "None" then
 				if isText(object) then
 					if options.measureBounds == nil then
 						unsupported(object, "AutomaticSize text measurement")
 					end
 				end
-			end
-			if enum(object, "SizeConstraint", "RelativeXY") ~= "RelativeXY" then
-				unsupported(object, "SizeConstraint")
 			end
 		end
 		if object:IsA "StyleLink" and options.read == nil then
@@ -340,8 +349,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		if modifier then
 			scale *= number(modifier, "Scale", 1)
 		end
-		local width = dimension(authored.X, parent.width, parent.scale)
-		local height = dimension(authored.Y, parent.height, parent.scale)
+		local sizeConstraint = enum(object, "SizeConstraint", "RelativeXY")
+		local width =
+			dimension(authored.X, if sizeConstraint == "RelativeYY" then parent.height else parent.width, parent.scale)
+		local height =
+			dimension(authored.Y, if sizeConstraint == "RelativeXX" then parent.width else parent.height, parent.scale)
 		local constraint = object:FindFirstChildWhichIsA "UISizeConstraint"
 		if constraint then
 			local minimum = Values.vector(read(constraint, "MinSize"))
