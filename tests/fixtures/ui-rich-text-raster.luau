@@ -7,12 +7,13 @@ local font = Font.new("rbxasset://fonts/families/BuilderSans.json")
 local params = Instance.new("GetTextBoundsParams")
 params.Font = font
 local function near(a, b) return math.abs(a - b) <= 0.001 end
-local function measure(text, rich, size, width, wrapped, spacing)
+local function measure(text, rich, size, width, wrapped, spacing, face)
+ params.Font = face or font
  params.Text, params.RichText, params.Size = text, rich, size
  params.Width = if wrapped then width else 0
  local api = game.TextService:GetTextBoundsAsync(params)
  local label = Instance.new("TextLabel")
- label.FontFace, label.RichText = font, rich
+ label.FontFace, label.RichText = face or font, rich
  label.Text, label.TextSize = text, size
  label.TextWrapped, label.LineHeight = wrapped, spacing
  label.Size, label.Parent = UDim2.fromOffset(width, 100), screen
@@ -68,6 +69,72 @@ for _, text in texts do
     assert(bounds.X >= previous.X - 0.001 and bounds.Y >= previous.Y - 0.001, "unwrapped bounds grow with size " .. text .. "/" .. size)
    end
    previous = bounds
+  end
+ end
+end
+local bold = Font.new(font.Family, Enum.FontWeight.Bold)
+for _, text in {"<b>Lap record</b>", "<b>Lap <b>record</b></b>", "<u><b>Lap record</b></u>"} do
+ for _, size in {7, 14, 18, 28} do
+  for _, width in {40, 1000} do
+   for _, mode in {{false, 1}, {true, 1}, {true, 1.2}} do
+    local wrapped, spacing = mode[1], mode[2]
+    local api, bounds, fits = measure(text, true, size, width, wrapped, spacing)
+    local expected, painted, expectedFits = measure("Lap record", true, size, width, wrapped, spacing, bold)
+    assert(near(api.X, expected.X) and near(api.Y, expected.Y), "bold markup uses the bold service face")
+    assert(near(bounds.X, painted.X) and near(bounds.Y, painted.Y), "bold markup uses the bold label face")
+    assert(fits == expectedFits, "bold markup preserves bold fit")
+   end
+  end
+ end
+end
+for _, selection in {{"BuilderSans", "Bold"}, {"Fondamento", "Regular"}, {"Michroma", "Regular"}} do
+ local family = "rbxasset://fonts/families/" .. selection[1] .. ".json"
+ local base = Font.new(family)
+ local heavy = Font.new(family, Enum.FontWeight.Heavy)
+ local selected = Font.new(family, Enum.FontWeight[selection[2]])
+ for _, size in {7, 14, 18, 28} do
+  for _, width in {40, 1000} do
+   for _, wrapped in {false, true} do
+    local expected, painted, expectedFits = measure("Lap record", true, size, width, wrapped, 1, selected)
+    for _, value in {{"Lap record", heavy}, {'<font weight="heavy">Lap record</font>', base}, {"<font weight='900'>Lap record</font>", base}} do
+     local api, bounds, fits = measure(value[1], true, size, width, wrapped, 1, value[2])
+     assert(near(api.X, expected.X) and near(api.Y, expected.Y), "Heavy uses the selected service face " .. family)
+     assert(near(bounds.X, painted.X) and near(bounds.Y, painted.Y), "Heavy uses the selected label face " .. family)
+     assert(fits == expectedFits, "Heavy preserves the selected fit " .. family)
+    end
+   end
+  end
+ end
+end
+local missingFamily = "rbxasset://fonts/families/DoesNotExist.json"
+params.Font, params.Text = Font.new(missingFamily), "Unknown family text"
+local measured, failure = pcall(function() return game.TextService:GetTextBoundsAsync(params) end)
+assert(not measured and tostring(failure):find("Temp read failed.", 1, true), "the missing family fails in the service: " .. tostring(failure))
+for _, weight in {"Regular", "Bold", "Heavy"} do
+ for _, size in {7, 14, 28} do
+  for _, width in {40, 1000} do
+   for _, wrapped in {false, true} do
+    for _, rich in {false, true} do
+     local labels = {}
+     for index, face in {
+      Font.new(missingFamily, Enum.FontWeight[weight]),
+      Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight[if weight == "Heavy" then "Bold" else weight]),
+     } do
+      local label = Instance.new("TextLabel")
+      label.FontFace, label.TextSize, label.RichText = face, size, rich
+      label.Text, label.TextWrapped = "Unknown family text", wrapped
+      label.AutomaticSize, label.Size = Enum.AutomaticSize.Y, UDim2.fromOffset(width, 0)
+      label.Parent = screen
+      labels[index] = label
+     end
+     task.wait(0.05)
+     assert(labels[1].TextBounds == labels[2].TextBounds, "the missing GUI family uses SourceSansPro metrics")
+     assert(labels[1].AbsoluteSize == labels[2].AbsoluteSize, "the missing GUI family preserves automatic height")
+     assert(labels[1].TextFits == labels[2].TextFits, "the missing GUI family preserves fit")
+     assert(labels[1].FontFace.Family == missingFamily, "fallback preserves the assigned FontFace")
+     for _, label in labels do label:Destroy() end
+    end
+   end
   end
  end
 end

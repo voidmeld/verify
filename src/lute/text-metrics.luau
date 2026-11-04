@@ -107,6 +107,18 @@ local function preload()
 	sources = read
 end
 
+local function resolved(key: string): string
+	local family, weight, style = key:match "^rbxasset://fonts/families/(%w+)%.json/(%w+)/(%w+)$"
+	if weight == "Heavy" and style == "Normal" then
+		if family == "BuilderSans" then
+			return "rbxasset://fonts/families/BuilderSans.json/Bold/Normal"
+		elseif family == "Fondamento" or family == "Michroma" then
+			return "rbxasset://fonts/families/" .. family .. ".json/Regular/Normal"
+		end
+	end
+	return key
+end
+
 local function load(key: string): Metrics.Model?
 	local loaded = models[key]
 	if loaded then
@@ -128,6 +140,11 @@ end
 local ENTITIES: { [string]: string } = { lt = "<", gt = ">", amp = "&", quot = '"', apos = "'" }
 local NEUTRAL_TAGS: { [string]: boolean } = { u = true, s = true, stroke = true, mark = true }
 local NEUTRAL_FONT: { [string]: boolean } = { color = true, transparency = true }
+local WEIGHTS: { [string]: string } = {}
+for index, name in { "Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Heavy" } do
+	WEIGHTS[string.lower(name)] = name
+	WEIGHTS[tostring(index * 100)] = name
+end
 
 local function unescape(text: string): string
 	return (string.gsub(text, "&(%a+);", function(name: string): string
@@ -135,44 +152,97 @@ local function unescape(text: string): string
 	end))
 end
 
-local function plain(text: string): string
+local function plain(text: string, weight: string): (string, string)
 	local source = string.gsub(text, "<!%-%-.-%-%->", "")
 	local out: { string } = {}
 	local upper = 0
+	local weights = { weight }
+	local selected: string? = nil
+	local function append(chunk: string)
+		if chunk == "" then
+			return
+		end
+		local current = weights[#weights]
+		if selected ~= nil and selected ~= current then
+			error("unsupported_text_metrics: RichText mixed font weights", 0)
+		end
+		selected = current
+		table.insert(out, if upper > 0 then string.upper(chunk) else chunk)
+	end
 	local cursor = 1
 	while true do
 		local first, last, closing, name, attributes = string.find(source, "<(/?)(%a+)(.-)>", cursor)
 		local chunk = unescape(string.sub(source, cursor, if first then first - 1 else #source))
-		table.insert(out, if upper > 0 then string.upper(chunk) else chunk)
+		append(chunk)
 		if first == nil or last == nil then
 			break
 		end
 		local tag = string.lower(name or "")
 		if tag == "br" then
-			table.insert(out, "\n")
+			append "\n"
+		elseif tag == "b" then
+			if closing == "/" then
+				if #weights > 1 then
+					table.remove(weights)
+				end
+			else
+				table.insert(weights, "Bold")
+			end
 		elseif tag == "uc" or tag == "uppercase" then
 			upper = math.max(0, upper + (if closing == "/" then -1 else 1))
 		elseif tag == "font" then
+			local current = weights[#weights]
+			local hasWeight, parsedWeight = false, false
 			for attribute in string.gmatch(attributes or "", "([%w_]+)%s*=") do
-				if not NEUTRAL_FONT[string.lower(attribute)] then
+				if string.lower(attribute) == "weight" then
+					hasWeight = true
+				elseif not NEUTRAL_FONT[string.lower(attribute)] then
 					error("unsupported_text_metrics: RichText <font " .. attribute .. ">", 0)
 				end
+			end
+			for attribute, _, value in string.gmatch(attributes or "", "([%w_]+)%s*=%s*([\"'])(.-)%2") do
+				if string.lower(attribute) == "weight" then
+					local declared = WEIGHTS[string.lower(value or "")]
+					if declared == nil then
+						error("unsupported_text_metrics: RichText <font weight>", 0)
+					end
+					current = declared
+					parsedWeight = true
+				end
+			end
+			if hasWeight and not parsedWeight then
+				error("unsupported_text_metrics: RichText <font weight>", 0)
+			end
+			if closing == "/" then
+				if #weights > 1 then
+					table.remove(weights)
+				end
+			else
+				table.insert(weights, current)
 			end
 		elseif not NEUTRAL_TAGS[tag] then
 			error("unsupported_text_metrics: RichText <" .. tag .. ">", 0)
 		end
 		cursor = last + 1
 	end
-	return table.concat(out)
+	return table.concat(out), selected or weight
 end
 
-local function modelFor(parameters: Values.TextParameters): (Metrics.Model, number)
+local function modelFor(parameters: Values.TextParameters): (Metrics.Model, number, string)
 	local font = parameters.Font
-	local key = font.Family
-		.. "/"
-		.. Values.enumName(font.Weight, "FontWeight")
-		.. "/"
-		.. Values.enumName(font.Style, "FontStyle")
+	local missing = font.Family == "rbxasset://fonts/families/DoesNotExist.json"
+	if missing and not parameters.Gui then
+		error("Temp read failed.", 0)
+	end
+	local text, weight = parameters.Text, Values.enumName(font.Weight, "FontWeight")
+	if parameters.RichText then
+		text, weight = plain(text, weight)
+	end
+	local family = if missing then "rbxasset://fonts/families/SourceSansPro.json" else font.Family
+	if missing and weight == "Heavy" then
+		weight = "Bold"
+	end
+	local key = resolved(family .. "/" .. weight .. "/" .. Values.enumName(font.Style, "FontStyle"))
 	local model = load(key)
 	if model ~= nil and parameters.RichText then
 		model = richModels[key] or Metrics.create(richFace(faces[key]))
@@ -181,14 +251,13 @@ local function modelFor(parameters: Values.TextParameters): (Metrics.Model, numb
 	if model == nil then
 		error("unsupported_text_metrics: font " .. key, 0)
 	end
-	return model, math.clamp(math.floor(parameters.Size), 1, 100)
+	return model, math.clamp(math.floor(parameters.Size), 1, 100), text
 end
 
 local function create(): (Values.TextParameters, number?) -> unknown
 	preload()
 	return function(parameters: Values.TextParameters, unwrappedWidth: number?): unknown
-		local model, size = modelFor(parameters)
-		local text = if parameters.RichText then plain(parameters.Text) else parameters.Text
+		local model, size, text = modelFor(parameters)
 		local width, lines
 		if unwrappedWidth ~= nil and not parameters.RichText then
 			width, lines = model.fit(text, size, unwrappedWidth)
@@ -202,8 +271,7 @@ end
 local function truncator(): (Values.TextParameters, string, number, boolean) -> number?
 	preload()
 	return function(parameters: Values.TextParameters, mode: string, lines: number, wrapped: boolean): number?
-		local model, size = modelFor(parameters)
-		local text = if parameters.RichText then plain(parameters.Text) else parameters.Text
+		local model, size, text = modelFor(parameters)
 		return model.truncate(text, size, parameters.Width, lines, mode, wrapped)
 	end
 end

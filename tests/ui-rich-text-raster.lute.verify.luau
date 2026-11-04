@@ -45,7 +45,7 @@ it("rich text preserves native raster bounds and line spacing", function(own)
 	own(function()
 		scheduler.cancel(thread)
 	end)
-	for _ = 1, 1200 do
+	for _ = 1, 2400 do
 		if complete or #scheduler.failures > 0 then
 			break
 		end

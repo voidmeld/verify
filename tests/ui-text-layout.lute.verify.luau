@@ -404,7 +404,12 @@ it("a hyphen beside punctuation preserves native text bounds", function(_, caseC
 end)
 
 it("rich text with tags that change metrics is refused", function(_, caseContext)
-	for _, row in { { "<b>Save</b> changes", "<b>" }, { '<font size="24">Save</font> changes', "<font size>" } } do
+	for _, row in
+		{
+			{ "<b>Save</b> changes", "mixed font weights" },
+			{ '<font size="24">Save</font> changes', "<font size>" },
+		}
+	do
 		local complete, messages = mountProbe(
 			caseContext,
 			string.format(

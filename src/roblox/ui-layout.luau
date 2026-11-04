@@ -143,19 +143,22 @@ local function attach(environment: Environment.Environment, options: Options): C
 		for points = largest, smallest, -1 do
 			local fitted, measured = pcall(function(): Vector
 				for word in text:gmatch "[^ \n]+" do
-					local bounds = Values.vector(measure { Text = word, Font = font, Size = points, Width = 0 })
+					local bounds =
+						Values.vector(measure { Text = word, Font = font, Size = points, Width = 0, Gui = true })
 					if bounds.X > content.width then
 						return { X = bounds.X, Y = math.huge }
 					end
 				end
-				return Values.vector(measure { Text = text, Font = font, Size = points, Width = content.width })
+				return Values.vector(
+					measure { Text = text, Font = font, Size = points, Width = content.width, Gui = true }
+				)
 			end)
 			if fitted and measured.Y < math.huge then
-				local strut = Values.vector(measure { Text = "", Font = font, Size = points, Width = 0 }).Y
+				local strut = Values.vector(measure { Text = "", Font = font, Size = points, Width = 0, Gui = true }).Y
 				local lines = math.round(measured.Y / strut)
 				local height = if options.measureLineHeight
 					then options.measureLineHeight(
-						{ Text = text, Font = font, Size = points, Width = content.width },
+						{ Text = text, Font = font, Size = points, Width = content.width, Gui = true },
 						lines,
 						spacing
 					)
@@ -202,6 +205,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			Size = rendered,
 			Width = if wrapped then content.width else 0,
 			RichText = read(object, "RichText") == true,
+			Gui = true,
 		}
 		local intrinsicX = content.width
 		if intrinsic and autoX then
@@ -210,8 +214,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 			intrinsicX = math.min(math.max(content.width, unwrapped.X), maximumX)
 			parameters.Width = if wrapped then intrinsicX else 0
 		end
-		local strut =
-			Values.vector(options.measureBounds { Text = "", Font = parameters.Font, Size = rendered, Width = 0 })
+		local strut = Values.vector(
+			options.measureBounds { Text = "", Font = parameters.Font, Size = rendered, Width = 0, Gui = true }
+		)
 		local truncation = enum(object, "TextTruncate", "None")
 		local fitted, attempt =
 			pcall(options.measureBounds, parameters, if not wrapped and not intrinsic then content.width else nil)
@@ -231,6 +236,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 					Size = parameters.Size,
 					Width = content.width,
 					RichText = parameters.RichText,
+					Gui = true,
 				}, truncation, 1, true)
 				else nil
 			if shown == nil then
@@ -277,6 +283,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 					Size = parameters.Size,
 					Width = content.width,
 					RichText = parameters.RichText,
+					Gui = true,
 				}, truncation, visible, wrapped)
 				else nil
 			if shown == nil then
