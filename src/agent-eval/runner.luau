@@ -607,7 +607,8 @@ local function create(options: Options): () -> Summary
 					directory,
 					substitute(studio.place, values),
 					build,
-					spec.task.budgets.wallSeconds
+					spec.task.budgets.wallSeconds,
+					studio.device
 				)
 				closeStudio = provisioned.close
 				mcpConfig = provisioned.config

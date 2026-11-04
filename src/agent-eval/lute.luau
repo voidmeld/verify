@@ -21,6 +21,7 @@ local Services = require "./services"
 local Wire = require "../lute/wire"
 local Studio = require "../lute/studio"
 local Install = require "../lute/studio-install"
+local Reply = require "../lute/studio-reply"
 
 export type Options = {
 	workspaces: string?,
@@ -350,7 +351,8 @@ local function studio(
 	directory: string,
 	place: string,
 	build: { string },
-	seconds: number
+	seconds: number,
+	device: string?
 ): { config: string, close: (keep: boolean?) -> () }
 	assert(#build > 0, "scoped Studio requires a build command")
 	local built = execute(if system.win32 then nil else "sh") {
@@ -365,6 +367,22 @@ local function studio(
 		Studio.launch { place = place, directory = directory .. "/studio", runSeconds = seconds + 300 }
 	assert(launched ~= nil, problem)
 	local opened = launched
+	if device ~= nil then
+		assert(string.match(device, "^[%w_]+$") ~= nil, "Studio device must be a simulator device id such as hd_1080")
+		local configured = opened.session.execute(
+			"Edit",
+			"local simulator = game:GetService('StudioDeviceSimulatorService')\nsimulator:SetDeviceAsync("
+				.. string.format("%q", device)
+				.. ")\nreturn 'verify-studio-device:' .. tostring(simulator:GetDeviceAsync())"
+		)
+		if
+			not configured.ok
+			or not string.find(Reply.texts(configured.result), "verify-studio-device:" .. device, 1, true)
+		then
+			opened.close()
+			error("Studio did not acknowledge device " .. device, 0)
+		end
+	end
 	local scopeFile = directory .. "/studio-scope.json"
 	local config = directory .. "/mcp.json"
 	local script = absolute(Paths.join(moduleDirectory(), "../../tools/scoped-studio-mcp.luau"))

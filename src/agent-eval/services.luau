@@ -56,7 +56,8 @@ export type Services = {
 		directory: string,
 		place: string,
 		build: { string },
-		seconds: number
+		seconds: number,
+		device: string?
 	) -> { config: string, close: (keep: boolean?) -> () })?,
 	files: Files,
 	execute: (command: Command) -> Execution,
