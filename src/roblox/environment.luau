@@ -303,6 +303,8 @@ local function create(options: Options?): Environment
 	end
 
 	local function assign(object: Instance, state: State, key: string, value: unknown)
+		local selecting = key == "SelectedObject" and state.className == "GuiService"
+		local previous = if selecting then state.values[key] else nil
 		local coupled: string? = nil
 		if isA(state.className, "BasePart") then
 			if key == "CFrame" and Names.of(value) == "CFrame" and state.class.properties.Position ~= nil then
@@ -330,6 +332,27 @@ local function create(options: Options?): Environment
 		end
 		state.values[key] = value
 		changed(object, state, key)
+		if state.class.properties.TextScaled ~= nil and state.class.properties.TextWrapped ~= nil then
+			if key == "TextScaled" and value == true and state.values.TextWrapped ~= true then
+				assign(object, state, "TextWrapped", true)
+			elseif key == "TextWrapped" and value == false and state.values.TextScaled == true then
+				assign(object, state, "TextScaled", false)
+			end
+		end
+		if selecting then
+			if isObject(previous) then
+				local old = stateOf(previous)
+				if not old.destroyed and old.values.Selectable ~= false then
+					fireSignal(old, "SelectionLost")
+				end
+			end
+			if isObject(value) then
+				local selected = stateOf(value)
+				if not selected.destroyed and selected.values.Selectable ~= false then
+					fireSignal(selected, "SelectionGained")
+				end
+			end
+		end
 		if coupled then
 			changed(object, state, coupled)
 		end
@@ -459,6 +482,9 @@ local function create(options: Options?): Environment
 			inject("destroy", state, nil, object, nil, nil)
 		end
 		state.destroying = true
+		if inputActions then
+			inputActions.destroying(object)
+		end
 		fireSignal(state, "Destroying")
 		move(object, state, nil)
 		for _, child in table.clone(state.children) do
@@ -489,13 +515,23 @@ local function create(options: Options?): Environment
 			end
 		end
 		if found == nil then
-			error(
-				("unsupported_method: %s.%s is declared but has no simulation or configured fake"):format(
-					state.className,
-					key
-				),
-				3
-			)
+			return function(_self: Object, ...: unknown): ...unknown
+				local override = state.doubles[key]
+				local handler = if override then Vm.value(override.handler) else nil
+				if type(handler) == "function" then
+					return handler(object, ...)
+				end
+				if environment.hasFake(object, key) then
+					return assert(memberMethod(object, state, key))(object, ...)
+				end
+				error(
+					("unsupported_method: %s.%s is declared but has no simulation or configured fake"):format(
+						state.className,
+						key
+					),
+					2
+				)
+			end
 		end
 		local implementation = Vm.value(found)
 		assert(type(implementation) == "function", "simulated method must be a function")

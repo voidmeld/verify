@@ -338,8 +338,8 @@ it("automatic text shrinks after edits and rejects unmodeled text before publish
 	frame.Size = library.UDim2.fromOffset(200, 200)
 	label.Text = "你好"
 	expect(layout.step):toThrow "unsupported_text_metrics"
-	expect(frame.AbsoluteSize):toEqual(beforeFrame)
-	expect(label.TextBounds):toEqual(beforeLabel)
+	expect(env.propertyOf(frame, "AbsoluteSize")):toEqual(beforeFrame)
+	expect(env.propertyOf(label, "TextBounds")):toEqual(beforeLabel)
 end)
 
 it("native boundary corrections and Legacy Arial line metrics", function(own)

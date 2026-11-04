@@ -62,17 +62,23 @@ local function measure(grid: Instance, content: Rectangle, read: (Instance, stri
 			unsupported "grid aspect type"
 		end
 	end
-	if cellWidth <= 0 or cellHeight <= 0 or gapX < 0 or gapY < 0 then
-		unsupported "non-positive grid cells or negative grid padding"
+	if cellWidth < 0 or cellHeight < 0 or gapX < 0 or gapY < 0 then
+		unsupported "negative grid cells or grid padding"
 	end
 	local horizontal = enum("FillDirection", "Horizontal") == "Horizontal"
-	local capacity = math.max(
-		1,
-		math.floor(
-			(if horizontal then content.width + gapX else content.height + gapY)
-				/ (if horizontal then cellWidth + gapX else cellHeight + gapY)
-		)
-	)
+	local stride = if horizontal then cellWidth + gapX else cellHeight + gapY
+	local capacity = if stride == 0
+		then math.max(1, #assert(grid.Parent):GetChildren())
+		else math.max(1, math.floor((if horizontal then content.width + gapX else content.height + gapY) / stride))
+	local function cellSpan(minimum: number, cell: number, gap: number): number
+		if minimum <= cell then
+			return 1
+		end
+		if cell + gap == 0 then
+			unsupported "minimum size spanning zero-stride grid cells"
+		end
+		return math.max(1, math.ceil((minimum + gap) / (cell + gap)))
+	end
 	local limit = Values.number(read(grid, "FillDirectionMaxCells"))
 	if limit > 0 then
 		capacity = math.min(capacity, limit)
@@ -90,8 +96,8 @@ local function measure(grid: Instance, content: Rectangle, read: (Instance, stri
 				local minX, minY = minimum.X * content.scale, minimum.Y * content.scale
 				if minX > cellWidth or minY > cellHeight then
 					width, height = minX, minY
-					columns = math.max(1, math.ceil((minX + gapX) / (cellWidth + gapX)))
-					rows = math.max(1, math.ceil((minY + gapY) / (cellHeight + gapY)))
+					columns = cellSpan(minX, cellWidth, gapX)
+					rows = cellSpan(minY, cellHeight, gapY)
 				else
 					width = math.clamp(width, minX, maximum.X * content.scale)
 					height = math.clamp(height, minY, maximum.Y * content.scale)

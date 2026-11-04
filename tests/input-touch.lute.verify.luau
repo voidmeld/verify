@@ -10,6 +10,54 @@ local cases: { { name: string, source: string, limitations: { string }? } } = {
 	},
 	{ name = "touch drag capture matches native input", source = require "./fixtures/input-touch-drag" },
 	{
+		name = "touch long press matches native gesture boundaries",
+		source = require "./fixtures/input-touch-long-press",
+	},
+	{
+		name = "touch taps transfer text focus and preserve the accepted edit",
+		source = [=[
+local simulator = game:GetService("StudioDeviceSimulatorService")
+simulator:SetDeviceAsync("iphone_14")
+local input, gui = game:GetService("UserInputService"), game:GetService("GuiService")
+local virtual = input:CreateVirtualInput()
+local screen = Instance.new("ScreenGui")
+screen.Parent = game.Players.LocalPlayer.PlayerGui
+local first = Instance.new("TextBox")
+first.Text, first.ClearTextOnFocus = "seed", false
+first.Size, first.Parent = UDim2.fromOffset(150, 50), screen
+local second = Instance.new("TextBox")
+second.Text, second.ClearTextOnFocus = "other", false
+second.Size, second.Position, second.Parent = UDim2.fromOffset(150, 50), UDim2.fromOffset(0, 80), screen
+local gained, lost = 0, 0
+first.Focused:Connect(function() gained += 1 end)
+first.FocusLost:Connect(function(submitted) assert(not submitted); lost += 1 end)
+task.wait(.05)
+local function tap(box)
+ local at = box.AbsolutePosition + box.AbsoluteSize / 2 - gui:GetInsetArea(Enum.ScreenInsets.None).Min
+ virtual:SendMousePosition(at)
+ virtual:SendMouseButton(at, Enum.UserInputType.MouseButton1, true)
+ virtual:SendMouseButton(at, Enum.UserInputType.MouseButton1, false)
+ task.wait(.05)
+end
+tap(first)
+assert(first:IsFocused() and input:GetFocusedTextBox() == first and gained == 1)
+virtual:SendTextInput("hi")
+task.wait(.05)
+assert(first.Text == "seedhi")
+tap(first)
+assert(first:IsFocused() and gained == 1 and lost == 0)
+second.TextEditable = false
+tap(second)
+assert(not first:IsFocused() and not second:IsFocused() and lost == 1)
+second.TextEditable = true
+tap(second)
+assert(second:IsFocused() and first.Text == "seedhi")
+screen:Destroy()
+simulator:StopSimulationAsync()
+return true
+]=],
+	},
+	{
 		name = "pointer actions route nested scrolling and preserve native events",
 		source = require "./fixtures/input-pointer-actions",
 	},

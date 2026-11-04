@@ -141,4 +141,46 @@ it("reparenting a container resets its pressed actions and ignores destroyed one
 	expect(released):toBe(settled)
 end)
 
+it("preferred bindings follow the input device and binding reparenting", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local env, engine = bridge.environment, bridge.placeEngine()
+	local library = engine.datatypes
+	local service = engine.service "UserInputService"
+	env.poke(service, "PreferredInput", library.Enum.PreferredInput.KeyboardAndMouse)
+	local container = env.createInstance "Folder"
+	local action = env.createInstance("InputAction", { Parent = container })
+	local keyboard = env.createInstance("InputBinding", { KeyCode = library.Enum.KeyCode.K, Parent = action })
+	local gamepad = env.createInstance("InputBinding", { KeyCode = library.Enum.KeyCode.ButtonX, Parent = action })
+	local touch = env.createInstance("InputBinding", { UIButton = env.createInstance "TextButton", Parent = action })
+	container.Parent = engine.game
+	expect(action.PreferredBinding):toBe(keyboard)
+	local changed = 0
+	own(function()
+		container:Destroy()
+	end)
+	local connection = action:GetPropertyChangedSignal("PreferredBinding"):Connect(function()
+		changed += 1
+	end)
+	own(function()
+		connection:Disconnect()
+	end)
+	env.poke(service, "PreferredInput", library.Enum.PreferredInput.Gamepad)
+	expect(action.PreferredBinding):toBe(gamepad)
+	keyboard.DisplayName = "Keyboard"
+	expect(changed):toBe(1)
+	gamepad.Parent = nil
+	expect(action.PreferredBinding):toBe(nil)
+	gamepad.Parent = action
+	expect(action.PreferredBinding):toBe(gamepad)
+	env.poke(service, "PreferredInput", library.Enum.PreferredInput.Touch)
+	expect(action.PreferredBinding):toBe(touch)
+	touch:Destroy()
+	expect(action.PreferredBinding):toBe(nil)
+	env.poke(service, "PreferredInput", library.Enum.PreferredInput.KeyboardAndMouse)
+	expect(action.PreferredBinding):toBe(keyboard)
+	keyboard.KeyCode = library.Enum.KeyCode.ButtonY
+	expect(action.PreferredBinding):toBe(nil)
+end)
+
 return nil

@@ -112,6 +112,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local top = dimension(Values.dimension(paddingValue(object, "PaddingTop")), rectangle.height, rectangle.scale)
 		local bottom =
 			dimension(Values.dimension(paddingValue(object, "PaddingBottom")), rectangle.height, rectangle.scale)
+		local automatic = enum(object, "AutomaticSize", "None")
 		local scrolling = object:IsA "ScrollingFrame"
 		return {
 			x = rectangle.x + left,
@@ -119,8 +120,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 			width = math.max(0, rectangle.width - left - right),
 			height = math.max(0, rectangle.height - top - bottom),
 			scale = rectangle.scale,
-			flexWidth = if scrolling then rectangle.width else nil,
-			flexHeight = if scrolling then rectangle.height else nil,
+			flexWidth = if scrolling and (automatic == "X" or automatic == "XY") then rectangle.width else nil,
+			flexHeight = if scrolling and (automatic == "Y" or automatic == "XY") then rectangle.height else nil,
 		}
 	end
 	local function scaledBounds(object: Instance, rectangle: Rectangle): TextMeasurement

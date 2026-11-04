@@ -183,7 +183,19 @@ it("a hot-plugged virtual controller connects, takes primacy on pad input and di
 	own(input.close)
 	local devices: { string } = {}
 	local kinds: { string } = {}
+	local changes: { string } = {}
+	local context = env.createInstance("InputContext", { Parent = gui, Priority = 10, Sink = true })
+	local axis =
+		env.createInstance("InputAction", { Parent = context, Type = library.Enum.InputActionType.Direction2D })
+	env.createInstance("InputBinding", { Parent = axis, KeyCode = library.Enum.KeyCode.Thumbstick2 })
+	local axes: { unknown } = {}
 	local connections = {
+		env.event(axis, "StateChanged"):Connect(function(value)
+			table.insert(axes, value)
+		end),
+		env.event(service, "LastInputTypeChanged"):Connect(function(kind)
+			table.insert(changes, tostring(kind))
+		end),
 		env.event(service, "GamepadConnected"):Connect(function(gamepad)
 			table.insert(devices, "connected " .. tostring(gamepad))
 		end),
@@ -216,6 +228,13 @@ it("a hot-plugged virtual controller connects, takes primacy on pad input and di
 	press "Nine"
 	expect(kinds[2]):toBe "Enum.UserInputType.Gamepad1"
 	expect(service.PreferredInput):toBe(preferred.Gamepad)
+	input.key { code = "I", down = true }
+	env.step(1 / 60)
+	expect(env.method(axis, "GetState")(axis)):toEqual(library.Vector2.new(0, 1))
+	input.key { code = "I", down = false }
+	env.step(1 / 60)
+	expect(env.method(axis, "GetState")(axis)):toEqual(library.Vector2.zero)
+	expect(axes):toEqual { library.Vector2.new(0, 1), library.Vector2.zero }
 	input.disconnectGamepad()
 	expect(devices[2]):toBe "disconnected Enum.UserInputType.Gamepad1"
 	expect(service.GamepadEnabled):toBe(false)
@@ -223,6 +242,16 @@ it("a hot-plugged virtual controller connects, takes primacy on pad input and di
 	expect(pcall(input.disconnectGamepad)):toBe(false)
 	press "Nine"
 	expect(kinds[3]):toBe "Enum.UserInputType.Keyboard"
+	expect(changes):toEqual {
+		"Enum.UserInputType.Keyboard",
+		"Enum.UserInputType.Gamepad1",
+		"Enum.UserInputType.Keyboard",
+	}
+	input.pointer { x = 10, y = 10, button = "left", down = true }
+	input.pointer { x = 10, y = 10, button = "left", down = false }
+	expect(changes[4]):toBe "Enum.UserInputType.MouseMovement"
+	expect(changes[5]):toBe "Enum.UserInputType.MouseButton1"
+	expect(env.method(service, "GetLastInputType")(service)):toBe(library.Enum.UserInputType.MouseButton1)
 end)
 
 it("gamepad state publication keeps authored geometry revisions for callback writes", function(own)
@@ -437,7 +466,7 @@ return true
 				box.Text, box.ClearTextOnFocus, box.MultiLine = "éx", false, true
 				box.Size, box.Parent = UDim2.fromOffset(200, 100), screen
 				box:CaptureFocus()
-				box.CursorPosition = 2
+				box.CursorPosition = 3
 				local virtual = game.UserInputService:CreateVirtualInput()
 				virtual:SendKey(true, Enum.KeyCode.Return, false)
 				task.wait(0.05)
@@ -445,7 +474,7 @@ return true
 				task.wait(0.05)
 				assert(box:IsFocused(), "multiline Return retains editing focus")
 				assert(box.Text == "é\nx", "multiline Return inserts at the UTF-8 cursor")
-				assert(box.CursorPosition == 3, "multiline Return advances the cursor")
+				assert(box.CursorPosition == 4, "multiline Return advances the byte cursor")
 				box:ReleaseFocus()
 				screen:Destroy()
 				return true
@@ -538,6 +567,16 @@ return true
 		},
 		{ name = "idle gamepad state exposes each control", source = require "./fixtures/input-gamepad-state" },
 		{
+			name = "action teardown retains its last preferred binding",
+			source = require "./fixtures/input-action-teardown",
+		},
+		{ name = "pointer focus respects native GUI barriers", source = require "./fixtures/input-pointer-focus" },
+		{ name = "text selections edit complete byte ranges", source = require "./fixtures/input-text-editing" },
+		{
+			name = "directional selection prioritizes overlapping rectangles",
+			source = require "./fixtures/input-selection-geometry",
+		},
+		{
 			name = "GuiService Select chooses eligible descendants by order",
 			source = require "./fixtures/input-gui-select",
 		},
@@ -601,7 +640,7 @@ do
 		own(function()
 			scheduler.cancel(thread)
 		end)
-		for _ = 1, 360 do
+		for _ = 1, 600 do
 			if complete or #scheduler.failures > 0 then
 				break
 			end
@@ -627,5 +666,46 @@ do
 		expect(inputService.PreferredInput):toBe(priorPreferred)
 	end)
 end
+
+it("selection transfers emit gained and lost once with the current selection", function(own)
+	local bridge = Lute.fixture.bridge(nil, { ui = { selection = "native" } })
+	own(bridge.close)
+	local env, engine = bridge.environment, bridge.placeEngine()
+	local playerGui = env.createEngineInstance("PlayerGui", { Parent = engine.game })
+	local screen = env.createInstance("ScreenGui", { Parent = playerGui })
+	local first = env.createInstance("TextButton", { Name = "first", Parent = screen })
+	local second = env.createInstance("TextButton", { Name = "second", Parent = screen })
+	local service = engine.service "GuiService"
+	local events: { string } = {}
+	for _, target in { first, second } do
+		for _, event in { "SelectionGained", "SelectionLost" } do
+			env.event(target, event):Connect(function()
+				local selected = service.SelectedObject
+				table.insert(
+					events,
+					env.nameOf(target)
+						.. ":"
+						.. event
+						.. ":"
+						.. (if Roblox.isInstance(selected) then env.nameOf(Roblox.assertInstance(selected)) else "nil")
+				)
+			end)
+		end
+	end
+	service.SelectedObject = first
+	service.SelectedObject = first
+	env.publish(service, "SelectedObject", second)
+	service.SelectedObject = nil
+	expect(events):toEqual {
+		"first:SelectionGained:first",
+		"first:SelectionLost:second",
+		"second:SelectionGained:second",
+		"second:SelectionLost:nil",
+	}
+	first.Selectable = false
+	service.SelectedObject = first
+	service.SelectedObject = nil
+	expect(#events):toBe(4)
+end)
 
 return nil

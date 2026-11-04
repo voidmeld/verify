@@ -140,8 +140,9 @@ describe("reflection snapshot loaded under Lute", function()
 		local part = env.createInstance "Part"
 		expect(env.method(part, "Configured")(part)):toBe(42)
 		for _, name in { "NativeOnly", "InheritedOnly" } do
+			expect(type(part[name])):toBe "function"
 			local ok, problem = pcall(function()
-				return part[name]
+				return env.method(part, name)(part)
 			end)
 			expect(ok):toBe(false)
 			expect(tostring(problem)):toContain "unsupported_method"
@@ -152,7 +153,8 @@ describe("reflection snapshot loaded under Lute", function()
 		expect(env.method(part, "NativeOnly")(part)):toBe "configured"
 		close()
 		expect(accepts(function()
-			return part.NativeOnly
+			local result = env.method(part, "NativeOnly")(part)
+			return result
 		end)):toBe(false)
 		local folder = env.createInstance "Folder"
 		local ok, problem = pcall(function()
@@ -231,13 +233,16 @@ describe("reflection snapshot loaded under Lute", function()
 		local root = env.createInstance("Frame", { Size = types.UDim2.fromOffset(120, 80) })
 		env.createInstance("TextLabel", { Parent = root, AutomaticSize = types.Enum.AutomaticSize.XY })
 		table.insert(roots, root)
-		local before = root.AbsoluteSize
+		local before = env.propertyOf(root, "AbsoluteSize")
 		local ok, message = pcall(function()
 			assert(bridge.layout).step()
 		end)
 		expect(ok):toBe(false)
 		expect(tostring(message)):toContain "AutomaticSize text measurement"
-		expect(root.AbsoluteSize):toEqual(before)
+		expect(function(): unknown
+			return root.AbsoluteSize
+		end):toThrow "AutomaticSize text measurement"
+		expect(env.propertyOf(root, "AbsoluteSize")):toEqual(before)
 	end)
 
 	it("accepts and refuses writes like the real database did when it was exported", function()

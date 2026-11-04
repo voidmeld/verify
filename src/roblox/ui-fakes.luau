@@ -213,6 +213,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		end
 		if previous and env.isAlive(previous) then
 			pcall(env.poke, previous, "CursorPosition", -1)
+			pcall(env.poke, previous, "SelectionStart", -1)
 			env.fire(previous, "FocusLost", enterPressed == true, cause)
 			if not transfer then
 				focusEvent(previous, "TextBoxFocusReleased")
@@ -233,7 +234,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 			object.Text = ""
 		end
 		local text = tostring(object.Text)
-		pcall(env.poke, object, "CursorPosition", (utf8.len(text) or #text) + 1)
+		pcall(env.poke, object, "CursorPosition", #text + 1)
 		env.fire(object, "Focused")
 		focusEvent(object, "TextBoxFocused")
 	end)

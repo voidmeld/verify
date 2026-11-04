@@ -15,6 +15,8 @@ export type Options = {
 	dragOffset: (Instance, number, number) -> unknown,
 	read: (Instance, string) -> unknown,
 	changed: () -> (),
+	focus: (Instance?, Instance) -> (),
+	toScreen: (Point) -> Point,
 	activationWindowSeconds: number,
 }
 
@@ -28,6 +30,8 @@ local function create(env: Environment.Environment, options: Options)
 	local pressed: Instance? = nil
 	local detector: Instance? = nil
 	local scrollHits: { Instance } = {}
+	local longTargets: { Instance } = {}
+	local longPending, longActive = false, false
 	local activations: { [Instance]: { released: number, count: number } } = {}
 	do
 		local weak = activations
@@ -71,6 +75,22 @@ local function create(env: Environment.Environment, options: Options)
 		end
 		hovered = targets
 	end
+	local function longPress(at: Point, state: unknown)
+		local screen = options.toScreen(at)
+		local points = { library.Vector2.new(screen.X, screen.Y) }
+		for _, target in longTargets do
+			if env.isAlive(target) then
+				env.fire(target, "TouchLongPress", points, state)
+			end
+		end
+		env.fire(
+			service,
+			"TouchLongPress",
+			{ library.Vector2.new(at.X, at.Y) },
+			state,
+			options.processed(longTargets, true)
+		)
+	end
 	return {
 		move = function(at: Point)
 			local object = contact
@@ -78,12 +98,19 @@ local function create(env: Environment.Environment, options: Options)
 				return
 			end
 			local targets = options.targets(at)
+			local dx, dy = at.X - origin.X, at.Y - origin.Y
+			if dx * dx + dy * dy >= 25 then
+				longPending = false
+			end
 			if not detector and options.scroll(scrollHits, previous.X - at.X, previous.Y - at.Y) then
 				pressed = nil
 			end
 			update(object, at, states.Change, true)
 			drag(at, "DragContinue")
 			transition(at, targets, object, false)
+			if longActive then
+				longPress(at, states.Change)
+			end
 			local consumed = detector ~= nil or options.processed(targets, true)
 			env.fire(service, "InputChanged", object, consumed)
 			env.fire(service, "TouchMoved", object, consumed)
@@ -96,6 +123,13 @@ local function create(env: Environment.Environment, options: Options)
 			options.changed()
 			if down then
 				contact, origin, pressed = object, at, targetButton
+				longTargets, longPending, longActive = targets, true, false
+				env.scheduler.delay(0.5, function()
+					if contact == object and longPending then
+						longPending, longActive = false, true
+						longPress(previous, states.Begin)
+					end
+				end)
 				scrollHits = objects
 				detector = options.detector(targets)
 				if detector then
@@ -105,11 +139,17 @@ local function create(env: Environment.Environment, options: Options)
 					env.fire(targetButton, "MouseButton1Down", at.X, at.Y)
 				end
 				transition(at, targets, object, false)
+				options.focus(targets[1], object)
 				local consumed = detector ~= nil or options.processed(targets, true)
 				env.fire(service, "InputBegan", object, consumed)
 				env.fire(service, "TouchStarted", object, consumed)
 			else
 				local consumed = detector ~= nil or options.processed(targets, true)
+				longPending = false
+				if longActive then
+					longActive = false
+					longPress(at, states.End)
+				end
 				drag(at, "DragEnd")
 				if pressed and env.isAlive(pressed) and pressed == targetButton then
 					env.fire(pressed, "MouseButton1Up", at.X, at.Y)
@@ -129,15 +169,18 @@ local function create(env: Environment.Environment, options: Options)
 				env.fire(service, "TouchEnded", object, consumed)
 				contact, detector, pressed = nil, nil, nil
 				table.clear(scrollHits)
+				table.clear(longTargets)
 			end
 		end,
 		close = function()
+			longPending, longActive = false, false
 			if contact then
 				env.poke(contact, "UserInputState", states.Cancel)
 			end
 			contact, detector, pressed = nil, nil, nil
 			table.clear(hovered)
 			table.clear(scrollHits)
+			table.clear(longTargets)
 			table.clear(activations)
 		end,
 	}

@@ -129,7 +129,7 @@ describe("simulated GUI layout", function()
 		expect(child.AbsoluteSize):toEqual(Types.Vector2.new(100, 40))
 	end)
 
-	it("wrapped and aligned spacing is modeled and overflowing spacing fails before publishing geometry", function()
+	it("wrapped, aligned and overflowing spacing matches native positions", function()
 		for _, scenario in { "overflow", "non-leading", "wrap" } do
 			local env = fixture()
 			local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(100, 100) })
@@ -151,11 +151,10 @@ describe("simulated GUI layout", function()
 				expect(env.propertyOf(list, "AbsoluteContentSize")):toEqual(Types.Vector2.new(20, 20))
 				continue
 			end
-			expect(function()
-				controller(env, root).step()
-			end):toThrow "unsupported_ui_layout"
-			expect(env.propertyOf(root, "AbsoluteSize")):toBe(nil)
-			expect(env.propertyOf(list, "AbsoluteContentSize")):toBe(nil)
+			controller(env, root).step()
+			expect(env.propertyOf(root, "AbsoluteSize")):toEqual(Types.Vector2.new(100, 100))
+			expect(env.propertyOf(child, "AbsolutePosition")):toEqual(Types.Vector2.new(-0.5, 0))
+			expect(env.propertyOf(list, "AbsoluteContentSize")):toEqual(Types.Vector2.new(101, 20))
 		end
 	end)
 
