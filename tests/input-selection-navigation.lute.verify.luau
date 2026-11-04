@@ -667,6 +667,39 @@ do
 	end)
 end
 
+it("selection signals stay in the environment that owns the service", function(own)
+	local bridge = Lute.fixture.bridge()
+	local other = Lute.fixture.bridge()
+	own(bridge.close)
+	own(other.close)
+	local env = bridge.environment
+	local service = bridge.placeEngine().service "GuiService"
+	local localButton = env.createInstance "TextButton"
+	local foreignButton = other.environment.createInstance "TextButton"
+	local gained, lost, foreign = 0, 0, 0
+	env.event(localButton, "SelectionGained"):Connect(function()
+		gained += 1
+	end)
+	env.event(localButton, "SelectionLost"):Connect(function()
+		lost += 1
+	end)
+	for _, event in { "SelectionGained", "SelectionLost" } do
+		other.environment.event(foreignButton, event):Connect(function()
+			foreign += 1
+		end)
+	end
+	service.SelectedObject = foreignButton
+	expect(service.SelectedObject):toBe(foreignButton)
+	service.SelectedObject = localButton
+	service.SelectedObject = foreignButton
+	service.SelectedObject = nil
+	expect(gained):toBe(1)
+	expect(lost):toBe(1)
+	expect(foreign):toBe(0)
+	expect(env.errors):toEqual {}
+	expect(other.environment.errors):toEqual {}
+end)
+
 it("selection transfers emit gained and lost once with the current selection", function(own)
 	local bridge = Lute.fixture.bridge(nil, { ui = { selection = "native" } })
 	own(bridge.close)
