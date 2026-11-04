@@ -323,7 +323,8 @@ describe("engine scheduler retention", function()
 		local Scheduler = require "../src/roblox/scheduler"
 		for _, terminal in { "finished", "failed", "cancelled" } do
 			local scheduler = Scheduler.create()
-			local probe: { context: {}? } = setmetatable({}, { __mode = "v" })
+			local probe: { context: {}? } = {}
+			setmetatable(probe, { __mode = "v" })
 			local function launch(): thread
 				local context = {}
 				probe.context = context
