@@ -133,6 +133,25 @@ a.Visible = true
 verify(240, 59, 108, 37)
 outer:Destroy()
 assert(total == 444)
+local root = Instance.new("Frame")
+root.Size, root.Parent = UDim2.fromOffset(400, 300), screen
+local automatic = Instance.new("Frame")
+automatic.Size, automatic.AutomaticSize, automatic.Parent = UDim2.fromOffset(0, 0), Enum.AutomaticSize.X, root
+local fixed = Instance.new("Frame")
+fixed.Size, fixed.Parent = UDim2.fromOffset(100, 20), automatic
+local child = Instance.new("Frame")
+child.Size, child.Parent = UDim2.new(0.5, 0, 0, 20), automatic
+task.wait(0.05)
+assert(automatic.AbsoluteSize == Vector2.new(100, 0), "relative free layout extent")
+assert(child.AbsoluteSize == Vector2.new(50, 20), "relative free layout child")
+fixed:Destroy()
+child.Size = UDim2.fromOffset(20, 20)
+local horizontal = Instance.new("UIListLayout")
+horizontal.FillDirection, horizontal.HorizontalAlignment, horizontal.Parent = Enum.FillDirection.Horizontal, Enum.HorizontalAlignment.Center, automatic
+task.wait(0.05)
+assert(automatic.AbsoluteSize == Vector2.new(20, 0), "fixed list replaces relative free layout extent")
+assert(child.AbsolutePosition == automatic.AbsolutePosition, "fixed list discards relative free layout bounds")
+root:Destroy()
 screen:Destroy()
 return true
 ]==]

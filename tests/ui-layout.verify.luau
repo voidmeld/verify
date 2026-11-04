@@ -520,7 +520,11 @@ describe("simulated GUI layout", function()
 	it("automatic lists discard relative bounds from an earlier free layout", function()
 		local env = fixture()
 		local root = env.createInstance("Frame", { Size = Types.UDim2.fromOffset(400, 300) })
-		local automatic = env.createInstance("Frame", { Parent = root, AutomaticSize = "X" })
+		local automatic = env.createInstance("Frame", {
+			Parent = root,
+			Size = Types.UDim2.fromOffset(0, 0),
+			AutomaticSize = "X",
+		})
 		local fixed = env.createInstance("Frame", { Parent = automatic, Size = Types.UDim2.fromOffset(100, 20) })
 		local child = env.createInstance("Frame", { Parent = automatic, Size = Types.UDim2.new(0.5, 0, 0, 20) })
 		local layout = controller(env, root)
