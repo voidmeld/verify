@@ -113,6 +113,27 @@ describe("BDD authoring", function()
 		expect(Bdd.formatResults(report)):toContain "✓ good › passes"
 		surface.reset()
 	end)
+
+	it("prints multiline assertion and teardown failures beside their case names", function()
+		local harness = Verify.createHarness { now = os.clock }
+		local bdd = Bdd.create(harness)
+		bdd.describe("layout", function()
+			bdd.afterEach(function()
+				error("cleanup marker", 0)
+			end)
+			bdd.it("width", function()
+				bdd.expect(0):toBe(320)
+			end)
+		end)
+		local report = harness:run { executor = "test" }
+		expect(report.failed):toBe(1)
+		for _, text in { Bdd.formatResults(report), Bdd.formatFailures(report) } do
+			expect(text):toContain "✗ layout › width"
+			expect(text):toContain "    expected to be 320"
+			expect(text):toContain "actual: 0"
+			expect(text):toContain "teardown: cleanup marker"
+		end
+	end)
 end)
 
 describe("surface selection", function()
