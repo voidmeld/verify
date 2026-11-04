@@ -103,41 +103,33 @@ describe("agent evaluation task model", function()
 	end)
 
 	it("refuses malformed tasks with a named field", function()
-		expect(contains(refusal(base(), { a = task { from = "a" } }), "exactly one of starter or from")):toBe(true)
-		expect(contains(refusal(base(), { a = task { arms = { middle = {} } } }), "undeclared arm")):toBe(true)
-		expect(contains(refusal(base(), { a = task { extra = true } }), 'unknown field "extra"')):toBe(true)
-		expect(
-			contains(
-				refusal(base(), { a = task { checks = { { id = "v", kind = "verify", argv = { "x" } } } } }),
-				"must pass {report}"
-			)
-		):toBe(true)
-		expect(
-			contains(
-				refusal(base(), { a = task { checks = { { id = "u", kind = "audit" } } } }),
-				"is required for an audit check"
-			)
-		):toBe(true)
-		expect(contains(
-			refusal(base(), {
-				a = task {
+		local scenarios: { { task: Object, reason: string } } = {
+			{ task = task { from = "a" }, reason = "exactly one of starter or from" },
+			{ task = task { arms = { middle = {} } }, reason = "undeclared arm" },
+			{ task = task { extra = true }, reason = 'unknown field "extra"' },
+			{
+				task = task { checks = { { id = "v", kind = "verify", argv = { "x" } } } },
+				reason = "must pass {report}",
+			},
+			{ task = task { checks = { { id = "u", kind = "audit" } } }, reason = "is required for an audit check" },
+			{
+				task = task {
 					checks = {
 						object { id = "one", kind = "command", argv = { "x" }, after = { "two" } },
 						{ id = "two", kind = "command", argv = { "x" } },
 					},
 				},
-			}),
-			"not an earlier check"
-		)):toBe(true)
-		expect(contains(
-			refusal(base(), {
-				a = task {
-					checks = { { id = "d", kind = "command", argv = { "x" }, perDevice = true } },
-				},
-			}),
-			"no devices"
-		)):toBe(true)
-		expect(contains(refusal(base(), { a = task { id = "bad id" } }), "identifier")):toBe(true)
+				reason = "not an earlier check",
+			},
+			{
+				task = task { checks = { { id = "d", kind = "command", argv = { "x" }, perDevice = true } } },
+				reason = "no devices",
+			},
+			{ task = task { id = "bad id" }, reason = "identifier" },
+		}
+		for _, scenario in scenarios do
+			expect(refusal(base(), { a = scenario.task })):toContain(scenario.reason)
+		end
 	end)
 
 	it("orders follow-ups after their source and refuses cycles", function()

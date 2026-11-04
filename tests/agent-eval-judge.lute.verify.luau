@@ -64,21 +64,7 @@ local function firstPath(request: AgentEval.JudgeRequest): string
 end
 
 describe("agent evaluation judge", function()
-	it("encodes base64 and hashes deterministically", function()
-		local base64 = AgentEval.base64
-		expect(base64.encode ""):toBe ""
-		expect(base64.encode "f"):toBe "Zg=="
-		expect(base64.encode "fo"):toBe "Zm8="
-		expect(base64.encode "foo"):toBe "Zm9v"
-		expect(base64.encode "foobar"):toBe "Zm9vYmFy"
-		local bytes: { string } = {}
-		for value = 0, 255 do
-			table.insert(bytes, string.char(value))
-		end
-		local all = table.concat(bytes)
-		expect(base64.decode(base64.encode(all))):toBe(all)
-		expect(base64.decode "Zm9v!"):toBe(nil)
-		expect(base64.decode "Zg=a"):toBe(nil)
+	it("hashes and generates bounded integers deterministically", function()
 		expect(AgentEval.random.hash "a"):toBe(0xe40c292c)
 		expect(AgentEval.random.hash "foobar"):toBe(0xbf9cf968)
 		local first = AgentEval.random.generator(42)

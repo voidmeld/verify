@@ -469,92 +469,55 @@ describe("exit codes and run-bound reports", function()
 		expect(outcome.acceptance.verdict):toEqual "release"
 	end)
 
-	it("fails an exit-zero command that produced no report", function()
-		local gate = Gate.define { id = "g", producers = { command("probe", { report = {} }) } }
-		local outcome = go(gate, fakeExecutor {})
-		expect(recordOf(outcome, "probe").status):toEqual "failed"
-		expect(recordOf(outcome, "probe").detail):toContain "without the expected report"
-		expect(outcome.acceptance.verdict):toEqual "failed"
-	end)
-
-	it("refuses a stale or other-run report", function()
-		local gate = Gate.define { id = "g", producers = { command("probe", { report = {} }) } }
-		local outcome = go(
-			gate,
-			fakeExecutor {
-				probe = {
-					outcome = function()
-						return withReport(
-							exited(0),
-							{ runId = "an-earlier-run", report = reportOf { { name = "one", pass = true } } }
-						)
-					end,
-				},
+	it("fails missing, stale, malformed, incomplete and exit-disagreeing reports", function()
+		local passing = reportOf { { name = "one", pass = true } }
+		local scenarios: {
+			{
+				report: unknown?,
+				runId: string?,
+				cases: { string }?,
+				code: number?,
+				reason: string,
 			}
-		)
-		expect(recordOf(outcome, "probe").status):toEqual "failed"
-		expect(recordOf(outcome, "probe").detail):toContain "not the current run"
-		expect(outcome.acceptance.releasable):toEqual(false)
-	end)
-
-	it("refuses a malformed report and a report lacking an expected case", function()
-		local gate = Gate.define {
-			id = "g",
-			producers = { command("probe", { report = { cases = { "one", "missing" } } }) },
-		}
-		local malformed = go(
-			gate,
-			fakeExecutor {
-				probe = {
-					outcome = function(job)
-						return withReport(exited(0), { runId = job.runId, report = "x" })
-					end,
-				},
+		} =
+			{
+				{ reason = "without the expected report" },
+				{ report = passing, runId = "an-earlier-run", reason = "not the current run" },
+				{ report = "x", reason = "invalid" },
+				{ report = passing, cases = { "one", "missing" }, reason = "absent from the report" },
+				{ report = reportOf { { name = "one", pass = false } }, reason = "did not pass" },
+				{ report = passing, code = 1, reason = "exited 1" },
 			}
-		)
-		expect(recordOf(malformed, "probe").detail):toContain "invalid"
-		local partial = go(
-			gate,
-			fakeExecutor {
-				probe = {
-					outcome = function(job)
-						return withReport(exited(0), envelope(job, reportOf { { name = "one", pass = true } }))
-					end,
-				},
+		for _, scenario in scenarios do
+			local gate = Gate.define {
+				id = "g",
+				producers = { command("probe", { report = { cases = scenario.cases } }) },
 			}
-		)
-		expect(recordOf(partial, "probe").detail):toContain "absent from the report"
-		expect(partial.acceptance.verdict):toEqual "failed"
-	end)
-
-	it("fails when exit and report disagree in either direction", function()
-		local gate = Gate.define { id = "g", producers = { command("probe", { report = {} }) } }
-		local failingReport = go(
-			gate,
-			fakeExecutor {
-				probe = {
-					outcome = function(job)
-						return withReport(exited(0), envelope(job, reportOf { { name = "one", pass = false } }))
-					end,
-				},
-			}
-		)
-		expect(recordOf(failingReport, "probe").status):toEqual "failed"
-		expect(recordOf(failingReport, "probe").detail):toContain "did not pass"
-		local failingExit = go(
-			gate,
-			fakeExecutor {
-				probe = {
-					outcome = function(job)
-						return withReport(exited(1), envelope(job, reportOf { { name = "one", pass = true } }))
-					end,
-				},
-			}
-		)
-		expect(recordOf(failingExit, "probe").status):toEqual "failed"
-		expect(failingExit.acceptance.verdict):toEqual "failed"
-		expect(recordOf(failingExit, "probe").reportAccounted):toEqual(true)
-		expect(failingExit.execution.report.total):toEqual(2)
+			local outcome = go(
+				gate,
+				fakeExecutor {
+					probe = {
+						outcome = function(job)
+							return withReport(
+								exited(scenario.code or 0),
+								if scenario.report == nil
+									then nil
+									else { runId = scenario.runId or job.runId, report = scenario.report }
+							)
+						end,
+					},
+				}
+			)
+			local record = recordOf(outcome, "probe")
+			expect(record.status):toEqual "failed"
+			expect(record.detail):toContain(scenario.reason)
+			expect(outcome.acceptance.verdict):toEqual "failed"
+			expect(outcome.acceptance.releasable):toEqual(false)
+			if scenario.code == 1 then
+				expect(record.reportAccounted):toEqual(true)
+				expect(outcome.execution.report.total):toEqual(2)
+			end
+		end
 	end)
 end)
 

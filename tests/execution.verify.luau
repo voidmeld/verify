@@ -236,29 +236,26 @@ describe("focused runs are never the gate", function()
 end)
 
 describe("execution equivalence", function()
-	it("produces the same report serially and four ways in parallel", function()
-		local serial = Verify.execute(PLAN, Host.create { units = UNITS }, { batchCount = 4, parallel = 1 })
-		local parallel = Verify.execute(
-			PLAN,
-			Host.create { units = UNITS, maxParallelBatches = 4, completionOrder = "reverse" },
-			{ batchCount = 4, parallel = 4 }
-		)
-		expect((ReportModel.canonical(parallel.report))):toEqual(ReportModel.canonical(serial.report))
-		expect(serial.provenance.parallelism):toEqual(1)
-		expect(parallel.provenance.parallelism):toEqual(4)
-		expect(serial.provenance.planDigest):toEqual(parallel.provenance.planDigest)
-		expect(serial.report.passed):toEqual(4)
-	end)
-
-	it("produces the same report at every batch count", function()
-		local one = Verify.execute(PLAN, Host.create { units = UNITS }, { batchCount = 1 })
-		for count = 2, 5 do
-			local other = Verify.execute(
-				PLAN,
-				Host.create { units = UNITS, maxParallelBatches = count, completionOrder = "reverse" },
-				{ batchCount = count, parallel = count }
-			)
-			expect((ReportModel.canonical(other.report))):toEqual(ReportModel.canonical(one.report))
+	it("preserves passing and failing reports across batch counts and completion orders", function()
+		for _, fails in { false, true } do
+			local units = table.clone(UNITS)
+			if fails then
+				units["beta/one"] = failing "beta one"
+			end
+			local serial = Verify.execute(PLAN, Host.create { units = units }, { batchCount = 1, parallel = 1 })
+			expect(serial.provenance.parallelism):toEqual(1)
+			expect(serial.report.passed):toEqual(if fails then 3 else 4)
+			expect(serial.report.failed):toEqual(if fails then 1 else 0)
+			for count = 2, 5 do
+				local parallel = Verify.execute(
+					PLAN,
+					Host.create { units = units, maxParallelBatches = count, completionOrder = "reverse" },
+					{ batchCount = count, parallel = count }
+				)
+				expect(ReportModel.canonical(parallel.report)):toEqual(ReportModel.canonical(serial.report))
+				expect(parallel.provenance.parallelism):toEqual(count)
+				expect(parallel.provenance.planDigest):toEqual(serial.provenance.planDigest)
+			end
 		end
 	end)
 
@@ -270,19 +267,6 @@ describe("execution equivalence", function()
 		)
 		expect(execution.provenance.parallelism):toEqual(2)
 		expect(execution.report.passed):toEqual(4)
-	end)
-
-	it("keeps a failing case failing however the run was scheduled", function()
-		local units = table.clone(UNITS)
-		units["beta/one"] = failing "beta one"
-		local serial = Verify.execute(PLAN, Host.create { units = units }, { batchCount = 4, parallel = 1 })
-		local parallel = Verify.execute(
-			PLAN,
-			Host.create { units = units, maxParallelBatches = 4, completionOrder = "reverse" },
-			{ batchCount = 4, parallel = 4 }
-		)
-		expect((ReportModel.canonical(parallel.report))):toEqual(ReportModel.canonical(serial.report))
-		expect(serial.report.failed):toEqual(1)
 	end)
 end)
 

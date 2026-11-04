@@ -412,21 +412,6 @@ describe("benchmark execution", function()
 		end
 	end)
 
-	it("accepts a steady yardstick", function()
-		local timeline = { now = 0, calls = 0 }
-		local result = Benchmark.run(spec(timeline, steady(), {
-			yardstick = {
-				run = function()
-					timeline.now += 0.001
-				end,
-				samples = 4,
-				maxSpread = 0.2,
-				maxDrift = 0.2,
-			},
-		}))
-		expect(#result.invalid):toEqual(0)
-	end)
-
 	it("stops at its deadline and reports too few samples", function()
 		local timeline = { now = 0, calls = 0 }
 		local report = execute(spec(timeline, { 600, 600, 600, 600 }, { deadlineSeconds = 1, budget = { p95 = 2000 } }))

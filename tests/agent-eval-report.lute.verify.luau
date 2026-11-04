@@ -87,6 +87,9 @@ local function result(task: string, arm: string, shape: Shape): AgentEval.RunRes
 end
 
 type JudgeCliFixture = {
+	suite: AgentEval.Suite,
+	results: { AgentEval.RunResult },
+	files: AgentEval.Files,
 	invoke: (extra: { string }) -> number,
 	identity: () -> Object,
 	configure: (judge: Object) -> (),
@@ -121,12 +124,14 @@ local function judgeCliFixture(): JudgeCliFixture
 	put("/s/tasks/t/brief.md", "Make a shop.")
 	put("/s/tasks/t/starter/a.txt", "a")
 	local entries: { { path: string } } = {}
+	local results: { AgentEval.RunResult } = {}
 	for _, arm in { "treatment", "baseline" } do
 		local saved = result("t", arm, { passed = true, tokens = 1, wall = 1, latencies = {} })
 		local image = "/e/" .. arm .. "/main.png"
 		put(image, "\137PNG\r\n\26\npixels")
 		saved.captures = { { device = "phone", label = "main", path = image, sha256 = arm, size = 14 } }
 		put("/e/" .. arm .. "/result.json", Fakes.json(saved))
+		table.insert(results, saved)
 		table.insert(entries, { path = arm })
 	end
 	put("/e/index.json", Fakes.json { runs = entries })
@@ -200,6 +205,9 @@ local function judgeCliFixture(): JudgeCliFixture
 		files.write("/s/eval.json", Fakes.json(configuration))
 	end
 	return {
+		suite = AgentEval.decodeSuite(Lute.parse(files.read "/s/eval.json"), "/s/eval.json", Fakes.loader(files)),
+		results = results,
+		files = files,
 		invoke = invoke,
 		identity = identity,
 		configure = configureJudge,
@@ -668,37 +676,9 @@ describe("agent evaluation report", function()
 	end)
 
 	it("judges captured screenshots once and reuses unchanged judgments", function()
-		local memory = Fakes.memory()
-		local files = memory.files
-		local function put(path: string, text: string)
-			files.makeDirectory(assert(string.match(path, "^(.*)/[^/]+$")))
-			files.write(path, text)
-		end
-		put(
-			"/s/eval.json",
-			Fakes.json {
-				schemaVersion = 1,
-				id = "suite",
-				tasks = { "tasks/t" },
-				arms = { { id = "treatment" }, { id = "baseline" } },
-				agents = { { id = "agent", adapter = "replay" } },
-				devices = { { id = "phone", width = 800, height = 400, input = { "touch" } } },
-			}
-		)
-		put(
-			"/s/tasks/t/task.json",
-			Fakes.json { schemaVersion = 1, id = "t", title = "T", brief = "brief.md", starter = "starter" }
-		)
-		put("/s/tasks/t/brief.md", "Make a shop.")
-		put("/s/tasks/t/starter/a.txt", "a")
-		put("/e/a/phone/main.png", "A")
-		put("/e/b/phone/main.png", "B")
-		local loader = Fakes.loader(files)
-		local decoded = AgentEval.decodeSuite(Lute.parse(files.read "/s/eval.json"), "/s/eval.json", loader)
-		local left = result("t", "treatment", { passed = true, tokens = 1, wall = 1, latencies = {} })
-		local right = result("t", "baseline", { passed = true, tokens = 1, wall = 1, latencies = {} })
-		left.captures = { { device = "phone", label = "main", path = "/e/a/phone/main.png", sha256 = "aa", size = 1 } }
-		right.captures = { { device = "phone", label = "main", path = "/e/b/phone/main.png", sha256 = "bb", size = 1 } }
+		local fixture = judgeCliFixture()
+		local files, decoded = fixture.files, fixture.suite
+		local left, right = fixture.results[1], fixture.results[2]
 		local comparisons = AgentEval.judge.comparisons(decoded, { left, right })
 		expect(#comparisons):toBe(1)
 		expect(comparisons[1].id):toBe "t/agent/seed-1/phone/treatment~baseline"
@@ -715,7 +695,7 @@ describe("agent evaluation report", function()
 				end
 			end
 			local criteria: Object = {}
-			local choice = if first == "/e/a/phone/main.png" then "first" else "second"
+			local choice = if first == left.captures[1].path then "first" else "second"
 			for _, criterion in AgentEval.judge.DEFAULT_RUBRIC.criteria do
 				criteria[criterion.id] = choice
 			end
