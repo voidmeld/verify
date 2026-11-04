@@ -622,13 +622,10 @@ local function accept(
 	}
 end
 
-local function copied(values: { string }?): { string }
-	return table.clone(listed(values))
-end
-
 local function missingCases(records: { ProducerRecord }, requested: GateTypes.Selection): { string }
 	local asked = listed(requested.cases)
 	local found: { [string]: boolean } = {}
+	local ran = false
 	for _, record in records do
 		local skipped: { [string]: boolean } = {}
 		for _, id in record.deselected do
@@ -636,6 +633,9 @@ local function missingCases(records: { ProducerRecord }, requested: GateTypes.Se
 		end
 		for _, id in record.caseIds do
 			if not skipped[id] and id ~= record.id then
+				if record.kind == "tests" and record.status ~= "not_selected" then
+					ran = true
+				end
 				found[id] = true
 				local prefix = record.id .. ":"
 				if string.sub(id, 1, #prefix) == prefix then
@@ -651,20 +651,6 @@ local function missingCases(records: { ProducerRecord }, requested: GateTypes.Se
 		end
 	end
 	if requested.nameContains ~= nil or #listed(requested.sources) > 0 then
-		local ran = false
-		for _, record in records do
-			if record.kind == "tests" and record.status ~= "not_selected" then
-				local skipped: { [string]: boolean } = {}
-				for _, id in record.deselected do
-					skipped[id] = true
-				end
-				for _, id in record.caseIds do
-					if id ~= record.id and not skipped[id] then
-						ran = true
-					end
-				end
-			end
-		end
 		if not ran then
 			local parts: { string } = {}
 			if requested.nameContains ~= nil then
@@ -741,12 +727,12 @@ local function scopeOf(
 	return {
 		complete = complete,
 		label = label,
-		ids = copied(requested.ids),
-		tiers = copied(requested.tiers),
-		tags = copied(requested.tags),
-		cases = copied(requested.cases),
+		ids = table.clone(listed(requested.ids)),
+		tiers = table.clone(listed(requested.tiers)),
+		tags = table.clone(listed(requested.tags)),
+		cases = table.clone(listed(requested.cases)),
 		nameContains = requested.nameContains,
-		sources = copied(requested.sources),
+		sources = table.clone(listed(requested.sources)),
 		selected = selected,
 		notSelected = notSelected,
 		skippedByTier = skippedByTier,

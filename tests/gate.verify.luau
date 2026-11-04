@@ -1087,6 +1087,13 @@ describe("scope, census and explanation", function()
 		expect(empty.acceptance.verdict):toEqual "failed"
 		expect(empty.acceptance.reasons[1]):toContain "were not found"
 		expect(empty.acceptance.reasons[1]):toContain "zzz"
+		local source = go(
+			testsGate(),
+			answering(sourced({ "one" }, { sources = { "missing.verify.luau" }, account = true })),
+			{ selection = { sources = { "missing.verify.luau" } } }
+		)
+		expect(source.acceptance.verdict):toEqual "failed"
+		expect(source.acceptance.reasons[1]):toContain "source missing.verify.luau"
 		expect(function()
 			go(testsGate(), answering(sourced { "one" }), { selection = { nameContains = "" } })
 		end):toThrow "nonempty string"
