@@ -5,11 +5,13 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Base64 = require "../src/codec/base64"
 local Image = require "../src/codec/image"
+local AgentEval = require "../src/agent-eval"
 
 local PNG_HEADER = "\137PNG\r\n\26\n\0\0\0\13IHDR\0\0\1\44\0\0\0\200\8\6\0\0\0"
 
 describe("base64", function()
 	it("encodes every padding length", function()
+		expect(AgentEval.base64):toBe(Base64)
 		expect(Base64.encode ""):toBe ""
 		expect(Base64.encode "M"):toBe "TQ=="
 		expect(Base64.encode "Ma"):toBe "TWE="
@@ -27,6 +29,8 @@ describe("base64", function()
 		expect(Base64.decode "TWF"):toBe(nil)
 		expect(Base64.decode "T*Fu"):toBe(nil)
 		expect(Base64.decode "T=Fu"):toBe(nil)
+		expect(Base64.decode "Zm9v!"):toBe(nil)
+		expect(Base64.decode "Zg=a"):toBe(nil)
 	end)
 end)
 
