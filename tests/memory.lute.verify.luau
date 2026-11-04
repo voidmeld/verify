@@ -319,6 +319,50 @@ describe("rehearsed lifecycles", function()
 end)
 
 describe("engine scheduler retention", function()
+	it("releases terminal task contexts while callers retain their threads", function()
+		local Scheduler = require "../src/roblox/scheduler"
+		for _, terminal in { "finished", "failed", "cancelled" } do
+			local scheduler = Scheduler.create()
+			local probe: { context: {}? } = setmetatable({}, { __mode = "v" })
+			local function launch(): thread
+				local context = {}
+				probe.context = context
+				return scheduler.spawnTagged(context, function()
+					if terminal == "failed" then
+						error("task failed", 0)
+					elseif terminal == "cancelled" then
+						scheduler.wait(1)
+					end
+				end)
+			end
+			local thread = launch()
+			if terminal == "cancelled" then
+				scheduler.cancel(thread)
+			end
+			Lute.memory.settle { cycles = 4 }
+			expect(probe.context):toBe(nil)
+			expect(coroutine.status(thread)):toBe "dead"
+			expect(scheduler.pending()):toBe(0)
+		end
+	end)
+
+	it("preserves a suspended task's context until it completes", function()
+		local Scheduler = require "../src/roblox/scheduler"
+		local scheduler = Scheduler.create()
+		local context = {}
+		local seen: { unknown } = {}
+		local thread = scheduler.spawnTagged(context, function()
+			table.insert(seen, scheduler.context())
+			scheduler.wait(1)
+			table.insert(seen, scheduler.context())
+		end)
+		Lute.memory.settle { cycles = 4 }
+		scheduler.advance(1)
+		scheduler.drain(16)
+		expect(seen):toEqual { context, context }
+		expect(coroutine.status(thread)):toBe "dead"
+	end)
+
 	it("releases a finished tagged thread", function()
 		local Scheduler = require "../src/roblox/scheduler"
 		local scheduler = Scheduler.create()
@@ -336,6 +380,53 @@ describe("engine scheduler retention", function()
 			buffer.create(64 * 1024)
 		end
 		expect(next(probe)):toEqual(nil)
+	end)
+end)
+
+describe("engine registry capacity", function()
+	it("releases datatype registry capacity after a burst", function()
+		local Datatypes = require "../src/roblox/datatypes"
+		local result = Lute.memory.measure({
+			setup = function()
+				local values: { Datatypes.UDim2Value } = {}
+				for index = 1, 32768 do
+					values[index] = Datatypes.UDim2.new(0, index, 0, index)
+				end
+				return values
+			end,
+			run = function(values: { Datatypes.UDim2Value })
+				expect(values[32768].X.Offset):toBe(32768)
+			end,
+			teardown = function(_values: { Datatypes.UDim2Value }) end,
+			iterations = 1,
+		}, { cycles = 8 })
+		expect(result.mountedKb > 8192):toBeTrueWith(`mounted {result.mountedKb}`)
+		expect(result.teardownRetainedKb < 128):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
+	end)
+
+	it("releases instance registration capacity after an environment is discarded", function()
+		local Environment = require "../src/roblox/environment"
+		type State = { environment: Environment.Environment, objects: { Environment.Instance } }
+		local result = Lute.memory.measure({
+			setup = function(): State
+				local environment = Environment.create()
+				local objects: { Environment.Instance } = {}
+				for index = 1, 32768 do
+					objects[index] = environment.createInstance "Folder"
+				end
+				return { environment = environment, objects = objects }
+			end,
+			run = function(state: State)
+				expect(state.environment.liveObjects()):toBe(32768)
+			end,
+			teardown = function(state: State)
+				for _, object in state.objects do
+					object:Destroy()
+				end
+			end,
+			iterations = 1,
+		}, { cycles = 8 })
+		expect(result.teardownRetainedKb < 128):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
 	end)
 end)
 
