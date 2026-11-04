@@ -6,6 +6,7 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Roblox = require "../src/roblox"
 local PlaceRuntime = require "../src/roblox/place-runtime"
+local PlaceBoot = require "../src/roblox/place-boot"
 local Environment = require "../src/roblox/environment"
 local VM = require "../src/roblox/value"
 local luau = require "@std/luau"
@@ -1044,6 +1045,87 @@ it("boots mounted scripts and requires modules without accepting invalid targets
 			end,
 		},
 	}))):toBe(false)
+end)
+
+it("boot frame cadence and staged viewports remain explicit and reject invalid final dimensions", function(own)
+	local source = sourceFixture {
+		["empty.json"] = json.serialize { tree = {} },
+	}
+	local config: PlaceBoot.Config = {
+		projectPath = "empty.json",
+		identity = { universeId = 1, placeId = 2, placeVersion = 3 },
+		subject = { name = "Cadence", userId = 4, jobId = "fixture" },
+		aliases = {},
+		firstViewport = { x = 1, y = 1 },
+		finalViewport = { x = 640, y = 480 },
+		frames = 1,
+		engineProvidedInput = false,
+	}
+	local created = 0
+	local deps: PlaceBoot.Deps<luau.Bytecode> = {
+		newEngine = function()
+			created += 1
+			local bridge = Lute.fixture.bridge()
+			own(function()
+				bridge.close()
+			end)
+			return bridge.placeEngine()
+		end,
+		host = source.host,
+		cache = Roblox.createPlaceCache(source.host),
+		files = {
+			exists = function(): boolean
+				return false
+			end,
+			fileType = function(): string
+				return "file"
+			end,
+			listDirectory = function(): { { name: string, type: string } }
+				return {}
+			end,
+		},
+	}
+	for _, seconds in { 1 / 30, 1 / 15 } do
+		config.frameSeconds = seconds
+		local stages: { string } = {}
+		config.observe = function(stage: PlaceBoot.Stage, view: PlaceBoot.View)
+			if stage == "client" or stage == "viewport" then
+				local camera = Environment.assertInstance(view.engine.service("Workspace").CurrentCamera)
+				table.insert(stages, stage .. ":" .. tostring(camera.ViewportSize))
+			end
+		end
+		local report = Roblox.bootPlace(config, deps)
+		expect(stages):toEqual { "client:1, 1", "viewport:640, 480" }
+		expect(report.engine.environment.scheduler.clock()):toBeCloseTo(10 * seconds)
+		local durations: { number } = {}
+		report.engine.environment
+			.event(report.engine.service "RunService", "RenderStepped")
+			:Connect(function(delta: unknown)
+				assert(type(delta) == "number")
+				table.insert(durations, delta)
+			end)
+		report.step()
+		expect(durations):toEqual { seconds }
+	end
+	local before = created
+	for _, seconds in { 0, -1, math.huge, math.nan } do
+		config.frameSeconds = seconds
+		expect(function()
+			Roblox.bootPlace(config, deps)
+		end):toThrow "frame duration must be positive and finite"
+	end
+	config.frameSeconds = 1 / 30
+	for _, dimension in { 0, -1, math.huge, math.nan } do
+		config.finalViewport = { x = dimension, y = 480 }
+		expect(function()
+			Roblox.bootPlace(config, deps)
+		end):toThrow "final viewport width must be positive and finite"
+		config.finalViewport = { x = 640, y = dimension }
+		expect(function()
+			Roblox.bootPlace(config, deps)
+		end):toThrow "final viewport height must be positive and finite"
+	end
+	expect(created):toBe(before)
 end)
 
 return nil
