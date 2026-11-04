@@ -459,5 +459,33 @@ it("backend failures cannot reveal the global Studio list", function()
 	expect(ok):toBe(false)
 	expect((string.find(tostring(reason), "secret-other", 1, true))):toBe(nil)
 end)
+it("scoped MCP returns the owned Studio's tool error text without other Studio ids", function()
+	local other = "0e8b6c1a-1111-4222-8333-944455556666"
+	local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {
+		call = function(): unknown
+			return {
+				isError = true,
+				content = { { type = "text", text = "Players.x:3: attempt to index nil; see " .. other } },
+			}
+		end,
+	}, Eval.lute.encode)
+	local ok, reason = pcall(
+		scope.dispatch,
+		"tools/call",
+		{ name = "execute_luau", arguments = { code = "return 1", datamodel_type = "Client" } }
+	)
+	expect(ok):toBe(false)
+	expect((string.find(tostring(reason), "attempt to index nil", 1, true)) ~= nil):toBe(true)
+	expect((string.find(tostring(reason), other, 1, true))):toBe(nil)
+end)
+it("scoped MCP console output collapses consecutive repeated lines", function()
+	local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {
+		call = function(): unknown
+			return { content = { { type = "text", text = "spam\nspam\nspam\nreal error\nspam" } } }
+		end,
+	}, Eval.lute.encode)
+	local response = scope.dispatch("tools/call", { name = "get_console_output", arguments = {} })
+	expect(content(response).text):toBe "spam (repeated 3 times)\nreal error\nspam"
+end)
 
 return nil
