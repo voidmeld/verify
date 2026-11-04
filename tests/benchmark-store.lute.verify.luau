@@ -45,46 +45,39 @@ local function fails(callback: () -> ()): boolean
 	return not pcall(callback)
 end
 
+local function specifications(samples: number): { Benchmark.Spec }
+	local tick = 0
+	local function advance(milliseconds: number): (unknown, Benchmark.Sampler) -> ()
+		return function(_state: unknown, _sampler: Benchmark.Sampler)
+			tick += milliseconds / 1000
+		end
+	end
+	local function specification(name: string, count: number): Benchmark.Spec
+		return {
+			name = name,
+			unit = "milliseconds",
+			warmup = 0,
+			samples = count,
+			environment = { observed = "lab" },
+			clock = function()
+				return tick
+			end,
+		}
+	end
+	local scenario = specification("scenario", samples)
+	scenario.phases = { { name = "cold", run = advance(4) }, { name = "steady", run = advance(1) } }
+	local single = specification("single", 2)
+	single.workload = advance(2)
+	return { scenario, single }
+end
+
 describe("stored benchmark runs", function()
 	it("stores a result with its phases and survives the JSON round trip", function()
-		local tick = 0
-		local result = Benchmark.run {
-			name = "scenario",
-			unit = "milliseconds",
-			warmup = 0,
-			samples = 2,
-			environment = { observed = "lab" },
-			clock = function()
-				return tick
-			end,
-			phases = {
-				{
-					name = "cold",
-					run = function()
-						tick += 0.004
-					end,
-				},
-				{
-					name = "steady",
-					run = function()
-						tick += 0.001
-					end,
-				},
-			},
-		}
-		local plain = Benchmark.run {
-			name = "single",
-			unit = "milliseconds",
-			warmup = 0,
-			samples = 2,
-			environment = { observed = "lab" },
-			clock = function()
-				tick += 0.002
-				return tick
-			end,
-			workload = function() end,
-		}
-		local run = Benchmark.store("candidate", { result, plain })
+		local results: { Benchmark.Result } = {}
+		for _, spec in specifications(2) do
+			table.insert(results, Benchmark.run(spec))
+		end
+		local run = Benchmark.store("candidate", results)
 		expect(#run.measurements):toEqual(3)
 		expect(run.measurements[1].name):toEqual "scenario/cold"
 		expect(run.measurements[2].name):toEqual "scenario/steady"
@@ -98,51 +91,10 @@ describe("stored benchmark runs", function()
 	end)
 
 	it("stores a gate report from its measurement evidence, phases included", function()
-		local tick = 0
 		local harness = Verify.createHarness { now = os.clock }
-		harness:case(
-			"scenario",
-			Benchmark.case {
-				name = "scenario",
-				unit = "milliseconds",
-				warmup = 0,
-				samples = 3,
-				environment = { observed = "lab" },
-				clock = function()
-					return tick
-				end,
-				phases = {
-					{
-						name = "cold",
-						run = function()
-							tick += 0.004
-						end,
-					},
-					{
-						name = "steady",
-						run = function()
-							tick += 0.001
-						end,
-					},
-				},
-			}
-		)
-		harness:case(
-			"single",
-			Benchmark.case {
-				name = "single",
-				unit = "milliseconds",
-				warmup = 0,
-				samples = 2,
-				environment = { observed = "lab" },
-				clock = function()
-					return tick
-				end,
-				workload = function()
-					tick += 0.002
-				end,
-			}
-		)
+		for _, spec in specifications(3) do
+			harness:case(spec.name, Benchmark.case(spec))
+		end
 		local report = harness:run { executor = "bench-test" }
 		local run = Benchmark.storeReport("candidate", report)
 		expect(#run.measurements):toEqual(3)
@@ -165,20 +117,10 @@ describe("stored benchmark runs", function()
 			Benchmark.storeReport("candidate", report)
 		end)):toEqual(true)
 		local measured = Verify.createHarness { now = os.clock }
-		measured:case(
-			"one",
-			Benchmark.case {
-				name = "one",
-				unit = "milliseconds",
-				warmup = 0,
-				samples = 1,
-				environment = { observed = "lab" },
-				clock = function()
-					return 0
-				end,
-				workload = function() end,
-			}
-		)
+		local spec = specifications(1)[2]
+		spec.name = "one"
+		spec.samples = 1
+		measured:case(spec.name, Benchmark.case(spec))
 		local withMeasurement = measured:run { executor = "bench-test" }
 		expect(#Benchmark.storeReport("ok", withMeasurement).measurements):toEqual(1)
 		expect(fails(function()
