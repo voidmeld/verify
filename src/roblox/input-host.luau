@@ -233,6 +233,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local function ensureOpen()
 		assert(not closed, "input is closed")
 	end
+	local function inputChanged(kind: unknown)
+		if lastInput ~= kind then
+			lastInput = kind
+			local event = service.LastInputTypeChanged
+			if event ~= nil then
+				env.fire(service, "LastInputTypeChanged", kind)
+			end
+		end
+	end
 	local function read(object: Instance, property: string): unknown
 		return if options.read then options.read(object, property) else object[property]
 	end
@@ -495,7 +504,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end
 		position = at
 		hovered = objects
-		lastInput = inputTypes.MouseMovement
+		inputChanged(inputTypes.MouseMovement)
 		env.fire(service, "InputChanged", object, processed(objects, false))
 		if held and dragging then
 			dragTo(at, "DragContinue")
@@ -514,6 +523,15 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local instance = Environment.assertInstance(found)
 		return if env.isAlive(instance) then instance else nil
 	end
+	local function focus(clicked: Instance?, object: Instance)
+		local box = focusedBox()
+		if box and box ~= clicked then
+			env.method(box, "ReleaseFocus")(box, false, object)
+		end
+		if clicked and clicked:IsA "TextBox" and read(clicked, "TextEditable") ~= false and box ~= clicked then
+			env.method(clicked, "CaptureFocus")(clicked)
+		end
+	end
 	local function send(at: Position, down: boolean, movePointer: boolean?)
 		local objects = hits(at, "button")
 		if movePointer then
@@ -530,7 +548,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		env.poke(object, "Delta", library.Vector3.new(at.X - buttonPosition.X, at.Y - buttonPosition.Y, 0))
 		buttonPosition = at
 		hovered = objects
-		lastInput = inputTypes.MouseButton1
+		inputChanged(inputTypes.MouseButton1)
 		if down then
 			held = true
 			pressed, pressedButton = targets, targetButton
@@ -606,7 +624,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
 	end
-	local function boundActions(code: string): { BoundAction }
+	local function boundActions(code: string, kind: string?): { BoundAction }
 		local root = gui:FindFirstAncestorWhichIsA "DataModel" or gui
 		local found: { BoundAction } = {}
 		for _, binding in root:GetDescendants() do
@@ -641,8 +659,8 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				unsupported "keyboard InputAction outside an InputContext"
 			end
 			local context = Environment.assertInstance(owner)
-			if codeName(env.propertyOf(Environment.assertInstance(action), "Type")) ~= "Bool" then
-				unsupported "keyboard InputAction.Type other than Bool"
+			if codeName(env.propertyOf(Environment.assertInstance(action), "Type")) ~= (kind or "Bool") then
+				unsupported("InputAction.Type other than " .. (kind or "Bool"))
 			end
 			if
 				env.propertyOf(Environment.assertInstance(action), "Enabled") == true
@@ -691,6 +709,20 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			local fire = env.method(entry.action, "Fire")
 			fire(entry.action, down)
 			table.insert(actions, entry)
+			if env.propertyOf(entry.context, "Sink") == true then
+				sunk = priority
+			end
+		end
+	end
+	local function deliverAxis(code: string, object: Instance)
+		local position = VectorTypes.expect3(env.propertyOf(object, "Position"), 1)
+		local sunk: number? = nil
+		for _, entry in boundActions(code, "Direction2D") do
+			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
+			if sunk and priority < sunk then
+				break
+			end
+			env.method(entry.action, "Fire")(entry.action, library.Vector2.new(position.X, position.Y))
 			if env.propertyOf(entry.context, "Sink") == true then
 				sunk = priority
 			end
@@ -947,7 +979,9 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			controllerPress = nil
 		end
 		env.fire(service, event, object, false)
-		if event ~= "InputChanged" then
+		if code == "Thumbstick1" or code == "Thumbstick2" then
+			deliverAxis(code, object)
+		elseif event ~= "InputChanged" then
 			deliverActions(code, event == "InputBegan")
 		end
 	end)
@@ -979,7 +1013,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		local object = input(keyboard)
 		env.poke(object, "KeyCode", member)
 		env.poke(object, "UserInputState", if value.down then states.Begin else states.End)
-		lastInput = keyboard
+		inputChanged(keyboard)
 		local box = focusedBox()
 		if value.down then
 			heldKeys[code] = true
@@ -1112,6 +1146,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 			return pointerController().drag(objects, x, y)
 		end,
 		processed = processed,
+		focus = focus,
 		detector = detectorFor,
 		dragOffset = dragOffset,
 		read = read,

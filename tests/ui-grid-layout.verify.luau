@@ -81,14 +81,14 @@ it("default cell constraints and scale preserve grid geometry", function(_, case
 end)
 
 it("unmodeled grid constraints fail before geometry changes", function(_, caseContext)
-	for _, scenario in { "scaled automatic axis", "zero cell" } do
+	for _, scenario in { "scaled automatic axis", "negative cell" } do
 		local bridge, root, grid, library = fixture(caseContext)
 		local env = bridge.environment
 		local child = env.createInstance("Frame", { Parent = root })
 		if scenario == "scaled automatic axis" then
 			grid.CellSize = library.UDim2.new(0, 50, 1, 20)
 		else
-			grid.CellSize = library.UDim2.fromOffset(0, 20)
+			grid.CellSize = library.UDim2.fromOffset(-1, 20)
 		end
 		local before = root.AbsoluteSize
 		expect(function()
@@ -96,6 +96,28 @@ it("unmodeled grid constraints fail before geometry changes", function(_, caseCo
 		end):toThrow "unsupported_ui_layout"
 		expect(root.AbsoluteSize):toEqual(before)
 	end
+end)
+
+it("zero-width grid cells retain padding and reflow when their width grows", function(_, caseContext)
+	local bridge, root, grid, library = fixture(caseContext)
+	local env, layout = bridge.environment, assert(bridge.layout)
+	local children: { Roblox.Instance } = {}
+	for index = 1, 3 do
+		children[index] = env.createInstance("Frame", { Parent = root, LayoutOrder = index })
+	end
+	grid.CellSize = library.UDim2.fromOffset(0, 20)
+	layout.step()
+	expect(grid.AbsoluteContentSize):toEqual(library.Vector2.new(10, 20))
+	expect(children[3].AbsolutePosition):toEqual(library.Vector2.new(10, 0))
+	expect(children[1].AbsoluteSize):toEqual(library.Vector2.new(0, 20))
+	grid.CellPadding = library.UDim2.fromOffset(0, 0)
+	layout.step()
+	expect(grid.AbsoluteCellCount):toEqual(library.Vector2.new(3, 1))
+	expect(grid.AbsoluteContentSize):toEqual(library.Vector2.new(0, 20))
+	grid.CellSize = library.UDim2.fromOffset(100, 20)
+	layout.step()
+	expect(grid.AbsoluteCellCount):toEqual(library.Vector2.new(2, 2))
+	expect(children[3].AbsolutePosition):toEqual(library.Vector2.new(0, 20))
 end)
 
 return nil

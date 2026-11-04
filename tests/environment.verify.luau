@@ -856,12 +856,23 @@ describe("roblox test environment", function()
 		local env = environment()
 		local widget = (env.createInstance "Widget")
 		expect(invoke(widget.Double, widget, 4)):toEqual(8)
+		local ping = widget.Ping
+		expect(type(ping)):toBe "function"
 		expect(thrown(function()
-			return invoke(widget.Ping, widget)
+			return invoke(ping, widget)
 		end)):toContain "unsupported_method: Widget.Ping is declared but has no simulation or configured fake"
+		local restore = env.fakeOn(widget, "Ping", function(): string
+			return "local pong"
+		end)
+		expect(invoke(ping, widget)):toEqual "local pong"
+		restore()
+		expect(thrown(function()
+			return invoke(ping, widget)
+		end)):toContain "unsupported_method: Widget.Ping"
 		env.fake("Widget.Ping", function(): string
 			return "pong"
 		end)
+		expect(invoke(ping, widget)):toEqual "pong"
 		expect(invoke(widget.Ping, widget)):toEqual "pong"
 		local configured = Roblox.testEnvironment {
 			classes = { Widget = { super = "Instance", methods = { Ping = true } } },

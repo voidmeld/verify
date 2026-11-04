@@ -15,6 +15,7 @@ export type Options = {
 	dragOffset: (Instance, number, number) -> unknown,
 	read: (Instance, string) -> unknown,
 	changed: () -> (),
+	focus: (Instance?, Instance) -> (),
 	activationWindowSeconds: number,
 }
 
@@ -105,6 +106,7 @@ local function create(env: Environment.Environment, options: Options)
 					env.fire(targetButton, "MouseButton1Down", at.X, at.Y)
 				end
 				transition(at, targets, object, false)
+				options.focus(targets[1], object)
 				local consumed = detector ~= nil or options.processed(targets, true)
 				env.fire(service, "InputBegan", object, consumed)
 				env.fire(service, "TouchStarted", object, consumed)

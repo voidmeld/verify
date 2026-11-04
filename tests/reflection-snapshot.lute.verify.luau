@@ -140,8 +140,9 @@ describe("reflection snapshot loaded under Lute", function()
 		local part = env.createInstance "Part"
 		expect(env.method(part, "Configured")(part)):toBe(42)
 		for _, name in { "NativeOnly", "InheritedOnly" } do
+			expect(type(part[name])):toBe "function"
 			local ok, problem = pcall(function()
-				return part[name]
+				return env.method(part, name)(part)
 			end)
 			expect(ok):toBe(false)
 			expect(tostring(problem)):toContain "unsupported_method"
@@ -152,7 +153,7 @@ describe("reflection snapshot loaded under Lute", function()
 		expect(env.method(part, "NativeOnly")(part)):toBe "configured"
 		close()
 		expect(accepts(function()
-			return part.NativeOnly
+			return env.method(part, "NativeOnly")(part)
 		end)):toBe(false)
 		local folder = env.createInstance "Folder"
 		local ok, problem = pcall(function()
