@@ -7,12 +7,13 @@ local font = Font.new("rbxasset://fonts/families/BuilderSans.json")
 local params = Instance.new("GetTextBoundsParams")
 params.Font = font
 local function near(a, b) return math.abs(a - b) <= 0.001 end
-local function measure(text, rich, size, width, wrapped, spacing)
+local function measure(text, rich, size, width, wrapped, spacing, face)
+ params.Font = face or font
  params.Text, params.RichText, params.Size = text, rich, size
  params.Width = if wrapped then width else 0
  local api = game.TextService:GetTextBoundsAsync(params)
  local label = Instance.new("TextLabel")
- label.FontFace, label.RichText = font, rich
+ label.FontFace, label.RichText = face or font, rich
  label.Text, label.TextSize = text, size
  label.TextWrapped, label.LineHeight = wrapped, spacing
  label.Size, label.Parent = UDim2.fromOffset(width, 100), screen
@@ -68,6 +69,21 @@ for _, text in texts do
     assert(bounds.X >= previous.X - 0.001 and bounds.Y >= previous.Y - 0.001, "unwrapped bounds grow with size " .. text .. "/" .. size)
    end
    previous = bounds
+  end
+ end
+end
+local bold = Font.new(font.Family, Enum.FontWeight.Bold)
+for _, text in {"<b>Lap record</b>", "<b>Lap <b>record</b></b>", "<u><b>Lap record</b></u>"} do
+ for _, size in {7, 14, 18, 28} do
+  for _, width in {40, 1000} do
+   for _, mode in {{false, 1}, {true, 1}, {true, 1.2}} do
+    local wrapped, spacing = mode[1], mode[2]
+    local api, bounds, fits = measure(text, true, size, width, wrapped, spacing)
+    local expected, painted, expectedFits = measure("Lap record", true, size, width, wrapped, spacing, bold)
+    assert(near(api.X, expected.X) and near(api.Y, expected.Y), "bold markup uses the bold service face")
+    assert(near(bounds.X, painted.X) and near(bounds.Y, painted.Y), "bold markup uses the bold label face")
+    assert(fits == expectedFits, "bold markup preserves bold fit")
+   end
   end
  end
 end

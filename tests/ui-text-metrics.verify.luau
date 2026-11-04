@@ -6,6 +6,8 @@ local describe, it, expect = Test.describe, Test.it, Test.expect
 
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
+local NativeMetrics = require "../src/lute/text-metrics"
+local Values = require "../src/roblox/ui-values"
 
 local call = Lute.chunk.load "local service, member = ...; return service[member](service, select(3, ...))"
 local xComponent = Lute.chunk.load "local vector = ...; return vector.X"
@@ -63,6 +65,54 @@ it("captured Latin and Japanese text preserves service widths and wrapping", fun
 	end
 end)
 
+it("uniform bold rich text uses the captured bold face across measurement operations", function()
+	local measure, truncate, height = NativeMetrics.create(), NativeMetrics.truncator(), NativeMetrics.heights()
+	for _, family in { "BuilderSans", "Nunito", "SourceSansPro" } do
+		local parameters: Values.TextParameters = {
+			Font = Values.font(Roblox.datatypes.Font.new(`rbxasset://fonts/families/{family}.json`)),
+			Size = 14,
+			Width = 0,
+			Text = "",
+			RichText = true,
+		}
+		local expected = table.clone(parameters)
+		expected.Font =
+			Values.font(Roblox.datatypes.Font.new(parameters.Font.Family, Roblox.datatypes.Enum.FontWeight.Bold))
+		expected.Text = "Lap record & SAVE"
+		for _, size in { 7, 14, 18, 28 } do
+			parameters.Size, expected.Size = size, size
+			for _, width in { 0, 40, 120 } do
+				parameters.Width, expected.Width = width, width
+				for _, text in
+					{
+						"<b>Lap record &amp; SAVE</b>",
+						"<b>Lap <b>record</b> &amp; SAVE</b>",
+						"<u><b>Lap record &amp; <uc>save</uc></b></u>",
+					}
+				do
+					parameters.Text = text
+					expect(measure(parameters)):toEqual(measure(expected))
+					expect(height(parameters, 3, 1.2)):toBe(height(expected, 3, 1.2))
+					if width > 0 then
+						for _, mode in { "AtEnd", "SplitWord" } do
+							expect(truncate(parameters, mode, 1, false)):toBe(truncate(expected, mode, 1, false))
+						end
+					end
+				end
+			end
+		end
+		parameters.Text, parameters.Width = "<b>Lap record</b>", 0
+		expected.Text = "Lap record"
+		expected.Font = Values.font(Roblox.datatypes.Font.new(parameters.Font.Family))
+		expect(measure(parameters) == measure(expected)):toBe(false)
+		parameters.Font =
+			Values.font(Roblox.datatypes.Font.new(parameters.Font.Family, Roblox.datatypes.Enum.FontWeight.Bold))
+		expected.Font = parameters.Font
+		parameters.Text, expected.Text = "<b>Lap</b> record", "Lap record"
+		expect(measure(parameters)):toEqual(measure(expected))
+	end
+end)
+
 it("text measurements refuse unmodeled shaping and split narrow words", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(function()
@@ -76,11 +126,11 @@ it("text measurements refuse unmodeled shaping and split narrow words", function
 		Width = 100,
 	})
 	local service = bridge.placeEngine().service "TextService"
-	for _, scenario in { "bold rich text", "unicode", "rich text", "font", "narrow" } do
+	for _, scenario in { "mixed rich text", "unicode", "rich text", "font", "narrow" } do
 		parameters.Text, parameters.Width, parameters.RichText = "Hello", 100, false
 		parameters.Font = library.Font.new "rbxasset://fonts/families/BuilderSans.json"
-		if scenario == "bold rich text" then
-			parameters.Text, parameters.RichText = "<b>Hello</b>", true
+		if scenario == "mixed rich text" then
+			parameters.Text, parameters.RichText = "<b>Hello</b> world", true
 		elseif scenario == "unicode" then
 			parameters.Text = "你好"
 		elseif scenario == "rich text" then
