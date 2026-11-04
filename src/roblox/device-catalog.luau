@@ -1,8 +1,10 @@
 --!strict
 
 export type Area = { number }
+export type DisplaySize = "Small" | "Medium" | "Large"
 export type Device = {
 	id: string,
+	displaySize: DisplaySize,
 	viewport: { number },
 	preferredInput: string,
 	touch: boolean,
@@ -19,6 +21,7 @@ export type Device = {
 }
 type Shape = { viewport: { number }, trim: { number }, notch: { number } }
 type Profile = {
+	displaySize: DisplaySize,
 	preferredInput: string,
 	touch: boolean,
 	keyboard: boolean,
@@ -33,6 +36,7 @@ local INSET, TOPBAR_LEFT = 58, 164
 
 local profiles: { [string]: Profile } = {
 	hd_1080 = {
+		displaySize = "Medium",
 		preferredInput = "KeyboardAndMouse",
 		touch = false,
 		keyboard = true,
@@ -42,6 +46,7 @@ local profiles: { [string]: Profile } = {
 		shapes = { fixed = { viewport = { 1919, 1080 }, trim = { 1, 0 }, notch = { 0, 0, 0, 0 } } },
 	},
 	iphone_14 = {
+		displaySize = "Small",
 		preferredInput = "Touch",
 		touch = true,
 		keyboard = false,
@@ -56,6 +61,7 @@ local profiles: { [string]: Profile } = {
 		},
 	},
 	xbox = {
+		displaySize = "Large",
 		preferredInput = "Gamepad",
 		touch = false,
 		keyboard = false,
@@ -65,6 +71,7 @@ local profiles: { [string]: Profile } = {
 		shapes = { fixed = { viewport = { 1919, 1080 }, trim = { 1, 0 }, notch = { 0, 0, 0, 0 } } },
 	},
 	generic_handheld_720 = {
+		displaySize = "Small",
 		preferredInput = "Gamepad",
 		touch = false,
 		keyboard = true,
@@ -79,6 +86,7 @@ local function build(id: string, profile: Profile, shape: Shape, width: number, 
 	local notch = shape.notch
 	return {
 		id = id,
+		displaySize = profile.displaySize,
 		viewport = { width, height },
 		preferredInput = profile.preferredInput,
 		touch = profile.touch,
@@ -140,9 +148,10 @@ local function resized(current: Device, width: number, height: number): Device
 	return result
 end
 
-local function desktop(width: number, height: number): Device
+local function desktop(width: number, height: number, displaySize: DisplaySize?): Device
 	return {
 		id = "desktop",
+		displaySize = displaySize or "Medium",
 		viewport = { width, height },
 		preferredInput = "KeyboardAndMouse",
 		touch = false,

@@ -75,6 +75,7 @@ export type Config = {
 	firstViewport: Viewport,
 	finalViewport: Viewport,
 	frames: number?,
+	frameSeconds: number?,
 	engineProvidedInput: boolean,
 	attributes: Attributes?,
 	opaque: Opaque?,
@@ -538,6 +539,16 @@ local function makeCharacter(engine: Engine, name: string): Instance
 end
 
 local function run<B>(config: Config, deps: Deps<B>): Report
+	local frameSeconds = config.frameSeconds or FRAME_SECONDS
+	assert(frameSeconds > 0 and frameSeconds < math.huge, "frame duration must be positive and finite")
+	assert(
+		config.finalViewport.x > 0 and config.finalViewport.x < math.huge,
+		"final viewport width must be positive and finite"
+	)
+	assert(
+		config.finalViewport.y > 0 and config.finalViewport.y < math.huge,
+		"final viewport height must be positive and finite"
+	)
 	local engine = deps.newEngine()
 	local mounted = buildTree(engine, config.projectPath, {
 		cache = deps.cache,
@@ -603,7 +614,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		runtime.runScript(entry, "server")
 	end
 	for _ = 1, 4 do
-		runtime.step(FRAME_SECONDS)
+		runtime.step(frameSeconds)
 	end
 	reachedStage "server"
 
@@ -631,7 +642,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	engine.environment.fire(players, "PlayerAdded", player)
 
 	for _ = 1, 2 do
-		runtime.step(FRAME_SECONDS)
+		runtime.step(frameSeconds)
 	end
 	identified = player
 	identifiedGui = playerGui
@@ -660,7 +671,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		runtime.runScript(entry, "client")
 	end
 
-	runtime.step(FRAME_SECONDS)
+	runtime.step(frameSeconds)
 	reachedStage "client"
 
 	engine.environment.poke(
@@ -669,7 +680,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		engine.datatypes.Vector2.new(config.finalViewport.x, config.finalViewport.y)
 	)
 
-	runtime.step(FRAME_SECONDS)
+	runtime.step(frameSeconds)
 	reachedStage "viewport"
 
 	local character = makeCharacter(engine, tostring(player.Name))
@@ -677,7 +688,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	engine.environment.poke(player, "Character", character)
 	engine.environment.fire(player, "CharacterAdded", character)
 
-	runtime.step(FRAME_SECONDS)
+	runtime.step(frameSeconds)
 	reachedStage "character"
 
 	local attributes = config.attributes
@@ -692,7 +703,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 
 	local budget = config.frames or DEFAULT_FRAME_BUDGET
 	for _ = 1, budget do
-		runtime.step(FRAME_SECONDS)
+		runtime.step(frameSeconds)
 	end
 
 	reachedStage "settled"
@@ -732,7 +743,7 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 		mountedRoots = mountedRoots,
 		lines = lines,
 		step = function()
-			runtime.step(FRAME_SECONDS)
+			runtime.step(frameSeconds)
 		end,
 	}
 end

@@ -71,7 +71,12 @@ export type Mounted = {
 	sources: { [Instance]: string },
 }
 
-export type Client = { name: string, userId: number, viewport: { x: number, y: number } }
+export type Client = {
+	name: string,
+	userId: number,
+	viewport: { x: number, y: number },
+	displaySize: DeviceCatalog.DisplaySize?,
+}
 
 export type Options<B = unknown> = {
 	aliases: { [string]: string },

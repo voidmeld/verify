@@ -502,6 +502,23 @@ describe("verify matchers", function()
 		Verify.expect({ marker = true }):toEqual(indexed)
 	end)
 
+	it("compares shared tables by value in both directions and still detects unequal cycles", function()
+		local shared = { value = 3 }
+		local aliased = { shared, shared }
+		local copied = { { value = 3 }, { value = 3 } }
+		Verify.expect(aliased):toEqual(copied)
+		Verify.expect(copied):toEqual(aliased)
+		Verify.expect({ aliased }):toContain(copied)
+		Verify.expect(aliased).never:toEqual { { value = 3 }, { value = 4 } }
+		Verify.expect({ { value = 3 }, { value = 4 } }).never:toEqual(aliased)
+		local left: { value: number, next: unknown } = { value = 1, next = nil }
+		local right: { value: number, next: unknown } = { value = 1, next = nil }
+		left.next, right.next = left, right
+		Verify.expect(left):toEqual(right)
+		right.value = 2
+		Verify.expect(left).never:toEqual(right)
+	end)
+
 	it("keeps negation satisfiable and composable", function()
 		local first, second = Verify.expect(1), Verify.expect(2)
 		local unequal = first.never.toBe

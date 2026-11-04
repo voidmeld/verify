@@ -42,18 +42,23 @@ local function describe(value: unknown): string
 	return render(value, 4, {})
 end
 
-local function deepEqual(left: unknown, right: unknown, visited: { [unknown]: unknown }?): boolean
+local function deepEqual(left: unknown, right: unknown, visited: { [unknown]: { [unknown]: boolean } }?): boolean
 	if left == right then
 		return true
 	end
 	if type(left) ~= "table" or type(right) ~= "table" then
 		return false
 	end
-	local seen: { [unknown]: unknown } = visited or {}
-	if seen[left] ~= nil then
-		return seen[left] == right
+	local seen: { [unknown]: { [unknown]: boolean } } = visited or {}
+	local matches = seen[left]
+	if matches == nil then
+		matches = {}
+		seen[left] = matches
 	end
-	seen[left] = right
+	if matches[right] then
+		return true
+	end
+	matches[right] = true
 	local leftTable = view(left)
 	local rightTable = view(right)
 	for key, value in left do
