@@ -29,7 +29,7 @@ export type Scheduler = {
 	pending: () -> number,
 }
 
-local WEAK_KEYS = table.freeze { __mode = "k" }
+local WEAK_KEYS = table.freeze { __mode = "ks" }
 
 local function create(): Scheduler
 	local now = 0
@@ -78,6 +78,9 @@ local function create(): Scheduler
 		active = tags[thread]
 		local ok, message = coroutine.resume(thread, ...)
 		active = previous
+		if coroutine.status(thread) == "dead" then
+			tags[thread] = nil
+		end
 		return ok, message
 	end
 
@@ -224,6 +227,7 @@ local function create(): Scheduler
 
 	function scheduler.cancel(thread: thread)
 		release(thread)
+		tags[thread] = nil
 		local keptReady: { Ready } = {}
 		for _, entry in ready do
 			if entry.thread ~= thread then

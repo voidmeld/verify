@@ -11,7 +11,7 @@ export type Behavior = {
 
 local proxyMetatable = getmetatable
 local function weak<K, V>(values: { [K]: V })
-	setmetatable(values, { __mode = "kv" })
+	setmetatable(values, { __mode = "kvs" })
 end
 
 local registered: { [unknown]: string } = {}
