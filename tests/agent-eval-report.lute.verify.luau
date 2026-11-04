@@ -468,6 +468,16 @@ describe("agent evaluation report", function()
 		local limitations = table.concat(report.limitations, "\n")
 		expect(limitations):toContain "1 task(s) lack a run of both arms"
 		expect(limitations):toContain "no judgment is available"
+		results[3].metrics.totalTokens = 0
+		results[4].metrics.totalTokens = 0
+		results[1].metrics.turnLatencies = { 1 }
+		results[2].metrics.turnLatencies = { 2 }
+		results[3].metrics.turnLatencies = { 0 }
+		results[4].metrics.turnLatencies = { 0 }
+		local zero = AgentEval.report.build("suite", results, {}, report.thresholds, nil)
+		expect(comparison(zero, "totalTokens").estimate):toBe(nil)
+		expect(comparison(zero, "turnLatencyP50").estimate):toBe(nil)
+		expect(comparison(zero, "turnLatencyP50").tasks):toBe(1)
 	end)
 
 	it("refuses malformed thresholds", function()

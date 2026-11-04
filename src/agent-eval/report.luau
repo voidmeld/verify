@@ -493,9 +493,9 @@ local function build(
 					end
 					return mean(values)
 				end
+				local left: { number } = {}
+				local right: { number } = {}
 				if spec.rank ~= nil then
-					local left: { number } = {}
-					local right: { number } = {}
 					for _, item in sample do
 						for _, value in item.arms[thresholds.treatment].latencies do
 							table.insert(left, value)
@@ -504,25 +504,18 @@ local function build(
 							table.insert(right, value)
 						end
 					end
-					local top = Stats.percentile(left, spec.rank)
-					local bottom = Stats.percentile(right, spec.rank)
-					if top == nil or bottom == nil or bottom == 0 then
-						return nil
+				else
+					for _, item in sample do
+						table.insert(left, checkedNumber(item.arms[thresholds.treatment].values[spec.name]))
+						table.insert(right, checkedNumber(item.arms[thresholds.baseline].values[spec.name]))
 					end
-					return top / bottom
 				end
-				local left: { number } = {}
-				local right: { number } = {}
-				for _, item in sample do
-					table.insert(left, checkedNumber(item.arms[thresholds.treatment].values[spec.name]))
-					table.insert(right, checkedNumber(item.arms[thresholds.baseline].values[spec.name]))
-				end
-				local top = mean(left)
-				local bottom = mean(right)
+				local top = if spec.rank ~= nil then Stats.percentile(left, spec.rank) else mean(left)
+				local bottom = if spec.rank ~= nil then Stats.percentile(right, spec.rank) else mean(right)
 				if top == nil or bottom == nil then
 					return nil
 				end
-				if spec.statistic == "difference" then
+				if spec.rank == nil and spec.statistic == "difference" then
 					return top - bottom
 				end
 				if bottom == 0 then
