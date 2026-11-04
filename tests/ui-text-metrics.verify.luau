@@ -38,6 +38,76 @@ it("default text measurements use captured native font facts", function(own)
 	expect(call(service, "GetTextBoundsAsync", parameters) == previous):toBe(false)
 end)
 
+it("captured control symbols measure across body weights", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", { Size = 14, Width = 0 })
+	local service = bridge.placeEngine().service "TextService"
+	local glyphs = {
+		"·",
+		"×",
+		"—",
+		"→",
+		"≡",
+		"■",
+		"□",
+		"▢",
+		"▣",
+		"▲",
+		"▶",
+		"▸",
+		"▾",
+		"◆",
+		"◇",
+		"◉",
+		"○",
+		"◎",
+		"●",
+		"◩",
+		"☰",
+		"⚡",
+		"⛓",
+		"⬡",
+		"〜",
+	}
+	for _, weight in { "Regular", "Medium", "SemiBold" } do
+		parameters.Font =
+			library.Font.new("rbxasset://fonts/families/BuilderSans.json", library.Enum.FontWeight[weight])
+		for size = 1, 100 do
+			parameters.Size = size
+			for _, glyph in glyphs do
+				parameters.Text = glyph
+				local width = xComponent(call(service, "GetTextBoundsAsync", parameters))
+				assert(type(width) == "number")
+				expect(width >= 0):toBe(true)
+			end
+		end
+	end
+end)
+
+it("uncaptured Unicode remains unsupported in measured body weights", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", { Size = 14, Width = 0 })
+	local service = bridge.placeEngine().service "TextService"
+	for _, weight in { "Regular", "Medium", "SemiBold" } do
+		parameters.Font =
+			library.Font.new("rbxasset://fonts/families/BuilderSans.json", library.Enum.FontWeight[weight])
+		parameters.Text = "A"
+		local width = xComponent(call(service, "GetTextBoundsAsync", parameters))
+		assert(type(width) == "number")
+		expect(width > 0):toBe(true)
+		for _, text in { utf8.char(0x1F984), "A" .. utf8.char(0x1F984) .. "V" } do
+			parameters.Text = text
+			expect(function()
+				call(service, "GetTextBoundsAsync", parameters)
+			end):toThrow "unsupported_text_metrics: character U+1F984"
+		end
+	end
+end)
+
 it("captured Latin and Japanese text preserves service widths and wrapping", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(function()
