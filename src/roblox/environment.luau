@@ -340,17 +340,13 @@ local function create(options: Options?): Environment
 			end
 		end
 		if selecting then
-			if isObject(previous) then
-				local old = stateOf(previous)
-				if not old.destroyed and old.values.Selectable ~= false then
-					fireSignal(old, "SelectionLost")
-				end
+			local old = states[previous]
+			if old ~= nil and not old.destroyed and old.values.Selectable ~= false then
+				fireSignal(old, "SelectionLost")
 			end
-			if isObject(value) then
-				local selected = stateOf(value)
-				if not selected.destroyed and selected.values.Selectable ~= false then
-					fireSignal(selected, "SelectionGained")
-				end
+			local selected = states[value]
+			if selected ~= nil and not selected.destroyed and selected.values.Selectable ~= false then
+				fireSignal(selected, "SelectionGained")
 			end
 		end
 		if coupled then
