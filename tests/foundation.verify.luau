@@ -34,41 +34,30 @@ describe("result transport", function()
 		expect(recovered):toEqual(payload)
 	end)
 
-	it("names a missing chunk instead of returning a truncated payload", function()
-		local payload, problem = Verify.reassemble(Verify.extract("VERIFY|chunk|1/3|a\nVERIFY|chunk|3/3|c", "VERIFY"))
-		expect(payload):toEqual(nil)
-		expect((tostring(problem))):toContain "chunk 2 of 3 is missing"
-	end)
-
-	it("names a chunk that appeared twice with different bytes", function()
-		local payload, problem =
-			Verify.reassemble(Verify.extract("VERIFY|chunk|1/2|a\nVERIFY|chunk|1/2|z\nVERIFY|chunk|2/2|b", "VERIFY"))
-		expect(payload):toEqual(nil)
-		expect((tostring(problem))):toContain "appears twice with different bytes"
+	it("rejects missing, conflicting, mixed and absent receipts with specific reasons", function()
+		for _, scenario in
+			{
+				{ log = "VERIFY|chunk|1/3|a\nVERIFY|chunk|3/3|c", reason = "chunk 2 of 3 is missing" },
+				{
+					log = "VERIFY|chunk|1/2|a\nVERIFY|chunk|1/2|z\nVERIFY|chunk|2/2|b",
+					reason = "appears twice with different bytes",
+				},
+				{ log = "VERIFY|chunk|1/2|a\nVERIFY|chunk|2/3|b", reason = "chunk counts disagree" },
+				{ log = "VERIFY|whole\nVERIFY|chunk|1/1|a", reason = "mixed framing" },
+				{ log = "VERIFY|first\nVERIFY|second", reason = "2 whole records" },
+				{ log = "nothing here at all", reason = "no tagged record" },
+			}
+		do
+			local payload, problem = Verify.receipt(scenario.log, "VERIFY")
+			expect(payload):toEqual(nil)
+			expect(tostring(problem)):toContain(scenario.reason)
+		end
 	end)
 
 	it("tolerates a chunk repeated identically", function()
 		local payload =
 			Verify.reassemble(Verify.extract("VERIFY|chunk|1/2|a\nVERIFY|chunk|1/2|a\nVERIFY|chunk|2/2|b", "VERIFY"))
 		expect(payload):toEqual "ab"
-	end)
-
-	it("names disagreeing chunk counts and mixed framing", function()
-		local _, counts = Verify.reassemble(Verify.extract("VERIFY|chunk|1/2|a\nVERIFY|chunk|2/3|b", "VERIFY"))
-		expect((tostring(counts))):toContain "chunk counts disagree"
-		local _, mixed = Verify.reassemble(Verify.extract("VERIFY|whole\nVERIFY|chunk|1/1|a", "VERIFY"))
-		expect((tostring(mixed))):toContain "mixed framing"
-	end)
-
-	it("names two whole receipts rather than picking one", function()
-		local _, problem = Verify.reassemble(Verify.extract("VERIFY|first\nVERIFY|second", "VERIFY"))
-		expect((tostring(problem))):toContain "2 whole records"
-	end)
-
-	it("names an absent receipt", function()
-		local payload, problem = Verify.receipt("nothing here at all", "VERIFY")
-		expect(payload):toEqual(nil)
-		expect((tostring(problem))):toContain "no tagged record"
 	end)
 
 	it("reports the line each record was found on", function()
