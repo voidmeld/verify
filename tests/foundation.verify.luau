@@ -307,6 +307,11 @@ describe("session framing", function()
 		expect(report.failed):toEqual(1)
 		expect(report.results[1].failures[1].phase):toEqual "load"
 		expect(report.results[1].failures[1].message):toContain "syntax error"
+		local skipped = session:sourceReport("source:skipped", "skipped.verify.luau", "skipped", "not selected")
+		expect(Verify.decode(skipped).skipped):toEqual(1)
+		expect(skipped.results[1].source):toEqual "skipped.verify.luau"
+		expect(skipped.results[1].skipReason):toEqual "not selected"
+		expect(skipped.results[1].failures):toEqual {}
 	end)
 
 	it("routes authoring verbs to the source that is registering", function()

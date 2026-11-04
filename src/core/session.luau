@@ -124,18 +124,6 @@ local function createSurface<S>(options: ProvidedOptions<S>): Session<S>
 		status: "failed" | "skipped",
 		detail: string
 	): Report
-		if status == "skipped" then
-			return Harness.syntheticReport {
-				executor = executor,
-				environment = environment,
-				capabilities = capabilities,
-				id = id,
-				source = source,
-				name = source,
-				status = "skipped",
-				skipReason = detail,
-			}
-		end
 		return Harness.syntheticReport {
 			executor = executor,
 			environment = environment,
@@ -143,9 +131,10 @@ local function createSurface<S>(options: ProvidedOptions<S>): Session<S>
 			id = id,
 			source = source,
 			name = source,
-			status = "failed",
-			phase = "load",
-			message = detail,
+			status = status,
+			phase = if status == "failed" then "load" else nil,
+			message = if status == "failed" then detail else nil,
+			skipReason = if status == "skipped" then detail else nil,
 		}
 	end
 
