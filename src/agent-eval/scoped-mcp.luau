@@ -16,14 +16,26 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 	local function text(value: unknown): unknown
 		return { content = { { type = "text", text = encode(value) } } }
 	end
+	local function asRecord(value: unknown): Schema.Record?
+		local ok, found = pcall(Schema.record, value, "tool result")
+		return if ok then found else nil
+	end
+	local function items(result: unknown): { unknown }
+		local found = asRecord(result)
+		local ok, list = pcall(Schema.list, if found then found.content else nil, "tool result content")
+		return if ok then list else {}
+	end
+	local function textOf(item: unknown): string?
+		local found = asRecord(item)
+		local value = if found and found.type == "text" then found.text else nil
+		return if type(value) == "string" then value else nil
+	end
 	local function texts(result: unknown): { string }
 		local found: { string } = {}
-		local content = if type(result) == "table" then result.content else nil
-		if type(content) == "table" then
-			for _, item in content :: { unknown } do
-				if type(item) == "table" and item.type == "text" and type(item.text) == "string" then
-					table.insert(found, item.text)
-				end
+		for _, item in items(result) do
+			local value = textOf(item)
+			if value then
+				table.insert(found, value)
 			end
 		end
 		return found
@@ -52,7 +64,8 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 	local function forward(name: string, arguments: { [string]: unknown }): unknown
 		local ok, result = pcall(backend.call, name, arguments)
 		assert(ok, "the scoped Studio call failed; inspect this run's console")
-		if type(result) == "table" and result.isError == true then
+		local response = asRecord(result)
+		if response and response.isError == true then
 			local detail = string.sub(table.concat(texts(result), "\n"), 1, 2000)
 			detail = string.gsub(
 				detail,
@@ -63,18 +76,20 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 			)
 			error("the Studio tool returned an error: " .. (if detail ~= "" then detail else "no detail"), 0)
 		end
-		if name == "get_console_output" and type(result) == "table" and type(result.content) == "table" then
-			local copy = table.clone(result)
+		if name == "get_console_output" and response then
 			local content: { unknown } = {}
-			for _, item in result.content :: { unknown } do
-				if type(item) == "table" and item.type == "text" and type(item.text) == "string" then
-					local changed = table.clone(item)
-					changed.text = collapse(item.text)
+			for _, item in items(result) do
+				local value = textOf(item)
+				local found = asRecord(item)
+				if value and found then
+					local changed = table.clone(found)
+					changed.text = collapse(value)
 					table.insert(content, changed)
 				else
 					table.insert(content, item)
 				end
 			end
+			local copy = table.clone(response)
 			copy.content = content
 			return copy
 		end
