@@ -3,11 +3,6 @@
 local Test = require "./harness"
 local describe, it, expect = Test.describe, Test.it, Test.expect
 
-local function asNumber(value: unknown): number
-	assert(type(value) == "number")
-	return value
-end
-
 local Capability = require "../src/core/capability"
 local Plan = require "../src/core/plan"
 local Chunk = require "../src/lute/chunk"
@@ -155,45 +150,12 @@ describe("execution plan", function()
 		}).units))):toEqual { "alpha/one" }
 	end)
 
-	it("keeps a group whole and partitions the same way every time", function()
-		local first = batchIds(Plan.partition(BASE, 3))
-		local second = batchIds(Plan.partition(BASE, 3))
-		expect(first):toEqual(second)
-		local alphaBatch = nil
-		for index, ids in first do
-			for _, id in ids do
-				if id == "alpha/one" then
-					alphaBatch = index
-				end
-			end
-		end
-		for index, ids in first do
-			for _, id in ids do
-				if id == "alpha/two" then
-					expect(index):toEqual(alphaBatch)
-				end
-			end
-		end
-	end)
-
 	it("returns exactly the batch count asked for, empty batches included", function()
 		local batches = partition({ id = "p", units = { unit "only" } }, 4)
 		expect(#batches):toEqual(4)
 		expect(#batches[1].units):toEqual(1)
 		expect(#batches[4].units):toEqual(0)
 		expect(batches[4].id):toEqual "batch-4"
-	end)
-
-	it("covers every unit exactly once across batches", function()
-		local seen: { [string]: number } = {}
-		for _, batch in Plan.partition(BASE, 3) do
-			for _, id in idsOf(batch.units) do
-				seen[id] = (seen[id] or 0) + 1
-			end
-		end
-		for _, entry in Plan.validate(BASE).units do
-			expect(seen[entry.id]):toEqual(1)
-		end
 	end)
 
 	it("composes stable case ids in both styles", function()
@@ -246,19 +208,16 @@ describe("cost-aware batching", function()
 	end)
 
 	it("refuses a weight that is not a positive number", function()
-		local function withWeight(weight: unknown): () -> ()
-			return function()
-				validate {
-					id = "p",
-					units = { { id = "a", locator = "a.luau", weight = asNumber(weight) } },
-				}
-			end
+		for _, weight in { 0, -3, math.huge, -math.huge } do
+			expect(function()
+				validate { id = "p", units = { { id = "a", locator = "a.luau", weight = weight } } }
+			end):toThrow "weight"
 		end
-		expect((pcall(withWeight(0)))):toEqual(false)
-		expect((pcall(withWeight(-3)))):toEqual(false)
-		expect((pcall(withWeight "heavy"))):toEqual(false)
-		expect((pcall(withWeight(math.huge)))):toEqual(false)
-		expect((pcall(withWeight(-math.huge)))):toEqual(false)
+		expect(
+			Chunk.load('return validate { id = "p", units = { { id = "a", locator = "a.luau", weight = "heavy" } } }', {
+				environment = { validate = validate },
+			})
+		):toThrow "weight"
 	end)
 
 	it("balances declared weight instead of unit count", function()
@@ -302,8 +261,8 @@ describe("cost-aware batching", function()
 		end
 	end)
 
-	it("keeps a group whole whichever mode partitioned it", function()
-		local plan: Verify.PlanDraft = {
+	it("partitions every unit once, keeps groups whole and repeats deterministically in both modes", function()
+		local grouped: Verify.PlanDraft = {
 			id = "grouped",
 			units = {
 				{ id = "a", locator = "a.luau", group = "shared", weight = 9 },
@@ -311,21 +270,24 @@ describe("cost-aware batching", function()
 				{ id = "c", locator = "c.luau", weight = 1 },
 			},
 		}
-		local weighted = Plan.partition(plan, 3, "weighted")
-		for _, batch in weighted do
-			local ids = idsOf(batch.units)
-			if table.find(ids, "a") ~= nil then
-				expect(table.find(ids, "b") ~= nil):toEqual(true)
-			end
-		end
-	end)
-
-	it("is a pure function of the plan and never of a timing", function()
-		local first = Plan.partition(WEIGHTED, 3, "weighted")
-		for _ = 1, 10 do
-			local again = Plan.partition(WEIGHTED, 3, "weighted")
-			for index = 1, 3 do
-				expect((idsOf(again[index].units))):toEqual(idsOf(first[index].units))
+		for _, mode in { "count", "weighted" } do
+			for _, draft in { BASE, WEIGHTED, grouped } do
+				local first = Plan.partition(draft, 3, mode)
+				expect(batchIds(Plan.partition(draft, 3, mode))):toEqual(batchIds(first))
+				local seen: { [string]: number } = {}
+				local groups: { [string]: number } = {}
+				for index, batch in first do
+					for _, entry in batch.units do
+						seen[entry.id] = (seen[entry.id] or 0) + 1
+						if entry.group ~= nil then
+							groups[entry.group] = groups[entry.group] or index
+							expect(index):toEqual(groups[entry.group])
+						end
+					end
+				end
+				for _, entry in draft.units do
+					expect(seen[entry.id]):toEqual(1)
+				end
 			end
 		end
 	end)
