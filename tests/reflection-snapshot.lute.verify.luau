@@ -153,7 +153,8 @@ describe("reflection snapshot loaded under Lute", function()
 		expect(env.method(part, "NativeOnly")(part)):toBe "configured"
 		close()
 		expect(accepts(function()
-			return env.method(part, "NativeOnly")(part)
+			local result = env.method(part, "NativeOnly")(part)
+			return result
 		end)):toBe(false)
 		local folder = env.createInstance "Folder"
 		local ok, problem = pcall(function()

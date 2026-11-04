@@ -343,7 +343,8 @@ it("place defaults preserve configured service behavior and release their own ov
 	local store = binding.service "DataStoreService"
 	expect(binding.environment.method(store, "GetDataStore")(store, "isolated")):toBe "configured store"
 	expect((pcall(function()
-		return binding.service("Workspace").GetServerTimeNow
+		local workspace = binding.service "Workspace"
+		return binding.environment.method(workspace, "GetServerTimeNow")(workspace)
 	end))):toBe(false)
 	release()
 end)
