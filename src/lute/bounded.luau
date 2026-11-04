@@ -61,7 +61,9 @@ local WATCHDOG = table.concat({
 	"done",
 	'if [ -z "$launch" ]; then echo ' .. UNSUPPORTED .. " >&2; exit 125; fi",
 	'spawn "$launch" "$@"',
-	'( sleep "$limit" >/dev/null 2>&1; kill -KILL "-$child" 2>/dev/null && echo ' .. MARKER .. " >&2 ) &",
+	'( sleep "$limit" >/dev/null 2>&1; kill -0 "-$child" 2>/dev/null && echo '
+		.. MARKER
+		.. ' >&2 && kill -KILL "-$child" 2>/dev/null ) &',
 	'dog=$!; { wait "$child"; } 2>/dev/null; status=$?; kill "$dog" 2>/dev/null; exit "$status"',
 }, "\n")
 
