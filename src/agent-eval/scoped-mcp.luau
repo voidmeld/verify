@@ -16,11 +16,67 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 	local function text(value: unknown): unknown
 		return { content = { { type = "text", text = encode(value) } } }
 	end
+	local function texts(result: unknown): { string }
+		local found: { string } = {}
+		local content = if type(result) == "table" then result.content else nil
+		if type(content) == "table" then
+			for _, item in content :: { unknown } do
+				if type(item) == "table" and item.type == "text" and type(item.text) == "string" then
+					table.insert(found, item.text)
+				end
+			end
+		end
+		return found
+	end
+	local function collapse(text: string): string
+		local lines: { string } = {}
+		local previous: string? = nil
+		local repeats = 0
+		local function flush()
+			if previous ~= nil and repeats > 1 then
+				lines[#lines] = ("%s (repeated %d times)"):format(previous, repeats)
+			end
+		end
+		for line in string.gmatch(text .. "\n", "(.-)\n") do
+			if line == previous then
+				repeats += 1
+			else
+				flush()
+				table.insert(lines, line)
+				previous, repeats = line, 1
+			end
+		end
+		flush()
+		return table.concat(lines, "\n")
+	end
 	local function forward(name: string, arguments: { [string]: unknown }): unknown
 		local ok, result = pcall(backend.call, name, arguments)
 		assert(ok, "the scoped Studio call failed; inspect this run's console")
 		if type(result) == "table" and result.isError == true then
-			error("the scoped Studio tool returned an error; inspect this run's console", 0)
+			local detail = string.sub(table.concat(texts(result), "\n"), 1, 2000)
+			detail = string.gsub(
+				detail,
+				"%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x",
+				function(id: string): string
+					return if id == target.id then id else "<other Studio>"
+				end
+			)
+			error("the Studio tool returned an error: " .. (if detail ~= "" then detail else "no detail"), 0)
+		end
+		if name == "get_console_output" and type(result) == "table" and type(result.content) == "table" then
+			local copy = table.clone(result)
+			local content: { unknown } = {}
+			for _, item in result.content :: { unknown } do
+				if type(item) == "table" and item.type == "text" and type(item.text) == "string" then
+					local changed = table.clone(item)
+					changed.text = collapse(item.text)
+					table.insert(content, changed)
+				else
+					table.insert(content, item)
+				end
+			end
+			copy.content = content
+			return copy
 		end
 		return result
 	end

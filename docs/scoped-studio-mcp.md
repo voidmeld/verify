@@ -18,7 +18,7 @@ The consumer owns the build command. Verify runs it in that run's workspace befo
 
 The Lute binding launches a new Studio. It finds that Studio by its unique place name. It writes an MCP configuration outside the workspace for `tools/scoped-studio-mcp.luau`. The proxy keeps one fixed Studio ID. It lists only that Studio and never sends a global listing request. It inserts the ID when absent. It rejects other IDs, unknown methods, unknown tools and unknown argument fields before forwarding.
 
-The agent gets play, stop, capture, execute, console output and input tools. `input` runs the given native VirtualInput code on Client through `execute_luau`. It accepts `{ code, studio_id? }`. It does not simulate computer or browser input. Captures pass through with image content. The proxy does not convert images to text.
+The agent gets play, stop, capture, execute, console output and input tools. `input` runs the given native VirtualInput code on Client through `execute_luau`. It accepts `{ code, studio_id? }`. It does not simulate computer or browser input. Captures pass through with image content. The proxy does not convert images to text. A tool error returns the owned Studio's message with any other Studio id removed. Console output collapses consecutive repeated lines into one line with a count.
 
 Each proxy process creates a new transport directory. A restarted MCP configuration keeps its Studio ID. It does not reuse earlier process or close files. Native requests have a 60-second deadline, limited by the remaining run time. Before proxy startup, an operator can set a positive finite `callSeconds` in the private scope file. The run's `seconds` limit still applies. Start long work without waiting for completion. Check progress in later calls.
 
