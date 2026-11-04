@@ -86,6 +86,7 @@ local function checkedHost(host: Host): Host
 end
 
 local micros = Shape.micros
+local synthetic = Harness.syntheticReport
 
 local function unitIds(units: { PlanUnit }): { string }
 	local ids: { string } = {}
@@ -129,13 +130,8 @@ local function execute(planDraft: PlanDraft | Types.Plan, host: Host, options: O
 	environment["verify.planDigest"] = digest
 
 	local payloads: { ShardPayload } = {}
-	local payloadCount = 0
 	local function addReport(report: Report)
-		payloadCount += 1
-		table.insert(payloads, { id = ("payload-%d"):format(payloadCount), report = report })
-	end
-	local function synthetic(options2: Harness.SyntheticOptions): Report
-		return Harness.syntheticReport(options2)
+		table.insert(payloads, { id = ("payload-%d"):format(#payloads + 1), report = report })
 	end
 	local function unitReport(
 		unit: PlanUnit,
@@ -612,7 +608,6 @@ local function execute(planDraft: PlanDraft | Types.Plan, host: Host, options: O
 					end
 				end
 			end
-			payloadCount += 1
 			table.insert(payloads, { id = batch.id, report = report })
 			continue
 		end
@@ -667,12 +662,12 @@ local function execute(planDraft: PlanDraft | Types.Plan, host: Host, options: O
 		fact("no-cases", selected.id, "the plan dispatched no case at all, so this run proved nothing")
 	end
 
-	local factPayloads: { ShardPayload } = {}
+	local payloadCount = #payloads
 	for index, entry in facts do
 		if entry.severity ~= "failure" then
 			continue
 		end
-		table.insert(factPayloads, {
+		table.insert(payloads, {
 			id = ("fact-%d"):format(index),
 			report = synthetic {
 				executor = adapter.name,
@@ -686,18 +681,8 @@ local function execute(planDraft: PlanDraft | Types.Plan, host: Host, options: O
 			},
 		})
 	end
-	local report = if #factPayloads > 0
-		then ReportModel.compose(
-			(function(): { ShardPayload }
-				local all: { ShardPayload } = table.clone(payloads)
-				for _, entry in factPayloads do
-					table.insert(all, entry)
-				end
-				return all
-			end)(),
-			adapter.name,
-			environment
-		)
+	local report = if #payloads > payloadCount
+		then ReportModel.compose(payloads, adapter.name, environment)
 		else composed
 
 	return {
