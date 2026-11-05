@@ -5,7 +5,6 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 local case = require "../examples/instance-case"
-local NativeCode = require "./lib/native-code"
 
 require "./native-ui-layout"()
 require "./native-text-metrics"()
@@ -14,19 +13,28 @@ require "./native-script-context"()
 local Files = require "../src/lute/files"
 local Place = require "../src/lute/place"
 local place = process.args[2] or Files.temporary "Verify-Conformance.rbxlx"
-Place.build {
-	output = place,
-	roots = { "src/core", "src/roblox" },
-	modules = { "examples/instance-case.luau", "examples/player-case.luau" },
-	rootName = "VerifySemanticFixture",
-}
-local result = Lute.studio.run {
-	identity = { placeId = 123, universeId = 456 },
-	place = place,
-	worker = "tools/studio-worker.luau",
-	code = NativeCode(
-		"VerifySemanticFixture",
-		[[
+local function runBackend(context: "Server" | "Client", code: string, finalCapture: boolean?): Core.BatchOutcome
+	Place.build {
+		output = place,
+		roots = { "src/core", "src/roblox" },
+		modules = { "examples/instance-case.luau", "examples/player-case.luau" },
+		rootName = "VerifySemanticFixture",
+		request = code,
+		logCollectors = true,
+	}
+	return Lute.studio.run {
+		identity = if context == "Server" then { placeId = 123, universeId = 456 } else nil,
+		place = place,
+		worker = "tools/studio-worker.luau",
+		context = context,
+		code = code,
+		runner = true,
+		finalCapture = finalCapture,
+	}
+end
+local result = runBackend(
+	"Server",
+	[[
 assert(game.PlaceId == 123 and game.GameId == 456, 'configured Studio identity must reach the server')
 assert(game:GetService('TextChatService').ChatVersion == Enum.ChatVersion.TextChatService, 'generated places must use TextChatService')
 local root = game:GetService('ReplicatedStorage').VerifySemanticFixture
@@ -40,8 +48,7 @@ local failed = Core.runCase(case, broken.host)
 assert(failed.failed == 1, 'native mutation defect escaped the case')
 return game:GetService('HttpService'):JSONEncode(Roblox.reportChannel.envelope(runId, report))
 ]]
-	),
-}
+)
 assert(result.status == "returned", result.detail)
 local report = Core.decode(result.report)
 local simulated = Core.runCase(case, Roblox.instanceHost.simulated("server").host)
@@ -49,14 +56,9 @@ local parity = Core.observationParity(simulated, report)
 print(Core.format(report))
 assert(parity.status == "passed", "native observation parity failed")
 
-local player = Lute.studio.run {
-	finalCapture = true,
-	place = place,
-	context = "Client",
-	worker = "tools/studio-worker.luau",
-	code = NativeCode(
-		"VerifySemanticFixture",
-		[[
+local player = runBackend(
+	"Client",
+	[[
 local root = game:GetService('ReplicatedStorage'):WaitForChild('VerifySemanticFixture')
 local Core = require(root.src.core)
 local Roblox = require(root.src.roblox)
@@ -66,9 +68,9 @@ rig:WaitForChild('HumanoidRootPart')
 task.wait(2)
 local report = Core.runCase(require(root.examples['player-case']), Roblox.playerHost.native('client'))
 return game:GetService('HttpService'):JSONEncode(Roblox.reportChannel.envelope(runId, report))
-]]
-	),
-}
+]],
+	true
+)
 assert(player.status == "returned", player.detail)
 local playerReport = Core.decode(player.report)
 print(Core.format(playerReport))
