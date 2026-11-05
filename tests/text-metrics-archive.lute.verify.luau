@@ -63,12 +63,13 @@ local EXPECTED = {
 	["Nunito-Medium-Normal"] = "066a628f28a6939288f8a01194d2a7485a0bbf4d397f0016f53725eaf1cfb3d5",
 	["Nunito-Regular-Normal"] = "066a628f28a6939288f8a01194d2a7485a0bbf4d397f0016f53725eaf1cfb3d5",
 	["Nunito-SemiBold-Normal"] = "a0f09a73e8bc405fed08c47b4055c31f879dc2954373f7e3fc32394bd9846a41",
+	["RobotoMono-Regular-Normal"] = "0d82f3b375a705e7d95423de7d05fc4a15d2e6db376699dedc56995be7912b87",
 	["SourceSansPro-Bold-Normal"] = "f62618495fd5a39736315e7bcab1ce9d99b41286e11a5c122b7f5880f532e862",
 	["SourceSansPro-Regular-Normal"] = "cd36e8c2dbb0da1ef11e7a80b6059ad2d182e24b1f800983824fdf4144309537",
 	["SourceSansPro-SemiBold-Normal"] = "4179899e84e147635bb7ea1b503999f06cc52168ed862302a631c52d1a20d02c",
 }
 
-it("preserves every captured token and float64 metric across all 23 faces", function()
+it("preserves every captured token and float64 metric across all 24 faces", function()
 	local faces = Archive.open(fs.readFileToString "src/lute/fixtures/text/metrics.json")
 	local count = 0
 	for name, read in faces do
@@ -78,7 +79,7 @@ it("preserves every captured token and float64 metric across all 23 faces", func
 		expect(fingerprint(face)):toBe(EXPECTED[name])
 		count += 1
 	end
-	expect(count):toBe(23)
+	expect(count):toBe(24)
 end)
 
 local function capture(): json.Object
