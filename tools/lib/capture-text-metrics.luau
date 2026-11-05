@@ -10,6 +10,7 @@ harness:case("native font metrics", function(check)
  local params = Instance.new("GetTextBoundsParams")
  params.Font = Font.new(descriptor.family, Enum.FontWeight[descriptor.weight], Enum.FontStyle[descriptor.style])
  params.Width = 1000000
+ local rounding = if params.Font.Family == "rbxasset://fonts/families/RobotoMono.json" and params.Font.Weight == Enum.FontWeight.Regular and params.Font.Style == Enum.FontStyle.Normal then "nearest" else nil
  local count = 0
  local pixelScale = 1
  local function boundsWidth(text, size)
@@ -78,7 +79,7 @@ harness:case("native font metrics", function(check)
   params.Text, params.Size = "", size
   local height = game.TextService:GetTextBoundsAsync(params).Y
   count += 1
-  sizes[size] = {height = height, advances = advances, adjustments = adjustments, starts = starts, ends = ends}
+  sizes[size] = {height = height, advances = advances, adjustments = adjustments, starts = if rounding then nil else starts, ends = if rounding then nil else ends}
  end
  local pairs = {}
  for leftIndex in tokens do
@@ -93,11 +94,11 @@ harness:case("native font metrics", function(check)
  end
  captured.attach("metrics.json", "application/json", game.HttpService:JSONEncode({
   engineVersion = version(), family = params.Font.Family, weight = params.Font.Weight.Name,
-  style = params.Font.Style.Name, tokens = tokens, pairs = pairs, calls = count, pixelScale = pixelScale,
+  style = params.Font.Style.Name, tokens = tokens, pairs = pairs, calls = count, pixelScale = pixelScale, rounding = rounding,
  }))
  captured.attach("sizes-1.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 1, 50, 1, {})))
  captured.attach("sizes-2.json", "application/json", game.HttpService:JSONEncode(table.move(sizes, 51, 100, 1, {})))
- local model = require(root.src.roblox["text-metrics"]).create({tokens = tokens, pairs = pairs, sizes = sizes, pixelScale = pixelScale})
+ local model = require(root.src.roblox["text-metrics"]).create({tokens = tokens, pairs = pairs, sizes = sizes, pixelScale = pixelScale, rounding = rounding})
  local random = Random.new(527)
  local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
  local randomTokens = {"ffl", "ffi", "fl", "fi", "ff", "✓", "♦", "♥", "♡", "☆"}
