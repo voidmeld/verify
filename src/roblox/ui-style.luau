@@ -65,6 +65,7 @@ local function create(
 	local keptScopes: { [Instance]: { sheet: Instance? } } = {}
 	setmetatable(keptScopes, { __mode = "k" })
 	local function forgetKept(subtree: Instance)
+		readsGeneration = -1
 		local pending = { subtree }
 		while #pending > 0 do
 			local object = table.remove(pending)
@@ -561,6 +562,7 @@ local function create(
 		if read[property] == nil then
 			local ruleSheet, target = resolve(object, property, nil)
 			read[property] = { sheet = ruleSheet, value = target }
+			readsGeneration = -1
 			if ruleSheet ~= nil then
 				observe()
 			end

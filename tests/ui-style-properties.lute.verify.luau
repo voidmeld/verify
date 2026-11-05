@@ -9,6 +9,39 @@ local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 local probe = require "./fixtures/ui-style-properties"
 
+it("settled style notifications follow published native GUI state", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local env, ui = bridge.environment, assert(bridge.ui)
+	local library = bridge.placeEngine().datatypes
+	local parent = env.createInstance "Frame"
+	local button = env.createInstance("TextButton", { Parent = parent })
+	local sheet = env.createInstance "StyleSheet"
+	env.createInstance("StyleLink", { Parent = parent, StyleSheet = sheet })
+	local rule = env.createInstance("StyleRule", { Parent = sheet, Selector = "TextButton:Hover" })
+	env.method(rule, "SetProperty")(rule, "Rotation", 22)
+	local observed = ui.styled(button, "Rotation")
+	local background: unknown = nil
+	local changes = 0
+	button.StyledPropertiesChanged:Connect(function()
+		observed = ui.styled(button, "Rotation")
+		background = ui.styled(button, "BackgroundTransparency")
+		changes += 1
+	end)
+	ui.step()
+	ui.step()
+	env.poke(button, "GuiState", library.Enum.GuiState.Hover)
+	ui.step()
+	expect(observed):toBe(22)
+	expect(background):toBe(0)
+	ui.step()
+	expect(changes):toBe(1)
+	env.poke(button, "GuiState", library.Enum.GuiState.Idle)
+	ui.step()
+	expect(observed):toBe(0)
+	expect(changes):toBe(2)
+end)
+
 it("settled style watches follow inherited Interactable state", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(bridge.close)
