@@ -56,12 +56,36 @@ local function decode(source: string | json.Object): (Metrics.Face, string)
 		})
 	end
 	assert(#sizes == 100)
+	local measurements: { [string]: { number } }? = nil
+	local measurementHeights: { number }? = nil
+	if root.measurements ~= nil then
+		measurements = {}
+		measurementHeights = numbers(root.measurementHeights)
+		assert(#measurementHeights == 100)
+		for _, height in measurementHeights do
+			assert(height > 0)
+		end
+		for text, raw in assert(json.asObject(root.measurements)) do
+			if type(text) ~= "string" then
+				continue
+			end
+			assert(text ~= "")
+			local widths = numbers(raw)
+			assert(#widths == 100)
+			for _, width in widths do
+				assert(width >= 0)
+			end
+			measurements[text] = widths
+		end
+	end
 	local key = Values.string(root.family) .. "/" .. Values.string(root.weight) .. "/" .. Values.string(root.style)
 	return {
 		tokens = tokens,
 		pairs = pairs,
 		sizes = sizes,
 		pixelScale = if root.pixelScale == nil then nil else Values.number(root.pixelScale),
+		measurements = measurements,
+		measurementHeights = measurementHeights,
 	},
 		key
 end
@@ -258,7 +282,7 @@ local function create(): (Values.TextParameters, number?) -> unknown
 		else
 			width, lines = model.wrap(text, size, parameters.Width, parameters.RichText)
 		end
-		return Datatypes.Vector2.new(width, model.height(size, lines))
+		return Datatypes.Vector2.new(width, model.height(size, lines, nil, text))
 	end
 end
 
@@ -273,8 +297,8 @@ end
 local function heights(): (Values.TextParameters, number, number) -> number
 	preload()
 	return function(parameters: Values.TextParameters, lines: number, spacing: number): number
-		local model, size = modelFor(parameters)
-		return model.height(size, lines, spacing)
+		local model, size, text = modelFor(parameters)
+		return model.height(size, lines, spacing, text)
 	end
 end
 

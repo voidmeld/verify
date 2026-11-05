@@ -1357,6 +1357,8 @@ TextChatService.OnIncomingMessage uses write-only callback storage. A host can i
 
 Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 
+Exact measured strings can supplement a face's token grammar. Their native bounds use their captured pixel grid. Their characters do not become composable tokens: an uncaptured combination containing a character outside the original grammar still raises `unsupported_text_metrics`.
+
 Uniform RichText weights use the captured face selected by `<b>` or `<font weight="...">`. Weight names are case insensitive; quoted numeric weights use 100 through 900. Native captures establish that Heavy selects Bold for BuilderSans and Regular for Fondamento and Michroma. Other weights need their own captured facts. Text that changes effective weights between runs still raises `unsupported_text_metrics`.
 
 `measureBounds`, `truncateBounds` and `measureLineHeight` receive `Gui = true` for GUI observations. Service parameters omit it. For the captured missing family `rbxasset://fonts/families/DoesNotExist.json`, service measurement raises `Temp read failed.` while GUI measurement uses SourceSansPro. Its Heavy GUI weight selects Bold. Other uncaptured families still raise `unsupported_text_metrics`.

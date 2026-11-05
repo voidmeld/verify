@@ -7,11 +7,18 @@ export type Row = {
 	ends: { number }?,
 	height: number?,
 }
-export type Face = { tokens: { string }, pairs: { { number } }, sizes: { Row }, pixelScale: number? }
+export type Face = {
+	tokens: { string },
+	pairs: { { number } },
+	sizes: { Row },
+	pixelScale: number?,
+	measurements: { [string]: { number } }?,
+	measurementHeights: { number }?,
+}
 export type Model = {
 	read width: (text: string, size: number) -> number,
 	read fit: (text: string, size: number, limit: number) -> (number, number),
-	read height: (size: number, lines: number?, spacing: number?) -> number,
+	read height: (size: number, lines: number?, spacing: number?, text: string?) -> number,
 	read wrap: (text: string, size: number, limit: number, trimOversized: boolean?) -> (number, number),
 	read truncate: (
 		text: string,
@@ -163,6 +170,10 @@ local function create(face: Face): Model
 			- (if previous and row.starts and letter(face.tokens[previous]) then row.starts[previous] else 0)
 	end
 	local function width(text: string, size: number): number
+		local widths = if face.measurements then face.measurements[text] else nil
+		if widths then
+			return widths[math.clamp(math.floor(size), 1, 100)]
+		end
 		return scaled(math.ceil(remembered(text, size)))
 	end
 	local function fit(text: string, size: number, limit: number): (number, number)
@@ -343,8 +354,16 @@ local function create(face: Face): Model
 		end
 		return widest
 	end
-	local function height(size: number, lines: number?, spacing: number?): number
+	local function height(size: number, lines: number?, spacing: number?, text: string?): number
 		local index = math.clamp(math.floor(size), 1, 100)
+		if text and face.measurements and face.measurements[text] and face.measurementHeights then
+			local strut = face.measurementHeights[index]
+			local total, step = strut, rounded(strut * rounded(spacing or 1))
+			for _ = 2, lines or 1 do
+				total = rounded(total + step)
+			end
+			return total
+		end
 		local strut = face.sizes[index].height or index
 		if lines == nil then
 			return strut

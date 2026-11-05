@@ -123,6 +123,7 @@ it("capture writer rejects duplicate files and completion misuse and both native
 	expect(pcall(writer.attach, "more.json", "application/json", "{}")):toBe(false)
 	local luau = require "@lute/luau"
 	expect(pcall(luau.compile, require "../tools/lib/capture-text-metrics")):toBe(true)
+	expect(pcall(luau.compile, require "../tools/lib/capture-text-symbols")):toBe(true)
 	expect(pcall(luau.compile, require "../tools/lib/capture-native-content")):toBe(true)
 end)
 
