@@ -225,7 +225,15 @@ return function()
 				name = "execute_luau",
 				arguments = {
 					datamodel_type = "Edit",
-					code = "assert(not game:GetAttribute('ScopeCrossed')); assert(require(game.ReplicatedStorage.Payload) == 'left]]>right'); print('verify scoped console'); return 'scoped edit'",
+					code = [=[
+assert(not game:GetAttribute('ScopeCrossed'))
+local module = game:GetService('ReplicatedStorage').Payload
+module.Capabilities = SecurityCapabilities.fromCurrent():Remove(Enum.SecurityCapability.Unassigned)
+module.Sandboxed = true
+assert(require(module) == 'left]]>right')
+print('verify scoped console')
+return 'scoped edit'
+]=],
 				},
 			})
 			local captureIndex = #calls + 1
