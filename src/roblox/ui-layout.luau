@@ -8,17 +8,20 @@ local List = require "./ui-list-layout"
 local Float = require "./datatypes/float"
 local Values = require "./ui-values"
 local SelectionScroll = require "./ui-selection-scroll"
+local Projection = require "./ui-projection"
 
 type Instance = Environment.Instance
 type Vector = { X: number, Y: number }
 type TextMeasurement = { X: number, Y: number, intrinsicX: number, intrinsicY: number, fits: boolean }
 type Rectangle = List.Rectangle
 type Turn = { x: number, y: number, angle: number }
+export type ProjectionHost = Projection.Host
 export type Options = {
 	roots: () -> { Instance },
 	viewport: () -> Vector,
 	origin: (() -> Vector)?,
 	screenArea: ((Instance) -> { x: number, y: number, width: number, height: number })?,
+	projection: Projection.Host?,
 	read: ((Instance, string) -> unknown)?,
 	component: ((Instance, string, string) -> unknown)?,
 	vector: ((number, number) -> unknown)?,
@@ -64,8 +67,12 @@ local function attach(environment: Environment.Environment, options: Options): C
 	local function isText(object: Instance): boolean
 		return object:IsA "TextLabel" or object:IsA "TextButton" or object:IsA "TextBox"
 	end
+	local projected: { [Instance]: Projection.Area | false } = {}
+	setmetatable(projected, { __mode = "k" })
 	local function validate(object: Instance)
-		if object:IsA "LayerCollector" and not object:IsA "ScreenGui" then
+		if object:IsA "BillboardGui" then
+			projected[object] = Projection.resolve(object, read, options.projection) or false
+		elseif object:IsA "LayerCollector" and not object:IsA "ScreenGui" then
 			unsupported(object, object.ClassName)
 		end
 		if object:IsA "GuiObject" then
@@ -817,13 +824,28 @@ local function attach(environment: Environment.Environment, options: Options): C
 		for _, root in roots do
 			selectionScroll.watch(root)
 		end
+		table.clear(projected)
 		for _, root in roots do
 			validate(root)
+		end
+		if next(projected) ~= nil then
+			table.clear(measuredTrees)
+			table.clear(placedTrees)
 		end
 		local viewport = options.viewport()
 		local origin = if options.origin then options.origin() else { X = 0, Y = 0 }
 		local screen: Rectangle = { x = origin.X, y = origin.Y, width = viewport.X, height = viewport.Y, scale = 1 }
 		local function area(object: Instance, parent: Rectangle): Rectangle
+			local projection = projected[object]
+			if projection then
+				return {
+					x = projection.x,
+					y = projection.y,
+					width = projection.width,
+					height = projection.height,
+					scale = 1,
+				}
+			end
 			local screenArea = options.screenArea
 			if screenArea and object:IsA "ScreenGui" then
 				local found = screenArea(object)
@@ -963,6 +985,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		local measureTree: (Instance, Rectangle, Rectangle?) -> ()
 		measureTree = function(object: Instance, parent: Rectangle, placed: Rectangle?)
+			if projected[object] == false then
+				return
+			end
 			if unchangedSince(measuredTrees, object, parent, placed, nil) then
 				return
 			end
@@ -1055,6 +1080,12 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		local visit: (Instance, Rectangle, Rectangle?, { Turn }) -> ()
 		visit = function(object: Instance, parent: Rectangle, placed: Rectangle?, around: { Turn })
+			if projected[object] == false then
+				return
+			end
+			if object:IsA "LayerCollector" then
+				around = {}
+			end
 			if unchangedSince(placedTrees, object, parent, placed, around) then
 				return
 			end
@@ -1082,7 +1113,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 					})
 					around = inner
 				end
-			elseif object:IsA "ScreenGui" then
+			elseif object:IsA "ScreenGui" or object:IsA "BillboardGui" then
 				publish(object, rectangle, around)
 			end
 			local basis = bases[object]
@@ -1140,6 +1171,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 	local pending = false
 	local settledAt: number? = nil
 	local settledX, settledY, settledRoots = 0, 0, 0
+	local settledProjection: number? = nil
 	step = function()
 		pending = true
 		if measuring then
@@ -1147,6 +1179,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		local viewport = options.viewport()
 		local rootCount = #options.roots()
+		local projectionRevision = if options.projection then options.projection.revision() else nil
 		local before, publishedBefore = environment.revision()
 		local busy = attached.busy ~= nil and attached.busy()
 		if
@@ -1155,6 +1188,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			and settledX == viewport.X
 			and settledY == viewport.Y
 			and settledRoots == rootCount
+			and settledProjection == projectionRevision
 		then
 			pending = false
 			return
@@ -1173,6 +1207,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local after, publishedAfter = environment.revision()
 		if not busy and after == before and publishedAfter == publishedBefore then
 			settledAt, settledX, settledY, settledRoots = after, viewport.X, viewport.Y, rootCount
+			settledProjection = projectionRevision
 		end
 	end
 	local function objectsAtPosition(
