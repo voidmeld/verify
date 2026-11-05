@@ -56,6 +56,14 @@ step(field,"Right",minus)
 step(nextField,"Down",exit)
 group.SelectionBehaviorDown=Enum.SelectionBehavior.Stop
 step(nextField,"Down",nextField)
+group:Destroy()
+exit:Destroy()
+local scroll=Instance.new("ScrollingFrame")
+scroll.Name,scroll.Size,scroll.Selectable,scroll.SelectionGroup,scroll.Parent="Scroll",UDim2.fromOffset(300,300),true,true,screen
+local child=button("Child",0,0,100,40,scroll)
+local below=button("Below",0,340,100,40)
+task.wait(.05)
+step(child,"Down",below)
 gui.SelectedObject=nil
 screen:Destroy()
 return true

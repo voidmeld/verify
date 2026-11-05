@@ -62,6 +62,12 @@ local function mountProbe(caseContext: Core.Context, source: string): (boolean, 
 	return complete, messages
 end
 
+it("scaled text grows along automatic axes and respects avatar size constraints", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-scaled-automatic-text")
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("oversized words wrap across glyph boundaries", function(_, caseContext)
 	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-word-wrap")
 	expect(table.concat(messages, "\n")):toBe ""
@@ -328,6 +334,12 @@ it("fractional rendered text sizes measure at the floored size", function(_, cas
 				return true
 			]=]
 	)
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
+it("scaled text uses physical bounds beneath UIScale", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-scaled-text")
 	expect(table.concat(messages, "\n")):toBe ""
 	expect(complete):toBe(true)
 end)

@@ -26,7 +26,10 @@ local function attach(environment: Environment.Environment)
 		end
 		actions[action] = true
 		local root = action:FindFirstAncestorWhichIsA "DataModel"
-		local input = if root then root:FindFirstChildOfClass "UserInputService" else nil
+		if root == nil then
+			return
+		end
+		local input = root:FindFirstChildOfClass "UserInputService"
 		local device = if input
 			then tostring(environment.propertyOf(input, "PreferredInput")):match "([^%.]+)$"
 			else nil
@@ -109,7 +112,14 @@ local function attach(environment: Environment.Environment)
 		update(action, current, value)
 	end)
 	local function changed(object: Instance, property: string, hasChildren: boolean)
-		if property == "PreferredBinding" then
+		if
+			property ~= "Parent"
+			and property ~= "Type"
+			and property ~= "Enabled"
+			and property ~= "KeyCode"
+			and property ~= "UIButton"
+			and property ~= "PreferredInput"
+		then
 			return
 		end
 		if object:IsA "InputBinding" then

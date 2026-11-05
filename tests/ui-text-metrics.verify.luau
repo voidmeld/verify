@@ -83,6 +83,7 @@ it("captured control symbols measure across every fixture face and size", functi
 			{ family = "LegacyArial", weights = { "Regular" } },
 			{ family = "Michroma", weights = { "Regular", "Medium", "SemiBold", "Bold" } },
 			{ family = "Nunito", weights = { "Regular", "Medium", "SemiBold", "Bold" } },
+			{ family = "RobotoMono", weights = { "Regular" } },
 			{ family = "SourceSansPro", weights = { "Regular", "SemiBold", "Bold" } },
 		}
 	do
@@ -101,6 +102,70 @@ it("captured control symbols measure across every fixture face and size", functi
 				end
 			end
 		end
+	end
+end)
+
+it("RobotoMono code and inspector text use captured metrics at every fixture size", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
+		Font = library.Font.new "rbxasset://fonts/families/RobotoMono.json",
+		Width = 0,
+	})
+	local service = bridge.placeEngine().service "TextService"
+	for size = 1, 100 do
+		parameters.Size = size
+		for _, text in { "return Color3.fromRGB(13, 153, 255)", "-120.5", "#0D99FF", "0, 3, 0" } do
+			parameters.Text = text
+			local width = xComponent(call(service, "GetTextBoundsAsync", parameters))
+			assert(type(width) == "number")
+			expect(width > 0):toBe(true)
+		end
+		parameters.Text = "iiii"
+		local narrow = call(service, "GetTextBoundsAsync", parameters)
+		parameters.Text = "WWWW"
+		expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(narrow)
+	end
+	parameters.Text = "Hello world"
+	for _, sample in { { 1, 10 }, { 14, 75 }, { 15, 80 }, { 100, 505 } } do
+		parameters.Size = sample[1]
+		local expected = library.Vector2.new(sample[2], sample[1])
+		expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(expected)
+		expect(
+			call(
+				service,
+				"GetTextSize",
+				parameters.Text,
+				sample[1],
+				library.Enum.Font.RobotoMono,
+				library.Vector2.new(0, 0)
+			)
+		):toEqual(expected)
+	end
+	parameters.Size = 15
+	for _, text in { utf8.char(0x1F984), "A" .. utf8.char(0x1F984) .. "V" } do
+		parameters.Text = text
+		expect(function()
+			call(service, "GetTextBoundsAsync", parameters)
+		end):toThrow "unsupported_text_metrics"
+	end
+	parameters.Text = "return 42"
+	for _, font in
+		{
+			library.Font.new("rbxasset://fonts/families/RobotoMono.json", library.Enum.FontWeight.Bold),
+			library.Font.new(
+				"rbxasset://fonts/families/RobotoMono.json",
+				library.Enum.FontWeight.Regular,
+				library.Enum.FontStyle.Italic
+			),
+			library.Font.new "rbxasset://fonts/families/Unknown.json",
+		}
+	do
+		parameters.Font = font
+		expect(function()
+			call(service, "GetTextBoundsAsync", parameters)
+		end):toThrow "unsupported_text_metrics"
 	end
 end)
 
