@@ -86,6 +86,7 @@ local function decode(source: string | json.Object): (Metrics.Face, string)
 		pixelScale = if root.pixelScale == nil then nil else Values.number(root.pixelScale),
 		measurements = measurements,
 		measurementHeights = measurementHeights,
+		rounding = if root.rounding == nil then nil else Values.string(root.rounding),
 	},
 		key
 end
