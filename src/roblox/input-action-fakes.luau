@@ -112,7 +112,14 @@ local function attach(environment: Environment.Environment)
 		update(action, current, value)
 	end)
 	local function changed(object: Instance, property: string, hasChildren: boolean)
-		if property == "PreferredBinding" then
+		if
+			property ~= "Parent"
+			and property ~= "Type"
+			and property ~= "Enabled"
+			and property ~= "KeyCode"
+			and property ~= "UIButton"
+			and property ~= "PreferredInput"
+		then
 			return
 		end
 		if object:IsA "InputBinding" then

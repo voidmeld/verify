@@ -168,12 +168,22 @@ it("preferred bindings follow the input device and binding reparenting", functio
 	env.poke(service, "PreferredInput", library.Enum.PreferredInput.Gamepad)
 	expect(action.PreferredBinding):toBe(gamepad)
 	keyboard.DisplayName = "Keyboard"
+	local field = env.createInstance("TextBox", { Parent = container })
+	for _, text in { "t", "ty", "typ", "type" } do
+		field.Text = text
+	end
+	expect(action.PreferredBinding):toBe(gamepad)
 	expect(changed):toBe(1)
 	gamepad.Parent = nil
 	expect(action.PreferredBinding):toBe(nil)
 	gamepad.Parent = action
 	expect(action.PreferredBinding):toBe(gamepad)
 	env.poke(service, "PreferredInput", library.Enum.PreferredInput.Touch)
+	expect(action.PreferredBinding):toBe(touch)
+	local button = touch.UIButton
+	touch.UIButton = nil
+	expect(action.PreferredBinding):toBe(nil)
+	touch.UIButton = button
 	expect(action.PreferredBinding):toBe(touch)
 	touch:Destroy()
 	expect(action.PreferredBinding):toBe(nil)
