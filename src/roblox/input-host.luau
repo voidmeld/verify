@@ -877,6 +877,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		for _, candidate in scope:GetDescendants() do
 			if
 				candidate ~= from
+				and not from:IsDescendantOf(candidate)
 				and candidate:IsA "GuiObject"
 				and read(candidate, "Selectable") == true
 				and navigable(candidate, eligible)
