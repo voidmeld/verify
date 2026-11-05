@@ -6,6 +6,7 @@ local InstanceHost = require "./instance-host"
 local Reflection = require "./reflection"
 local UiFakes = require "./ui-fakes"
 local UiLayout = require "./ui-layout"
+local UiProjection = require "./ui-projection"
 local PlaceRuntime = require "./place-runtime"
 local Datatypes = require "./datatypes"
 local ContentFakes = require "./content-fakes"
@@ -251,6 +252,13 @@ local function create(options: Options): Bridge
 	end
 	local engine = Adapter.create(environment, library)
 	local layoutOptions = if settings.layout then table.clone(settings.layout) else nil
+	if layoutOptions and layoutOptions.projection == nil then
+		layoutOptions.projection = UiProjection.fixture(environment, function(): Environment.Instance?
+			local service = resolveService
+			local camera = if service then environment.propertyOf(service "Workspace", "CurrentCamera") else nil
+			return if Environment.isInstance(camera) then Environment.assertInstance(camera) else nil
+		end)
+	end
 	if layoutOptions and controller and layoutOptions.read == nil then
 		layoutOptions.read = controller.styled
 		layoutOptions.component = layoutOptions.component or controller.component
@@ -295,6 +303,7 @@ local function create(options: Options): Bridge
 		local refreshing = false
 		local readAt: number? = nil
 		local readTime, readX, readY, readRoots = 0, 0, 0, 0
+		local readProjection: number? = nil
 		local geometry = assert(layoutOptions)
 		readLayout = function(object: Environment.Instance, property: string): unknown
 			if not refreshing then
@@ -302,12 +311,14 @@ local function create(options: Options): Bridge
 				local now = environment.now()
 				local viewport = geometry.viewport()
 				local count = #geometry.roots()
+				local projectionRevision = if geometry.projection then geometry.projection.revision() else nil
 				if
 					readAt ~= revision
 					or readTime ~= now
 					or readX ~= viewport.X
 					or readY ~= viewport.Y
 					or readRoots ~= count
+					or readProjection ~= projectionRevision
 				then
 					refreshing = true
 					local ok, failure = pcall(layout.step)
@@ -317,6 +328,7 @@ local function create(options: Options): Bridge
 					end
 					readAt = environment.revision()
 					readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
+					readProjection = projectionRevision
 				end
 			end
 			return environment.propertyOf(object, property)

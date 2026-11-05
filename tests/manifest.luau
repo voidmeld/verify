@@ -123,6 +123,7 @@ return table.freeze {
 	"tests/ui-list-spacing.lute.verify.luau",
 	"tests/ui-list-text-reflow.lute.verify.luau",
 	"tests/ui-list-wrap.lute.verify.luau",
+	"tests/ui-projected-layers.lute.verify.luau",
 	"tests/ui-rich-text-raster.lute.verify.luau",
 	"tests/ui-rotation.lute.verify.luau",
 	"tests/ui-screen-insets.lute.verify.luau",

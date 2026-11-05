@@ -39,6 +39,7 @@ export type EnvironmentClass<P = { [string]: unknown }, M = { [string]: unknown 
 export type MultiplayerRemote = Multiplayer.Remote
 export type InputGuiTarget = InputHost.GuiTarget
 export type UiLayoutOptions = UiLayout.Options
+export type UiProjectionHost = UiLayout.ProjectionHost
 export type UiLayoutController = UiLayout.Controller
 export type EnvironmentEngineVector3 = EnvironmentEngineAdapter.Vector3
 export type EnvironmentEngineCFrame = EnvironmentEngineAdapter.CFrame

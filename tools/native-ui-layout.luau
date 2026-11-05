@@ -5,6 +5,7 @@ local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local NativeCode = require "./lib/native-code"
 local fixtures = {
+	{ name = "native projected layers", source = require "../tests/fixtures/ui-projected-layers" },
 	{ name = "native tween interpolation", source = require "../tests/fixtures/tween-interpolation" },
 	{ name = "native selection assignment", source = require "../tests/fixtures/ui-selection-assignment" },
 	{ name = "native text content", source = require "../tests/fixtures/ui-content-text" },
