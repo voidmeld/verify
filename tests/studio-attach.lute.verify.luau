@@ -654,6 +654,29 @@ return 'input done'
 		expect(requests[6]):toContain "keyUp"
 	end)
 
+	it("serializes input adapters created before either adapter sends", function()
+		local engine = StudioEngine.new {}
+		local sent: { unknown } = {}
+		local outcome = Detached.run {
+			execute = function(model, code): Detached.Reply
+				return { ok = true, text = engine.run(model, code), lost = false, expired = false }
+			end,
+			input = function(_tool, actions): Detached.Reply
+				table.insert(sent, actions)
+				return { ok = true, lost = false, expired = false }
+			end,
+			datamodel = "Client",
+			code = "local first, second = studioInput(), studioInput(); first:SendTextInput('first'); second:SendTextInput('second'); return 'done'",
+			runId = "multiple-input-adapters",
+			pollSeconds = 0.001,
+			deadline = os.clock() + 3,
+		}
+		expect(outcome.status):toBe "done"
+		expect(#sent):toBe(2)
+		expect(Wire.encode(sent[1])):toContain "first"
+		expect(Wire.encode(sent[2])):toContain "second"
+	end)
+
 	it("resumes a key sender on the engine event before the MCP round trip ends", function()
 		local began: ((unknown) -> ())? = nil
 		local advanced = false

@@ -2,17 +2,16 @@
 
 local source = [==[
 local function studioInput()
-	local sequence = R:GetAttribute("inputSequence") or 0
 	local keys, buttons = {}, {}
 	local function pointAction(point)
 		local inset = game:GetService("GuiService"):GetGuiInset()
 		return {x = point.X - inset.X, y = point.Y - inset.Y}
 	end
 	local function send(tool, action, observed)
-		while sequence > 0 and R:GetAttribute("inputAck") ~= sequence do
+		while R:GetAttribute("inputSequence") ~= R:GetAttribute("inputAck") do
 			task.wait()
 		end
-		sequence += 1
+		local sequence = (R:GetAttribute("inputSequence") or 0) + 1
 		payload("input", game:GetService("HttpService"):JSONEncode({tool = tool, actions = {action}}))
 		R:SetAttribute("inputSequence", sequence)
 		while R:GetAttribute("inputAck") ~= sequence and not (observed and observed()) do
