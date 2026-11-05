@@ -405,6 +405,60 @@ it("scoped MCP rejects alternate ids and tools before forwarding", function()
 	expect((pcall(scope.dispatch, "tools/call", { name = "unknown", arguments = {} }))):toBe(false)
 	expect(calls):toBe(0)
 end)
+it("scoped MCP module example requires only the calling thread's capabilities", function()
+	local capabilities = {}
+	local module: { Capabilities: unknown, Sandboxed: boolean } = { Capabilities = "Network", Sandboxed = false }
+	local function requireModule(value: unknown): string
+		assert(value == module)
+		assert(module.Capabilities == capabilities and module.Sandboxed, "module would gain Network")
+		return "left]]>right"
+	end
+	expect((pcall(requireModule, module))):toBe(false)
+	local scope = Eval.scopedMcp.create({ id = "own", name = "run" }, {
+		call = function(name: string, arguments: { [string]: unknown }): unknown
+			expect(name):toBe "execute_luau"
+			expect(arguments.studio_id):toBe "own"
+			local result = Lute.chunk.load(asString(arguments.code), {
+				environment = {
+					game = {
+						GetService = function(_: unknown, name: string)
+							expect(name):toBe "ReplicatedStorage"
+							return { Payload = module }
+						end,
+					},
+					SecurityCapabilities = {
+						fromCurrent = function()
+							return {
+								Remove = function(_: unknown, value: string)
+									expect(value):toBe "Unassigned"
+									return capabilities
+								end,
+							}
+						end,
+					},
+					Enum = { SecurityCapability = { Unassigned = "Unassigned" } },
+					require = requireModule,
+				},
+			})()
+			return result
+		end,
+	}, Eval.lute.encode)
+	local listing = Wire.record(scope.dispatch("tools/list", {}))
+	local examples = 0
+	for _, value in Wire.array(listing.tools) do
+		local tool = Wire.record(value)
+		if tool.name == "execute_luau" then
+			local code = assert(string.match(asString(tool.description), "```luau\n(.-)\n```"))
+			local result = scope.dispatch("tools/call", {
+				name = "execute_luau",
+				arguments = { datamodel_type = "Edit", code = code },
+			})
+			expect(result):toBe "left]]>right"
+			examples += 1
+		end
+	end
+	expect(examples):toBe(1)
+end)
 it("two MCP scopes cannot steer one another and preserve tool results", function()
 	local ids: { string } = {}
 	local backend = {

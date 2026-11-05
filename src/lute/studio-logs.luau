@@ -59,6 +59,6 @@ local drain =
 
 local install = "for _, spec in {{'Script', game:GetService('ServerScriptService')}, {'LocalScript', game:GetService('StarterPlayer').StarterPlayerScripts}} do if spec[2]:FindFirstChild('VerifyEngineLogCollector') == nil then local script = Instance.new(spec[1]); script.Name = 'VerifyEngineLogCollector'; script.Source = "
 	.. string.format("%q", source)
-	.. "; script.Parent = spec[2] end end return 'installed'"
+	.. "; script.Capabilities = SecurityCapabilities.new(Enum.SecurityCapability.Basic, Enum.SecurityCapability.RunServerScript, Enum.SecurityCapability.RunClientScript, Enum.SecurityCapability.AccessOutsideWrite, Enum.SecurityCapability.Logging, Enum.SecurityCapability.RemoteEvent, Enum.SecurityCapability.Players, Enum.SecurityCapability.CreateInstances); script.Sandboxed = true; script.Parent = spec[2] end end return 'installed'"
 
 return { source = source, drain = drain, install = install }

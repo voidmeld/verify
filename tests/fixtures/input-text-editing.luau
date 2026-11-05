@@ -1,7 +1,7 @@
 --!strict
 
 return [==[
-local virtual=assert(game.UserInputService:CreateVirtualInput())
+local virtual=... or assert(game.UserInputService:CreateVirtualInput())
 local screen=Instance.new("ScreenGui")
 screen.Parent=game.Players.LocalPlayer.PlayerGui
 local box=Instance.new("TextBox")

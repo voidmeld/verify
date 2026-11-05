@@ -405,6 +405,16 @@ local function attach(options: Options): (Session?, Refusal?)
 	): ReportResponse
 		local last: Response? = nil
 		local outcome = Detached.run {
+			input = function(tool: string, actions: unknown): Detached.Reply
+				local response =
+					dispatch(tool, argumentsFor(',"datamodel_type":"Client","actions":' .. Wire.encode(actions)), false)
+				return {
+					ok = response.ok,
+					detail = response.detail,
+					lost = response.sessionLost == true,
+					expired = response.expired,
+				}
+			end,
 			execute = function(model: string, source: string, replaySafe: boolean?): Detached.Reply
 				local response = execute(model, source, replaySafe)
 				last = response

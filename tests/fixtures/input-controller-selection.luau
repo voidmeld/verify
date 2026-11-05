@@ -2,19 +2,23 @@
 
 return [==[
 local input, gui = game.UserInputService, game.GuiService
-local virtual = input:CreateVirtualInput()
+local virtual, tap = ...
+virtual = virtual or input:CreateVirtualInput()
 assert(input.PreferredInput == Enum.PreferredInput.Gamepad, "controller emulator prefers gamepad input")
 local screen = Instance.new("ScreenGui")
 screen.IgnoreGuiInset, screen.Parent = true, game.Players.LocalPlayer.PlayerGui
 local buttons, connections, trace = {}, {}, {}
+local activations = 0
 local function selection() return if gui.SelectedObject then gui.SelectedObject.Name else "none" end
 for index = 1, 4 do
  local button = Instance.new("TextButton")
  button.Name, button.Text = "B" .. index, ""
  button.Size, button.Position = UDim2.fromOffset(100, 30), UDim2.fromOffset(100, 100 + 40 * index)
  button.Parent, buttons[index] = screen, button
- table.insert(connections, button.Activated:Connect(function(object, count)
-  table.insert(trace, "Activated/" .. button.Name .. "/" .. object.KeyCode.Name .. "/" .. count)
+ table.insert(connections, button.Activated:Connect(function(object)
+  assert(object.UserInputState == Enum.UserInputState.End, "activation uses the released gamepad input")
+  activations += 1
+  table.insert(trace, "Activated/" .. button.Name .. "/" .. object.KeyCode.Name .. "/" .. activations)
  end))
 end
 for _, event in {"InputBegan", "InputChanged", "InputEnded"} do
@@ -31,6 +35,20 @@ task.wait(0.1)
 assert(#trace == 1, "ButtonA does not activate on press")
 virtual:SendKey(false, Enum.KeyCode.Nine, false)
 task.wait(0.1)
+assert(activations == 1, "one release activates once")
+for _,seconds in {0.05, 0.7} do
+ local before = activations
+ if tap then
+  tap(Enum.KeyCode.Nine, seconds)
+ else
+  virtual:SendKey(true, Enum.KeyCode.Nine, false)
+  task.wait(seconds)
+  assert(activations == before, "holding ButtonA does not activate or repeat")
+  virtual:SendKey(false, Enum.KeyCode.Nine, false)
+ end
+ task.wait(0.1)
+ assert(activations == before + 1, "each short or held press activates once")
+end
 virtual:SendKey(true, Enum.KeyCode.Three, false)
 task.wait(0.2)
 assert(gui.SelectedObject == buttons[2], "DPad moves once before repeat delay")
@@ -61,6 +79,12 @@ assert(gui.SelectedObject == buttons[2], "right stick does not change selection"
 local expected = {
  "InputBegan/ButtonA/true/B1",
  "Activated/B1/ButtonA/1",
+ "InputEnded/ButtonA/true/B1",
+ "InputBegan/ButtonA/true/B1",
+ "Activated/B1/ButtonA/2",
+ "InputEnded/ButtonA/true/B1",
+ "InputBegan/ButtonA/true/B1",
+ "Activated/B1/ButtonA/3",
  "InputEnded/ButtonA/true/B1",
  "InputBegan/DPadDown/true/B2",
  "InputEnded/DPadDown/true/B4",

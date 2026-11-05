@@ -7,11 +7,19 @@ export type Row = {
 	ends: { number }?,
 	height: number?,
 }
-export type Face = { tokens: { string }, pairs: { { number } }, sizes: { Row }, pixelScale: number? }
+export type Face = {
+	tokens: { string },
+	pairs: { { number } },
+	sizes: { Row },
+	pixelScale: number?,
+	measurements: { [string]: { number } }?,
+	measurementHeights: { number }?,
+	rounding: string?,
+}
 export type Model = {
 	read width: (text: string, size: number) -> number,
 	read fit: (text: string, size: number, limit: number) -> (number, number),
-	read height: (size: number, lines: number?, spacing: number?) -> number,
+	read height: (size: number, lines: number?, spacing: number?, text: string?) -> number,
 	read wrap: (text: string, size: number, limit: number, trimOversized: boolean?) -> (number, number),
 	read truncate: (
 		text: string,
@@ -61,6 +69,8 @@ local function letter(token: string): boolean
 end
 
 local function create(face: Face): Model
+	assert(face.rounding == nil or face.rounding == "nearest", "unsupported text metric rounding")
+	local raster = if face.rounding == "nearest" then math.round else math.ceil
 	local pixelScale = face.pixelScale or 1
 	assert(pixelScale > 0 and pixelScale < math.huge, "invalid text metric pixel scale")
 	local slot = buffer.create(4)
@@ -163,7 +173,11 @@ local function create(face: Face): Model
 			- (if previous and row.starts and letter(face.tokens[previous]) then row.starts[previous] else 0)
 	end
 	local function width(text: string, size: number): number
-		return scaled(math.ceil(remembered(text, size)))
+		local widths = if face.measurements then face.measurements[text] else nil
+		if widths then
+			return widths[math.clamp(math.floor(size), 1, 100)]
+		end
+		return scaled(raster(remembered(text, size)))
 	end
 	local function fit(text: string, size: number, limit: number): (number, number)
 		local maximum, count = 0, 0
@@ -192,11 +206,17 @@ local function create(face: Face): Model
 				continue
 			end
 			local line = paragraph:match "^ *" or ""
+			local advanceWidth: number? = nil
+			local contentWidth: number? = nil
 			local started = false
 			local function finish(trim: boolean)
-				local measured = width(line, size)
-				if (trim or measured > limit and width(line:gsub(" +$", ""), size) <= limit) and line:match "[^ ]" then
-					measured = width(line:gsub(" +$", ""), size)
+				local measured = advanceWidth or width(line, size)
+				if
+					line:match " +$"
+					and (trim or measured > limit and width(line:gsub(" +$", ""), size) <= limit)
+					and line:match "[^ ]"
+				then
+					measured = contentWidth or width(line:gsub(" +$", ""), size)
 				end
 				maximum = math.max(maximum, measured)
 				count += 1
@@ -211,21 +231,54 @@ local function create(face: Face): Model
 						finish(trimOversized == true)
 						line = ""
 					end
-					for _, codepoint in utf8.codes(word) do
+					advanceWidth = 0
+					contentWidth = nil
+					local prefix = paragraph:sub(1, cursor - 1)
+					local function position(following: string?): number
+						if prefix == "" then
+							return 0
+						end
+						return if following
+							then scaled(raster(remembered(prefix .. following, size) - remembered(following, size)))
+							else width(prefix, size)
+					end
+					local previousWidth = position(utf8.char(utf8.codepoint(word)))
+					for at, codepoint in utf8.codes(word) do
 						local character = utf8.char(codepoint)
-						if width(line .. character, size) > limit and (line ~= "" or not started) then
+						prefix ..= character
+						local following = if at + #character <= #word
+							then utf8.char(utf8.codepoint(word, at + #character))
+							elseif #spaces > 0 then " "
+							else nil
+						local nextWidth = position(following)
+						local advance = nextWidth - previousWidth
+						if advanceWidth + advance > limit and (line ~= "" or not started) then
 							finish(false)
 							line = ""
+							advanceWidth = 0
 						end
 						line ..= character
+						advanceWidth += advance
+						previousWidth = nextWidth
 					end
+					contentWidth = if #spaces > 0 then advanceWidth else nil
 					line ..= spaces
+					advanceWidth += width(prefix .. spaces, size) - previousWidth
 					cursor += #word + #spaces
 					continue
 				end
-				if line ~= "" and width(line .. word, size) > limit then
+				local joined = (advanceWidth or width(line, size)) + width(line .. word, size) - width(line, size)
+				if line ~= "" and joined > limit then
 					finish(true)
 					line = ""
+					advanceWidth = nil
+					contentWidth = nil
+				end
+				if advanceWidth ~= nil then
+					contentWidth = if #spaces > 0
+						then advanceWidth + width(line .. word, size) - width(line, size)
+						else nil
+					advanceWidth += width(line .. word .. spaces, size) - width(line, size)
 				end
 				line ..= word .. spaces
 				cursor += #word + #spaces
@@ -343,8 +396,16 @@ local function create(face: Face): Model
 		end
 		return widest
 	end
-	local function height(size: number, lines: number?, spacing: number?): number
+	local function height(size: number, lines: number?, spacing: number?, text: string?): number
 		local index = math.clamp(math.floor(size), 1, 100)
+		if text and face.measurements and face.measurements[text] and face.measurementHeights then
+			local strut = face.measurementHeights[index]
+			local total, step = strut, rounded(strut * rounded(spacing or 1))
+			for _ = 2, lines or 1 do
+				total = rounded(total + step)
+			end
+			return total
+		end
 		local strut = face.sizes[index].height or index
 		if lines == nil then
 			return strut

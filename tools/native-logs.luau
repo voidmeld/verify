@@ -13,6 +13,7 @@ local Files = require "../src/lute/files"
 local Logs = require "../src/lute/studio-logs"
 local Place = require "../src/lute/place"
 local ProgressFile = require "../src/lute/progress-file"
+local NativeCode = require "./lib/native-code"
 
 return function()
 	for _, side in { "Server", "Client" } do
@@ -30,7 +31,7 @@ return function()
 			place = place,
 			worker = "tools/studio-worker.luau",
 			progressFile = progressPath,
-			code = [==[
+			code = NativeCode("VerifyModules", [==[
 local root = game:GetService('ReplicatedStorage').VerifyModules
 local Entry = require(root.src.roblox['case-entry'])
 local Channel = require(root.src.roblox['report-channel'])
@@ -61,11 +62,9 @@ local report = Entry.run(function()
         options = {executor = 'native-log-conformance'},
         now = os.clock,
     }
-end, 'studio', nil, progress, runId, ]==]
-				.. Logs.drain
-				.. [==[)
+end, 'studio', nil, progress, runId, ]==] .. Logs.drain .. [==[)
 return game:GetService('HttpService'):JSONEncode(Channel.envelope(runId, report))
-]==],
+]==]),
 		}
 		assert(outcome.status == "returned", outcome.detail)
 		local report = Core.decode(outcome.report)

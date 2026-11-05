@@ -6,6 +6,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local Archive = require "../src/lute/text-metrics-archive"
+local NativeCode = require "./lib/native-code"
 
 return function()
 	local directory = ".lute/tmp/text-metrics-native"
@@ -30,7 +31,9 @@ return function()
 		worker = "tools/studio-worker.luau",
 		context = "Client",
 		deadlineSeconds = 180,
-		code = [==[
+		code = NativeCode(
+			"TextMetricsConformance",
+			[==[
 local root = game.ReplicatedStorage.TextMetricsConformance
 local Core, Roblox = require(root.src.core), require(root.src.roblox)
 local metrics = require(root.src.roblox["text-metrics"])
@@ -42,6 +45,14 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
   local params = Instance.new("GetTextBoundsParams")
   check:defer(function() params:Destroy() end)
   params.Font = Font.new(data.family, Enum.FontWeight[data.weight], Enum.FontStyle[data.style])
+  for text in data.measurements or {} do
+   for size = 1, 100 do
+    params.Text, params.Size, params.Width = text, size, 0
+    local native = game.TextService:GetTextBoundsAsync(params)
+    check:expect(model.width(text, size)):toBe(native.X)
+    check:expect(model.height(size, 1, nil, text)):toBe(native.Y)
+   end
+  end
   local random = Random.new(527)
   local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 "
   local strings = {"", "  ", "Hello world", "Office staff affiliation", "affluent waffle", "The quick brown fox jumps over the lazy dog", "W.n", "W.m", "W.N", ".n", " .n", "W..n", "W.nW", "W.n W.n ", "W.LL W.RR W.ll W.rr"}
@@ -114,7 +125,8 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
  end)
 end
 return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-text-metrics", environment = {engineVersion = version()}}))
-]==],
+]==]
+		),
 	}
 	assert(result.status == "returned", result.detail)
 	local report = Core.decode(result.report)

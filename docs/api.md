@@ -1357,6 +1357,8 @@ TextChatService.OnIncomingMessage uses write-only callback storage. A host can i
 
 Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
 
+Exact measured strings can supplement a face's token grammar. Their native bounds use their captured pixel grid. Their characters do not become composable tokens: an uncaptured combination containing a character outside the original grammar still raises `unsupported_text_metrics`.
+
 Uniform RichText weights use the captured face selected by `<b>` or `<font weight="...">`. Weight names are case insensitive; quoted numeric weights use 100 through 900. Native captures establish that Heavy selects Bold for BuilderSans and Regular for Fondamento and Michroma. Other weights need their own captured facts. Text that changes effective weights between runs still raises `unsupported_text_metrics`.
 
 `measureBounds`, `truncateBounds` and `measureLineHeight` receive `Gui = true` for GUI observations. Service parameters omit it. For the captured missing family `rbxasset://fonts/families/DoesNotExist.json`, service measurement raises `Temp read failed.` while GUI measurement uses SourceSansPro. Its Heavy GUI weight selects Bold. Other uncaptured families still raise `unsupported_text_metrics`.
@@ -1367,7 +1369,7 @@ When `SplitWord` ends at a space boundary, its bounds include the trailing space
 
 `AtEnd` keeps a word boundary when the prefix and ellipsis fill at least half the available width. Otherwise it cuts within the word. A cut within a word keeps the glyph spacing from the following character in the original text. The shared truncation fixture checks the threshold and the spacing with repeated letters.
 
-Wrapping splits an oversized word across measured characters. It prefers whitespace between words and preserves explicit paragraph breaks. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
+Wrapping splits an oversized word across measured characters while retaining kerning and the rounding of cumulative run positions. A fragment keeps an unavoidable rounded glyph advance even when it exceeds the constraint or that glyph's isolated width. Without trailing whitespace, its width is bounded by the larger of the constraint and the largest required rounded advance. Retained trailing spaces can extend this bound. Wrapping prefers whitespace between words and preserves independent paragraph bounds. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
 
 ### `Lute.gate`
 

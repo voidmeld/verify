@@ -38,6 +38,114 @@ it("default text measurements use captured native font facts", function(own)
 	expect(call(service, "GetTextBoundsAsync", parameters) == previous):toBe(false)
 end)
 
+it("captured control symbols measure across every fixture face and size", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", { Size = 14, Width = 0 })
+	local service = bridge.placeEngine().service "TextService"
+	local glyphs = {
+		"·",
+		"×",
+		"—",
+		"→",
+		"≡",
+		"■",
+		"□",
+		"▢",
+		"▣",
+		"▲",
+		"▶",
+		"▸",
+		"▾",
+		"◆",
+		"◇",
+		"◉",
+		"○",
+		"◎",
+		"●",
+		"◩",
+		"☰",
+		"⚡",
+		"⛓",
+		"⬡",
+		"〜",
+		"⇧",
+		"⌘",
+		"⌫",
+	}
+	for _, face in
+		{
+			{ family = "BuilderSans", weights = { "Regular", "Medium", "SemiBold", "Bold" } },
+			{ family = "Fondamento", weights = { "Regular", "Medium", "SemiBold", "Bold" } },
+			{ family = "GothamSSm", weights = { "Medium", "Bold" } },
+			{ family = "Guru", weights = { "Regular" } },
+			{ family = "LegacyArial", weights = { "Regular" } },
+			{ family = "Michroma", weights = { "Regular", "Medium", "SemiBold", "Bold" } },
+			{ family = "Nunito", weights = { "Regular", "Medium", "SemiBold", "Bold" } },
+			{ family = "SourceSansPro", weights = { "Regular", "SemiBold", "Bold" } },
+		}
+	do
+		for _, weight in face.weights do
+			parameters.Font = library.Font.new(
+				"rbxasset://fonts/families/" .. face.family .. ".json",
+				library.Enum.FontWeight[weight]
+			)
+			for size = 1, 100 do
+				parameters.Size = size
+				for _, glyph in glyphs do
+					parameters.Text = glyph
+					local width = xComponent(call(service, "GetTextBoundsAsync", parameters))
+					assert(type(width) == "number")
+					expect(width >= 0):toBe(true)
+				end
+			end
+		end
+	end
+end)
+
+it("native symbol bounds retain Studio 0.746 pixels across the older font raster grid", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", {
+		Size = 14,
+		Width = 0,
+		Font = library.Font.new("rbxasset://fonts/families/BuilderSans.json", library.Enum.FontWeight.Medium),
+	})
+	local service = bridge.placeEngine().service "TextService"
+	for _, sample in { { "◉", 11 }, { "⇧", 10 }, { "≡", 8 } } do
+		parameters.Text = sample[1]
+		expect(call(service, "GetTextBoundsAsync", parameters)):toEqual(library.Vector2.new(sample[2], 14))
+	end
+	parameters.Text = "M≡"
+	expect(function()
+		call(service, "GetTextBoundsAsync", parameters)
+	end):toThrow "unsupported_text_metrics"
+end)
+
+it("uncaptured Unicode remains unsupported in measured body weights", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local library = Roblox.reflectionSnapshot.library(Lute.fixture.load())
+	local parameters = bridge.environment.createInstance("GetTextBoundsParams", { Size = 14, Width = 0 })
+	local service = bridge.placeEngine().service "TextService"
+	for _, weight in { "Regular", "Medium", "SemiBold" } do
+		parameters.Font =
+			library.Font.new("rbxasset://fonts/families/BuilderSans.json", library.Enum.FontWeight[weight])
+		parameters.Text = "A"
+		local width = xComponent(call(service, "GetTextBoundsAsync", parameters))
+		assert(type(width) == "number")
+		expect(width > 0):toBe(true)
+		for _, text in { utf8.char(0x1F984), "A" .. utf8.char(0x1F984) .. "V" } do
+			parameters.Text = text
+			expect(function()
+				call(service, "GetTextBoundsAsync", parameters)
+			end):toThrow "unsupported_text_metrics: character U+1F984"
+		end
+	end
+end)
+
 it("captured Latin and Japanese text preserves service widths and wrapping", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(function()

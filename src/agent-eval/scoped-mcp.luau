@@ -142,7 +142,12 @@ local function create(studio: { id: string, name: string }, backend: Backend, en
 			add("screen_capture", "Capture the current Studio viewport.", {}, { "capture_id" })
 			add(
 				"execute_luau",
-				"Execute Luau in Edit, Client, or Server. Return the result. Edit changes persist; Play changes are temporary.",
+				"Execute Luau in Edit, Client, or Server. Return the result. Edit changes persist; Play changes are temporary. "
+					.. "Assistant code lacks Network. Before requiring an owned module that needs no Network, "
+					.. "give it the calling thread's capabilities and enable its sandbox:\n```luau\n"
+					.. "local module = game:GetService('ReplicatedStorage').Payload\n"
+					.. "module.Capabilities = SecurityCapabilities.fromCurrent():Remove(Enum.SecurityCapability.Unassigned)\n"
+					.. "module.Sandboxed = true\nreturn require(module)\n```",
 				{ "code", "datamodel_type" }
 			)
 			add("get_console_output", "Read this Studio's console output.", {})

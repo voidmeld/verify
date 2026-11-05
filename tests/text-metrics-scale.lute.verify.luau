@@ -91,6 +91,74 @@ it("scaled text compares wrap and truncation limits in returned units", function
 	expect(model.truncate("AA AA AA", 1, 1, 1, "AtEnd", false)):toBe(0)
 end)
 
+it("measured symbol bounds preserve their native grid without adding a composable token", function()
+	local row: Metrics.Row = { advances = { 15 }, adjustments = {}, height = 13.333333969116211 }
+	local model = Metrics.create {
+		tokens = { "M" },
+		pairs = {},
+		sizes = table.create(100, row),
+		pixelScale = 2 / 3,
+		measurements = { ["◉"] = table.create(100, 11) },
+		measurementHeights = table.create(100, 14),
+	}
+	expect(model.width("M", 14)):toBe(10)
+	expect(model.width("◉", 14)):toBe(11)
+	expect(model.height(14, 1, nil, "◉")):toBe(14)
+	local width, lines = model.wrap("◉", 14, 10)
+	expect(width):toBe(11)
+	expect(lines):toBe(2)
+	expect(model.height(14, lines, nil, "◉")):toBe(28)
+	expect(function()
+		model.width("M◉", 14)
+	end):toThrow "unsupported_text_metrics"
+end)
+
+it("shaped run wrapping matches the captured Studio fonts sizes and width boundaries", function()
+	local captured =
+		Shape.record(Wire.parse(fs.readFileToString "tests/fixtures/text-wrap-746.json"), "wrapping capture")
+	local tokens = Shape.copyStrings(captured.tokens, "tokens")
+	local rawPairs, rows = captured.pairs, captured.rows
+	assert(type(rawPairs) == "table" and type(rows) == "table")
+	local pairs: { { number } } = {}
+	for _, pair in rawPairs do
+		table.insert(pairs, numbers(pair))
+	end
+	local compared = 0
+	for _, raw in rows do
+		local row = Shape.record(raw, "font size")
+		local size, height, samples = row.size, row.height, row.samples
+		assert(type(size) == "number" and type(height) == "number" and type(samples) == "table")
+		local measurements: { [string]: { number } } = {}
+		for text, width in Shape.record(row.unwrapped, "unwrapped") do
+			assert(type(width) == "number")
+			measurements[text] = table.create(100, width)
+		end
+		local metrics: Metrics.Row = {
+			advances = numbers(row.advances),
+			adjustments = numbers(row.adjustments),
+			height = height,
+		}
+		local model = Metrics.create {
+			tokens = tokens,
+			pairs = pairs,
+			sizes = table.create(100, metrics),
+			measurements = measurements,
+			rounding = "nearest",
+		}
+		for _, rawSample in samples do
+			local entry = Shape.record(rawSample, "sample")
+			local text, limit = entry.text, entry.limit
+			assert(type(text) == "string" and type(limit) == "number")
+			local bounds = numbers(entry.bounds)
+			local width, lines = model.wrap(text, size, limit)
+			expect(width):toBe(bounds[1])
+			expect(model.height(size, lines)):toBe(bounds[2])
+			compared += 1
+		end
+	end
+	expect(compared):toBe(420)
+end)
+
 it("Guru period-prefixed ligatures preserve native kerning and text boundaries", function()
 	local face = NativeMetrics.decode(faces["Guru-Regular-Normal"]())
 	local model = Metrics.create(face)

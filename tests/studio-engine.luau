@@ -40,6 +40,9 @@ local function new(globals: { [string]: unknown }, extra: { [string]: unknown }?
 		local instances = store(datamodel)
 		local replicated = instances.root
 		local http = {
+			JSONDecode = function(_self: unknown, value: string): unknown
+				return Wire.parse(value)
+			end,
 			JSONEncode = function(_self: unknown, value: unknown): string
 				return Wire.encode(value)
 			end,

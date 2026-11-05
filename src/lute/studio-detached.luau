@@ -6,6 +6,7 @@ local task = require "@std/task"
 local Core = require "../core"
 local Transport = require "../core/transport"
 local Wire = require "./wire"
+local Input = require "./studio-input"
 
 export type Reply = {
 	ok: boolean,
@@ -26,6 +27,7 @@ export type Options = {
 	pollSeconds: number?,
 	segmentBytes: number?,
 	onPoll: (() -> ())?,
+	input: ((tool: string, actions: unknown) -> Reply)?,
 	runner: boolean?,
 }
 
@@ -122,6 +124,7 @@ R.Name = P
 R.Parent = RS
 ]==]
 		.. publisher
+		.. Input.source
 		.. "task.spawn(function()\n\tlocal published, reason = pcall(function()\n\t\tpublish(pcall(function()\n"
 		.. code
 		.. "\n"
@@ -157,8 +160,8 @@ if type(text) ~= 'string' then
 	return
 end
 local request = game:GetService('HttpService'):JSONDecode(text)
-local function work()
-	return require(RS:WaitForChild(ROOT):WaitForChild(REQUEST))(request.runId, request.progressToken)
+local function work(input)
+	return require(RS:WaitForChild(ROOT):WaitForChild(REQUEST))(request.runId, request.progressToken, input)
 end
 if request.context == 'Multiplayer' then
 	if context == 'Server' then
@@ -176,10 +179,11 @@ R.Name = request.prefix
 R.Parent = RS
 ]==]
 		.. publisher
+		.. Input.source
 		.. [==[
 task.spawn(function()
 	local published, reason = pcall(function()
-		publish(pcall(work))
+		publish(pcall(work, studioInput))
 	end)
 	if not published then
 		payload("error", string.sub(tostring(reason), 1, 4000))
@@ -190,7 +194,7 @@ end)
 end
 
 local function requestSource(code: string): string
-	return "return function(runId, progressToken)\n" .. code .. "\nend\n"
+	return "return function(runId, progressToken, studioInput)\n" .. code .. "\nend\n"
 end
 
 local function waitSource(prefix: string): string
@@ -203,6 +207,13 @@ local function statusSource(prefix: string): string
 local R = RS:FindFirstChild(P)
 local state = if R ~= nil then R:GetAttribute("state") else nil
 local out = { state = if state == nil then "absent" else state }
+if state == "running" and R:GetAttribute("inputSequence") ~= R:GetAttribute("inputAck") then
+	local input = R:FindFirstChild("input")
+	if input ~= nil then
+		out.input = game:GetService('HttpService'):JSONDecode(input.Value)
+		out.inputSequence = R:GetAttribute("inputSequence")
+	end
+end
 if state == "done" then
 	out.count = R:GetAttribute("count")
 	out.bytes = R:GetAttribute("bytes")
@@ -357,6 +368,7 @@ local function run(options: Options): Outcome
 		}
 	end
 	local problem: string? = nil
+	local inputPolling = false
 	while true do
 		if options.onPoll ~= nil then
 			pcall(options.onPoll)
@@ -395,13 +407,44 @@ local function run(options: Options): Outcome
 					pcall(options.execute, options.datamodel, releaseSource(prefix), true)
 				end
 				return fetched
+			elseif status.input ~= nil then
+				inputPolling = true
+				local input: { [string]: unknown } = if type(status.input) == "table"
+					then Wire.record(status.input)
+					else {}
+				local tool, sequence = input.tool, status.inputSequence
+				if
+					options.input == nil
+					or (tool ~= "user_keyboard_input" and tool ~= "user_mouse_input")
+					or type(input.actions) ~= "table"
+					or type(sequence) ~= "number"
+					or sequence < 1
+					or sequence % 1 ~= 0
+				then
+					return { status = "failed", detail = "invalid or unavailable Studio input request" }
+				end
+				local sent = options.input(tool, input.actions)
+				if not sent.ok then
+					return failure(sent, "Studio input failed; it will not be replayed")
+				end
+				local acknowledged = options.execute(
+					options.datamodel,
+					header(prefix)
+						.. "RS:FindFirstChild(P):SetAttribute('inputAck', "
+						.. tostring(sequence)
+						.. "); return 'acknowledged'",
+					true
+				)
+				if not acknowledged.ok then
+					return failure(acknowledged, "Studio input acknowledgement failed; input will not be replayed")
+				end
 			else
 				problem = nil
 			end
 		end
 		local remaining = options.deadline - os.clock()
 		if remaining > 0 then
-			task.wait(math.min(options.pollSeconds or POLL_SECONDS, remaining))
+			task.wait(math.min(if inputPolling then 0.02 else options.pollSeconds or POLL_SECONDS, remaining))
 		end
 	end
 end
