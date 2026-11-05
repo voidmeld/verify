@@ -51,6 +51,7 @@ local fixtures = {
 	{ name = "native text layout", source = require "../tests/fixtures/ui-text-layout" },
 	{ name = "native text scaling properties", source = require "../tests/fixtures/ui-text-scale-properties" },
 	{ name = "native scaled text beneath UIScale", source = require "../tests/fixtures/ui-scaled-text" },
+	{ name = "native scaled automatic text", source = require "../tests/fixtures/ui-scaled-automatic-text" },
 	{ name = "native render layout reads", source = require "../tests/fixtures/ui-render-layout" },
 	{ name = "native list spacing", source = require "../tests/fixtures/ui-list-spacing" },
 	{ name = "native grid layout", source = require "../tests/fixtures/ui-grid-layout" },

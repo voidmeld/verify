@@ -135,9 +135,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end
 	local function scaledBounds(object: Instance, rectangle: Rectangle): TextMeasurement
 		local measure = assert(options.measureBounds)
-		if enum(object, "AutomaticSize", "None") ~= "None" then
-			unsupported(object, "TextScaled with AutomaticSize")
-		end
+		local automatic = enum(object, "AutomaticSize", "None")
+		local autoX, autoY = automatic == "X" or automatic == "XY", automatic == "Y" or automatic == "XY"
 		local content = inset(object, rectangle)
 		local smallest, largest = 1, 100
 		local limit = object:FindFirstChildWhichIsA "UITextSizeConstraint"
@@ -152,13 +151,17 @@ local function attach(environment: Environment.Environment, options: Options): C
 				for word in text:gmatch "[^ \n]+" do
 					local bounds =
 						Values.vector(measure { Text = word, Font = font, Size = points, Width = 0, Gui = true })
-					if bounds.X > content.width then
+					if not autoX and bounds.X > content.width then
 						return { X = bounds.X, Y = math.huge }
 					end
 				end
-				return Values.vector(
-					measure { Text = text, Font = font, Size = points, Width = content.width, Gui = true }
-				)
+				return Values.vector(measure {
+					Text = text,
+					Font = font,
+					Size = points,
+					Width = if autoX then 0 else content.width,
+					Gui = true,
+				})
 			end)
 			if fitted and measured.Y < math.huge then
 				local strut = Values.vector(measure { Text = "", Font = font, Size = points, Width = 0, Gui = true }).Y
@@ -170,7 +173,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 						spacing
 					)
 					else Float.f32(strut + Float.f32(spacing * strut) * (lines - 1))
-				if measured.X <= content.width and height <= content.height then
+				if (autoX or measured.X <= content.width) and (autoY or height <= content.height) then
 					return { X = measured.X, Y = height, intrinsicX = measured.X, intrinsicY = height, fits = true }
 				end
 			end

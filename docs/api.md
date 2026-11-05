@@ -1371,6 +1371,8 @@ When `SplitWord` ends at a space boundary, its bounds include the trailing space
 
 Wrapping splits an oversized word across measured characters while retaining kerning and the rounding of cumulative run positions. A fragment keeps an unavoidable rounded glyph advance even when it exceeds the constraint or that glyph's isolated width. Without trailing whitespace, its width is bounded by the larger of the constraint and the largest required rounded advance. Retained trailing spaces can extend this bound. Wrapping prefers whitespace between words and preserves independent paragraph bounds. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
 
+TextScaled supports AutomaticSize. An automatic X axis measures without a width constraint; an automatic Y axis permits the measured height to grow. Automatic XY selects the largest permitted size. Authored dimensions remain minimum bounds, and UITextSizeConstraint still limits the selected size.
+
 ### `Lute.gate`
 
 Run the gate command line with bounded producer processes.
