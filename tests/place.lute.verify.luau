@@ -236,7 +236,9 @@ describe("native place bundler", function()
 				~= nil
 		):toBe(true)
 		expect(select(2, merged:gsub('<string name="Name">VerifyRunner</string>', ""))):toBe(2)
-		expect(merged:find("return function(runId, progressToken)\nreturn 'request body'", 1, true) ~= nil):toBe(true)
+		expect(merged:find("return function(runId, progressToken, studioInput)\nreturn 'request body'", 1, true) ~= nil):toBe(
+			true
+		)
 		expect(merged:find("local ROOT = &quot;Mounted&quot;", 1, true) ~= nil):toBe(true)
 		local plain = root .. "/plain.rbxlx"
 		Place.build { output = plain, roots = { root .. "/lib" }, request = "return 1" }
