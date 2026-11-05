@@ -7,18 +7,29 @@ local function studioInput()
 		local inset = game:GetService("GuiService"):GetGuiInset()
 		return {x = point.X - inset.X, y = point.Y - inset.Y}
 	end
-	local function send(tool, action, observed)
+	local function sendActions(tool, actions, observed)
 		while R:GetAttribute("inputSequence") ~= R:GetAttribute("inputAck") do
 			task.wait()
 		end
 		local sequence = (R:GetAttribute("inputSequence") or 0) + 1
-		payload("input", game:GetService("HttpService"):JSONEncode({tool = tool, actions = {action}}))
+		payload("input", game:GetService("HttpService"):JSONEncode({tool = tool, actions = actions}))
 		R:SetAttribute("inputSequence", sequence)
 		while R:GetAttribute("inputAck") ~= sequence and not (observed and observed()) do
 			task.wait()
 		end
 	end
+	local function send(tool, action, observed)
+		sendActions(tool, {action}, observed)
+	end
 	return {
+		PressKey = function(_, code, seconds)
+			assert(seconds >= 0 and seconds <= 10, "Studio MCP key press must last between zero and ten seconds")
+			sendActions("user_keyboard_input", {
+				{action = "keyDown", key_code = code.Name},
+				{action = "wait", wait_time_ms = seconds * 1000},
+				{action = "keyUp", key_code = code.Name},
+			})
+		end,
 		SendKey = function(_, down, code, repeated)
 			assert(not repeated, "Studio MCP does not expose repeated key events")
 			local input = game:GetService("UserInputService")

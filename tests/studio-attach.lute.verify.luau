@@ -654,6 +654,33 @@ return 'input done'
 		expect(requests[6]):toContain "keyUp"
 	end)
 
+	it("batches a timed key press so transport latency cannot extend the hold", function()
+		local engine = StudioEngine.new {}
+		local sent = 0
+		local outcome = Detached.run {
+			execute = function(model, code): Detached.Reply
+				return { ok = true, text = engine.run(model, code), lost = false, expired = false }
+			end,
+			input = function(tool, actions): Detached.Reply
+				sent += 1
+				expect(tool):toBe "user_keyboard_input"
+				expect(actions):toEqual {
+					{ action = "keyDown", key_code = "Down" },
+					{ action = "wait", wait_time_ms = 50 },
+					{ action = "keyUp", key_code = "Down" },
+				}
+				return { ok = true, lost = false, expired = false }
+			end,
+			datamodel = "Client",
+			code = "studioInput():PressKey({Name = 'Down'}, 0.05); return 'done'",
+			runId = "timed-input-batch",
+			pollSeconds = 0.001,
+			deadline = os.clock() + 3,
+		}
+		expect(outcome.status):toBe "done"
+		expect(sent):toBe(1)
+	end)
+
 	it("serializes input adapters created before either adapter sends", function()
 		local engine = StudioEngine.new {}
 		local sent: { unknown } = {}

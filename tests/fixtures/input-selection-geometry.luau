@@ -2,7 +2,8 @@
 
 return [==[
 local input,gui=game.UserInputService,game.GuiService
-local virtual=... or assert(input:CreateVirtualInput())
+local virtual,press=...
+virtual=virtual or assert(input:CreateVirtualInput())
 local screen=Instance.new("ScreenGui")
 screen.Parent=game.Players.LocalPlayer.PlayerGui
 local function button(name,x,y,w,h,parent)
@@ -14,9 +15,12 @@ local function step(from,direction,expected)
  gui.SelectedObject=from
  task.wait(.05)
  local code=Enum.KeyCode[if input.PreferredInput==Enum.PreferredInput.Gamepad then (if direction=="Down" then "Three" else "Four") else direction]
- virtual:SendKey(true,code,false)
- task.wait(.05)
- virtual:SendKey(false,code,false)
+ if press then press(code)
+ else
+  virtual:SendKey(true,code,false)
+  task.wait(.05)
+  virtual:SendKey(false,code,false)
+ end
  task.wait(.05)
  assert(gui.SelectedObject==expected,"directional rectangle overlap chooses "..expected.Name)
 end

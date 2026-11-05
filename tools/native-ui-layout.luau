@@ -69,7 +69,7 @@ return function()
 		table.insert(
 			cases,
 			string.format(
-				"harness:case(%q, function(check) local input = studioInput(); check:defer(function() input.close() end); print(%q); check:expect((function(...)\n%s\nend)(input)):toBe(true) end)",
+				"harness:case(%q, function(check) local input = studioInput(); check:defer(function() input.close() end); print(%q); check:expect((function(...)\n%s\nend)(input, function(code) input:PressKey(code, 0.05) end)):toBe(true) end)",
 				fixture.name,
 				fixture.name,
 				fixture.source
