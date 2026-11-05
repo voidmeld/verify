@@ -6,6 +6,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
 local Archive = require "../src/lute/text-metrics-archive"
+local NativeCode = require "./lib/native-code"
 
 return function()
 	local directory = ".lute/tmp/text-metrics-native"
@@ -30,7 +31,9 @@ return function()
 		worker = "tools/studio-worker.luau",
 		context = "Client",
 		deadlineSeconds = 180,
-		code = [==[
+		code = NativeCode(
+			"TextMetricsConformance",
+			[==[
 local root = game.ReplicatedStorage.TextMetricsConformance
 local Core, Roblox = require(root.src.core), require(root.src.roblox)
 local metrics = require(root.src.roblox["text-metrics"])
@@ -114,7 +117,8 @@ for _, module in root[".lute"].tmp["text-metrics-native"]:GetChildren() do
  end)
 end
 return game.HttpService:JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {executor = "native-text-metrics", environment = {engineVersion = version()}}))
-]==],
+]==]
+		),
 	}
 	assert(result.status == "returned", result.detail)
 	local report = Core.decode(result.report)

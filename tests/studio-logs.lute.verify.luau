@@ -70,6 +70,45 @@ local function fake(): World
 end
 
 describe("Studio engine log capture", function()
+	it("restricts collector capabilities before parenting and installs each side once", function()
+		local factory = luau.load(
+			luau.compile [==[
+local parents = {{children = {}}, {StarterPlayerScripts = {children = {}}}}
+for _, parent in {parents[1], parents[2].StarterPlayerScripts} do
+ function parent:FindFirstChild(name) return self.children[name] end
+end
+local capabilities = {}
+local count = 0
+local services = {ServerScriptService = parents[1], StarterPlayer = parents[2]}
+return {
+ game = {GetService = function(_, name) return assert(services[name]) end},
+ Instance = {new = function(class)
+  assert(class == 'Script' or class == 'LocalScript')
+  return setmetatable({}, {__newindex = function(self, key, value)
+   if key == 'Parent' then
+    assert(self.Sandboxed and self.Capabilities == capabilities, 'collector would gain Network')
+    assert(self.Source ~= nil and self.Name == 'VerifyEngineLogCollector')
+    value.children[self.Name] = self
+    count += 1
+   end
+   rawset(self, key, value)
+  end})
+ end},
+ SecurityCapabilities = {new = function(...) assert(select('#', ...) == 8) return capabilities end},
+ Enum = {SecurityCapability = {}},
+ count = function() return count end,
+}
+]==],
+			"=collector-install",
+			{ assert = assert, setmetatable = setmetatable, rawset = rawset, select = select }
+		)
+		local native = factory()
+		local engine = Engine.new(native)
+		expect(engine.run("Edit", Logs.install)):toBe "installed"
+		expect(engine.run("Edit", Logs.install)):toBe "installed"
+		expect(native.count()):toBe(2)
+	end)
+
 	it("captures both startup histories once and filters only internal source roots", function()
 		local native = fake()
 		native.emit("Server", "CorePackages.Internal:1: engine noise", "MessageError")

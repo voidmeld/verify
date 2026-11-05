@@ -3,6 +3,7 @@
 local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Files = require "../src/lute/files"
+local NativeCode = require "./lib/native-code"
 local fixtures = {
 	{ name = "native tween interpolation", source = require "../tests/fixtures/tween-interpolation" },
 	{ name = "native selection assignment", source = require "../tests/fixtures/ui-selection-assignment" },
@@ -68,7 +69,8 @@ return function()
 		table.insert(
 			cases,
 			string.format(
-				"harness:case(%q, function(check) check:expect((function()\n%s\nend)()):toBe(true) end)",
+				"harness:case(%q, function(check) local input = studioInput(); check:defer(function() input.close() end); print(%q); check:expect((function(...)\n%s\nend)(input)):toBe(true) end)",
+				fixture.name,
 				fixture.name,
 				fixture.source
 			)
@@ -78,8 +80,9 @@ return function()
 		place = place,
 		worker = "tools/studio-worker.luau",
 		context = "Client",
+		device = "hd_1080",
 		deadlineSeconds = 420,
-		code = [[
+		code = NativeCode("VerifyUILayout", [[
 local root = game:GetService("ReplicatedStorage").VerifyUILayout
 local Core = require(root.src.core)
 local Roblox = require(root.src.roblox)
@@ -89,7 +92,7 @@ return game:GetService("HttpService"):JSONEncode(Roblox.reportChannel.envelope(r
     executor = "native-ui-layout",
     environment = { engineVersion = version() },
 }))
-]],
+]]),
 	}
 	assert(result.status == "returned", result.detail)
 	local report = Core.decode(result.report)

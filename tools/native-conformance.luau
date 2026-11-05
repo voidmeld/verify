@@ -5,6 +5,7 @@ local Core = require "../src/core"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 local case = require "../examples/instance-case"
+local NativeCode = require "./lib/native-code"
 
 require "./native-ui-layout"()
 require "./native-text-metrics"()
@@ -23,7 +24,9 @@ local result = Lute.studio.run {
 	identity = { placeId = 123, universeId = 456 },
 	place = place,
 	worker = "tools/studio-worker.luau",
-	code = [[
+	code = NativeCode(
+		"VerifySemanticFixture",
+		[[
 assert(game.PlaceId == 123 and game.GameId == 456, 'configured Studio identity must reach the server')
 assert(game:GetService('TextChatService').ChatVersion == Enum.ChatVersion.TextChatService, 'generated places must use TextChatService')
 local root = game:GetService('ReplicatedStorage').VerifySemanticFixture
@@ -36,7 +39,8 @@ broken.registry.operations.actions['instance.setProperty'] = {run = function() r
 local failed = Core.runCase(case, broken.host)
 assert(failed.failed == 1, 'native mutation defect escaped the case')
 return game:GetService('HttpService'):JSONEncode(Roblox.reportChannel.envelope(runId, report))
-]],
+]]
+	),
 }
 assert(result.status == "returned", result.detail)
 local report = Core.decode(result.report)
@@ -50,7 +54,9 @@ local player = Lute.studio.run {
 	place = place,
 	context = "Client",
 	worker = "tools/studio-worker.luau",
-	code = [[
+	code = NativeCode(
+		"VerifySemanticFixture",
+		[[
 local root = game:GetService('ReplicatedStorage'):WaitForChild('VerifySemanticFixture')
 local Core = require(root.src.core)
 local Roblox = require(root.src.roblox)
@@ -60,7 +66,8 @@ rig:WaitForChild('HumanoidRootPart')
 task.wait(2)
 local report = Core.runCase(require(root.examples['player-case']), Roblox.playerHost.native('client'))
 return game:GetService('HttpService'):JSONEncode(Roblox.reportChannel.envelope(runId, report))
-]],
+]]
+	),
 }
 assert(player.status == "returned", player.detail)
 local playerReport = Core.decode(player.report)

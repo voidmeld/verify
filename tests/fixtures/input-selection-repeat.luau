@@ -4,7 +4,7 @@ return [==[
 local run = game:GetService("RunService")
 local input = game:GetService("UserInputService")
 local gui = game:GetService("GuiService")
-local virtual = input:CreateVirtualInput()
+local virtual = ... or input:CreateVirtualInput()
 local screen = Instance.new("ScreenGui")
 screen.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 local buttons = {}

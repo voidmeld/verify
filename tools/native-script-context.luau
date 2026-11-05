@@ -6,6 +6,7 @@ local Lute = require "../src/lute"
 local Eval = require "../src/agent-eval"
 local Files = require "../src/lute/files"
 local fixture = require "../tests/fixtures/script-context"
+local NativeCode = require "./lib/native-code"
 
 return function()
 	local directory = Files.claimDirectory(Files.temporary "verify-script-context")
@@ -39,7 +40,7 @@ return function()
 					context = if side == "Client" then "Client" else "Server",
 					worker = "tools/studio-worker.luau",
 					deadlineSeconds = 120,
-					code = [[
+					code = NativeCode("VerifyScriptContext", [[
 local root = game:GetService("ReplicatedStorage").VerifyScriptContext
 local Core, Roblox = require(root.src.core), require(root.src.roblox)
 local harness = Core.createHarness { now = os.clock }
@@ -52,7 +53,7 @@ end)
 return game:GetService("HttpService"):JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {
     executor = "native-script-context", environment = { engineVersion = version() },
 }))
-]],
+]]),
 				}
 				assert(result.status == "returned", result.detail)
 				local report = Core.decode(result.report)

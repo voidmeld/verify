@@ -2,7 +2,7 @@
 
 return [==[
 local input,gui=game.UserInputService,game.GuiService
-local virtual=assert(input:CreateVirtualInput())
+local virtual=... or assert(input:CreateVirtualInput())
 local screen=Instance.new("ScreenGui")
 screen.Parent=game.Players.LocalPlayer.PlayerGui
 local function button(name,x,y,w,h,parent)

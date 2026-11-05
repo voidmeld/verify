@@ -28,6 +28,7 @@ local Reply = require "../src/lute/studio-reply"
 local Platform = require "../src/lute/platform"
 local Roblox = require "../src/roblox"
 local Wire = require "../src/lute/wire"
+local luau = require "@std/luau"
 
 local PNG = "iVBORw0KGgp2ZXJpZnktZnJhbWU="
 
@@ -198,6 +199,8 @@ local function fake(studios: { Lute.StudioInfo }): Fake
 			elseif tool == "start_stop_play" then
 				self.playing = arguments.is_start == true
 				return { status = "answered", result = text "ok" }
+			elseif tool == "user_keyboard_input" or tool == "user_mouse_input" then
+				return { status = "answered", result = text "Success" }
 			elseif tool == "screen_capture" then
 				return {
 					status = "answered",
@@ -554,6 +557,178 @@ describe("attach to an open Studio", function()
 		end
 	end)
 
+	it("authorizes MCP input against the attached Studio and propagates refusal", function()
+		for _, refused in { false, true } do
+			local self = fake(ONE)
+			local authorized = 0
+			local session = attached(self, function(options)
+				options.authorize = function(request): Lute.StudioAuthorization
+					if request.tool == "user_keyboard_input" then
+						authorized += 1
+						expect(request.fields.studio_id):toBe "studio-a"
+						expect(request.fields.datamodel_type):toBe "Client"
+						return { ok = not refused, reason = "input refused" }
+					end
+					return { ok = true }
+				end
+			end)
+			local result = session.report(
+				"Client",
+				"local runId = 'input-session'; studioInput():SendTextInput('once'); return passingReport(runId)",
+				"input-session"
+			)
+			expect(authorized):toBe(1)
+			if refused then
+				expect(result.problem):toContain "input refused"
+				self.sandbox.run(
+					"Client",
+					[[
+for _, folder in game:GetService('ReplicatedStorage'):GetChildren() do
+ folder:SetAttribute('inputAck', folder:GetAttribute('inputSequence'))
+end
+]]
+				)
+			else
+				expect(result.problem):toBeNil()
+				expect(assert(result.report).passed):toBe(1)
+			end
+		end
+	end)
+
+	it("delivers ordered keyboard gamepad and pointer requests without HTTP", function()
+		local engine = StudioEngine.new({}, {
+			UserInputService = {
+				InputBegan = {
+					Connect = function()
+						return { Disconnect = function() end }
+					end,
+				},
+				InputEnded = {
+					Connect = function()
+						return { Disconnect = function() end }
+					end,
+				},
+			},
+			GuiService = {
+				GetGuiInset = function()
+					return { X = 4, Y = 8 }
+				end,
+			},
+		})
+		local requests: { string } = {}
+		local outcome = Detached.run {
+			execute = function(datamodel, code): Detached.Reply
+				return { ok = true, text = engine.run(datamodel, code), lost = false, expired = false }
+			end,
+			input = function(tool, actions): Detached.Reply
+				table.insert(requests, tool .. ":" .. Wire.encode(actions))
+				return { ok = true, lost = false, expired = false }
+			end,
+			datamodel = "Client",
+			code = [[
+local first = studioInput()
+first:SendKey(true, {Name = 'DPadDown'}, false)
+first:SendKey(false, {Name = 'DPadDown'}, false)
+local second = studioInput()
+second:SendTextInput('hello')
+second:SendMousePosition({X = 20, Y = 40})
+second:SendKey(true, {Name = 'A'}, false)
+second.close()
+second.close()
+return 'input done'
+]],
+			runId = "input-run",
+			pollSeconds = 0.001,
+			deadline = os.clock() + 5,
+		}
+		expect(outcome.status):toBe "done"
+		expect(outcome.text):toBe "input done"
+		expect(#requests):toBe(6)
+		expect(requests[1]):toContain "user_keyboard_input:"
+		expect(requests[1]):toContain "DPadDown"
+		expect(requests[2]):toContain "keyUp"
+		expect(requests[3]):toContain "hello"
+		expect(requests[4]):toContain "user_mouse_input:"
+		expect(requests[4]):toContain '"x":16'
+		expect(requests[4]):toContain '"y":32'
+		expect(requests[6]):toContain "keyUp"
+	end)
+
+	it("resumes a key sender on the engine event before the MCP round trip ends", function()
+		local began: ((unknown) -> ())? = nil
+		local advanced = false
+		local keyCode = { Name = "Down" }
+		local engine = StudioEngine.new({
+			keyCode = keyCode,
+			advance = function()
+				advanced = true
+			end,
+		}, {
+			UserInputService = {
+				InputBegan = {
+					Connect = function(_self: unknown, callback: (unknown) -> ())
+						began = callback
+						return { Disconnect = function() end }
+					end,
+				},
+			},
+		})
+		local sent = 0
+		local outcome = Detached.run {
+			execute = function(model, code): Detached.Reply
+				return { ok = true, text = engine.run(model, code), lost = false, expired = false }
+			end,
+			input = function(): Detached.Reply
+				sent += 1
+				assert(began) { KeyCode = keyCode }
+				task.wait(0.05)
+				expect(advanced):toBe(true)
+				return { ok = true, lost = false, expired = false }
+			end,
+			datamodel = "Client",
+			code = "studioInput():SendKey(true, keyCode, false); advance(); return 'observed'",
+			runId = "observed-input",
+			deadline = os.clock() + 3,
+		}
+		expect(outcome.status):toBe "done"
+		expect(sent):toBe(1)
+	end)
+
+	it("never replays input after delivery refusal reply loss or acknowledgement loss", function()
+		for _, boundary in { "refused", "lost", "ack" } do
+			local engine = StudioEngine.new {}
+			local sent = 0
+			local outcome = Detached.run {
+				execute = function(datamodel, code): Detached.Reply
+					if boundary == "ack" and string.find(code, "SetAttribute('inputAck'", 1, true) then
+						return { ok = false, lost = true, expired = false, detail = "ack lost" }
+					end
+					return { ok = true, text = engine.run(datamodel, code), lost = false, expired = false }
+				end,
+				input = function(): Detached.Reply
+					sent += 1
+					return { ok = boundary == "ack", lost = boundary == "lost", expired = false, detail = boundary }
+				end,
+				datamodel = "Client",
+				code = "studioInput():SendTextInput('once'); return 'done'",
+				runId = "input-" .. boundary,
+				pollSeconds = 0.001,
+				deadline = os.clock() + 3,
+			}
+			expect(outcome.status):toBe(if boundary == "refused" then "failed" else "session_lost")
+			expect(outcome.detail):toContain "not be replayed"
+			expect(sent):toBe(1)
+			engine.run(
+				"Client",
+				[[
+for _, folder in game:GetService('ReplicatedStorage'):GetChildren() do
+ folder:SetAttribute('inputAck', folder:GetAttribute('inputSequence'))
+end
+]]
+			)
+		end
+	end)
+
 	it("keeps multibyte text whole when it cuts a segment", function()
 		local self = fake(ONE)
 		local expected = "a" .. string.rep("\226\130\172", 20000)
@@ -575,9 +750,13 @@ describe("attach to an open Studio", function()
 			local request = Wire.parse(Detached.request(runId, context, "token-1"))
 			local engine = StudioEngine.new({
 				require = function(_module: unknown): unknown
-					return function(id: string, token: string): string
-						return "ran " .. id .. " " .. token
-					end
+					return luau.load(
+						luau.compile(
+							Detached.requestSource "assert(type(studioInput) == 'function'); return 'ran ' .. runId .. ' ' .. progressToken"
+						),
+						"=request-module",
+						{ assert = assert, type = type }
+					)()
 				end,
 			}, {
 				RunService = {
