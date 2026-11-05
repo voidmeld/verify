@@ -26,7 +26,10 @@ local function attach(environment: Environment.Environment)
 		end
 		actions[action] = true
 		local root = action:FindFirstAncestorWhichIsA "DataModel"
-		local input = if root then root:FindFirstChildOfClass "UserInputService" else nil
+		if root == nil then
+			return
+		end
+		local input = root:FindFirstChildOfClass "UserInputService"
 		local device = if input
 			then tostring(environment.propertyOf(input, "PreferredInput")):match "([^%.]+)$"
 			else nil
