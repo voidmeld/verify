@@ -332,6 +332,12 @@ it("fractional rendered text sizes measure at the floored size", function(_, cas
 	expect(complete):toBe(true)
 end)
 
+it("scaled text uses physical bounds beneath UIScale", function(_, caseContext)
+	local complete, messages = mountProbe(caseContext, require "./fixtures/ui-scaled-text")
+	expect(table.concat(messages, "\n")):toBe ""
+	expect(complete):toBe(true)
+end)
+
 it("rich text without metric tags preserves native text bounds", function(_, caseContext)
 	local complete, messages = mountProbe(
 		caseContext,

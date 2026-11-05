@@ -138,9 +138,6 @@ local function attach(environment: Environment.Environment, options: Options): C
 		if enum(object, "AutomaticSize", "None") ~= "None" then
 			unsupported(object, "TextScaled with AutomaticSize")
 		end
-		if rectangle.scale ~= 1 then
-			unsupported(object, "TextScaled under a UIScale")
-		end
 		local content = inset(object, rectangle)
 		local smallest, largest = 1, 100
 		local limit = object:FindFirstChildWhichIsA "UITextSizeConstraint"
