@@ -308,7 +308,7 @@ local function create(options: Options): Bridge
 	if layout then
 		local refreshing = false
 		local readAt: { [Environment.Instance]: number } = {}
-		setmetatable(readAt, { __mode = "k" })
+		setmetatable(readAt, { __mode = "ks" })
 		local readTime, readX, readY, readRoots = 0, 0, 0, 0
 		local readProjection: number? = nil
 		local geometry = assert(layoutOptions)

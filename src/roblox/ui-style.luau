@@ -35,7 +35,7 @@ local function create(
 	derives: { [Instance]: { Instance } }
 ): Controller
 	local animated: { [Instance]: { [string]: Animated } } = {}
-	setmetatable(animated, { __mode = "k" })
+	setmetatable(animated, { __mode = "ks" })
 	local refresh: (boolean?) -> () = function() end
 	local observe: () -> () = function() end
 	local observed: Environment.Connection? = nil
@@ -52,22 +52,22 @@ local function create(
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
 	local transitioned: { [Animated]: Instance } = {}
-	setmetatable(transitioned, { __mode = "k" })
-	setmetatable(timed, { __mode = "k" })
+	setmetatable(transitioned, { __mode = "ks" })
+	setmetatable(timed, { __mode = "ks" })
 	local stale: { [Animated]: Instance } = {}
-	setmetatable(stale, { __mode = "k" })
+	setmetatable(stale, { __mode = "ks" })
 	local staleSince: number? = nil
 	local dirtyReads: { [Instance]: boolean } = {}
 	local dirtyWatches: { [Instance]: boolean } = {}
-	setmetatable(dirtyReads, { __mode = "k" })
-	setmetatable(dirtyWatches, { __mode = "k" })
+	setmetatable(dirtyReads, { __mode = "ks" })
+	setmetatable(dirtyWatches, { __mode = "ks" })
 	local controller: Controller
 	local keptValues: { [Instance]: { [string]: Resolved } } = {}
-	setmetatable(keptValues, { __mode = "k" })
+	setmetatable(keptValues, { __mode = "ks" })
 	local keptScopes: { [Instance]: Scope } = {}
 	local dirtyScopes: { [Instance]: boolean } = {}
-	setmetatable(dirtyScopes, { __mode = "k" })
-	setmetatable(keptScopes, { __mode = "k" })
+	setmetatable(dirtyScopes, { __mode = "ks" })
+	setmetatable(keptScopes, { __mode = "ks" })
 	local function forgetKept(subtree: Instance)
 		local pending = { subtree }
 		while #pending > 0 do
@@ -84,9 +84,9 @@ local function create(
 		end
 	end
 	local watches: { [Instance]: { [string]: Watch } } = {}
-	setmetatable(watches, { __mode = "k" })
+	setmetatable(watches, { __mode = "ks" })
 	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
-	setmetatable(reads, { __mode = "k" })
+	setmetatable(reads, { __mode = "ks" })
 	local writes: Environment.Connection? = nil
 	local function mark(subtree: Instance?, within: ((Instance) -> boolean)?)
 		local now = env.now()
@@ -160,7 +160,7 @@ local function create(
 	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
 	local frameMatches: { [Instance]: { [Instance]: { [string]: boolean } } }? = nil
 	local scopeRoots: { [Instance]: Instance } = {}
-	setmetatable(scopeRoots, { __mode = "k" })
+	setmetatable(scopeRoots, { __mode = "ks" })
 	local function ownSheet(object: Instance): Instance?
 		local link = env.childWhichIsA(object, "StyleLink")
 		if link then
