@@ -17,6 +17,7 @@ export type Controller = {
 	invalidate: (Instance?) -> (),
 	animating: (boolean?) -> boolean,
 }
+type Scope = { sheet: Instance?, root: Instance? }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
 type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
 type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
@@ -63,7 +64,9 @@ local function create(
 	local controller: Controller
 	local keptValues: { [Instance]: { [string]: Resolved } } = {}
 	setmetatable(keptValues, { __mode = "k" })
-	local keptScopes: { [Instance]: { sheet: Instance? } } = {}
+	local keptScopes: { [Instance]: Scope } = {}
+	local dirtyScopes: { [Instance]: boolean } = {}
+	setmetatable(dirtyScopes, { __mode = "k" })
 	setmetatable(keptScopes, { __mode = "k" })
 	local function forgetKept(subtree: Instance)
 		local pending = { subtree }
@@ -152,7 +155,7 @@ local function create(
 			end
 		end
 	end
-	local frameScopes: { [Instance]: { sheet: Instance? } }? = nil
+	local frameScopes: { [Instance]: Scope }? = nil
 	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
 	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
 	local frameMatches: { [Instance]: { [Instance]: { [string]: boolean } } }? = nil
@@ -241,10 +244,13 @@ local function create(
 			end
 			if dependsOn(linked, sheet, {}) then
 				refresh(true)
-				dirty(root, function(descendant: Instance): boolean
-					local nested = scopeRoots[descendant]
-					return nested == nil or dependsOn(nested, sheet, {})
-				end)
+				if not dirtyScopes[root] then
+					dirty(root, function(descendant: Instance): boolean
+						local nested = scopeRoots[descendant]
+						return nested == nil or dependsOn(nested, sheet, {})
+					end)
+					dirtyScopes[root] = true
+				end
 			end
 		end
 	end
@@ -252,24 +258,29 @@ local function create(
 		local scopes = if observed ~= nil then keptScopes else frameScopes
 		local walked: { Instance } = {}
 		local found: Instance? = nil
+		local root: Instance? = nil
 		local current: Instance? = object
 		while current do
 			local known = if scopes then scopes[current] else nil
 			if known then
-				found = known.sheet
+				found, root = known.sheet, known.root
 				break
 			end
 			table.insert(walked, current)
 			found = ownSheet(current)
 			if found then
+				root = current
 				break
 			end
 			current = env.parentOf(current)
 		end
 		if scopes then
 			for _, visited in walked do
-				scopes[visited] = { sheet = found }
+				scopes[visited] = { sheet = found, root = root }
 			end
+		end
+		if root then
+			dirtyScopes[root] = nil
 		end
 		return found
 	end
@@ -680,6 +691,7 @@ local function create(
 		table.clear(keptValues)
 		table.clear(keptScopes)
 		table.clear(scopeRoots)
+		table.clear(dirtyScopes)
 		for object in pairs(animated) do
 			animated[object] = nil
 		end

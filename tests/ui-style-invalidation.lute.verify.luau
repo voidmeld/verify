@@ -283,6 +283,7 @@ it("derive dependencies propagate transitively with cycle protection and retain 
 	f.env.method(base, "SetDerives")(base, { a.sheet })
 	local detached = f.env.createInstance "StyleSheet"
 	detached:SetAttribute("Unrelated", 1)
+	f.settle()
 	before = f.env.layoutStamp(a.frame)
 	base:SetAttribute("Token", 20)
 	expect(f.env.layoutStamp(a.frame) > before):toBe(true)
@@ -457,6 +458,18 @@ it("geometry readers share a flush within each root while other roots stay pendi
 	expect(child.AbsoluteSize):toEqual(f.types.Vector2.new(300, 150))
 	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(300, 150))
 	expect(flushes):toBe(3)
+	f.env.method(a.rule, "SetPropertyTransition")(
+		a.rule,
+		"Size",
+		f.types.TweenInfo.new(1, f.types.Enum.EasingStyle.Linear)
+	)
+	f.ui.styled(a.frame, "Size")
+	f.ui.styled(child, "Size")
+	f.set(a.rule, "Size", f.types.UDim2.fromOffset(400, 200))
+	f.env.step(0.5)
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(350, 175))
+	expect(child.AbsoluteSize):toEqual(f.types.Vector2.new(350, 175))
+	expect(flushes):toBe(4)
 end)
 
 it("settled transition definitions require no per-step motion checks across live mounts", function(own)
@@ -503,6 +516,34 @@ it("settled transition definitions require no per-step motion checks across live
 	f.env.step(0.5)
 	f.ui.step()
 	expect(f.ui.styled(last.frame, "BackgroundTransparency")):toBe(0.5)
+end)
+
+it("unread sheet edits coalesce scope work and reads reopen invalidation", function(own)
+	local f = fixture(own)
+	local a, b = f.mount(), f.mount()
+	f.settle()
+	local stamps = 0
+	local stamp = f.env.stampLayout
+	f.env.stampLayout = function(object)
+		stamps += 1
+		stamp(object)
+	end
+	f.set(a.rule, "Size", f.types.UDim2.fromOffset(201, 101))
+	local first = stamps
+	expect(first > 0):toBe(true)
+	for index = 2, 100 do
+		f.set(a.rule, "Size", f.types.UDim2.fromOffset(200 + index, 100 + index))
+	end
+	expect(stamps):toBe(first)
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(300, 200))
+	expect(f.layoutReads[b.frame] or 0):toBe(0)
+	f.set(a.rule, "Size", f.types.UDim2.fromOffset(400, 250))
+	expect(stamps > first):toBe(true)
+	expect(f.ui.styled(a.frame, "Size")):toEqual(f.types.UDim2.fromOffset(400, 250))
+	local afterRead = stamps
+	f.set(a.rule, "Size", f.types.UDim2.fromOffset(500, 300))
+	expect(stamps > afterRead):toBe(true)
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(500, 300))
 end)
 
 return nil

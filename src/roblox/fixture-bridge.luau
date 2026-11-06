@@ -357,7 +357,7 @@ local function create(options: Options): Bridge
 					end
 				end
 				readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
-				readProjection = projectionRevision
+				readProjection = if geometry.projection then geometry.projection.revision() else nil
 			end
 			return environment.propertyOf(object, property)
 		end
