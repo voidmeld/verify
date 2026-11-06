@@ -13,13 +13,13 @@ export type Controller = {
 
 local function attach(environment: Environment.Environment)
 	local states: { [Instance]: State } = {}
-	setmetatable(states, { __mode = "k" })
+	setmetatable(states, { __mode = "ks" })
 	local actions: { [Instance]: boolean } = {}
 	local owners: { [Instance]: Instance } = {}
 	local destroying: { [Instance]: boolean } = {}
-	setmetatable(actions, { __mode = "k" })
-	setmetatable(owners, { __mode = "kv" })
-	setmetatable(destroying, { __mode = "k" })
+	setmetatable(actions, { __mode = "ks" })
+	setmetatable(owners, { __mode = "kvs" })
+	setmetatable(destroying, { __mode = "ks" })
 	local function preferred(action: Instance)
 		if destroying[action] then
 			return

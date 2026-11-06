@@ -450,6 +450,29 @@ describe("engine registry capacity", function()
 		expect(after - before < 64):toBeTrueWith(`retained {after - before} KiB`)
 	end)
 
+	it("returns registry capacity after a burst of instances while their environment stays alive", function()
+		local Environment = require "../src/roblox/environment"
+		local environment = Environment.create()
+		local function burst()
+			local objects: { Environment.Instance } = {}
+			local root = environment.createInstance "Frame"
+			for index = 1, 32768 do
+				local object = environment.createInstance "Frame"
+				object.Parent = root
+				objects[index] = object
+			end
+			for _, object in objects do
+				object:Destroy()
+			end
+			table.clear(objects)
+			root:Destroy()
+		end
+		local before = Lute.memory.settle({ cycles = 8 }).heapKb
+		burst()
+		local after = Lute.memory.settle({ cycles = 8 }).heapKb
+		expect(after - before < 128):toBeTrueWith(`retained {after - before} KiB`)
+	end)
+
 	it("reads the same mounted heap whatever the number of strings already alive", function()
 		local readings: { number } = {}
 		for offset = 0, 280000, 40000 do

@@ -8,7 +8,7 @@ local Datatypes = require "./datatypes"
 
 type Instance = Environment.Instance
 local function weaken<V>(values: { [Instance]: V })
-	setmetatable(values, { __mode = "k" })
+	setmetatable(values, { __mode = "ks" })
 end
 
 export type Options = {
@@ -347,7 +347,7 @@ local function attach(env: Environment.Environment, options: Options?, rule: Sel
 		env.fire(object, "Paused", env.propertyOf(object, "Video"))
 	end)
 	local points: { [Instance]: { unknown } } = {}
-	setmetatable(points, { __mode = "k" })
+	setmetatable(points, { __mode = "ks" })
 	env.fake("Path2D.SetControlPoints", function(object: Instance, values: { unknown })
 		points[object] = table.clone(values)
 		env.fire(object, "ControlPointChanged")

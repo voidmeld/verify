@@ -76,7 +76,7 @@ local function attach(environment: Environment.Environment)
 	end
 
 	type Rules = { groups: { [string]: boolean }, masks: { [string]: { [string]: boolean } } }
-	local worlds: { [Instance]: Rules } = setmetatable({}, { __mode = "k" })
+	local worlds: { [Instance]: Rules } = setmetatable({}, { __mode = "ks" })
 	local function rules(owner: Instance): Rules
 		local world = owner
 		if owner:IsA "PhysicsService" or owner:IsA "Workspace" then

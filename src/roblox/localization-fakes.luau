@@ -35,7 +35,7 @@ end
 
 local function attach(environment: Environment.Environment)
 	local tables: { [Environment.Instance]: { Entry } } = {}
-	setmetatable(tables, { __mode = "k" })
+	setmetatable(tables, { __mode = "ks" })
 	local empty: { Entry } = {}
 	local function entriesOf(object: Environment.Instance): { Entry }
 		local stored = tables[object]

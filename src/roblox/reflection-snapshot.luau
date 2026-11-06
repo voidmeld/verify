@@ -47,7 +47,7 @@ local SCHEMA_VERSION = 2
 
 local libraries: { [Snapshot]: Datatypes.Library } = {}
 local databases: { [Snapshot]: Reflection.Database } = {}
-setmetatable(libraries, { __mode = "k" })
+setmetatable(libraries, { __mode = "ks" })
 
 local function number(value: unknown): unknown
 	if value == "inf" then

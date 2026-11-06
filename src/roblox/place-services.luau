@@ -108,9 +108,9 @@ local function install<B>(
 			RemoveDefaultLoadingScreen = function() end,
 		}
 		local humanoidStates: { [Instance]: Datatypes.EnumMember } = {}
-		setmetatable(humanoidStates, { __mode = "k" })
+		setmetatable(humanoidStates, { __mode = "ks" })
 		local disabledStates: { [Instance]: { [string]: boolean } } = {}
-		setmetatable(disabledStates, { __mode = "k" })
+		setmetatable(disabledStates, { __mode = "ks" })
 		local function validateHumanoidState(state: Datatypes.EnumMember)
 			assert(
 				Datatypes.typeName(state) == "EnumItem" and Datatypes.enumType(state) == "HumanoidStateType",
@@ -424,7 +424,7 @@ local function install<B>(
 		local pendingDetach: { [Instance]: boolean } = {}
 		do
 			local weak = pendingDetach
-			setmetatable(weak, { __mode = "k" })
+			setmetatable(weak, { __mode = "ks" })
 		end
 		local function tagged(tag: string): { Instance }
 			local out: { Instance } = {}

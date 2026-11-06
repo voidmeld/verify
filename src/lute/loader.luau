@@ -36,7 +36,7 @@ local function inherit(environment: Environment, index: Environment | ((Environm
 end
 
 local function weakKeys<K, V>(registry: { [K]: V })
-	setmetatable(registry, { __mode = "k" })
+	setmetatable(registry, { __mode = "ks" })
 end
 
 local function parent(path: string): string

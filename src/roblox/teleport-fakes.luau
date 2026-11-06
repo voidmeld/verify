@@ -4,8 +4,8 @@ local Environment = require "./environment-types"
 local Data = require "./message-data"
 
 type Instance = Environment.Instance
-local joins: { [Instance]: unknown } = setmetatable({}, { __mode = "k" })
-local arrivals: { [Instance]: unknown } = setmetatable({}, { __mode = "k" })
+local joins: { [Instance]: unknown } = setmetatable({}, { __mode = "ks" })
+local arrivals: { [Instance]: unknown } = setmetatable({}, { __mode = "ks" })
 
 local function setJoinData(environment: Environment.Environment, player: Instance, data: { [string]: unknown })
 	assert(environment.isAlive(player) and player:IsA "Player", "join data requires a live Player in this environment")
@@ -21,7 +21,7 @@ local function setLocalPlayerTeleportData(environment: Environment.Environment, 
 end
 
 local function attach(environment: Environment.Environment)
-	local options: { [Instance]: unknown } = setmetatable({}, { __mode = "k" })
+	local options: { [Instance]: unknown } = setmetatable({}, { __mode = "ks" })
 	environment.fake("TeleportOptions.SetTeleportData", function(object: Instance, value: unknown)
 		options[object] = Data.copy(value, true)
 	end)

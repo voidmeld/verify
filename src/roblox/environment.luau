@@ -186,7 +186,7 @@ local function create(options: Options?): Environment
 	local mutations, published = 0, 0
 	local publishing = false
 	local layoutStamps: { [Instance]: number } = {}
-	setmetatable(layoutStamps, { __mode = "k" })
+	setmetatable(layoutStamps, { __mode = "ks" })
 	local layoutEpoch = 0
 
 	local function touch()

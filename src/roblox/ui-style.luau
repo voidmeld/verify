@@ -34,7 +34,7 @@ local function create(
 	derives: { [Instance]: { Instance } }
 ): Controller
 	local animated: { [Instance]: { [string]: Animated } } = {}
-	setmetatable(animated, { __mode = "k" })
+	setmetatable(animated, { __mode = "ks" })
 	local refresh: (boolean?) -> () = function() end
 	local observe: () -> () = function() end
 	local observed: Environment.Connection? = nil
@@ -51,19 +51,19 @@ local function create(
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
 	local settledMotion: { [Animated]: boolean } = {}
-	setmetatable(settledMotion, { __mode = "k" })
-	setmetatable(timed, { __mode = "k" })
+	setmetatable(settledMotion, { __mode = "ks" })
+	setmetatable(timed, { __mode = "ks" })
 	local stale: { [Animated]: Instance } = {}
-	setmetatable(stale, { __mode = "k" })
+	setmetatable(stale, { __mode = "ks" })
 	local staleSince: number? = nil
 	local styleGeneration = 0
 	local readsGeneration = -1
 	local wasAnimating = false
 	local controller: Controller
 	local keptValues: { [Instance]: { [string]: Resolved } } = {}
-	setmetatable(keptValues, { __mode = "k" })
+	setmetatable(keptValues, { __mode = "ks" })
 	local keptScopes: { [Instance]: { sheet: Instance? } } = {}
-	setmetatable(keptScopes, { __mode = "k" })
+	setmetatable(keptScopes, { __mode = "ks" })
 	local function forgetKept(subtree: Instance)
 		readsGeneration = -1
 		local pending = { subtree }
@@ -118,9 +118,9 @@ local function create(
 		mark(subtree)
 	end
 	local watches: { [Instance]: { [string]: Watch } } = {}
-	setmetatable(watches, { __mode = "k" })
+	setmetatable(watches, { __mode = "ks" })
 	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
-	setmetatable(reads, { __mode = "k" })
+	setmetatable(reads, { __mode = "ks" })
 	local parsed: { [string]: Selector.Selector } = {}
 	type Index = {
 		rules: { Instance },

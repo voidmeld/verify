@@ -22,7 +22,7 @@ export type Spec<T> = {
 }
 local function witness()
 	local weak: { token: {}? } = { token = {} }
-	return setmetatable(weak, { __mode = "v" })
+	return setmetatable(weak, { __mode = "vs" })
 end
 
 export type Witness = typeof(witness())

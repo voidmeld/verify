@@ -13,7 +13,7 @@ type Cached = { original: unknown, written: unknown }
 type Write = { object: Instance, property: string, value: unknown, original: unknown }
 
 local function weaken(cache: { [Instance]: { [string]: Cached } })
-	setmetatable(cache, { __mode = "k" })
+	setmetatable(cache, { __mode = "ks" })
 end
 
 local fields: { [string]: { string } } = {
@@ -58,9 +58,9 @@ end
 
 local function attach(environment: Environment.Environment, pivot: (Instance) -> CFrame)
 	local scales: { [Instance]: number } = {}
-	setmetatable(scales, { __mode = "k" })
+	setmetatable(scales, { __mode = "ks" })
 	local originals: { [Instance]: { [Instance]: { [string]: Cached } } } = {}
-	setmetatable(originals, { __mode = "k" })
+	setmetatable(originals, { __mode = "ks" })
 	environment.fake("Model.GetScale", function(model: Instance): number
 		return scales[model] or 1
 	end)

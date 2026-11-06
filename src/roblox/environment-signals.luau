@@ -20,7 +20,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 	end
 	local connections = 0
 	local running: { [thread]: boolean } = {}
-	setmetatable(running, { __mode = "k" })
+	setmetatable(running, { __mode = "ks" })
 	local meters: {
 		[unknown]: {
 			connections: () -> number,
@@ -29,7 +29,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 		},
 	} =
 		{}
-	setmetatable(meters, { __mode = "k" })
+	setmetatable(meters, { __mode = "ks" })
 
 	local function finish<R...>(thread: thread, start: number, ok: boolean, ...: R...): R...
 		running[thread] = nil
