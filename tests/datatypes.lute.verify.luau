@@ -202,4 +202,49 @@ describe("datatype values", function()
 	end)
 end)
 
+local REPEATED_PIVOT = [==[
+local model, root = Instance.new("Model"), Instance.new("Part")
+root.Parent, model.PrimaryPart = model, root
+local goal
+for degree = 1, 360 do
+	local angle = math.rad(degree)
+	local candidate = CFrame.lookAt(Vector3.zero, Vector3.new(math.cos(angle), 0, math.sin(angle)))
+	if candidate.UpVector.Y > 1 then
+		goal = candidate
+		break
+	end
+end
+if goal == nil then
+	return "no lookAt target rounds past unit length"
+end
+root.CFrame = goal
+for _ = 1, 200 do
+	model:PivotTo(goal)
+end
+local frame = root.CFrame
+for _, value in { frame:GetComponents() } do
+	if value ~= value or math.abs(value) == math.huge then
+		return "non-finite " .. tostring(frame)
+	end
+end
+if (frame.Position - goal.Position).Magnitude > 1e-4 then
+	return "moved " .. tostring(frame)
+end
+for _, axis in { frame.RightVector, frame.UpVector, frame.LookVector } do
+	if math.abs(axis.Magnitude - 1) > 1e-5 then
+		return "not orthonormal " .. tostring(frame)
+	end
+end
+if math.abs(frame.LookVector:Dot(goal.LookVector) - 1) > 1e-5 then
+	return "turned " .. tostring(frame)
+end
+return "ok"
+]==]
+
+describe("spatial fakes", function()
+	it("keep a model finite and orthonormal when PivotTo repeats one target", function()
+		expect(Lute.chunk.load(REPEATED_PIVOT, { environment = environment(library()) })()):toBe "ok"
+	end)
+end)
+
 return nil
