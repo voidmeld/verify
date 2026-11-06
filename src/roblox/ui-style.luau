@@ -50,8 +50,8 @@ local function create(
 	end
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
-	local settledMotion: { [Animated]: boolean } = {}
-	setmetatable(settledMotion, { __mode = "k" })
+	local transitioned: { [Animated]: Instance } = {}
+	setmetatable(transitioned, { __mode = "k" })
 	setmetatable(timed, { __mode = "k" })
 	local stale: { [Animated]: Instance } = {}
 	setmetatable(stale, { __mode = "k" })
@@ -97,7 +97,7 @@ local function create(
 			for object in watches do
 				dirtyWatches[object] = true
 			end
-			for entry, object in pairs(timed) do
+			for entry, object in pairs(transitioned) do
 				entry.dirty = entry.dirty or now
 				stale[entry] = object
 			end
@@ -119,7 +119,7 @@ local function create(
 			local entries = animated[object]
 			if entries then
 				for _, entry in entries do
-					if timed[entry] then
+					if transitioned[entry] then
 						entry.dirty = entry.dirty or now
 						stale[entry] = object
 					end
@@ -514,9 +514,12 @@ local function create(
 		end
 		local current = assert(entry)
 		if timing ~= nil then
-			timed[current] = object
+			transitioned[current] = object
 		else
-			timed[current] = nil
+			transitioned[current] = nil
+		end
+		if Transition.running(current.motion, env.now()) then
+			timed[current] = object
 		end
 		return sheet, Transition.sample(current.motion, env.now())
 	end
@@ -529,6 +532,7 @@ local function create(
 			if not env.isAlive(object) then
 				stale[entry] = nil
 				timed[entry] = nil
+				transitioned[entry] = nil
 				animated[object] = nil
 			elseif quiet then
 				pcall(animatedValue, object, entry.property, entry.phantom)
@@ -711,20 +715,13 @@ local function create(
 			refresh()
 			local now = env.now()
 			for entry, object in pairs(timed) do
-				local timing = entry.motion.timing
-				local running = stale[entry] ~= nil
-					or timing ~= nil and now - entry.motion.started - timing.delay < timing.time
-				if running or not settledMotion[entry] then
-					dirtyWatches[object] = true
-				end
+				dirtyWatches[object] = true
 				if not (entry.property:match "Color3$" or entry.property:match "Transparency$") then
-					if running then
-						env.stampLayout(object)
-					elseif not settledMotion[entry] then
-						env.stampLayout(object)
-					end
+					env.stampLayout(object)
 				end
-				settledMotion[entry] = if running then nil else true
+				if stale[entry] == nil and not Transition.running(entry.motion, now) then
+					timed[entry] = nil
+				end
 			end
 			if observed == nil then
 				for object in watches do
@@ -815,8 +812,7 @@ local function create(
 						continue
 					end
 				end
-				local timing = entry.motion.timing
-				if stale[entry] or timing ~= nil and now - entry.motion.started - timing.delay < timing.time then
+				if stale[entry] or Transition.running(entry.motion, now) then
 					return true
 				end
 			end

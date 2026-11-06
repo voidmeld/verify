@@ -4,6 +4,7 @@ local Test = require "./harness"
 local it, expect = Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
+local Transition = require "../src/roblox/ui-style-transition"
 
 local function fixture(own: (() -> ()) -> (), shared: boolean?)
 	local roots: { Roblox.Instance } = {}
@@ -435,6 +436,73 @@ it("failed style observations stay dirty until their rules are repaired", functi
 	f.set(mounted.rule, "Size", f.types.UDim2.fromOffset(300, 150))
 	f.ui.step()
 	expect(mounted.frame.AbsoluteSize):toEqual(f.types.Vector2.new(300, 150))
+end)
+
+it("geometry readers share a flush within each root while other roots stay pending", function(own)
+	local f = fixture(own)
+	local a, b = f.mount(), f.mount()
+	local child = f.env.createInstance("Frame", { Parent = a.root })
+	local flushes = 0
+	local flush = f.layout.flush
+	f.layout.flush = function(object)
+		flushes += 1
+		flush(object)
+	end
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(200, 100))
+	expect(child.AbsoluteSize):toEqual(f.types.Vector2.new(200, 100))
+	expect(flushes):toBe(1)
+	expect(b.frame.AbsoluteSize):toEqual(f.types.Vector2.new(200, 100))
+	expect(flushes):toBe(2)
+	f.set(a.rule, "Size", f.types.UDim2.fromOffset(300, 150))
+	expect(child.AbsoluteSize):toEqual(f.types.Vector2.new(300, 150))
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(300, 150))
+	expect(flushes):toBe(3)
+end)
+
+it("settled transition definitions require no per-step motion checks across live mounts", function(own)
+	local f = fixture(own, true)
+	local last = f.mount()
+	for index = 1, 24 do
+		local mounted = if index == 1 then last else f.mount()
+		f.env.method(mounted.rule, "SetPropertyTransition")(
+			mounted.rule,
+			"BackgroundTransparency",
+			f.types.TweenInfo.new(1, f.types.Enum.EasingStyle.Linear)
+		)
+		f.ui.styled(mounted.frame, "BackgroundTransparency")
+		last = mounted
+	end
+	f.settle()
+	local checks = 0
+	local running = Transition.running
+	Transition.running = function(motion, now)
+		checks += 1
+		return running(motion, now)
+	end
+	own(function()
+		Transition.running = running
+	end)
+	f.layout.step()
+	expect(f.ui.animating()):toBe(false)
+	expect(f.ui.animating(true)):toBe(false)
+	expect(checks):toBe(0)
+	f.set(last.rule, "BackgroundTransparency", 1)
+	f.env.step(0.5)
+	f.ui.step()
+	expect(f.ui.styled(last.frame, "BackgroundTransparency")):toBe(0.5)
+	expect(f.ui.animating()):toBe(true)
+	f.env.step(0.5)
+	f.ui.step()
+	expect(f.ui.styled(last.frame, "BackgroundTransparency")):toBe(1)
+	f.settle()
+	checks = 0
+	f.layout.step()
+	expect(f.ui.animating()):toBe(false)
+	expect(checks):toBe(0)
+	f.set(last.rule, "BackgroundTransparency", 0)
+	f.env.step(0.5)
+	f.ui.step()
+	expect(f.ui.styled(last.frame, "BackgroundTransparency")):toBe(0.5)
 end)
 
 return nil

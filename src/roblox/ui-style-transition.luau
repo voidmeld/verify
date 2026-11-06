@@ -179,4 +179,16 @@ local function retarget(motion: Motion, target: unknown, parameters: Timing?, no
 	motion.timing = if Names.kind(origin) == kind and INTERPOLATED[kind] then parameters else nil
 end
 
-return { timing = timing, sample = sample, retarget = retarget, ease = ease, interpolate = interpolate }
+local function running(motion: Motion, now: number): boolean
+	local parameters = motion.timing
+	return parameters ~= nil and now - motion.started - parameters.delay < parameters.time
+end
+
+return {
+	timing = timing,
+	sample = sample,
+	retarget = retarget,
+	ease = ease,
+	interpolate = interpolate,
+	running = running,
+}

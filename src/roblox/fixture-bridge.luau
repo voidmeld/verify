@@ -317,35 +317,47 @@ local function create(options: Options): Bridge
 				local revision = environment.revision()
 				local now = environment.now()
 				local viewport = geometry.viewport()
-				local count = #geometry.roots()
+				local roots = geometry.roots()
+				local count = #roots
 				local projectionRevision = if geometry.projection then geometry.projection.revision() else nil
 				if
-					readAt[object] ~= revision
-					or readTime ~= now
+					readTime ~= now
 					or readX ~= viewport.X
 					or readY ~= viewport.Y
 					or readRoots ~= count
 					or readProjection ~= projectionRevision
 				then
-					if
-						readTime ~= now
-						or readX ~= viewport.X
-						or readY ~= viewport.Y
-						or readRoots ~= count
-						or readProjection ~= projectionRevision
-					then
-						table.clear(readAt)
+					table.clear(readAt)
+				end
+				local ancestry: { [Environment.Instance]: boolean } = {}
+				local current: Environment.Instance? = object
+				while current do
+					ancestry[current] = true
+					current = environment.parentOf(current)
+				end
+				local pending = false
+				for _, root in roots do
+					if ancestry[root] and readAt[root] ~= revision then
+						pending = true
+						break
 					end
+				end
+				if pending then
 					refreshing = true
 					local ok, failure = pcall(layout.flush, object)
 					refreshing = false
 					if not ok then
 						error(failure, 0)
 					end
-					readAt[object] = environment.revision()
-					readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
-					readProjection = projectionRevision
+					local after = environment.revision()
+					for _, root in roots do
+						if ancestry[root] then
+							readAt[root] = after
+						end
+					end
 				end
+				readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
+				readProjection = projectionRevision
 			end
 			return environment.propertyOf(object, property)
 		end
