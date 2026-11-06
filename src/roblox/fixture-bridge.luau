@@ -275,7 +275,7 @@ local function create(options: Options): Bridge
 	end
 	local layout = if layoutOptions then UiLayout.attach(environment, layoutOptions) else nil
 	if layout and controller then
-		local step = layout.step
+		local step, flush = layout.step, layout.flush
 		local stepStyles = controller.step
 		local cached = controller.cached
 		layout.busy = function()
@@ -284,6 +284,12 @@ local function create(options: Options): Bridge
 		layout.step = function()
 			stepStyles()
 			cached(step)
+		end
+		layout.flush = function(object: Environment.Instance)
+			stepStyles()
+			cached(function()
+				flush(object)
+			end)
 		end
 		local objectsAtPosition = layout.objectsAtPosition
 		layout.objectsAtPosition = function(
@@ -301,7 +307,8 @@ local function create(options: Options): Bridge
 	end
 	if layout then
 		local refreshing = false
-		local readAt: number? = nil
+		local readAt: { [Environment.Instance]: number } = {}
+		setmetatable(readAt, { __mode = "ks" })
 		local readTime, readX, readY, readRoots = 0, 0, 0, 0
 		local readProjection: number? = nil
 		local geometry = assert(layoutOptions)
@@ -310,26 +317,47 @@ local function create(options: Options): Bridge
 				local revision = environment.revision()
 				local now = environment.now()
 				local viewport = geometry.viewport()
-				local count = #geometry.roots()
+				local roots = geometry.roots()
+				local count = #roots
 				local projectionRevision = if geometry.projection then geometry.projection.revision() else nil
 				if
-					readAt ~= revision
-					or readTime ~= now
+					readTime ~= now
 					or readX ~= viewport.X
 					or readY ~= viewport.Y
 					or readRoots ~= count
 					or readProjection ~= projectionRevision
 				then
+					table.clear(readAt)
+				end
+				local ancestry: { [Environment.Instance]: boolean } = {}
+				local current: Environment.Instance? = object
+				while current do
+					ancestry[current] = true
+					current = environment.parentOf(current)
+				end
+				local pending = false
+				for _, root in roots do
+					if ancestry[root] and readAt[root] ~= revision then
+						pending = true
+						break
+					end
+				end
+				if pending then
 					refreshing = true
-					local ok, failure = pcall(layout.step)
+					local ok, failure = pcall(layout.flush, object)
 					refreshing = false
 					if not ok then
 						error(failure, 0)
 					end
-					readAt = environment.revision()
-					readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
-					readProjection = projectionRevision
+					local after = environment.revision()
+					for _, root in roots do
+						if ancestry[root] then
+							readAt[root] = after
+						end
+					end
 				end
+				readTime, readX, readY, readRoots = now, viewport.X, viewport.Y, count
+				readProjection = if geometry.projection then geometry.projection.revision() else nil
 			end
 			return environment.propertyOf(object, property)
 		end

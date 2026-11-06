@@ -274,15 +274,7 @@ local function create(options: Options?): Environment
 			published += 1
 		else
 			mutations += 1
-			local className = state.className
-			if
-				className == "StyleRule"
-				or className == "StyleSheet"
-				or className == "StyleLink"
-				or className == "StyleDerive"
-			then
-				layoutEpoch = mutations
-			elseif property == "GuiState" then
+			if property == "GuiState" or property == "Name" or property == "Interactable" then
 				stampDown(object)
 			else
 				stampUp(object)
@@ -563,12 +555,7 @@ local function create(options: Options?): Environment
 		end,
 		touch = touch,
 		attributeChanged = function(object: Instance)
-			local className = stateOf(object).className
-			if string.sub(className, 1, 5) == "Style" then
-				layoutEpoch = mutations
-			else
-				stampDown(object)
-			end
+			stampDown(object)
 		end,
 		setTag = function(object: Instance, tag: string, present: boolean)
 			setTag(object, tag, present)
@@ -1078,9 +1065,13 @@ local function create(options: Options?): Environment
 	environment.layoutEpoch = function(): number
 		return layoutEpoch
 	end
-	environment.invalidateLayout = function()
+	environment.invalidateLayout = function(subtree: Instance?)
 		touch()
-		layoutEpoch = mutations
+		if subtree then
+			stampDown(subtree)
+		else
+			layoutEpoch = mutations
+		end
 	end
 	environment.stampLayout = function(object: Instance)
 		touch()

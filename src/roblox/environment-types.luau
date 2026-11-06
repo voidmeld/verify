@@ -193,7 +193,7 @@ export type Environment = {
 	revision: () -> (number, number),
 	layoutStamp: (Instance) -> number,
 	layoutEpoch: () -> number,
-	invalidateLayout: () -> (),
+	invalidateLayout: (Instance?) -> (),
 	stampLayout: (Instance) -> (),
 	onClone: (hook: CloneHook) -> Connection,
 	onCreate: (hook: CreateHook) -> Connection,

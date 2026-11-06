@@ -170,6 +170,7 @@ describe("semantic input adapter", function()
 			inputService = f.service,
 			layout = {
 				step = function() end,
+				flush = function() end,
 				objectsAtPosition = function()
 					queried += 1
 					return {}

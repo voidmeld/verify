@@ -137,6 +137,7 @@ return table.freeze {
 	"tests/ui-selection-scroll.lute.verify.luau",
 	"tests/ui-size-constraint.lute.verify.luau",
 	"tests/ui-style-boundaries.verify.luau",
+	"tests/ui-style-invalidation.lute.verify.luau",
 	"tests/ui-style-properties.lute.verify.luau",
 	"tests/ui-style-selectors.lute.verify.luau",
 	"tests/ui-text-clipping.lute.verify.luau",
