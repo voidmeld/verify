@@ -311,6 +311,13 @@ local function buildTree<B>(engine: PlaceRuntime.Engine, projectPath: string, de
 				if type(key) == "string" and engine.surface.memberKind(object.ClassName, key) == "property" then
 					local declared = engine.surface.memberType(object.ClassName, key)
 					engine.environment.poke(object, key, projectValue(engine, declared, value))
+				elseif
+					type(key) == "string"
+					and type(value) == "string"
+					and engine.surface.memberKind(object.ClassName, key .. "Content") == "property"
+					and engine.surface.memberType(object.ClassName, key .. "Content") == "Content"
+				then
+					engine.environment.poke(object, key .. "Content", engine.datatypes.Content.fromUri(value))
 				end
 			end
 		end
