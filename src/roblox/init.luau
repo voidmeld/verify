@@ -1,5 +1,8 @@
 --!strict
 
+local TeleportFakes = require "@self/teleport-fakes"
+local DeviceFakes = require "@self/device-fakes"
+
 local PlaceBoot = require "@self/place-boot"
 local PlaceRuntime = require "@self/place-runtime"
 local ContentFacts = require "@self/content-facts"
@@ -81,6 +84,11 @@ export type PlaceBootView = PlaceBoot.View
 export type PlaceBootHost<B = unknown, C = () -> unknown> = PlaceBoot.Host<B, C>
 
 return {
+	teleportFakes = {
+		setJoinData = TeleportFakes.setJoinData,
+		setLocalPlayerTeleportData = TeleportFakes.setLocalPlayerTeleportData,
+	},
+	deviceFakes = DeviceFakes,
 	contentFacts = ContentFacts,
 	bootPlace = PlaceBoot.run,
 	buildPlaceTree = PlaceBoot.buildTree,

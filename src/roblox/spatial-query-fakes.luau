@@ -7,6 +7,7 @@ local Enums = require "./datatypes/enum"
 local Names = require "./datatypes/names"
 local Environment = require "./environment-types"
 local Geometry = require "./query-geometry"
+local Terrain = require "./terrain-fakes"
 
 type Instance = Environment.Instance
 type Vector = D.Vector3Value
@@ -62,6 +63,7 @@ local function ball(position: Vector, radius: number): Shape
 end
 
 local function attach(environment: Environment.Environment)
+	local terrain = Terrain.attach(environment)
 	local function listed(part: Instance, filter: { unknown }): boolean
 		for _, candidate in filter do
 			assert(Names.kind(candidate) == "Instance", "query filters require Instances")
@@ -233,28 +235,39 @@ local function attach(environment: Environment.Environment)
 		end
 		local nearest: Result? = nil
 		for _, part in candidates(world, params, skip) do
-			if part:IsA "Terrain" then
-				assert(
-					environment.propertyOf(part, "Material") ~= nil,
-					"unsupported_content: Terrain requires a uniform authored Material"
-				)
-			end
-			if
-				part:IsA "Terrain"
-				and params.IgnoreWater
-				and Enums.itemValue(environment.propertyOf(part, "Material")).Name == "Water"
-			then
-				continue
-			end
-			local target = shape(part, false)
-			if length == 0 then
-				continue
-			end
-			local t: number?, normal: Vector?, position: Vector?
-			if isRay then
-				t, normal, position = Geometry.ray(source, direction, target)
+			local t: number?, normal: Vector?, position: Vector?, hitMaterial: unknown
+			if part:IsA "Terrain" and terrain.authored(part) then
+				assert(isRay, "unsupported_content: authored terrain supports rays only")
+				if length > 0 then
+					local hit = terrain.ray(part, source.frame.Position, direction, params.IgnoreWater)
+					if hit then
+						t, normal = hit.t, hit.normal
+						position, hitMaterial = source.frame.Position + direction * hit.t, hit.material
+					end
+				end
 			else
-				t, normal, position = Geometry.cast(source, direction, target)
+				if part:IsA "Terrain" then
+					assert(
+						environment.propertyOf(part, "Material") ~= nil,
+						"unsupported_content: Terrain requires a uniform authored Material"
+					)
+					if
+						params.IgnoreWater
+						and Enums.itemValue(environment.propertyOf(part, "Material")).Name == "Water"
+					then
+						continue
+					end
+				end
+				local target = shape(part, false)
+				if length == 0 then
+					continue
+				end
+				if isRay then
+					t, normal, position = Geometry.ray(source, direction, target)
+				else
+					t, normal, position = Geometry.cast(source, direction, target)
+				end
+				hitMaterial = environment.propertyOf(part, "Material")
 			end
 			if t ~= nil and (nearest == nil or t * length < nearest.Distance) then
 				nearest = Names.make(resultKind, {
@@ -262,7 +275,7 @@ local function attach(environment: Environment.Environment)
 					Position = assert(position),
 					Normal = assert(normal),
 					Distance = t * length,
-					Material = environment.propertyOf(part, "Material"),
+					Material = hitMaterial,
 				})
 				results[nearest] = nearest
 			end
