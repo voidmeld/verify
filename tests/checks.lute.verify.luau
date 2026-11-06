@@ -199,6 +199,13 @@ it("checks leakage and type policy honor git selection and ignored files", funct
 		expect(#Checks.noAny { root = root, untracked = true }):toBe(1)
 		write(root, "escape.lua", "--!strict\nreturn (1 :: unknown)\n")
 		expect(#Checks.noAny { root = root, untracked = true }):toBe(2)
+		write(root, "src/kept.luau", "--!strict\nreturn (1 :: number)\n")
+		write(root, "src/vendor/copied.luau", "--!strict\nreturn (1 :: number)\n")
+		write(root, "srcs/beside.luau", "--!strict\nreturn (1 :: number)\n")
+		local scoped = Checks.noAny { root = root, untracked = true, include = { "src" }, exempt = { "src/vendor/" } }
+		expect(#scoped):toBe(1)
+		expect(scoped[1]):toContain "src/kept.luau:2"
+		expect(#Checks.noAny { root = root, untracked = true, exempt = { "src", "srcs" } }):toBe(2)
 	end)
 end)
 

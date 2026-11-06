@@ -23,6 +23,8 @@ local Wire = require "@self/wire"
 local Worker = require "@self/worker"
 local Launch = require "@self/studio-launch"
 local TypePolicy = require "@self/type-policy"
+local Hash = require "@self/hash"
+local Bounded = require "@self/bounded"
 
 export type PlatformOptions = Platform.Options
 export type EvidenceValidateOptions = EvidenceStore.ValidateOptions
@@ -71,6 +73,8 @@ return {
 	gate = Gate,
 	corpus = Corpus,
 	typePolicy = TypePolicy,
+	sha256 = Hash,
+	bounded = Bounded,
 	host = Host.create,
 	worker = Worker.main,
 	selfRegisteringWorker = Worker.mainSelfRegistering,
