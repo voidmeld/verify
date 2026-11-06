@@ -1184,7 +1184,7 @@ end
 
 Source: [src/roblox/place-boot.luau](../src/roblox/place-boot.luau).
 
-`bootPlace<B>(config: Config, dependencies: Deps<B>) -> BootReport`
+`bootPlace<B>(config: Config, dependencies: Deps<B>) -> Report`
 
 Returns: A bounded boot report with stages, diagnostics and observed roots.
 
@@ -1580,7 +1580,7 @@ TextScaled supports AutomaticSize. An automatic X axis measures without a width 
 
 Source: [src/lute/gate.luau](../src/lute/gate.luau).
 
-`run(gate: Definition, options: Options?) -> Outcome`; `last(gate, options?) -> (Outcome?, string?)`; `writeReport(path, runId, report) -> ()`; `cli(draft, args, options?) -> number`; `create(runtime) -> GateRuntime`; `DEFAULT_DIRECTORY: string`
+`run(gate: Definition, options: Options?) -> Outcome`; `last(gate, options?) -> (Outcome?, string?)`; `writeReport(path, runId, report) -> ()`; `cli(draft, args, options?) -> number`; `create(runtime) -> Gate`; `DEFAULT_DIRECTORY: string`
 
 Returns: A bounded gate outcome, its saved predecessor, a CLI exit code, or an injected runtime.
 
@@ -1683,7 +1683,7 @@ local expression = Lute.place.moduleExpression("src/core")
 
 Source: [src/lute/platform.luau](../src/lute/platform.luau).
 
-`run(options: PlatformOptions) -> { report, directory, reportPath }`; `buildPublished(options: PublishedOptions) -> ()`
+`run(options: PlatformOptions) -> { report, directory, reportPath }`; `buildPublished(options: Published.Options) -> ()`
 
 Returns: A standard host report and saved paths, or a published-fixture file.
 
@@ -1728,7 +1728,7 @@ local host = Lute.studio.host(studioHostOptions)
 
 Source: [src/lute/worker.luau](../src/lute/worker.luau).
 
-`worker(operations: Operations, options: WorkerOptions?) -> ()`
+`worker(operations: Operations, options: Options?) -> ()`
 
 Returns: No value. It reads a worker batch, loads cases and writes the wire report.
 
@@ -1742,7 +1742,7 @@ Lute.worker(workerOperations)
 
 Source: [src/lute/worker.luau](../src/lute/worker.luau).
 
-`selfRegisteringWorker(operations: SelfRegisteringOperations, options: WorkerOptions?) -> ()`
+`selfRegisteringWorker(operations: SelfRegisteringOperations, options: Options?) -> ()`
 
 Returns: No value. It runs modules that register their own cases.
 
@@ -2600,7 +2600,7 @@ local received = Roblox.reportChannel.receive(envelope, "run-1")
 
 Source: [src/roblox/progress-channel.luau](../src/roblox/progress-channel.luau).
 
-`publisher(runId, token, emit) -> RunProgress`; `collect(rows, token, runId) -> Collected`; `read(token) -> string`; `readPage(token, afterSequence) -> string`; `LOGGER: string`
+`publisher(runId, token, emit) -> RunProgress`; `collect(rows, token, runId) -> Collected`; `read: string`; `readPage(token, afterSequence) -> string`; `LOGGER: string`
 
 Returns: A publisher, validated log events, or Studio source for a log read.
 
@@ -2614,7 +2614,7 @@ local source = Roblox.progressChannel.readPage("token", 0)
 
 Source: [src/roblox/init.luau](../src/roblox/init.luau).
 
-`collect(options?) -> Dump`; `decode(value: unknown) -> Dump`; `analyze(dump, options?) -> AuditReport`; `contrastRatio(left, right) -> number`; `isAbove(dump, left, right) -> boolean`; `SCHEMA_VERSION: number`; `RULES: { [string]: Severity }`
+`collect(options?) -> Dump`; `decode(value: unknown) -> Dump`; `analyze(dump, options?) -> Report`; `contrastRatio(left, right) -> number`; `isAbove(dump, left, right) -> boolean`; `SCHEMA_VERSION: number`; `RULES: { [string]: Severity }`
 
 Returns: UI facts, a validated dump, rule findings, contrast or ordering observations.
 
