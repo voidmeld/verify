@@ -73,15 +73,15 @@ local function attach(environment: Environment.Environment, hasPivot: (Instance)
 	environment.fake("PVInstance.PivotTo", function(object: Instance, target: CFrame)
 		assert(Datatypes.typeName(target) == "CFrame", "PivotTo requires a CFrame")
 		if object:IsA "BasePart" then
-			object.CFrame = target * frame(object, "PivotOffset"):Inverse()
+			object.CFrame = (target * frame(object, "PivotOffset"):Inverse()):Orthonormalize()
 			return
 		end
 		local delta = target * pivot(object):Inverse()
 		for _, child in object:GetDescendants() do
 			if child:IsA "BasePart" then
-				child.CFrame = delta * frame(child, "CFrame")
+				child.CFrame = (delta * frame(child, "CFrame")):Orthonormalize()
 			elseif child:IsA "Model" and hasPivot(child) then
-				child.WorldPivot = delta * frame(child, "WorldPivot")
+				child.WorldPivot = (delta * frame(child, "WorldPivot")):Orthonormalize()
 			end
 		end
 		object.WorldPivot = target
