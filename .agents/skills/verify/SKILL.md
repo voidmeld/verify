@@ -13,7 +13,7 @@ The [terms](../../../docs/README.md#terms) define each word that this guide uses
 
 ## Start
 
-1. Find the public root that you need. The [README](../../../README.md#packages) lists every root.
+1. Find the public root that you need. The [API setup](../../../docs/api.md#shared-setup) lists every root.
 2. Find the committed manifest or plan and a nearby specification.
 3. Read the gate instructions of the consumer and the relevant [documentation entry](../../../README.md#documentation).
 4. Run `lute run tools/verify-check.luau --ruleset <generic|roblox> <source-root>` when the consumer provides that command.
@@ -34,7 +34,7 @@ Follow these rules:
 | Build a plan, host, worker, retry, fixture or selection policy | [Execution](../../../docs/execution.md) |
 | Run the same case locally and in Roblox | [One case model](../../../docs/experience.md#one-case-model). Do not create a second case authoring model. |
 | Test Roblox UI or engine code under Lute | [Reflection snapshots](../../../docs/api.md#reflection-snapshots) and [datatypes](../../../docs/api.md#datatypes). Export and commit a snapshot from Studio. Load code under test with `Lute.loader`, which gives it the datatype `typeof`. |
-| Assert on a built model or place | [Model files](../../../docs/api.md#model-files). Build the XML format. |
+| Assert on a built model or place | [Model files](../../../docs/api.md#lutemodel). Build the XML format. |
 | Implement a host | [Host boundary](../../../docs/execution.md#host-boundary) |
 | Seal or judge host observations | [Host observations](../../../docs/api.md#host-observations) and [evidence provenance](../../../docs/api.md#evidence-provenance) |
 | Read a report or its claim | [API](../../../docs/api.md) and [laws](../../../docs/laws.md) |
