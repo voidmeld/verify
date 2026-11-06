@@ -104,13 +104,14 @@ local function attach(
 	owningWorld: (Instance) -> Instance?
 ): Select
 	local worlds: { [Instance]: World } = setmetatable({}, { __mode = "k" })
-	local moving: { [Instance]: { parent: Instance? } } = setmetatable({}, { __mode = "k" })
+	local moving: { [Instance]: { parent: Instance? } } = setmetatable({}, { __mode = "ks" })
 	local function invalidate()
 		table.clear(worlds)
 	end
 	environment.observe(function(event: Environment.Event)
-		if not event.injected and (event.operation == "destroy" or event.value ~= event.object.Parent) then
-			moving[event.object] = { parent = event.object.Parent }
+		local parent = event.object.Parent
+		if not event.injected and (if event.operation == "destroy" then parent ~= nil else event.value ~= parent) then
+			moving[event.object] = { parent = parent }
 		end
 	end, { operations = { "setParent", "destroy" } })
 	environment.onMemberWrite({ "Parent" }, function(object: Instance)
