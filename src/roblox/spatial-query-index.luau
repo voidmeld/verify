@@ -103,7 +103,7 @@ local function attach(
 	shape: (Instance) -> Shape,
 	owningWorld: (Instance) -> Instance?
 ): Select
-	local worlds: { [Instance]: World } = setmetatable({}, { __mode = "k" })
+	local worlds: { [Instance]: World } = setmetatable({}, { __mode = "ks" })
 	local moving: { [Instance]: { parent: Instance? } } = setmetatable({}, { __mode = "ks" })
 	local function invalidate()
 		table.clear(worlds)
