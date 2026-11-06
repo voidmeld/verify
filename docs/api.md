@@ -2987,7 +2987,7 @@ Returns: An exit code for plan, run, judge, report or audit commands.
 Failures: Invalid flags return a usage failure. Command failures return nonzero; host failures can raise.
 
 ```luau
-local exitCode = AgentEval.cli({ "plan", suitePath }, cliContext)
+local exitCode = AgentEval.cli({ "plan", "--suite", suitePath }, cliContext)
 ```
 
 ## Repository checks
