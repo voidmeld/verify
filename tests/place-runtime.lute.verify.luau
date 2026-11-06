@@ -937,6 +937,62 @@ it("mounts implicit project datatype values and attributes on roots, services an
 	expect(image.ImageRectSize):toBe(library.Vector2.new(10, 20))
 end)
 
+it("mounts serialized legacy asset properties into their Content properties", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(function()
+		bridge.close()
+	end)
+	local engine = bridge.placeEngine()
+	local project = {
+		tree = {
+			ReplicatedStorage = {
+				Folder = {
+					["$className"] = "Folder",
+					SurfaceAppearance = {
+						["$className"] = "SurfaceAppearance",
+						["$properties"] = {
+							ColorMap = "rbxasset://textures/color.png",
+							NormalMap = "rbxasset://textures/normal.png",
+							MetalnessMap = "rbxasset://textures/metalness.png",
+							RoughnessMap = "rbxasset://textures/roughness.png",
+							AlphaMode = "Transparency",
+						},
+					},
+				},
+			},
+		},
+	}
+	local fixtureHost = Lute.fixture.host
+	local host: PlaceRuntime.Host<luau.Bytecode> = {
+		readFile = function(): string
+			return json.serialize(project)
+		end,
+		compile = fixtureHost.compile,
+		load = fixtureHost.load,
+		encodeJson = fixtureHost.encodeJson,
+		decodeJson = fixtureHost.decodeJson,
+	}
+	Roblox.buildPlaceTree(engine, "fixture.project.json", {
+		host = host,
+		cache = Roblox.createPlaceCache(host),
+		files = {
+			exists = Lute.fixture.files.exists,
+			fileType = Lute.fixture.files.fileType,
+			listDirectory = Lute.fixture.files.listDirectory,
+		},
+	})
+	local folder = assert(engine.service("ReplicatedStorage"):FindFirstChild "Folder")
+	local surface = assert(assert(folder:FindFirstChild "SurfaceAppearance"):Clone())
+	local mesh = engine.newInstance "MeshPart"
+	surface.Parent = mesh
+	local appearance = assert(mesh:FindFirstChildWhichIsA "SurfaceAppearance")
+	expect(Environment.read(Environment.read(appearance, "ColorMapContent"), "Uri")):toBe "rbxasset://textures/color.png"
+	expect(Environment.read(Environment.read(appearance, "NormalMapContent"), "Uri")):toBe "rbxasset://textures/normal.png"
+	expect(Environment.read(Environment.read(appearance, "MetalnessMapContent"), "Uri")):toBe "rbxasset://textures/metalness.png"
+	expect(Environment.read(Environment.read(appearance, "RoughnessMapContent"), "Uri")):toBe "rbxasset://textures/roughness.png"
+	expect(appearance.AlphaMode):toBe(engine.datatypes.Enum.AlphaMode.Transparency)
+end)
+
 it("boots mounted scripts and requires modules without accepting invalid targets", function()
 	local files = {
 		["fixture.json"] = json.serialize {
