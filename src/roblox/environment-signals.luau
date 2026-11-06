@@ -66,7 +66,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 		local live: { Record } = {}
 		local fired = initialFires or 0
 		local signal: Signal<A...>
-		local function connect(_self: Signal<A...>, handler: (A...) -> ()): Connection
+		local function attach(handler: (A...) -> ()): Connection
 			local connection: Connection
 			local record: Record
 			connection = {
@@ -115,7 +115,7 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 						scheduler.resume(waiter, ...)
 					end
 				end
-				connection = signal:Connect(resume)
+				connection = attach(resume)
 				return cleanup
 			end)
 		end
@@ -153,16 +153,16 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 		local typedWait = waitSlot[1]
 		heldWait = nil
 		signal = {
-			Connect = connect,
+			Connect = function(_self: Signal<A...>, handler: (A...) -> ()): Connection
+				return attach(handler)
+			end,
 			Wait = typedWait,
 			Fire = operation(dispatch),
 			DisconnectAll = disconnectAll,
 		}
 		Names.register(signal, "RBXScriptSignal")
 		meters[signal] = {
-			connect = function(handler: (...unknown) -> ()): Connection
-				return connect(signal, handler)
-			end,
+			connect = attach,
 			connections = function(): number
 				return #live
 			end,

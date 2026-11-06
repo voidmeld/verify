@@ -429,6 +429,26 @@ describe("engine registry capacity", function()
 		}, { cycles = 8 })
 		expect(result.teardownRetainedKb < 128):toBeTrueWith(`teardown {result.teardownRetainedKb}`)
 	end)
+
+	it("releases the signals of destroyed instances while their environment stays alive", function()
+		local Environment = require "../src/roblox/environment"
+		local environment = Environment.create()
+		local function cycle()
+			for _ = 1, 2000 do
+				local object = environment.createInstance "Folder"
+				object:GetPropertyChangedSignal("Name"):Connect(function() end)
+				object.Changed:Connect(function() end)
+				object.AncestryChanged:Connect(function() end)
+				object:Destroy()
+			end
+		end
+		cycle()
+		local before = Lute.memory.settle({ cycles = 8 }).heapKb
+		cycle()
+		cycle()
+		local after = Lute.memory.settle({ cycles = 8 }).heapKb
+		expect(after - before < 64):toBeTrueWith(`retained {after - before} KiB`)
+	end)
 end)
 
 return nil
