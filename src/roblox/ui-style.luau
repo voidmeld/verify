@@ -18,7 +18,7 @@ export type Controller = {
 	animating: (boolean?) -> boolean,
 }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
-type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown, generation: number }
+type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
 type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
 local PHANTOMS = { UIPadding = true, UICorner = true, UIStroke = true, UIGradient = true }
 local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true, Interactable = true }
@@ -34,7 +34,7 @@ local function create(
 	derives: { [Instance]: { Instance } }
 ): Controller
 	local animated: { [Instance]: { [string]: Animated } } = {}
-	setmetatable(animated, { __mode = "ks" })
+	setmetatable(animated, { __mode = "k" })
 	local refresh: (boolean?) -> () = function() end
 	local observe: () -> () = function() end
 	local observed: Environment.Connection? = nil
@@ -51,25 +51,26 @@ local function create(
 	local pendingAt: number? = nil
 	local timed: { [Animated]: Instance } = {}
 	local settledMotion: { [Animated]: boolean } = {}
-	setmetatable(settledMotion, { __mode = "ks" })
-	setmetatable(timed, { __mode = "ks" })
+	setmetatable(settledMotion, { __mode = "k" })
+	setmetatable(timed, { __mode = "k" })
 	local stale: { [Animated]: Instance } = {}
-	setmetatable(stale, { __mode = "ks" })
+	setmetatable(stale, { __mode = "k" })
 	local staleSince: number? = nil
-	local styleGeneration = 0
-	local readsGeneration = -1
-	local wasAnimating = false
+	local dirtyReads: { [Instance]: boolean } = {}
+	local dirtyWatches: { [Instance]: boolean } = {}
+	setmetatable(dirtyReads, { __mode = "k" })
+	setmetatable(dirtyWatches, { __mode = "k" })
 	local controller: Controller
 	local keptValues: { [Instance]: { [string]: Resolved } } = {}
-	setmetatable(keptValues, { __mode = "ks" })
+	setmetatable(keptValues, { __mode = "k" })
 	local keptScopes: { [Instance]: { sheet: Instance? } } = {}
-	setmetatable(keptScopes, { __mode = "ks" })
+	setmetatable(keptScopes, { __mode = "k" })
 	local function forgetKept(subtree: Instance)
-		readsGeneration = -1
 		local pending = { subtree }
 		while #pending > 0 do
 			local object = table.remove(pending)
 			assert(object ~= nil)
+			dirtyReads[object], dirtyWatches[object] = true, true
 			if keptValues[object] ~= nil or keptScopes[object] ~= nil then
 				keptValues[object] = nil
 				keptScopes[object] = nil
@@ -79,14 +80,23 @@ local function create(
 			end
 		end
 	end
+	local watches: { [Instance]: { [string]: Watch } } = {}
+	setmetatable(watches, { __mode = "k" })
+	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
+	setmetatable(reads, { __mode = "k" })
 	local writes: Environment.Connection? = nil
 	local function mark(subtree: Instance?, within: ((Instance) -> boolean)?)
-		styleGeneration += 1
 		local now = env.now()
 		staleSince = staleSince or now
 		if subtree == nil then
 			table.clear(keptValues)
 			table.clear(keptScopes)
+			for object in reads do
+				dirtyReads[object] = true
+			end
+			for object in watches do
+				dirtyWatches[object] = true
+			end
 			for entry, object in pairs(timed) do
 				entry.dirty = entry.dirty or now
 				stale[entry] = object
@@ -103,6 +113,7 @@ local function create(
 				end
 				env.stampLayout(object)
 			end
+			dirtyReads[object], dirtyWatches[object] = true, true
 			keptValues[object] = nil
 			keptScopes[object] = nil
 			local entries = animated[object]
@@ -123,10 +134,6 @@ local function create(
 		pendingAt = nil
 		mark(subtree, within)
 	end
-	local watches: { [Instance]: { [string]: Watch } } = {}
-	setmetatable(watches, { __mode = "ks" })
-	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
-	setmetatable(reads, { __mode = "ks" })
 	local parsed: { [string]: Selector.Selector } = {}
 	type Index = {
 		rules: { Instance },
@@ -646,7 +653,7 @@ local function create(
 		if read[property] == nil then
 			local ruleSheet, target = resolve(object, property, nil)
 			read[property] = { sheet = ruleSheet, value = target }
-			readsGeneration = -1
+			dirtyReads[object] = true
 			if ruleSheet ~= nil then
 				observe()
 			end
@@ -696,8 +703,7 @@ local function create(
 			watches[object] = entries
 			if entries[property] == nil then
 				local sheet, value = animatedValue(object, property, nil)
-				entries[property] =
-					{ signal = env.newSignal(), sheet = sheet, value = value, generation = styleGeneration }
+				entries[property] = { signal = env.newSignal(), sheet = sheet, value = value }
 			end
 			return entries[property].signal
 		end,
@@ -705,25 +711,35 @@ local function create(
 			refresh()
 			local now = env.now()
 			for entry, object in pairs(timed) do
+				local timing = entry.motion.timing
+				local running = stale[entry] ~= nil
+					or timing ~= nil and now - entry.motion.started - timing.delay < timing.time
+				if running or not settledMotion[entry] then
+					dirtyWatches[object] = true
+				end
 				if not (entry.property:match "Color3$" or entry.property:match "Transparency$") then
-					local timing = entry.motion.timing
-					local running = stale[entry] ~= nil
-						or timing ~= nil and now - entry.motion.started - timing.delay < timing.time
 					if running then
-						settledMotion[entry] = nil
 						env.stampLayout(object)
 					elseif not settledMotion[entry] then
-						settledMotion[entry] = true
 						env.stampLayout(object)
 					end
 				end
+				settledMotion[entry] = if running then nil else true
 			end
-			local generation = styleGeneration
-			local animating = controller.animating()
-			if observed ~= nil and readsGeneration == styleGeneration and not animating and not wasAnimating then
-				return
+			if observed == nil then
+				for object in watches do
+					dirtyWatches[object] = true
+				end
+				for object in reads do
+					dirtyReads[object] = true
+				end
 			end
-			for object, entries in pairs(watches) do
+			for object in table.clone(dirtyWatches) do
+				dirtyWatches[object] = nil
+				local entries = watches[object]
+				if entries == nil then
+					continue
+				end
 				if not env.isAlive(object) then
 					for _, watch in entries do
 						watch.signal:DisconnectAll()
@@ -731,16 +747,11 @@ local function create(
 					watches[object] = nil
 				else
 					for property, watch in entries do
-						local motion = if animated[object] then animated[object][property .. "|"] else nil
-						if
-							observed ~= nil
-							and watch.generation == styleGeneration
-							and (motion == nil or watch.value == motion.motion.target)
-						then
-							continue
+						local ok, sheet, value = pcall(animatedValue, object, property, nil)
+						if not ok then
+							dirtyWatches[object] = true
+							error(sheet, 0)
 						end
-						local sheet, value = animatedValue(object, property, nil)
-						watch.generation = styleGeneration
 						if sheet ~= watch.sheet or value ~= watch.value then
 							watch.sheet, watch.value = sheet, value
 							watch.signal:Fire()
@@ -748,18 +759,22 @@ local function create(
 					end
 				end
 			end
-			wasAnimating = controller.animating()
-			if observed ~= nil and readsGeneration == styleGeneration then
-				return
-			end
-			readsGeneration = generation
-			for object, properties in pairs(reads) do
+			for object in table.clone(dirtyReads) do
+				dirtyReads[object] = nil
+				local properties = reads[object]
+				if properties == nil then
+					continue
+				end
 				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
 					reads[object] = nil
 				else
 					local changed = false
 					for property, read in properties do
-						local sheet, value = resolve(object, property, nil)
+						local ok, sheet, value = pcall(resolve, object, property, nil)
+						if not ok then
+							dirtyReads[object] = true
+							error(sheet, 0)
+						end
 						if sheet ~= read.sheet or value ~= read.value then
 							read.sheet, read.value = sheet, value
 							changed = true

@@ -31,6 +31,7 @@ export type Options = {
 }
 export type Controller = {
 	step: () -> (),
+	flush: (Instance) -> (),
 	busy: (() -> boolean)?,
 	objectsAtPosition: (root: Instance, x: number, y: number, candidates: { Instance }?) -> { Instance },
 	close: () -> (),
@@ -68,8 +69,23 @@ local function attach(environment: Environment.Environment, options: Options): C
 		return object:IsA "TextLabel" or object:IsA "TextButton" or object:IsA "TextBox"
 	end
 	local projected: { [Instance]: Projection.Area | false } = {}
-	setmetatable(projected, { __mode = "ks" })
-	local function validate(object: Instance)
+	setmetatable(projected, { __mode = "k" })
+	local validated: { [Instance]: { stamp: number, epoch: number, automatic: string, projected: boolean, projection: number? } } =
+		{}
+	local validationProjection: number? = nil
+	setmetatable(validated, { __mode = "k" })
+	local function validate(object: Instance, automatic: string)
+		local stamp, epoch = environment.layoutStamp(object), environment.layoutEpoch()
+		local previous = validated[object]
+		if
+			previous
+			and previous.stamp == stamp
+			and previous.epoch == epoch
+			and previous.automatic == automatic
+			and (not previous.projected or previous.projection == validationProjection)
+		then
+			return
+		end
 		if object:IsA "BillboardGui" then
 			projected[object] = Projection.resolve(object, read, options.projection) or false
 		elseif object:IsA "LayerCollector" and not object:IsA "ScreenGui" then
@@ -82,7 +98,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 				enum(object, "SizeConstraint", "RelativeXY") ~= "RelativeXY"
 				and parent ~= nil
 				and parent:IsA "GuiObject"
-				and enum(parent, "AutomaticSize", "None") ~= "None"
+				and automatic ~= "None"
 			then
 				local authored = Values.dimensions(read(object, "Size"))
 				if authored.X.Scale ~= 0 or authored.Y.Scale ~= 0 then
@@ -113,9 +129,26 @@ local function attach(environment: Environment.Environment, options: Options): C
 				unsupported(parent, "aspect constraint with automatic size")
 			end
 		end
+		local hasProjection = object:IsA "BillboardGui"
+		local childAutomatic = if object:IsA "GuiObject" then enum(object, "AutomaticSize", "None") else "None"
 		for _, child in object:GetChildren() do
-			validate(child)
+			validate(child, childAutomatic)
+			hasProjection = hasProjection or validated[child].projected
 		end
+		validated[object] = {
+			stamp = stamp,
+			epoch = epoch,
+			automatic = automatic,
+			projected = hasProjection,
+			projection = validationProjection,
+		}
+	end
+	local function validateRoot(root: Instance)
+		local parent = environment.parentOf(root)
+		validate(
+			root,
+			if parent and environment.isA(parent, "GuiObject") then enum(parent, "AutomaticSize", "None") else "None"
+		)
 	end
 	local function inset(object: Instance, rectangle: Rectangle): Rectangle
 		local padding = paddingValue(object, "PaddingLeft")
@@ -318,7 +351,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		}
 	end
 	local bases: { [Instance]: { width: number, height: number } } = {}
-	setmetatable(bases, { __mode = "ks" })
+	setmetatable(bases, { __mode = "k" })
 	type BasisWrite = { object: Instance, value: { width: number, height: number }? }
 	type Measurement = {
 		width: number,
@@ -649,11 +682,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		writes: { BasisWrite },
 	}
 	local keptSizes: { [Instance]: { stamp: number, epoch: number, entries: { KeptSize } } } = {}
-	setmetatable(keptSizes, { __mode = "ks" })
+	setmetatable(keptSizes, { __mode = "k" })
 	local measuredTrees: { [Instance]: { unknown } } = {}
-	setmetatable(measuredTrees, { __mode = "ks" })
+	setmetatable(measuredTrees, { __mode = "k" })
 	local placedTrees: { [Instance]: { unknown } } = {}
-	setmetatable(placedTrees, { __mode = "ks" })
+	setmetatable(placedTrees, { __mode = "k" })
 	local function unchangedSince(
 		store: { [Instance]: { unknown } },
 		object: Instance,
@@ -664,6 +697,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local key: { unknown } = {
 			environment.layoutStamp(object),
 			environment.layoutEpoch(),
+			if validated[object] and validated[object].projected then validationProjection or false else false,
 			parent.x,
 			parent.y,
 			parent.width,
@@ -792,19 +826,19 @@ local function attach(environment: Environment.Environment, options: Options): C
 		return value
 	end
 	local turns: { [Instance]: { Turn } } = {}
-	setmetatable(turns, { __mode = "ks" })
+	setmetatable(turns, { __mode = "k" })
 	local frames: { [Instance]: Rectangle } = {}
-	local step: () -> ()
+	local step: (Instance?) -> ()
 	local attached: Controller
 	local selectionScroll = SelectionScroll.attach(environment, read, vector, function(object)
 		return frames[object] ~= nil
 	end, function()
 		step()
 	end)
-	setmetatable(frames, { __mode = "ks" })
+	setmetatable(frames, { __mode = "k" })
 	local scrollingProperties = { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" }
 	local scrollingGeometry: { [Instance]: { [string]: Vector } } = {}
-	setmetatable(scrollingGeometry, { __mode = "ks" })
+	setmetatable(scrollingGeometry, { __mode = "k" })
 	local function scrollingBounds(object: Instance): { [string]: Vector }
 		local bounds: { [string]: Vector } = {}
 		for _, property in scrollingProperties do
@@ -819,18 +853,29 @@ local function attach(environment: Environment.Environment, options: Options): C
 		local dx, dy = x - turn.x, y - turn.y
 		return turn.x + dx * cosine - dy * sine, turn.y + dx * sine + dy * cosine
 	end
-	local function measure()
+	local function measure(target: Instance?)
 		local roots = options.roots()
+		if target then
+			local ancestry: { [Instance]: boolean } = {}
+			local current: Instance? = target
+			while current do
+				ancestry[current] = true
+				current = environment.parentOf(current)
+			end
+			local affected: { Instance } = {}
+			for _, root in roots do
+				if ancestry[root] then
+					table.insert(affected, root)
+				end
+			end
+			roots = affected
+		end
 		for _, root in roots do
 			selectionScroll.watch(root)
 		end
-		table.clear(projected)
+		validationProjection = if options.projection then options.projection.revision() else nil
 		for _, root in roots do
-			validate(root)
-		end
-		if next(projected) ~= nil then
-			table.clear(measuredTrees)
-			table.clear(placedTrees)
+			validateRoot(root)
 		end
 		local viewport = options.viewport()
 		local origin = if options.origin then options.origin() else { X = 0, Y = 0 }
@@ -1169,12 +1214,14 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end
 	local measuring = false
 	local pending = false
+	local pendingAll = false
 	local settledAt: number? = nil
 	local settledX, settledY, settledRoots = 0, 0, 0
 	local settledProjection: number? = nil
-	step = function()
+	step = function(target: Instance?)
 		pending = true
 		if measuring then
+			pendingAll = true
 			return
 		end
 		local viewport = options.viewport()
@@ -1197,7 +1244,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		measuring = true
 		repeat
 			pending = false
-			local ok, problem = pcall(measure)
+			if pendingAll then
+				target = nil
+				pendingAll = false
+			end
+			local ok, problem = pcall(measure, target)
 			if not ok then
 				measuring = false
 				error(problem, 0)
@@ -1205,7 +1256,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		until not pending
 		measuring = false
 		local after, publishedAfter = environment.revision()
-		if not busy and after == before and publishedAfter == publishedBefore then
+		if target == nil and not busy and after == before and publishedAfter == publishedBefore then
 			settledAt, settledX, settledY, settledRoots = after, viewport.X, viewport.Y, rootCount
 			settledProjection = projectionRevision
 		end
@@ -1239,7 +1290,8 @@ local function attach(environment: Environment.Environment, options: Options): C
 			end
 			wanted = nodes
 		else
-			validate(root)
+			validationProjection = if options.projection then options.projection.revision() else nil
+			validateRoot(root)
 		end
 		type Order = { z: number, index: number }
 		type Hit = {
@@ -1370,8 +1422,17 @@ local function attach(environment: Environment.Environment, options: Options): C
 		end
 		return result
 	end
-	local controller: Controller =
-		{ step = step, busy = nil, objectsAtPosition = objectsAtPosition, close = selectionScroll.close }
+	local controller: Controller = {
+		step = function()
+			step(nil)
+		end,
+		flush = function(object: Instance)
+			step(object)
+		end,
+		busy = nil,
+		objectsAtPosition = objectsAtPosition,
+		close = selectionScroll.close,
+	}
 	attached = controller
 	return attached
 end

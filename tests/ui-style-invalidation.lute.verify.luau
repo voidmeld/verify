@@ -5,9 +5,11 @@ local it, expect = Test.it, Test.expect
 local Roblox = require "../src/roblox"
 local Lute = require "../src/lute"
 
-local function fixture(own: (() -> ()) -> ())
+local function fixture(own: (() -> ()) -> (), shared: boolean?)
 	local roots: { Roblox.Instance } = {}
 	local reads: { [Roblox.Instance]: number } = {}
+	local layoutReads: { [Roblox.Instance]: number } = {}
+	local styleVisits: { [Roblox.Object]: number } = {}
 	local readStyled: (Roblox.Instance, string) -> unknown = function()
 		error "style reader unavailable"
 	end
@@ -15,6 +17,7 @@ local function fixture(own: (() -> ()) -> ())
 		ui = { measureBounds = false, measureText = false },
 		layout = {
 			read = function(object, property)
+				layoutReads[object] = (layoutReads[object] or 0) + 1
 				if property == "Size" then
 					reads[object] = (reads[object] or 0) + 1
 				end
@@ -35,6 +38,11 @@ local function fixture(own: (() -> ()) -> ())
 	local types = bridge.placeEngine().datatypes
 	readStyled = ui.styled
 	local selectors: { [Roblox.Object]: number } = {}
+	local isAlive = env.isAlive
+	env.isAlive = function(object)
+		styleVisits[object] = (styleVisits[object] or 0) + 1
+		return isAlive(object)
+	end
 	local propertyOf = env.propertyOf
 	env.propertyOf = function(object, property)
 		if property == "Selector" then
@@ -45,14 +53,20 @@ local function fixture(own: (() -> ()) -> ())
 	local function set(object: Roblox.Instance, name: string, value: unknown)
 		env.method(object, "SetProperty")(object, name, value)
 	end
+	local container = if shared then env.createInstance "Folder" else nil
+	if container then
+		table.insert(roots, container)
+	end
 	local function mount()
-		local root = env.createInstance "ScreenGui"
+		local root = env.createInstance("ScreenGui", { Parent = container })
 		local frame = env.createInstance("Frame", { Parent = root })
 		local sheet = env.createInstance "StyleSheet"
 		local rule = env.createInstance("StyleRule", { Parent = sheet, Selector = "Frame" })
 		set(rule, "Size", types.UDim2.fromOffset(200, 100))
 		local link = env.createInstance("StyleLink", { Parent = root, StyleSheet = sheet })
-		table.insert(roots, root)
+		if container == nil then
+			table.insert(roots, root)
+		end
 		return { root = root, frame = frame, sheet = sheet, rule = rule, link = link }
 	end
 	local function settle()
@@ -60,6 +74,8 @@ local function fixture(own: (() -> ()) -> ())
 		layout.step()
 		table.clear(reads)
 		table.clear(selectors)
+		table.clear(layoutReads)
+		table.clear(styleVisits)
 	end
 	return {
 		env = env,
@@ -70,6 +86,8 @@ local function fixture(own: (() -> ()) -> ())
 		set = set,
 		settle = settle,
 		reads = reads,
+		layoutReads = layoutReads,
+		styleVisits = styleVisits,
 		selectors = selectors,
 		roots = roots,
 		close = bridge.close,
@@ -345,6 +363,78 @@ it("repeated independent mounts and edits require bounded measurements", functio
 	end
 	expect(measured):toBe(9)
 	expect(f.env.layoutEpoch() > epoch):toBe(true)
+end)
+
+it("live mount validation and style notifications visit only changed trees", function(own)
+	local f = fixture(own, true)
+	local mounts = {}
+	local expectedReads: number? = nil
+	for _ = 1, 24 do
+		f.settle()
+		local mounted = f.mount()
+		local styledFires, propertyFires = 0, 0
+		mounted.frame.StyledPropertiesChanged:Connect(function()
+			styledFires += 1
+		end)
+		f.env.connect(f.env.method(mounted.frame, "GetStyledPropertyChangedSignal")(mounted.frame, "Size"), function()
+			propertyFires += 1
+		end)
+		f.ui.styled(mounted.frame, "Size")
+		f.layout.step()
+		local count = f.layoutReads[mounted.frame] or 0
+		expect(count > 0):toBe(true)
+		expectedReads = expectedReads or count
+		expect(count):toBe(expectedReads)
+		for _, previous in mounts do
+			assert((f.layoutReads[previous.frame] or 0) == 0, `old layout reads {f.layoutReads[previous.frame]}`)
+			assert((f.styleVisits[previous.frame] or 0) == 0, `old style visits {f.styleVisits[previous.frame]}`)
+		end
+		f.settle()
+		f.set(mounted.rule, "Size", f.types.UDim2.fromOffset(250, 125))
+		table.clear(f.styleVisits)
+		f.layout.step()
+		expect(mounted.frame.AbsoluteSize):toEqual(f.types.Vector2.new(250, 125))
+		expect(styledFires):toBe(1)
+		expect(propertyFires):toBe(1)
+		for _, previous in mounts do
+			assert((f.layoutReads[previous.frame] or 0) == 0, `old layout reads {f.layoutReads[previous.frame]}`)
+			assert((f.styleVisits[previous.frame] or 0) == 0, `old style visits {f.styleVisits[previous.frame]}`)
+		end
+		table.insert(mounts, mounted)
+	end
+end)
+
+it("geometry reads flush their own roots and leave independent dirty roots pending", function(own)
+	local f = fixture(own)
+	local a, b = f.mount(), f.mount()
+	f.settle()
+	f.set(a.rule, "Size", f.types.UDim2.fromOffset(240, 120))
+	f.set(b.rule, "Size", f.types.UDim2.fromOffset(360, 180))
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(240, 120))
+	expect(f.layoutReads[b.frame] or 0):toBe(0)
+	expect(f.env.propertyOf(b.frame, "AbsoluteSize")):toEqual(f.types.Vector2.new(200, 100))
+	expect(b.frame.AbsoluteSize):toEqual(f.types.Vector2.new(360, 180))
+	f.settle()
+	local invalid = f.env.createInstance("UITableLayout", { Parent = b.frame })
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(240, 120))
+	expect((pcall(f.layout.step))):toBe(false)
+	invalid:Destroy()
+	f.set(b.rule, "Size", f.types.UDim2.fromOffset(400, 200))
+	expect(b.frame.AbsoluteSize):toEqual(f.types.Vector2.new(400, 200))
+end)
+
+it("failed style observations stay dirty until their rules are repaired", function(own)
+	local f = fixture(own)
+	local mounted = f.mount()
+	f.env.method(mounted.frame, "GetStyledPropertyChangedSignal")(mounted.frame, "Size")
+	f.settle()
+	mounted.rule.Selector = "Frame:hover"
+	expect((pcall(f.ui.step))):toBe(false)
+	expect((pcall(f.ui.step))):toBe(false)
+	mounted.rule.Selector = "Frame"
+	f.set(mounted.rule, "Size", f.types.UDim2.fromOffset(300, 150))
+	f.ui.step()
+	expect(mounted.frame.AbsoluteSize):toEqual(f.types.Vector2.new(300, 150))
 end)
 
 return nil
