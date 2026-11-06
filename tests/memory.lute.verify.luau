@@ -449,6 +449,37 @@ describe("engine registry capacity", function()
 		local after = Lute.memory.settle({ cycles = 8 }).heapKb
 		expect(after - before < 64):toBeTrueWith(`retained {after - before} KiB`)
 	end)
+
+	it("reads the same mounted heap whatever the number of strings already alive", function()
+		local readings: { number } = {}
+		for offset = 0, 280000, 40000 do
+			local alive = table.create(offset, "")
+			for index = 1, offset do
+				alive[index] = `alive{index}`
+			end
+			local result = Lute.memory.measure({
+				setup = function(): { string }
+					return {}
+				end,
+				run = function(state: { string })
+					for index = 1, 40000 do
+						state[index] = `mounted{index}`
+					end
+				end,
+				teardown = function(state: { string })
+					table.clear(state)
+				end,
+				iterations = 1,
+			}, { cycles = 8 })
+			table.insert(readings, result.mountedKb)
+			expect(#alive):toBe(offset)
+		end
+		local low, high = math.huge, 0
+		for _, reading in readings do
+			low, high = math.min(low, reading), math.max(high, reading)
+		end
+		expect(high - low < 256):toBeTrueWith(`mounted readings {table.concat(readings, ", ")} KiB`)
+	end)
 end)
 
 return nil

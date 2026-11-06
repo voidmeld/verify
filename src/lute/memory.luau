@@ -154,6 +154,11 @@ local bound = create {
 			held[index] = `capacity{index}`
 		end
 		assert(#held == STRING_TABLE_GROWTH, "memory string table growth failed")
+		local headroom = table.create(STRING_TABLE_GROWTH, "")
+		for index = 1, STRING_TABLE_GROWTH do
+			headroom[index] = `headroom{index}`
+		end
+		assert(#headroom == STRING_TABLE_GROWTH, "memory string table headroom failed")
 		return held
 	end,
 	pressure = function()
