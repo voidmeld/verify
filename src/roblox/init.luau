@@ -23,6 +23,7 @@ local Network = require "@self/network"
 local ExperienceHost = require "@self/experience-host"
 
 local Datatypes = require "@self/datatypes"
+local Value = require "@self/value"
 local Environment = require "@self/environment"
 local Scheduler = require "@self/scheduler"
 local UiAudit = require "@self/ui-audit"
@@ -101,6 +102,7 @@ return {
 	experienceHost = ExperienceHost,
 	testEnvironment = Environment.create,
 	datatypes = Datatypes,
+	value = Value,
 	isInstance = Environment.isInstance,
 	assertInstance = Environment.assertInstance,
 	typeName = Environment.typeName,

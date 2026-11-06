@@ -41,6 +41,7 @@ Require one of these public roots. Do not require other modules under `src`. The
 | `Bdd` | `src/bdd.luau` | Any | `describe` and `it` registration over Core |
 | `Roblox` | `src/roblox` | Any | Engine double, datatypes, reflection, UI fakes and Roblox hosts |
 | `Lute` | `src/lute` | Lute | Loader, fixtures, platform runs, Studio, Player and Open Cloud |
+| `Codec` | `src/codec` | Any | Base64, PNG metadata and XML parsing |
 | `Gate` | `src/gate` | Host side | Declarative gates and verdicts |
 | `Evidence` | `src/evidence` | Host side | Evidence provenance, sinks and reviews |
 | `Benchmark` | `src/benchmark.luau` | Host side | Benchmark cases, samples and comparisons |

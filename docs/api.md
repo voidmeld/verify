@@ -1136,6 +1136,18 @@ Benchmark report persistence operations.
 
 Store a benchmark report through the given store.
 
+### `Codec.base64`
+
+`encode(bytes) -> string` writes standard Base64. `decode(text) -> string?` returns nil for malformed input.
+
+### `Codec.image`
+
+`mediaType(bytes) -> string?` names a PNG, JPEG, GIF or WebP image from its leading bytes. `pngSize(bytes) -> (width?, height?)` reads a PNG header.
+
+### `Codec.xml`
+
+`parse(source) -> Element` parses a document. `children(parent, tag)` lists the direct children with that tag, and `first(parent, tag)` returns the first one or nil.
+
 ### `Consumer.generic`
 
 Generic consumer diagnostic ruleset.
@@ -1316,6 +1328,10 @@ Expose gate producers as named cases.
 
 Attachment sinks for writing case artifacts.
 
+### `Lute.bounded`
+
+Run a host process with a deadline. `run(argv, seconds, runner?, options?) -> Result` stops the process, and its process tree where the host supports it, when the deadline passes. `runWith` takes explicit settings. `capabilities(settings?)` names the stop mechanism.
+
 ### `Lute.chunk`
 
 Chunked source loading helpers.
@@ -1422,6 +1438,10 @@ Run cases through a caller-selected Player backend.
 ### `Lute.selfRegisteringWorker`
 
 Run worker modules that register their own cases.
+
+### `Lute.sha256`
+
+`sha256(bytes) -> string` returns the lowercase hexadecimal SHA-256 digest.
 
 ### `Lute.studio`
 
@@ -1547,6 +1567,10 @@ Collect, decode and analyze UI facts with explicit rules.
 
 Explicit UI behavior doubles used with reflection facts.
 
+### `Roblox.value`
+
+Move values across the engine double's VM boundary without casts. `value(item)` wraps a host value, `read(value, key)` and `write(value, key, item)` access a VM table, and `invoke(value, ...)` calls a VM function.
+
 ## Repository checks
 
 The Lute-only `src/checks` package returns findings without exiting. Configuration, behavior and contract falsifiers are defined in [repository checks](checks.md).
@@ -1608,3 +1632,4 @@ See the [terms](README.md#terms) for shared technical names.
 ## Type imports
 
 Types are defined beside their implementation. For example, `src/lute/studio.luau` exports `Options` and `HostOptions`. `src/roblox/fixture-bridge.luau` exports `Options`. Root packages expose selected aliases. Use the defining module for other types.
+

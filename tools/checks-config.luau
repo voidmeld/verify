@@ -23,6 +23,13 @@ local packages = {
 		end,
 	},
 	{
+		prefix = "Codec",
+		entry = "src/codec/init.luau",
+		load = function(): unknown
+			return require "../src/codec"
+		end,
+	},
+	{
 		prefix = "Roblox",
 		entry = "src/roblox/init.luau",
 		load = function(): unknown

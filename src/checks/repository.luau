@@ -6,7 +6,23 @@ local Walk = require "./walk"
 local Denylist = require "./denylist"
 local Policy = require "../lute/type-policy"
 
-export type Selection = { root: string?, untracked: boolean?, suffixes: { string }?, exclude: { [string]: boolean }? }
+export type Selection = {
+	root: string?,
+	untracked: boolean?,
+	suffixes: { string }?,
+	exclude: { [string]: boolean }?,
+	include: { string }?,
+	exempt: { string }?,
+}
+local function under(path: string, prefixes: { string }): boolean
+	for _, prefix in prefixes do
+		local folder = if string.sub(prefix, -1) == "/" then prefix else prefix .. "/"
+		if path == prefix or string.sub(path, 1, #folder) == folder then
+			return true
+		end
+	end
+	return false
+end
 export type Scan = Selection & { rules: { Denylist.Rule }, allowedLiterals: Denylist.Allowances? }
 export type Boundary = {
 	root: string,
@@ -28,7 +44,12 @@ local function selected(config: Selection): { string }
 	local found: { string } = {}
 	local seen: { [string]: boolean } = {}
 	for path in string.gmatch(listed.stdout, "[^%z]+") do
-		if seen[path] or (config.exclude ~= nil and config.exclude[path]) then
+		if
+			seen[path]
+			or (config.exclude ~= nil and config.exclude[path])
+			or (config.include ~= nil and not under(path, config.include))
+			or (config.exempt ~= nil and under(path, config.exempt))
+		then
 			continue
 		end
 		seen[path] = true
