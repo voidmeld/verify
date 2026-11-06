@@ -52,4 +52,6 @@ Require one of these public roots. Do not require other modules under `src`. The
 
 Run `lute run tools/gate.luau --tier fast` to check a working tree. See the [repository gate](docs/running.md#repository-gate) for the full check and its limits.
 
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and the pull request process.
+
 Copyright (c) 2026 voidmeld.
