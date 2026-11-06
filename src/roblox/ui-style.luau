@@ -696,6 +696,13 @@ local function create(
 			reads[object] = nil
 		end
 	end
+	local function affectsGeometry(entry: Animated, object: Instance): boolean
+		if entry.property:match "Color3$" or entry.property:match "Transparency$" then
+			return false
+		end
+		local component = entry.phantom or object.ClassName
+		return component ~= "UIGradient" and component ~= "UICorner" and component ~= "UIStroke"
+	end
 	controller = {
 		styled = styled,
 		component = function(object: Instance, className: string, property: string): unknown
@@ -801,18 +808,16 @@ local function create(
 			if not geometryOnly and next(stale) ~= nil then
 				return true
 			end
-			local now = env.now()
-			for entry, object in pairs(timed) do
-				if geometryOnly then
-					if entry.property:match "Color3$" or entry.property:match "Transparency$" then
-						continue
-					end
-					local component = entry.phantom or object.ClassName
-					if component == "UIGradient" or component == "UICorner" or component == "UIStroke" then
-						continue
+			if geometryOnly then
+				for entry, object in pairs(stale) do
+					if affectsGeometry(entry, object) then
+						return true
 					end
 				end
-				if stale[entry] or Transition.running(entry.motion, now) then
+			end
+			local now = env.now()
+			for entry, object in pairs(timed) do
+				if (not geometryOnly or affectsGeometry(entry, object)) and Transition.running(entry.motion, now) then
 					return true
 				end
 			end
