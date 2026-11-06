@@ -366,7 +366,9 @@ Collision groups use symmetric masks. Configure them with `PhysicsService.Regist
 
 Block Parts use box geometry. Uniform Ball Parts use sphere geometry. Cylinders, MeshParts, PartOperations, seats, spawn locations and trusses use their oriented `CFrame` and `Size` box. PartOperations include unions. Bounds queries use boxes for every BasePart. This model has no mesh triangles, concavity, union decomposition or cylinder curvature. Other collision shapes raise `unsupported_content`. These include wedges and nonuniform balls. Bounds queries can inspect their boxes.
 
-The simulator has no terrain voxel geometry. Use `environment.poke` to give a terrain proxy `CFrame`, `Size` and a uniform `Material`. Queries use that box in the Default collision group. Terrain without explicit bounds raises `unsupported_content`. Casts also require its material. `IgnoreWater` excludes terrain proxies with Water material. It does not exclude ordinary Parts with Water material. Mixed terrain materials and voxel changes need a query fake or native host. The simulator does not derive boxes from voxels. `Shapecast` cannot cast a Terrain source.
+Terrain ray geometry comes from `FillBlock`, `FillBall`, `FillCylinder`, `WriteVoxels`, `ReplaceMaterial` and `Clear`. Fills overwrite earlier occupied volumes, including carving with Air. Blocks and cylinders follow their CFrame; cylinders use local Y as their axis. Later fills survive earlier replacements. Replacements affect matching occupied material within the region, including replacement with Air; replacing Air does not create terrain. Clear removes all edits. WriteVoxels and ReplaceMaterial require resolution 4 and grid-aligned Region3 bounds of at most 4,194,304 voxels. Voxel arrays must match all three dimensions, with finite occupancy in `[0, 1]`. Validation finishes before edits apply. Input tables are copied into geometry. Each occupied voxel is a box filled upward from its bottom by its occupancy fraction. This analytic model preserves disconnected layers and supports rays in any direction; it does not implement native smooth-terrain meshing or voxelization of fill boundaries.
+
+Terrain rays share ordinary instance filters, the Default collision group and nearest-part selection. IgnoreWater excludes water volumes. Authored terrain shape casts raise `unsupported_content`; overlap queries still need an explicit box proxy. For a uniform terrain proxy without edits, use `environment.poke` to provide `CFrame`, `Size` and `Material`. Queries use that box. Missing proxy facts raise `unsupported_content`. `Shapecast` cannot cast a Terrain source.
 
 Nonzero `OverlapParams.Tolerance`, `RaycastParams.Margin` and `RaycastParams.SizeGradient` raise `unsupported`. Verify does not silently change the requested volume. Margin and SizeGradient accept validated values, then fail explicitly during a query. Spatial results prove only this geometry model. They do not prove native physics or floating-point parity. The query fails when it cannot resolve a box contact numerically.
 
@@ -1371,7 +1373,7 @@ Create simulated host fixtures and run exported probes.
 
 `placeEngine().record` keeps diagnostics and sends virtual timestamps and message types to LogService history and MessageOut. History returns independent tables. It keeps the newest 512 entries in order. ClearOutput clears history but keeps diagnostics. Structured Logger context is outside this simulation.
 
-Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback.
+Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback. AudioPlayer Play sets IsPlaying (including planned playback before readiness), and Stop clears it while preserving TimePosition. AudioTextToSpeech Play sets IsPlaying only when IsLoaded; Pause clears it and preserves TimePosition. Readiness remains a host-supplied fact. Scheduled audio timestamps raise before state changes. Modern audio controls do not advance TimePosition, synthesize media or emit completion; use explicit duration/event facts for those observations. AudioPlayer has no Pause method and AudioTextToSpeech has no Stop method in the engine reference.
 
 `TweenService:Create(instance, tweenInfo, goals)` returns a Tween with `Instance`, `TweenInfo` and `PlaybackState`. Play, Pause and Cancel follow the engine states Begin, Delayed, Playing, Paused, Cancelled and Completed. Virtual time advances a playing tween. When `DelayTime` plus `Time` elapses, the tween writes each goal value once and fires `Completed` with `Enum.PlaybackState.Completed`. A tween that is within 1e-6 seconds of its end is complete. The tween writes no intermediate values, because the engine interpolates natively. Cancel resets progress, writes no goal and fires `Completed` with `Enum.PlaybackState.Cancelled`. Destroying a playing tween stops it. `RepeatCount` other than 0 and `Reverses` raise. The simulator does not prove easing curves or rendered motion.
 
@@ -1550,6 +1552,24 @@ Build and inspect frozen reflection snapshots.
 ### `Roblox.reportChannel`
 
 Transport reports between host contexts.
+
+### `Roblox.teleportFakes`
+
+TeleportOptions SetTeleportData/GetTeleportData, Player GetJoinData and TeleportService GetLocalPlayerTeleportData are registered automatically in the engine double. Options start with nil data; players start with an empty join dictionary and client arrival data starts nil. Options store independent copies, return copies, and retain data on Clone. False is data; nil clears it. Payloads accept finite primitives, value datatypes supported by the double and nested arrays or dictionaries. Cycles, mixed keys, sparse arrays and engine-state references raise before state changes. No teleport operation, transport, credential or source-authentication guarantee is simulated.
+
+`setJoinData(environment, player, dictionary)` supplies independent server arrival facts for a live Player. `setLocalPlayerTeleportData(environment, teleportService, value)` supplies client arrival data separately; nil clears it. Both copy their inputs, and reads return fresh copies. These fixtures do not enforce server/client execution context or derive arrivals from TeleportOptions. Consumers choose which facts each actor receives.
+
+### `Roblox.deviceFakes`
+
+`configure(engine, { preferredInput, touch, keyboard, mouse, gamepad, topLeft, bottomRight, topbar })` applies a device preset to the place engine's UserInputService and GuiService instances. PreferredInput is an Enum.PreferredInput item; capability flags are booleans. Its preferred input must have an enabled capability. Insets are finite nonnegative Vector2 values; topbar is a finite Rect. Validation precedes publication. Property changes publish ordinary changed signals, including PreferredBinding updates on InputActions. GetGuiInset returns the supplied corners, so camera screen projection uses the same inset. TopbarInset publishes the supplied Rect. Mutating the options table afterward does not change installed state.
+
+The preset installs an all-buttons-up baseline for GetKeysPressed, GetMouseButtonsPressed, IsKeyDown, IsMouseButtonPressed and IsGamepadButtonDown. Input-host operations can override it with live simulated state. This helper invents no device dimensions and does not advance physical input. For captured Studio device profiles, viewport changes and ScreenGui layout areas, use createPlaceRuntime and StudioDeviceSimulatorService as documented above.
+
+### Simulated messaging
+
+MessagingService SubscribeAsync/PublishAsync are registered automatically through Roblox.testEnvironment and the reflected fixture bridge. Topics contain 1–80 bytes. SubscribeAsync returns a disconnectable connection; PublishAsync snapshots a finite primitive/table payload and defers local delivery through the virtual scheduler. Each current subscriber receives an independent `{ Data, Sent }` envelope. Sent is whole seconds since the virtual Unix epoch zero, captured at publication. Disconnection or service destruction suppresses queued delivery. New subscriptions receive future publications only. Cycles, mixed keys, sparse arrays, functions and engine-state values raise even when a topic has no subscribers.
+
+This deterministic local fake does not simulate cross-server transport, backend yields, quotas, payload byte limits, best-effort loss or script destruction. Consumers needing those outcomes supply explicit failure fakes or use a native host.
 
 ### `Roblox.testEnvironment`
 

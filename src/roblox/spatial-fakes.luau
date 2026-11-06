@@ -106,11 +106,9 @@ local function attach(environment: Environment.Environment, hasPivot: (Instance)
 		if service == nil then
 			return 0, 0
 		end
-		local read: unknown = environment.propertyOf(service, "GetGuiInset")
-		if type(read) ~= "function" then
-			return 0, 0
-		end
-		local ok, topLeft = pcall(environment.method(service, "GetGuiInset"), service)
+		local ok, topLeft = pcall(function(): unknown
+			return (environment.method(service, "GetGuiInset")(service))
+		end)
 		if not ok then
 			return 0, 0
 		end

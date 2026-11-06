@@ -13,6 +13,8 @@ local Types = require "./environment-types"
 local Vm = require "./value"
 local SpatialFakes = require "./spatial-fakes"
 local AudioFakes = require "./audio-fakes"
+local MessagingFakes = require "./messaging-fakes"
+local TeleportFakes = require "./teleport-fakes"
 local InputActionFakes = require "./input-action-fakes"
 local HapticFakes = require "./haptic-fakes"
 local TweenFakes = require "./tween-fakes"
@@ -1301,6 +1303,8 @@ local function create(options: Options?): Environment
 		return stateOf(object).worldPivotSet == true
 	end)
 	AudioFakes.attach(environment)
+	MessagingFakes.attach(environment)
+	TeleportFakes.attach(environment)
 	inputActions = InputActionFakes.attach(environment)
 	HapticFakes.attach(environment)
 	TweenFakes.attach(environment)

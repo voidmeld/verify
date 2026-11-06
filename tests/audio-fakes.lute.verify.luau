@@ -16,6 +16,7 @@ local function field(value: unknown, key: unknown): unknown
 			return item
 		end
 	end
+
 	return nil
 end
 
@@ -123,6 +124,33 @@ it("attenuation clamps numeric bounds and retains the curve on invalid keys", fu
 	expect(get(emitter)):toEqual { [0] = 1, [10] = 0 }
 	expect((pcall(set, emitter, { bad = 1 }))):toBe(false)
 	expect(get(emitter)):toEqual { [0] = 1, [10] = 0 }
+end)
+
+it("modern audio controls preserve position and expose readiness separately", function()
+	local engine = Lute.fixture.bridge().placeEngine()
+	local env = engine.environment
+	for _, className in { "AudioPlayer", "AudioTextToSpeech" } do
+		local player = engine.newInstance(className)
+		local play = env.method(player, "Play")
+		local halt = env.method(player, if className == "AudioPlayer" then "Stop" else "Pause")
+		local ready = if className == "AudioPlayer" then "IsReady" else "IsLoaded"
+		env.poke(player, ready, false)
+		player.TimePosition = 2
+		play(player)
+		expect(player.IsPlaying):toBe(className == "AudioPlayer")
+		expect(player.TimePosition):toBe(2)
+		halt(player)
+		expect(player.IsPlaying):toBe(false)
+		expect(player.TimePosition):toBe(2)
+		env.poke(player, ready, true)
+		play(player)
+		expect(player.IsPlaying):toBe(true)
+		expect(pcall(halt, player, 1)):toBe(false)
+		expect(player.IsPlaying):toBe(true)
+		halt(player)
+		expect(pcall(play, player, 1)):toBe(false)
+		expect(player.IsPlaying):toBe(false)
+	end
 end)
 
 return nil
