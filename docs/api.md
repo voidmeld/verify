@@ -1,6 +1,8 @@
 # API reference
 
-Verify gives each case an isolated lifecycle and records the result in a report. The case context exposes its registered case ID as `context.id`. Start with cases and assertions. Use sessions, plans and host adapters when you coordinate several sources or collect observations on another host.
+Verify gives each case an isolated lifecycle and records its result in a report.
+Start with cases and assertions.
+Use sessions, plans and host adapters to coordinate sources or collect observations on another host.
 
 | Task | Start here |
 | --- | --- |
@@ -8,28 +10,72 @@ Verify gives each case an isolated lifecycle and records the result in a report.
 | Compare values or record calls | [Assertions and spies](#assertions-and-spies) |
 | Read, validate or combine results | [Reports and transport](#reports-and-transport) |
 | Schedule work across hosts | [Execution plans](#execution-plans) |
+| Boot a mounted project | [Mounted place sources](#mounted-place-sources) |
+| Load Luau modules and fixtures | [Lute loader](#luteloader) |
+| Encode bytes or read XML | [Codecs](#codecs) |
 | Judge observations that a host collected | [Host observations](#host-observations) |
 | Prove that evidence is current, intact, reviewed and complete | [Evidence provenance](#evidence-provenance) |
 | Plan captures or move reports from a native host | [Host adapters](#host-adapters) |
 | Test engine-facing logic without Roblox | [Simulated environment](#simulated-environment) |
 | Compose reflection, UI fakes and the engine seam | [Reflection and explicit UI fakes](#reflection-and-explicit-ui-fakes) |
 | Capture native models, meshes and animations for the engine double | [Native content facts](#native-content-facts) |
-| Score a Roblox interface or evaluate coding agents | [Agent evaluation](agent-eval.md) |
+| Score a Roblox interface or evaluate coding agents | [Agent evaluation](#agent-evaluation) |
+| Measure benchmark samples and regressions | [Benchmarks](#benchmarks) |
+| Inspect consumer specifications | [Consumer diagnostics](#consumer-diagnostics) |
+| Check a repository | [Repository checks](#repository-checks) |
 
-Examples use these package names. Replace the paths with the locations of your mounted packages:
+## Shared setup
+
+Require a public root from your pinned Verify copy.
+Do not require private implementation modules for runtime operations.
+Types not aliased by a root remain in their defining modules.
+
+| Name | Entry | Host |
+| --- | --- | --- |
+| `Core` | `src/core` | Any |
+| `Bdd` | `src/bdd.luau` | Any |
+| `Roblox` | `src/roblox` | Any |
+| `Lute` | `src/lute` | Lute |
+| `Codec` | `src/codec` | Any |
+| `Gate` | `src/gate` | Host side |
+| `Evidence` | `src/evidence` | Host side |
+| `Benchmark` | `src/benchmark.luau` | Host side |
+| `Consumer` | `src/consumer` | Any |
+| `AgentEval` | `src/agent-eval` | Lute |
+| `Checks` | `src/checks` | Lute |
+
+Examples use the package names in this table. Bind the packages that each example uses.
+For a file under this checkout's `examples` directory, use:
 
 ```luau
-local Core = require(path.to.verify.core)
-local Bdd = require(path.to.verify.bdd)
+local Core = require "../src/core"
+local Bdd = require "../src/bdd"
+local Lute = require "../src/lute"
+local Roblox = require "../src/roblox"
+local Codec = require "../src/codec"
+local Gate = require "../src/gate"
+local Evidence = require "../src/evidence"
+local Benchmark = require "../src/benchmark"
+local Consumer = require "../src/consumer"
+local AgentEval = require "../src/agent-eval"
+local Checks = require "../src/checks"
 ```
 
-The optional packages are:
+These are fragments unless the text says otherwise.
+A name such as `host`, `benchmarkSpec` or `outputDirectory` is a caller-supplied input of the stated type.
+Short type names refer to the defining module linked in each entry.
+Use the root aliases when available.
+Examples in one entry do not share local variables with another entry.
+Transport examples use `lines`, `records` and `segments` from the preceding transport entries.
+`report` is a standard report from a harness run.
+`harness` is an open harness. `now` is a monotonic clock.
+`waitOps` supplies `now` and `sleep`.
+The [quickstart](quickstart.md) and [examples](../examples) provide complete programs.
+The [laws](laws.md) own lifecycle and evidence requirements.
 
-- [`Lute`](../src/lute/init.luau) and [`Roblox`](../src/roblox/init.luau).
-- [`Gate`](../src/gate/init.luau), [`Evidence`](../src/evidence/init.luau) and [`Benchmark`](../src/benchmark.luau). They run on the host side. A place mounts only core.
-- [`Consumer`](../src/consumer/init.luau), [`AgentEval`](../src/agent-eval/init.luau) and the Lute-only [`Checks`](../src/checks/init.luau). See [consumer diagnostics](#consumer-diagnostics), [agent evaluation](agent-eval.md) and [repository checks](checks.md).
-
-Each entry point exports its public functions and types. The [working example](../examples/basic.luau) is a case and report that you can run directly. The [laws](laws.md) define the lifecycle and evidence boundaries.
+This page owns public signatures, return values and failure behavior.
+`tools/check-public-surface.luau` checks each root export heading for missing or stale entries.
+It checks coverage, not the correctness of prose or examples.
 
 ---
 
@@ -37,7 +83,13 @@ Each entry point exports its public functions and types. The [working example](.
 
 ### `Core.createHarness`
 
-`createHarness({ now, source?, prefixIds? }) -> Harness`
+Source: [src/core/harness.luau](../src/core/harness.luau).
+
+`createHarness({ now, source?, prefixIds?, attachments? }) -> Harness`
+
+Returns: A new isolated `Harness`.
+
+Failures: Missing clock or invalid source-prefix options raise. Registration errors raise; execution failures stay in the report.
 
 `Core.createHarness` creates an isolated registry. Register cases, then call `harness:run` to receive their results. Importing Verify does not create a shared registry.
 
@@ -98,7 +150,8 @@ A required capability that the run lacks produces `unsupported`, not a pass. A d
 
 ### Case context
 
-The context records assertions, steps and artifact references. It owns case-local cleanup.
+The context records assertions, steps and artifact references. It owns case cleanup.
+`context.id` is the registered case ID.
 
 | Method | Purpose |
 | --- | --- |
@@ -146,7 +199,13 @@ Set the limits with `attachments` in `Core.createHarness` or in the run options.
 
 ### `Bdd.create`
 
+Source: [src/bdd.luau](../src/bdd.luau).
+
 `create(harness) -> Bdd`
+
+Returns: Registration and assertion verbs over the supplied harness.
+
+Failures: Invalid registration follows the harness contract. `skip` outside a running case or hook raises.
 
 `Bdd.create` provides registration verbs over the same harness and report model.
 
@@ -177,7 +236,13 @@ The surface contains `describe`, `it`, `itSkip`, `beforeEach`, `afterEach`, `exp
 
 ### `Core.createSession`
 
+Source: [src/core/session.luau](../src/core/session.luau).
+
 `createSession(options) -> Session`
+
+Returns: A session with one harness per source.
+
+Failures: Invalid options and closing without an open source raise. Reentry and reset during execution raise.
 
 `Core.createSession` owns one harness per source. Use it when modules register their cases as they load. The options require `executor` and `environment`. Optional fields are `capabilities`, `now`, `bind`, `cancelled`, `prefixCaseIds` and `selection`.
 
@@ -210,17 +275,156 @@ Call session methods with `:`. A `surface` factory maps registration functions t
 
 ### `Core.createSurfaceSession`
 
+Source: [src/core/session.luau](../src/core/session.luau).
+
 `createSurfaceSession(options) -> Session`
+
+Returns: A session whose registration surface retains the factory result type.
+
+Failures: A missing factory and invalid session transitions raise. Factory failures propagate.
+
+```luau
+local session = Core.createSurfaceSession {
+    executor = "local", environment = {},
+    surface = function(sourceHarness) return Bdd.create(sourceHarness) end,
+}
+```
 
 `Core.createSurfaceSession` takes the options of `Core.createSession` and also requires a `surface` factory. It preserves the return type of the factory. Declare its options as `Core.SessionProvidedOptions<YourSurface>` when needed.
 
 ---
 
+### `Core.runCase`
+
+Source: [src/core/harness.luau](../src/core/harness.luau).
+
+`runCase(spec: NamedCase, host: CaseHost) -> Report`
+
+Returns: A report for one case. The host supplies time, capabilities and typed operations.
+
+Failures: Case and cleanup failures become result rows. Invalid registration raises.
+
+```luau
+local single = Core.runCase(caseSpec, caseHost)
+print(Core.format(single))
+```
+
+### `Core.runCases`
+
+Source: [src/core/harness.luau](../src/core/harness.luau).
+
+`runCases(cases: { NamedCase }, options: RunOptions, now: () -> number, ids: { string }?) -> Report`
+
+Returns: A report with exact IDs and selection metadata. Without `ids`, it runs all cases.
+
+Failures: Empty collections or selections, duplicate or unknown IDs, and `options.selection` raise.
+
+```luau
+local selected = Core.runCases(namedCases, runOptions, now, { "first" })
+```
+
+### `Core.waitUntil`
+
+Source: [src/core/wait.luau](../src/core/wait.luau).
+
+`waitUntil(spec: Spec, ops: Ops) -> Result`
+
+Returns: `{ ok, reason, name, waitedSeconds, polls, observed, detail? }`. Reasons include `satisfied`, `timeout`, `cancelled`, `refused` and `probe_threw`.
+
+Failures: Invalid bounds raise. Probe errors become `probe_threw`; clock and sleep errors propagate.
+
+```luau
+local waited = Core.waitUntil({
+    name = "ready", deadlineSeconds = 1, pollSeconds = 0.1,
+    probe = function() return true, "ready", nil end,
+}, waitOps)
+assert(waited.ok)
+```
+
+### `Core.awaitValue`
+
+Source: [src/core/wait.luau](../src/core/wait.luau).
+
+`awaitValue<T>(predicate: () -> T?, seconds: number, poll: number, ops: Ops, truthy: boolean?) -> T?`
+
+Returns: The first non-nil value. False is a value unless `truthy` is true. Timeout and cancellation return nil.
+
+Failures: Invalid bounds and probe failures raise.
+
+```luau
+local value = Core.awaitValue(function() return false end, 1, 0.1, waitOps)
+assert(value == false)
+```
+
+### `Bdd.surface`
+
+Source: [src/bdd.luau](../src/bdd.luau).
+
+`surface(options: SurfaceOptions) -> Surface`
+
+Returns: A session-backed BDD surface with registration, report adoption, selection, execution and reset.
+
+Failures: Registration errors in `load` become failed source reports. Session reentry and invalid state raise.
+
+```luau
+local surface = Bdd.surface { executor = "local", environment = {}, capabilities = {}, ambientSource = "inline" }
+surface.it("passes", function() surface.expect(true):toBe(true) end)
+local result = surface.run()
+```
+
+### `Bdd.counts`
+
+Source: [src/bdd.luau](../src/bdd.luau).
+
+`counts(report: Report) -> (number, number, number)`
+
+Returns: Passed, failed and skipped counts. The failed count includes unsupported, timed-out and cancelled results.
+
+Failures: It expects a valid report.
+
+```luau
+local passed, failed, skipped = Bdd.counts(report)
+```
+
+### `Bdd.formatResults`
+
+Source: [src/bdd.luau](../src/bdd.luau).
+
+`formatResults(report: Report, title: string?) -> string`
+
+Returns: Readable results with an optional title.
+
+Failures: It expects a valid report.
+
+```luau
+print(Bdd.formatResults(report, "local cases"))
+```
+
+### `Bdd.formatFailures`
+
+Source: [src/bdd.luau](../src/bdd.luau).
+
+`formatFailures(report: Report, title: string?) -> string`
+
+Returns: Formatted failure details.
+
+Failures: It expects a valid report.
+
+```luau
+print(Bdd.formatFailures(report))
+```
+
 ## Assertions and spies
 
 ### `Core.expect`
 
+Source: [src/core/matchers.luau](../src/core/matchers.luau).
+
 `expect(value) -> Expectation`
+
+Returns: An expectation with matchers and `.never` negation.
+
+Failures: A failed matcher raises an assertion failure. The harness records it when the assertion runs in a case.
 
 Use `expect` directly, through a case context or through the BDD surface. Chain `.never` before a matcher to negate it.
 
@@ -248,7 +452,13 @@ end):toThrow("missing entry")
 
 ### `Core.spy`
 
+Source: [src/core/spy.luau](../src/core/spy.luau).
+
 `spy(implementation?) -> Spy`
+
+Returns: A spy with a callable `fn` and call-history controls.
+
+Failures: Implementation errors propagate after the call is recorded.
 
 `Core.spy` records calls to its `fn` and optionally delegates to your implementation.
 
@@ -266,6 +476,20 @@ Inspect `calls`, `called()`, `lastArgs()` and `lastReturn()`. Use `reset()` to c
 
 ---
 
+### `Core.float32`
+
+Source: [src/core/matchers.luau](../src/core/matchers.luau).
+
+`float32(value: number) -> number`
+
+Returns: The value rounded through a four-byte float buffer.
+
+Failures: Invalid argument types raise through the buffer operation.
+
+```luau
+Core.expect(Core.float32(0.1)):toBeFloat32(0.1)
+```
+
 ## Reports and transport
 
 A schema-v1 report keeps the executor, environment, capabilities, sources and case results. Each case result keeps status, timing, failures, steps, artifacts, limitations and origin. The counts must agree with the result rows.
@@ -281,50 +505,560 @@ A schema-v1 report keeps the executor, environment, capabilities, sources and ca
 
 ### Validate and combine
 
-| API | Use it to… |
-| --- | --- |
-| `Core.decode(value)` | Validate a foreign report and its schema. |
-| `Core.merge(reports, executor, environment)` | Combine trusted reports. |
-| `Core.compose(payloads, executor, environment)` | Account for every expected shard, including missing, invalid and duplicate outcomes. |
-| `Core.syntheticReport(options)` | Record work that a host could not reach. |
-| `Core.format(report)` | Produce readable output. Each case that carries measurements adds one line for each measurement: name, unit, sample count, `p50`, `p95`, declared extra percentiles and the evaluation reason. |
+Give `compose` every expected shard, including errors.
+Use `merge` only for trusted reports with distinct case IDs.
+
+### `Core.SCHEMA_VERSION`
+
+Source: [src/core/report.luau](../src/core/report.luau).
+
+`SCHEMA_VERSION: number`
+
+Returns: `1`, the report schema version.
+
+Failures: Reading the constant cannot fail. Decoders reject other versions.
 
 ```luau
-local combined = Core.compose({
-    { id = "worker-1", report = report },
-    { id = "worker-2", error = "worker exited before returning a report" },
-}, "local-workers", { revision = "working-tree" })
-
-print(Core.format(combined))
+assert(report.schemaVersion == Core.SCHEMA_VERSION)
 ```
 
-Give every launched shard, including errors. If you omit an unsuccessful worker from the input, the result cannot establish that all expected work passed.
+### `Core.decode`
+
+Source: [src/core/report.luau](../src/core/report.luau).
+
+`decode(value: unknown) -> Report`
+
+Returns: A validated report copy with schema, counts, results and evidence checked.
+
+Failures: Invalid versions, fields, counts or result records raise. JSON parsing alone does not validate a report.
+
+```luau
+local decoded = Core.decode(report)
+assert(decoded.total == report.total)
+```
+
+### `Core.merge`
+
+Source: [src/core/report.luau](../src/core/report.luau).
+
+`merge(reports: { Report }, executor: string, environment: { [string]: string }) -> Report`
+
+Returns: One combined trusted report with source and origin accounting.
+
+Failures: Duplicate case IDs raise. Use `compose` for untrusted shard outcomes.
+
+```luau
+local merged = Core.merge({ report }, "combined", {})
+```
+
+### `Core.compose`
+
+Source: [src/core/report.luau](../src/core/report.luau).
+
+`compose(payloads: { ShardPayload }, executor: string, environment: { [string]: string }) -> Report`
+
+Returns: A report that accounts for valid, invalid, missing and conflicting shard deliveries.
+
+Failures: Bad shard outcomes become failed synthetic results. Do not omit an expected shard from `payloads`.
+
+```luau
+local combined = Core.compose({ { id = "one", report = report }, { id = "two", error = "no delivery" } }, "workers", {})
+```
+
+### `Core.syntheticReport`
+
+Source: [src/core/harness.luau](../src/core/harness.luau).
+
+`syntheticReport(options: SyntheticOptions) -> Report`
+
+Returns: A one-result report for unreachable or refused work. Options include `id`, `name`, `status`, `executor`, `environment` and `message`.
+
+Failures: Empty IDs, names and executor names raise. Unsupported results need missing capabilities; skipped results need a reason.
+
+```luau
+local missing = Core.syntheticReport {
+    id = "missing", name = "missing worker", status = "failed",
+    executor = "local", environment = {}, message = "no report",
+}
+```
+
+### `Core.format`
+
+Source: [src/core/format.luau](../src/core/format.luau).
+
+`format(report: Report) -> string`
+
+Returns: Readable counts, result details and measurement summaries. It writes no file.
+
+Failures: It expects a valid report. Decode foreign data first.
+
+```luau
+print(Core.format(report))
+```
+
 
 ### Move reports between hosts
 
-| Surface | Transport |
-| --- | --- |
-| `Core.frame`, `extract`, `reassemble`, `receipt` | Tagged log lines. |
-| `Core.segment`, `reassembleSegments` | Bounded payload arrays. |
-| `Lute.encode`, `parse` | Any JSON value to text, and JSON text to a plain value. |
-| `Lute.decode` | JSON text to a validated report. |
+Validate each received report with `Core.decode`.
+The consumer binds executor identity and owns authenticity.
+See the [report transport procedure](execution.md#report-transport) for run-bound channels.
 
-`Core.reassembleSegments(segments: { unknown })` validates decoded rows before using their segment fields. It also accepts arrays produced by `Core.segment`. Invalid fields, missing segments and digest disagreements return `nil` and a reason; reassembly never changes the given rows.
+### `Core.frame`
 
-Missing, conflicting and mixed chunks fail. **JSON decoding is not report validation.** Validate each received report with `Core.decode`. The consumer binds executor identity and owns authenticity. [Report transport](execution.md#report-transport) describes the run-bound channel.
+Source: [src/core/transport.luau](../src/core/transport.luau).
+
+`frame(tag: string, payload: string, maxPayloadBytes: number?) -> { string }`
+
+Returns: Tagged transport lines. The optional size bounds the payload in each line.
+
+Failures: Invalid tags or chunk sizes raise.
+
+```luau
+local lines = Core.frame("result", "hello", 3)
+```
+
+### `Core.extract`
+
+Source: [src/core/transport.luau](../src/core/transport.luau).
+
+`extract(bytes: string, tag: string) -> { Record }`
+
+Returns: Parsed chunk records for the tag. Unrelated log text is ignored.
+
+Failures: An invalid tag raises. Incomplete or conflicting records need reassembly checks.
+
+```luau
+local records = Core.extract(table.concat(lines, "\n"), "result")
+```
+
+### `Core.reassemble`
+
+Source: [src/core/transport.luau](../src/core/transport.luau).
+
+`reassemble(records: { Record }) -> (string?, string?)`
+
+Returns: The complete payload, or nil and a reason.
+
+Failures: Missing, duplicate-conflicting or mixed records return a reason.
+
+```luau
+local payload, reason = Core.reassemble(records)
+assert(payload, reason)
+```
+
+### `Core.receipt`
+
+Source: [src/core/transport.luau](../src/core/transport.luau).
+
+`receipt(bytes: string, tag: string) -> (string?, string?)`
+
+Returns: The result of extraction and reassembly in one call.
+
+Failures: Invalid tags raise. Incomplete or conflicting delivery returns nil and a reason.
+
+```luau
+local payload, reason = Core.receipt(table.concat(lines, "\n"), "result")
+assert(payload, reason)
+```
+
+### `Core.segment`
+
+Source: [src/core/transport.luau](../src/core/transport.luau).
+
+`segment(payload: string, maxBytes: number) -> { Segment }`
+
+Returns: Ordered payload records with identity and digest fields.
+
+Failures: A nonpositive or nonintegral size raises.
+
+```luau
+local segments = Core.segment("hello", 3)
+```
+
+### `Core.reassembleSegments`
+
+Source: [src/core/transport.luau](../src/core/transport.luau).
+
+`reassembleSegments(segments: { unknown }) -> (string?, string?)`
+
+Returns: The complete payload, or nil and a reason. It leaves the input rows unchanged.
+
+Failures: Invalid fields, missing segments and digest conflicts return a reason.
+
+```luau
+local payload, reason = Core.reassembleSegments(segments)
+assert(payload == "hello", reason)
+```
+
+### `Lute.encode`
+
+Source: [src/lute/wire.luau](../src/lute/wire.luau).
+
+`encode(value: unknown) -> string`
+
+Returns: JSON text for a portable value.
+
+Failures: Cycles, unsupported types and invalid JSON values raise.
+
+```luau
+local text = Lute.encode({ status = "ready" })
+```
+
+### `Lute.parse`
+
+Source: [src/lute/wire.luau](../src/lute/wire.luau).
+
+`parse(encoded: string) -> unknown`
+
+Returns: Plain decoded JSON tables and primitive values.
+
+Failures: Invalid JSON raises. The result has no report validation.
+
+```luau
+local value = Lute.parse('{"ready":true}')
+```
+
+### `Lute.decode`
+
+Source: [src/lute/wire.luau](../src/lute/wire.luau).
+
+`decode(encoded: string) -> Report`
+
+Returns: A parsed and validated report.
+
+Failures: Invalid JSON or report schema raises.
+
+```luau
+local decoded = Lute.decode(Lute.encode(report))
+```
+
+### `Lute.decodeBatch`
+
+Source: [src/lute/batch.luau](../src/lute/batch.luau).
+
+`decodeBatch(encoded: string) -> PlanBatch`
+
+Returns: A validated worker input batch with its ID, index, units and optional deadline.
+
+Failures: Invalid JSON, missing fields or invalid batch values raise. It does not decode a result report.
+
+```luau
+local batch = Lute.decodeBatch(encodedBatch)
+```
+
 
 ## Execution plans
 
 A plan names a finite set of work and its requirements. The consumer provides discovery, the meaning of each locator and an authorized host.
 
-| API | Responsibility |
-| --- | --- |
-| `Core.execute(plan, host, options?)` | Validate, select and batch the plan, then execute the batches with lifecycle, capability and failure accounting. |
-| `Gate.define`, `run`, `format`, `testCases`, `rerun`, `explain`, `list` (package `src/gate`); `Lute.gate` (`run`, `last`, `cli`, `writeReport`) | Declare producers and execute them as one accounted plan with an acceptance verdict. See [declarative gates](execution.md#declarative-gates). |
-| `Benchmark.case`, `run`, `collection`, `collect`, `store`, `storeReport`, `decode`, `compare`, `spread` (`src/benchmark.luau`) | Warm up, sample and check baselines and stability. Report the result as an ordinary case. Store, compare and summarize runs. See [benchmarks](experience.md#benchmarks). |
-| `Lute.memory.measure`, `settle`, `create` | Estimate retained Luau heap in a separate lifecycle pass with bounded collection progress. See [retained heap estimates](execution.md#retained-heap-estimates-on-lute). |
+### `Core.execute`
 
-[Execution](execution.md) describes fixtures, deadlines, retries and Lute workers. The [fake host](../tests/fake-host.luau) of the tests injects missing, duplicate, reordered, failed and cancelled deliveries without external effects.
+Source: [src/core/execution.luau](../src/core/execution.luau).
+
+`execute(plan: PlanDraft | Plan, host: Host, options: ExecutionOptions?) -> ExecutionReport`
+
+Returns: The validated plan, batches, outcomes and standard report.
+
+Failures: Invalid plans raise. Host failures, missing deliveries and unsupported requirements remain accounted outcomes.
+
+```luau
+local execution = Core.execute(plan, host)
+print(Core.format(execution.report))
+```
+
+
+## Declarative gates
+
+A gate accounts for its declared producers and returns an acceptance verdict.
+The [execution guide](execution.md#declarative-gates) describes the procedure.
+
+### `Gate.SCHEMA_VERSION`
+
+Source: [src/gate/gate-define.luau](../src/gate/gate-define.luau).
+
+`SCHEMA_VERSION: number`
+
+Returns: `1`, the gate definition schema version.
+
+Failures: Reading the constant cannot fail.
+
+```luau
+assert(Gate.SCHEMA_VERSION == 1)
+```
+
+### `Gate.define`
+
+Source: [src/gate/gate-define.luau](../src/gate/gate-define.luau).
+
+`define(draft: Draft) -> Definition`
+
+Returns: A normalized gate with ordered producers, validated dependencies, policy and digest.
+
+Failures: Invalid producers, cycles, duplicate IDs and invalid policy bounds raise.
+
+```luau
+local gate = Gate.define { id = "checks", producers = { { id = "unit", kind = "command", argv = { "lute", "run", "check.luau" } } } }
+```
+
+### `Gate.run`
+
+Source: [src/gate/gate.luau](../src/gate/gate.luau).
+
+`run(gate: Definition, executor: Executor, options: RunOptions) -> Outcome`
+
+Returns: Execution records, report, build identity, scope and acceptance verdict.
+
+Failures: Invalid selection raises. Producer failures stay in the outcome and affect acceptance.
+
+```luau
+local outcome = Gate.run(gate, gateExecutor, gateOptions)
+```
+
+### `Gate.format`
+
+Source: [src/gate/gate-format.luau](../src/gate/gate-format.luau).
+
+`format(outcome: Outcome) -> string`
+
+Returns: A readable gate verdict and producer results.
+
+Failures: It expects a valid outcome.
+
+```luau
+print(Gate.format(outcome))
+```
+
+### `Gate.explain`
+
+Source: [src/gate/gate-format.luau](../src/gate/gate-format.luau).
+
+`explain(outcome: Outcome, id: string) -> string?`
+
+Returns: The producer or case explanation, or nil for an unknown ID.
+
+Failures: It expects a valid outcome.
+
+```luau
+local explanation = Gate.explain(outcome, "unit")
+```
+
+### `Gate.list`
+
+Source: [src/gate/gate-format.luau](../src/gate/gate-format.luau).
+
+`list(gate: Definition) -> string`
+
+Returns: A readable producer list with kinds, tiers and dependencies.
+
+Failures: It expects a defined gate.
+
+```luau
+print(Gate.list(gate))
+```
+
+### `Gate.rerun`
+
+Source: [src/gate/gate.luau](../src/gate/gate.luau).
+
+`rerun(outcome: Outcome) -> Selection?`
+
+Returns: Selection for unsuccessful work, or nil when there is none.
+
+Failures: It expects a valid outcome.
+
+```luau
+local selection = Gate.rerun(outcome)
+```
+
+### `Gate.testCases`
+
+Source: [src/gate/gate.luau](../src/gate/gate.luau).
+
+`testCases(outcome: Outcome) -> Report`
+
+Returns: The execution report without test-producer summary rows. Individual case results remain.
+
+Failures: It expects a valid gate outcome. It removes test-producer summary rows from the execution report.
+
+```luau
+print(Core.format(Gate.testCases(outcome)))
+```
+
+
+## Benchmarks
+
+A benchmark warms up work, records samples and evaluates explicit limits or a baseline.
+The [benchmark guide](experience.md#benchmarks) describes setup and measurement limits.
+
+### `Benchmark.check`
+
+Source: [src/benchmark-check.luau](../src/benchmark-check.luau).
+
+`check(spec: Spec, owned: boolean?) -> ()`
+
+Returns: No value after validating a benchmark specification. `owned` permits collection-owned calibration.
+
+Failures: Invalid samples, budgets, phases, baselines or calibration raise.
+
+```luau
+Benchmark.check(benchmarkSpec)
+```
+
+### `Benchmark.checkCollection`
+
+Source: [src/benchmark-check.luau](../src/benchmark-check.luau).
+
+`checkCollection(collection: Collection) -> ()`
+
+Returns: No value after validating the collection and its members.
+
+Failures: Invalid calibration, duplicate member names or invalid member specifications raise.
+
+```luau
+Benchmark.checkCollection(benchmarkCollection)
+```
+
+### `Benchmark.run`
+
+Source: [src/benchmark.luau](../src/benchmark.luau).
+
+`run(spec: Spec) -> Result`
+
+Returns: Samples, summaries, phases, invalidity, comparisons and any failure.
+
+Failures: Invalid specifications raise. Work failures become `failure`; calibration refusals remain in `invalid`.
+
+```luau
+local measured = Benchmark.run(benchmarkSpec)
+```
+
+### `Benchmark.case`
+
+Source: [src/benchmark.luau](../src/benchmark.luau).
+
+`case(spec: Spec) -> CaseOptions`
+
+Returns: A case definition that records benchmark measurements in the standard report.
+
+Failures: Invalid specifications raise at construction. Measurement failures or regressions fail the running case.
+
+```luau
+harness:case("measures work", Benchmark.case(benchmarkSpec))
+```
+
+### `Benchmark.collect`
+
+Source: [src/benchmark.luau](../src/benchmark.luau).
+
+`collect(collection: Collection) -> CollectionResult`
+
+Returns: Ordered member results with collection calibration and attempt evidence.
+
+Failures: Invalid collections raise. Execution and calibration failures remain in the result.
+
+```luau
+local collected = Benchmark.collect(benchmarkCollection)
+```
+
+### `Benchmark.collection`
+
+Source: [src/benchmark.luau](../src/benchmark.luau).
+
+`collection(collection: Collection) -> CaseOptions`
+
+Returns: One case definition that records all member measurements and calibration attempts.
+
+Failures: Invalid collections raise. Member failures and invalid measurements remain visible in the case.
+
+```luau
+harness:case("measures collection", Benchmark.collection(benchmarkCollection))
+```
+
+### `Benchmark.limits`
+
+Source: [src/benchmark.luau](../src/benchmark.luau).
+
+`limits(spec: Spec) -> Performance.Limits`
+
+Returns: Limits derived from unit, sample count and budget. With no thresholds, it sets `measureOnly`.
+
+Failures: It expects a valid specification. Validate with `check` first.
+
+```luau
+local limits = Benchmark.limits(benchmarkSpec)
+```
+
+### `Benchmark.store`
+
+Source: [src/benchmark-store.luau](../src/benchmark-store.luau).
+
+`store(name: string, results: { Result }) -> Stored`
+
+Returns: A portable stored measurement record. It writes no file.
+
+Failures: An empty name or invalid encoded measurements raise.
+
+```luau
+local stored = Benchmark.store("candidate", { measured })
+```
+
+### `Benchmark.storeReport`
+
+Source: [src/benchmark-store.luau](../src/benchmark-store.luau).
+
+`storeReport(name: string, report: Report) -> Stored`
+
+Returns: A portable record of the report measurements. The report must contain at least one measurement.
+
+Failures: An empty name or malformed measurements raise.
+
+```luau
+local stored = Benchmark.storeReport("candidate", report)
+```
+
+### `Benchmark.decode`
+
+Source: [src/benchmark-store.luau](../src/benchmark-store.luau).
+
+`decode(value: unknown) -> Stored`
+
+Returns: A validated stored record.
+
+Failures: Invalid schema, names, measurements, samples or series raise.
+
+```luau
+local baseline = Benchmark.decode(savedBaseline)
+```
+
+### `Benchmark.compare`
+
+Source: [src/benchmark-store.luau](../src/benchmark-store.luau).
+
+`compare(baseline: Stored, candidate: Stored, options: CompareOptions) -> Report`
+
+Returns: An ordinary report for declared comparison rules.
+
+Failures: Invalid rules raise. Missing, incompatible or regressed measurements do not pass.
+
+```luau
+local comparison = Benchmark.compare(baseline, stored, comparisonOptions)
+```
+
+### `Benchmark.spread`
+
+Source: [src/benchmark-store.luau](../src/benchmark-store.luau).
+
+`spread(runs: { Stored }, options: SpreadOptions?) -> SpreadSummary`
+
+Returns: Per-measurement spread and noise summaries across stored runs.
+
+Failures: Malformed records or invalid spread options raise.
+
+```luau
+local spread = Benchmark.spread({ baseline, stored })
+```
+
+
 
 ---
 
@@ -386,7 +1120,7 @@ The modeled `ContentProvider.PreloadAsync` accepts an empty request without call
 
 Construct it with `Lute.fixture.bridge().placeEngine()`. Use `engine.environment.scheduler` for time, `environment.fire(instance, event, ...)` for events and `environment.fake` or `fakeOn` for explicit method doubles. BasePart position/CFrame writes remain coupled. The reflected environment models pivots, descendant placement and oriented model bounds; it does not simulate joints, collisions or physics. Set a model's primary part or world pivot when its orientation matters; an unset pivot uses the largest descendant part as its basis.
 
-Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects classes for the existing runtime method doubles. Omit it to use the standard simulation. Give an explicit list to restrict the methods. An empty list installs none. The runtime applies this selection to existing and new instances. Run `closeHandlers` when the host closes. This stops registration. Unselected media and physics methods get no behavior.
+Runtime options are `{ aliases, cache, host, methodDoubles?, client?, beforeRender? }`. `methodDoubles` selects classes for the existing runtime method doubles. Omit it to use the standard simulation. Give an explicit list to restrict the methods. An empty list installs none. The runtime applies this selection to existing and new instances. Call each function in `runtime.closeHandlers` when the host closes. This stops registration. Unselected media and physics methods get no behavior.
 
 Runtime defaults preserve methods configured before runtime creation. `environment.hasFake(instance, member)` finds object overrides, inherited class fakes and class handlers. Closing removes only runtime overrides and listeners. It keeps caller methods.
 
@@ -400,9 +1134,168 @@ The optional `client = { name, userId, viewport = { x, y } }` creates a Player, 
 
 ModuleScript results are cached by instance and execution context. Relative requires use the mounted source tree. Runtime and compile failures stay in the cache. Another require raises the same failure.
 
+### `Roblox.buildPlaceTree`
+
+Source: [src/roblox/place-boot.luau](../src/roblox/place-boot.luau).
+
+`buildPlaceTree<B>(engine: PlaceRuntimeEngine, projectPath: string, dependencies: TreeDeps<B>) -> Mounted`
+
+Returns: The mounted project tree and source facts.
+
+Failures: Invalid projects, unsupported values and file host failures raise.
+
+```luau
+local mounted = Roblox.buildPlaceTree(placeEngine, projectPath, treeDependencies)
+```
+
+### `Roblox.createPlaceCache`
+
+Source: [src/roblox/place-boot.luau](../src/roblox/place-boot.luau).
+
+`createPlaceCache<B, C>(host: PlaceBootHost<B, C>) -> Cache<B, C>`
+
+Returns: A shared source and compilation cache. Module execution environments remain separate.
+
+Failures: Read and compilation failures propagate through the cache operations.
+
+```luau
+local cache = Roblox.createPlaceCache(Lute.fixture.host)
+```
+
+### `Roblox.createPlaceRuntime`
+
+Source: [src/roblox/place-boot.luau](../src/roblox/place-boot.luau).
+
+`createPlaceRuntime(engine, mounted, options) -> PlaceRuntime`
+
+Returns: A runtime with separate client/server module caches, stepping, device facts and close handlers.
+
+Failures: Invalid bindings or unsupported operations raise. Module and compile failures stay cached.
+
+```luau
+local runtime = Roblox.createPlaceRuntime(placeEngine, mounted, runtimeOptions)
+runtime.step(1 / 60)
+for _, close in runtime.closeHandlers do
+    close()
+end
+```
+
+### `Roblox.bootPlace`
+
+Source: [src/roblox/place-boot.luau](../src/roblox/place-boot.luau).
+
+`bootPlace<B>(config: Config, dependencies: Deps<B>) -> Report`
+
+Returns: A bounded boot report with stages, diagnostics and observed roots.
+
+Failures: Invalid configuration raises. Boot operation errors propagate. The returned report retains recorded source diagnostics.
+
+```luau
+local boot = Roblox.bootPlace(bootConfig, bootDependencies)
+```
+
 ## Host observations
 
 Use typed operations, `context:perform`, `await`, `checkpoint`, `judge` and `measure` in the ordinary case. Evidence lives in `CaseResult.evidence` and uses the standard report transport. The [experience contract](experience.md) describes binding. The [execution contract](execution.md) describes hosts.
+
+### `Core.operation`
+
+Source: [src/core/operations.luau](../src/core/operations.luau).
+
+`operation<I, O>(definition: Operation<I, O>) -> Operation<I, O>`
+
+Returns: A frozen copy with `kind`, `name`, `input` and `output` decoders.
+
+Failures: An empty name or a kind other than `action` or `query` raises.
+
+```luau
+local query = Core.operation {
+    kind = "query", name = "ready",
+    input = function(value: unknown): unknown return value end,
+    output = function(value: unknown): boolean
+        assert(type(value) == "boolean")
+        return value
+    end,
+}
+```
+
+### `Core.bindOperation`
+
+Source: [src/core/operations.luau](../src/core/operations.luau).
+
+`bindOperation<I, O>(definition: Operation<I, O>, body: (I, OperationRequest) -> O) -> Endpoint`
+
+Returns: An endpoint whose `run(payload, request)` validates input and output around `body`.
+
+Failures: A request name or kind mismatch raises. Decoder and body failures propagate.
+
+```luau
+local endpoint = Core.bindOperation(query, function() return true end)
+```
+
+### `Core.observationParity`
+
+Source: [src/core/report.luau](../src/core/report.luau).
+
+`observationParity(left: Report, right: Report) -> Parity`
+
+Returns: `{ status, differences }` for action and query observations.
+
+Failures: Missing evidence gives `unsupported`; different observations give `failed`. It proves no native rendering parity.
+
+```luau
+local parity = Core.observationParity(simulatedReport, nativeReport)
+print(parity.status)
+```
+
+### `Core.progress`
+
+Source: [src/core/progress.luau](../src/core/progress.luau).
+
+`create(runId: string, emit: (Event) -> ()) -> Progress`; `valid(value: unknown, runId: string) -> Event`; `pending(events: { Event }) -> { Event }`
+
+Returns: A publisher, a validated event copy, or unmatched started events. Publication adds increasing sequence numbers.
+
+Failures: Invalid identity or event fields raise. The publisher suppresses errors from `emit`.
+
+```luau
+local progress = Core.progress.create("run-1", function(event) print(event.sequence) end)
+progress.publish("case-1", "case", "setup", "started", nil)
+```
+
+### `Core.performance`
+
+Source: [src/core/performance.luau](../src/core/performance.luau).
+
+`summarize(input: Input) -> Summary`; `evaluate(summary: Summary, limits: Limits) -> Evaluation`; `checkSeries(series: Series?) -> ()`
+
+Returns: Statistics, a `passed`/`failed`/`unsupported` evaluation, or no value after series validation.
+
+Failures: Malformed samples, context, percentiles, series or limits raise. Simulated or insufficient observations cannot satisfy observed limits.
+
+```luau
+local summary = Core.performance.summarize {
+    samples = { 1, 2, 3 }, unit = "ms",
+    context = { environment = "lute", signal = "work", timing = "observed" },
+}
+local evaluation = Core.performance.evaluate(summary, { unit = "ms", minimumSamples = 3, p95 = 4 })
+```
+
+### `Core.shape`
+
+Source: [src/core/init.luau](../src/core/init.luau).
+
+`finite(value) -> boolean`; `finiteNonnegative(value) -> boolean`; `nonnegativeInteger(value) -> boolean`; `denseRows(value, count: number) -> boolean`
+
+Returns: A predicate result without coercion. `denseRows` checks an exact dense array and permits JSON marker keys.
+
+Failures: Invalid values return false. These predicates do not validate consumer field names.
+
+```luau
+assert(Core.shape.finite(1))
+assert(not Core.shape.nonnegativeInteger(-1))
+assert(Core.shape.denseRows({ "first" }, 1))
+```
 
 ## Evidence provenance
 
@@ -414,19 +1307,6 @@ Evidence travels on the report. An `Artifact` can carry `sha256`, `size` and a t
 - The `device` class that the caller declares, and `capturedAt`.
 
 A `Review` can carry `kind` (`visual` or `audio`) and `judged`, the content hashes that the reviewer saw. The report decoder keeps both. The report is the only record. No second record exists.
-
-### Seal, bind and validate
-
-- `Evidence.seal(report, { from, device, now, hash, read, sink })` reads each artifact and stores its bytes in `sink`.
-  It returns `{ report, issues }`.
-  `from` is any `{ runId, build }`, such as a gate outcome. It replaces `runId` and `build`.
-  An artifact that is unreadable, unstorable or unconfirmed stays unsealed and appears in `issues`.
-- `Lute.evidenceStore.seal` binds the Lute hash, file reader, clock and a local directory store.
-  The whole call is `seal(outcome.execution.report, { from = outcome, device })`.
-- `Evidence.bindReview(report, { caseId, actor, checkpoint, kind, judged })` binds a recorded review to the content hashes that the reviewer judged.
-  Hash what the reviewer saw, not what you store later.
-- `Evidence.validate(report, policy)` returns `{ ok, issues, verified }`. It hashes every artifact again through `policy.store`.
-- `Evidence.explain(result)` formats a validation result.
 
 The validation policy declares these fields:
 
@@ -446,18 +1326,90 @@ Validation rejects these conditions:
 
 An empty policy or an invalid clock raises. It never passes.
 
-### Sinks
+### `Evidence.seal`
 
-A sink is `{ put(content, meta) -> reference, get(reference) -> bytes, stat(reference) -> { size } }`. The caller provides it.
+Source: [src/evidence/seal.luau](../src/evidence/seal.luau).
 
-- `Lute.evidenceStore.localDirectory(path)` is the content-addressed reference sink.
-- `Core.memorySink(hash)` is a portable sink.
-- `Lute.evidenceStore.validate(report, { from, required })` fills in the store, hash and clock.
+`seal(report: Report, options: SealOptions) -> Sealed`
 
-Validation needs only `get`, `stat`, a hasher and a clock. Pass `hash`, `read` and a sink to `Evidence` on another host:
+Returns: `{ report, issues }`, with stored artifacts bound to the run, build, host, device and capture time.
 
-```sh
-lute run examples/evidence-provenance.luau
+Failures: Invalid options raise. Unreadable, unstorable or unconfirmed artifacts stay unsealed and produce issues.
+
+```luau
+local sealed = Evidence.seal(report, sealOptions)
+assert(#sealed.issues == 0)
+```
+
+### `Evidence.bindReview`
+
+Source: [src/evidence/seal.luau](../src/evidence/seal.luau).
+
+`bindReview(report: Report, binding: ReviewBinding) -> Report`
+
+Returns: A report copy whose matching review names the hashes that the reviewer judged.
+
+Failures: A missing review raises. This call does not perform or approve a review.
+
+```luau
+local reviewed = Evidence.bindReview(report, reviewBinding)
+```
+
+### `Evidence.validate`
+
+Source: [src/evidence/validation.luau](../src/evidence/validation.luau).
+
+`validate(report: Report, policy: Policy) -> Result`
+
+Returns: `{ ok, issues, verified }` after coverage, identity, time, bytes and review checks.
+
+Failures: An empty coverage policy or invalid clock raises. Evidence mismatches produce issues and `ok = false`.
+
+```luau
+local result = Evidence.validate(report, evidencePolicy)
+assert(result.ok, Evidence.explain(result))
+```
+
+### `Evidence.expand`
+
+Source: [src/evidence/validation.luau](../src/evidence/validation.luau).
+
+`expand(required: { Requirement }) -> { Cell }`
+
+Returns: The cross product of case, actor, checkpoint and device requirements.
+
+Failures: Empty coverage and empty or repeated names in a requirement raise.
+
+```luau
+local cells = Evidence.expand { { caseId = "first", actors = { "client" }, checkpoints = { "ready" }, devices = { "desktop" } } }
+```
+
+### `Evidence.explain`
+
+Source: [src/evidence/validation.luau](../src/evidence/validation.luau).
+
+`explain(result: Result) -> string`
+
+Returns: A readable validation result.
+
+Failures: It expects a validation result.
+
+```luau
+print(Evidence.explain(result))
+```
+
+### `Core.memorySink`
+
+Source: [src/core/provenance.luau](../src/core/provenance.luau).
+
+`memorySink(hash: (string) -> string) -> EvidenceSink`
+
+Returns: An in-memory sink with `put`, `get` and `stat`.
+
+Failures: Unknown references return no bytes or metadata. Hasher failures propagate.
+
+```luau
+local sink = Core.memorySink(Lute.sha256)
 ```
 
 Metadata and a saved screenshot do not establish visual quality, audio quality or physical-device use. A review records that a named reviewer judged specific content. `device` is a claim. The class `physical` is accepted only when `policy.attest.physical(artifact, provenance)` returns true from the caller's own evidence.
@@ -484,27 +1436,396 @@ Coverage lives in the ordinary case and in evidence.
 
 The consumer owns tool execution, request digests, storage paths, authorization and the meaning of each checkpoint.
 
-### Model files
+### `Lute.attachments`
 
-`Lute.model` reads a Roblox XML model (`.rbxmx`) or place (`.rbxlx`) so that a case can assert on a built file.
+Source: [src/lute/attachments.luau](../src/lute/attachments.luau).
 
-- `read(text)` returns the root instances. Each instance is `{ className, name, path, properties, children }`.
-  `name` is the `Name` property, or the class name when the file stores no name or an empty name, so that each path segment is not empty. `path` joins the names from the root with `/`.
-  `properties[name]` is `{ type, value }`: the XML tag of the value, such as `string`, `ProtectedString` or `bool`, and its decoded text.
-- `descendants(roots)` lists every instance in document order.
-- `find(roots, path)` returns the first instance with that path, or `nil`.
+`materialize(report: Report, options: Options) -> (Report, { string })`; `directorySink(directory: string) -> Sink`
 
-`read` raises for invalid XML and for a document whose root is not `roblox`. It reads a binary file (`.rbxm`, `.rbxl`) as invalid. Build the XML format to assert on it. `Lute.place.build` merges into a base place with the same XML codec.
+Returns: A report with stored attachment references and refusal issues, or a filesystem sink.
 
-### Codecs
+Failures: Invalid or unsupported attachments produce issues. Sink errors are accounted per attachment.
 
-`src/codec` holds portable leaves that the hosts and the judge share. They need no host services.
+```luau
+local storedReport, issues = Lute.attachments.materialize(report, { directory = outputDirectory })
+```
 
-- `codec/base64.luau`: `encode(bytes)` returns standard base64 with padding. `decode(text)` returns the bytes, or `nil` when the text is not padded base64. `AgentEval.base64` is the same module.
-- `codec/xml.luau`: `parse(text)` returns the root element `{ tag, attributes, children, text, openEnd, closeStart }`. `text` is the decoded text before the first child element. `openEnd` is the offset of the `>` that ends the start tag. `closeStart` is the offset of the `<` that starts the end tag, or `nil` for a self-closing element. `children(element, tag)` and `first(element, tag)` select child elements.
-- `codec/image.luau`: `mediaType(bytes)` returns `image/png`, `image/jpeg`, `image/gif`, `image/webp` or `nil` from the file signature. `pngSize(bytes)` returns the width and height from the PNG `IHDR` chunk, or `nil` when the bytes are not a PNG.
+### `Lute.bounded`
 
----
+Source: [src/lute/bounded.luau](../src/lute/bounded.luau).
+
+`run(argv, seconds, runner?, options?) -> Result`; `runWith(argv, seconds, runner, options?, settings?) -> Result`; `capabilities(settings?) -> { string }`
+
+Returns: A bounded process result, or available process-control capabilities.
+
+Failures: Invalid bounds and unavailable tree control refuse execution. A timeout reports termination rather than success.
+
+```luau
+local processResult = Lute.bounded.run({ "lute", "--version" }, 5)
+assert(processResult.ok)
+```
+
+### `Lute.chunk`
+
+Source: [src/lute/chunk.luau](../src/lute/chunk.luau).
+
+`load(source: string, options: Options?) -> (...unknown) -> ...Value`; `check(source: string, name: string?) -> (boolean, string?)`
+
+Returns: A compiled function, or syntax-check success and an optional error.
+
+Failures: `load` raises on compilation failure. `check` returns false and an error without executing the source.
+
+```luau
+local chunk = Lute.chunk.load("return 2 + 2")
+local ok = Lute.chunk.check("return 4")
+assert(ok)
+```
+
+### `Lute.corpus`
+
+Source: [src/lute/corpus.luau](../src/lute/corpus.luau).
+
+`discover(spec: Discovery) -> { string }`; `groupByRequire(files, readFile, aliasPattern) -> { { string } }`; `workers(threadCount, override, fileCount, margin, cap) -> number`; `selection(files, query?) -> PlanSelection`; `literal(text) -> string`; `lockText(sections) -> string`
+
+Returns: Discovered paths, dependency groups, worker count, selection, escaped pattern or lock text.
+
+Failures: Malformed discovery and queries raise. File host errors propagate.
+
+```luau
+local escaped = Lute.corpus.literal("case.verify.luau")
+assert(string.match("case.verify.luau", "^" .. escaped .. "$") ~= nil)
+```
+
+### `Lute.evidence`
+
+Source: [src/lute/evidence.luau](../src/lute/evidence.luau).
+
+`write(report: Report, directory: string, required: { Requirement }?) -> Result`; `finish(report: Report, directory: string) -> string`
+
+Returns: A report and stored evidence results, or the path to the saved report.
+`finish` updates the report and summary after `write` has created them.
+
+Failures: Missing required durable evidence becomes a report failure. Filesystem errors can raise.
+
+```luau
+local saved = Lute.evidence.write(report, outputDirectory)
+assert(#saved.issues == 0)
+local reportPath = Lute.evidence.finish(saved.report, outputDirectory)
+```
+
+### `Lute.evidenceStore`
+
+Source: [src/lute/evidence-store.luau](../src/lute/evidence-store.luau).
+
+`localDirectory(directory: string) -> EvidenceSink`; `readFile(reference: string) -> (string?, string?)`; `sha256(bytes: string) -> string`; `seal(report: Report, options: SealOptions) -> Sealed`; `validate(report: Report, options: ValidateOptions) -> Result`; `DEFAULT_DIRECTORY: string`
+
+Returns: Filesystem bindings for the portable Evidence operations. `seal` and `validate` fill the store, hash and clock.
+
+Failures: File failures return reasons or sealing issues. Invalid evidence policy raises; validation mismatches produce issues.
+
+```luau
+local sink = Lute.evidenceStore.localDirectory(outputDirectory)
+```
+
+### `Lute.fixture`
+
+Source: [src/lute/fixture.luau](../src/lute/fixture.luau).
+
+`load(source: string?) -> Snapshot`; `bridge(snapshot: (string | Snapshot)?, options: Options?) -> Bridge`; `save(path, snapshot) -> ()`; `serialize(snapshot) -> string`; `exportStudio(execute, options?) -> Snapshot`; `probeStudio(execute, probes) -> ProbeResults`; `probeLocal(environment, probes) -> { [string]: string }`
+
+Returns: Snapshot, bridge, serialized bytes or probe results. `host` and `files` provide frozen filesystem, compilation and project traversal operations.
+
+Failures: Invalid snapshots, missing files and unsupported reflected behavior raise. A probe records its own expression failure.
+
+```luau
+local bridge = Lute.fixture.bridge()
+local frame = bridge.environment.createInstance("Frame")
+frame:Destroy()
+bridge.close()
+```
+
+
+`bridge(snapshot?, options?)` accepts `content` providers in addition to the reflection and UI options:
+
+- `content.assetVersion(versionId)` returns a live, archivable Model template created in this bridge's environment, or nil for unavailable content. `InsertService:LoadAssetVersion` validates the version ID, clones the template on each call and parents the result to InsertService. Missing providers, unavailable versions and invalid templates raise. The provider owns fixture acquisition and version mapping; the double performs no network fetch and invents no geometry.
+- `content.terrainMaterialColor(material)` provides a captured Color3 for an unset terrain material. `Terrain:SetMaterialColor` stores per-terrain overrides and `GetMaterialColor` returns them before consulting the provider. Air, Water, other enum families and invalid colors raise. An unset material without a provider raises rather than inventing a default palette.
+
+`placeEngine().record` keeps diagnostics and sends virtual timestamps and message types to LogService history and MessageOut. History returns independent tables. It keeps the newest 512 entries in order. ClearOutput clears history but keeps diagnostics. Structured Logger context is outside this simulation.
+
+Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback. AudioPlayer Play sets IsPlaying (including planned playback before readiness), and Stop clears it while preserving TimePosition. AudioTextToSpeech Play sets IsPlaying only when IsLoaded; Pause clears it and preserves TimePosition. Readiness remains a host-supplied fact. Scheduled audio timestamps raise before state changes. Modern audio controls do not advance TimePosition, synthesize media or emit completion; use explicit duration/event facts for those observations. AudioPlayer has no Pause method and AudioTextToSpeech has no Stop method in the engine reference.
+
+`TweenService:Create(instance, tweenInfo, goals)` returns a Tween with `Instance`, `TweenInfo` and `PlaybackState`. Play, Pause and Cancel follow the engine states Begin, Delayed, Playing, Paused, Cancelled and Completed. Virtual time advances a playing tween. When `DelayTime` plus `Time` elapses, the tween writes each goal value once and fires `Completed` with `Enum.PlaybackState.Completed`. A tween that is within 1e-6 seconds of its end is complete. The tween writes no intermediate values, because the engine interpolates natively. Cancel resets progress, writes no goal and fires `Completed` with `Enum.PlaybackState.Cancelled`. Destroying a playing tween stops it. `RepeatCount` other than 0 and `Reverses` raise. The simulator does not prove easing curves or rendered motion.
+
+TextChatService.OnIncomingMessage uses write-only callback storage. A host can inspect and invoke it through propertyOf. This does not prove filtered chat delivery.
+
+Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
+
+Exact measured strings can supplement a face's token grammar. Their native bounds use their captured pixel grid. Their characters do not become composable tokens: an uncaptured combination containing a character outside the original grammar still raises `unsupported_text_metrics`.
+
+Uniform RichText weights use the captured face selected by `<b>` or `<font weight="...">`. Weight names are case insensitive; quoted numeric weights use 100 through 900. Native captures establish that Heavy selects Bold for BuilderSans and Regular for Fondamento and Michroma. Other weights need their own captured facts. Text that changes effective weights between runs still raises `unsupported_text_metrics`.
+
+`measureBounds`, `truncateBounds` and `measureLineHeight` receive `Gui = true` for GUI observations. Service parameters omit it. For the captured missing family `rbxasset://fonts/families/DoesNotExist.json`, service measurement raises `Temp read failed.` while GUI measurement uses SourceSansPro. Its Heavy GUI weight selects Bold. Other uncaptured families still raise `unsupported_text_metrics`.
+
+Truncation compares the rendered prefix and ellipsis with the available width, including fractional widths. An exact fit is accepted. The combined raster width is converted to a float32 result once. The shared Studio case checks widths on both sides of these boundaries.
+
+When `SplitWord` ends at a space boundary, its bounds include the trailing space instead of an ellipsis. Wrapped truncation also retains the natural width of the last visible line. The shared boundary fixture checks both rules with wrapped and unwrapped labels at several widths and heights.
+
+`AtEnd` keeps a word boundary when the prefix and ellipsis fill at least half the available width. Otherwise it cuts within the word. A cut within a word keeps the glyph spacing from the following character in the original text. The shared truncation fixture checks the threshold and the spacing with repeated letters.
+
+Wrapping splits an oversized word across measured characters while retaining kerning and the rounding of cumulative run positions. A fragment keeps an unavoidable rounded glyph advance even when it exceeds the constraint or that glyph's isolated width. Without trailing whitespace, its width is bounded by the larger of the constraint and the largest required rounded advance. Retained trailing spaces can extend this bound. Wrapping prefers whitespace between words and preserves independent paragraph bounds. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
+
+TextScaled supports AutomaticSize. An automatic X axis measures without a width constraint; an automatic Y axis permits the measured height to grow. Automatic XY selects the largest permitted size. Authored dimensions remain minimum bounds, and UITextSizeConstraint still limits the selected size.
+
+### `Lute.gate`
+
+Source: [src/lute/gate.luau](../src/lute/gate.luau).
+
+`run(gate: Definition, options: Options?) -> Outcome`; `last(gate, options?) -> (Outcome?, string?)`; `writeReport(path, runId, report) -> ()`; `cli(draft, args, options?) -> number`; `create(runtime) -> Gate`; `DEFAULT_DIRECTORY: string`
+
+Returns: A bounded gate outcome, its saved predecessor, a CLI exit code, or an injected runtime.
+
+Failures: Invalid flags return code 2. Failed work returns code 1. Invalid definitions and infrastructure failures can raise.
+
+```luau
+local outcome = Lute.gate.run(gate, { directory = outputDirectory })
+```
+
+### `Lute.host`
+
+Source: [src/lute/host.luau](../src/lute/host.luau).
+
+`host(options: Options, runtime: Runtime?) -> Host`
+
+Returns: A worker host that starts one bounded process per batch.
+
+Failures: Invalid host options raise. Worker launch, delivery and termination failures become batch outcomes.
+
+```luau
+local host = Lute.host(workerHostOptions)
+```
+
+### `Lute.loader`
+
+Source: [src/lute/loader.luau](../src/lute/loader.luau).
+
+`new(options: LoaderOptions?) -> Loader`
+
+Returns: A cached module loader with `require(path)` and `reference(path)`.
+
+Failures: Missing modules, unknown aliases, cycles and module failures raise with the module path.
+
+```luau
+local loader = Lute.loader.new { aliases = { verify = "src" } }
+local LoadedCore = loader.require("src/core")
+```
+
+### `Lute.memory`
+
+Source: [src/lute/memory.luau](../src/lute/memory.luau).
+
+`create(host: Host) -> Memory`; `settle(options?) -> Reading`; `measure<T>(spec: Spec<T>, options?) -> Result`; `METHOD: string`
+
+Returns: Bounded heap observations using collection witnesses, or a memory helper bound to an explicit host.
+
+Failures: Invalid bounds, collection deadlines and allocation limits raise. Body failures still trigger teardown; cleanup failures stay visible.
+
+```luau
+local reading = Lute.memory.settle()
+print(reading.heapKb)
+```
+
+### `Lute.model`
+
+Source: [src/lute/model.luau](../src/lute/model.luau).
+
+`read(text: string) -> { ModelInstance }`; `descendants(roots) -> { ModelInstance }`; `find(roots, path: string) -> ModelInstance?`
+
+Returns: Parsed XML instances, all descendants or the first path match.
+
+Failures: Invalid XML, binary input or a root other than `roblox` raises. A missing path returns nil.
+
+```luau
+local roots = Lute.model.read('<roblox><Item class="Folder"><Properties/></Item></roblox>')
+assert(#Lute.model.descendants(roots) == 1)
+```
+
+### `Lute.openCloud`
+
+Source: [src/lute/open-cloud.luau](../src/lute/open-cloud.luau).
+
+`connect(options: OpenCloudOptions) -> OpenCloudSession`; `host(options: OpenCloudHostOptions) -> Host`; `describe(outcome) -> string`; `refusedCapabilities(required?) -> { string }`; `UNSUPPORTED: { string }`
+
+Returns: An authorized execution session, a plan host, a readable outcome or unsupported capability names.
+
+Failures: Invalid configuration raises. Refusal, ambiguous submission and polling timeout remain distinct outcomes. Reconcile a handle before another submission.
+
+```luau
+local session = Lute.openCloud.connect(openCloudOptions)
+local outcome = session.run(cloudInput)
+print(Lute.openCloud.describe(outcome))
+```
+
+### `Lute.place`
+
+Source: [src/lute/place.luau](../src/lute/place.luau).
+
+`bundle(options: BundleOptions) -> string`; `build(options: Options) -> ()`; `moduleExpression(path: string, rootName: string?) -> string`
+
+Returns: XML module bytes, a written fixture, or a module reference expression.
+
+Failures: Unresolved dynamic or external imports, conflicting names and invalid base XML raise.
+
+```luau
+local expression = Lute.place.moduleExpression("src/core")
+```
+
+### `Lute.platform`
+
+Source: [src/lute/platform.luau](../src/lute/platform.luau).
+
+`run(options: PlatformOptions) -> { report, directory, reportPath }`; `buildPublished(options: Published.Options) -> ()`
+
+Returns: A standard host report and saved paths, or a published-fixture file.
+
+Failures: Invalid options raise. Host, evidence and attachment failures become failed or unsupported results.
+
+```luau
+local result = Lute.platform.run { entry = "examples/platform-entry.luau", host = "simulator", output = outputDirectory }
+print(Core.format(result.report))
+```
+
+### `Lute.player`
+
+Source: [src/lute/player.luau](../src/lute/player.luau).
+
+`run(options: Options) -> BatchOutcome`; `url(placeId: number, runId: string, selection: Selection?) -> string`; `supported() -> (boolean, string?)`
+
+Returns: A bounded Player outcome, launch URL, or reference-launcher availability and reason.
+
+Failures: Invalid options raise. Unsupported platforms and launch/report failures do not pass.
+
+```luau
+local available, reason = Lute.player.supported()
+print(available, reason)
+```
+
+### `Lute.studio`
+
+Source: [src/lute/studio.luau](../src/lute/studio.luau).
+
+`run(options: Options) -> BatchOutcome`; `worker(path: string) -> ()`; `host(options: HostOptions) -> Host`; `attach(options) -> (Session?, Refusal?)`; `launch(options) -> (Launched?, string?)`
+
+Returns: A Studio outcome, worker execution, host, attached session or disposable launched session.
+
+Failures: Invalid options and unavailable Studio operations raise or return failed outcomes. Attach and launch return nil with a refusal or reason when they cannot open a session.
+Attach requires authorization and preserves the caller Studio.
+
+```luau
+local host = Lute.studio.host(studioHostOptions)
+```
+
+### `Lute.worker`
+
+Source: [src/lute/worker.luau](../src/lute/worker.luau).
+
+`worker(operations: Operations, options: Options?) -> ()`
+
+Returns: No value. It reads a worker batch, loads cases and writes the wire report.
+
+Failures: Bad arguments and batch input raise. Registration failures become source failures.
+
+```luau
+Lute.worker(workerOperations)
+```
+
+### `Lute.selfRegisteringWorker`
+
+Source: [src/lute/worker.luau](../src/lute/worker.luau).
+
+`selfRegisteringWorker(operations: SelfRegisteringOperations, options: Options?) -> ()`
+
+Returns: No value. It runs modules that register their own cases.
+
+Failures: Bad arguments raise. Source-load failures become source reports.
+
+```luau
+Lute.selfRegisteringWorker(registrationOperations)
+```
+
+### `Lute.sha256`
+
+Source: [src/lute/hash.luau](../src/lute/hash.luau).
+
+`sha256(bytes: string) -> string`
+
+Returns: The lowercase hexadecimal SHA-256 digest.
+
+Failures: It expects byte text. It grants no source authenticity.
+
+```luau
+assert(#Lute.sha256("hello") == 64)
+```
+
+### `Lute.typePolicy`
+
+Source: [src/lute/type-policy.luau](../src/lute/type-policy.luau).
+
+`explicitAny(source: string) -> { number }`; `casts(source: string) -> { number }`; `nonStrict(source: string) -> { number }`
+
+Returns: Source offsets for explicit `any`, type assertions, or weakened/missing strict directives.
+
+Failures: Malformed syntax fails closed in the syntax policy. Quoted identifiers do not become annotations.
+
+```luau
+assert(#Lute.typePolicy.casts("--!strict\nlocal x = 1") == 0)
+```
+
+## Codecs
+
+Portable codecs use no host services.
+
+### `Codec.base64`
+
+Source: [src/codec/base64.luau](../src/codec/base64.luau).
+
+`encode(bytes: string) -> string`; `decode(text: string) -> string?`
+
+Returns: Padded base64 text, or decoded bytes.
+
+Failures: `decode` returns nil for invalid padded base64.
+
+```luau
+assert(Codec.base64.decode(Codec.base64.encode("hello")) == "hello")
+```
+
+### `Codec.image`
+
+Source: [src/codec/image.luau](../src/codec/image.luau).
+
+`mediaType(bytes: string) -> string?`; `pngSize(bytes: string) -> (number?, number?)`
+
+Returns: A recognized image MIME type, or PNG width and height.
+
+Failures: Unrecognized bytes return nil. This module does not render or fully validate an image.
+
+```luau
+assert(Codec.image.mediaType("plain text") == nil)
+```
+
+### `Codec.xml`
+
+Source: [src/codec/xml.luau](../src/codec/xml.luau).
+
+`parse(text: string) -> Element`; `children(element: Element, tag: string) -> { Element }`; `first(element: Element, tag: string) -> Element?`
+
+Returns: A parsed root or matching children. `first` returns nil if no child matches.
+
+Failures: Malformed XML raises.
+
+```luau
+local root = Codec.xml.parse("<root><item/></root>")
+assert(Codec.xml.first(root, "item") ~= nil)
+```
 
 ## Simulated environment
 
@@ -609,7 +1930,7 @@ The default library has no catalog. Its `Enum` is permissive: any family and any
 
 `tests/datatypes.lute.verify.luau` compares more than 100 probes with results that Studio recorded. A probe that declares a tolerance compares its numbers with that relative tolerance. Floating-point geometry probes declare their tolerances; other probes match exactly.
 
-`Animator:LoadAnimation` returns a track. `Play`, `Stop` and `AdjustSpeed` change `IsPlaying` and `Speed` and fire `Stopped` and `Ended`. The simulator blends no frames. The package exports a `Datatype...` type for each datatype, and `DatatypeLibrary` and `DatatypeCatalog`. These types describe the values for the type checker. At run time each value is a userdata.
+`Animator:LoadAnimation` returns a track. `Play`, `Stop` and `AdjustSpeed` change `IsPlaying` and `Speed` and fire `Stopped` and `Ended`. The simulator blends no frames. The package exports selected `Datatype...` aliases, plus `DatatypeLibrary` and `DatatypeCatalog`. The defining datatype module declares the other types. These types describe the values for the type checker. At run time each value is a userdata.
 
 ### Instance behavior
 
@@ -715,6 +2036,96 @@ An action must belong to a DataModel and be enabled. Its nearest InputContext mu
 The default environment has no haptic motors. `HapticService:IsVibrationSupported()` and `IsMotorSupported()` return false. `HapticEffect:Play()` and `Stop()` accept requests but produce no motor output or `Ended` event. This matches the observed Studio host without haptic hardware. `SetWaveformKeys()` accepts FloatCurveKey arrays only when the effect type is Custom. Native request validation also accepts empty arrays, negative key times, repeated times and values outside 0–1. This model does not simulate waveform playback on supported hardware.
 
 ---
+
+### `Roblox.testEnvironment`
+
+Source: [src/roblox/environment.luau](../src/roblox/environment.luau).
+
+`testEnvironment(options: EnvironmentOptions?) -> Environment`
+
+Returns: An isolated engine double with virtual time, declared classes and resource accounting.
+
+Failures: Invalid schemas and options raise. Undeclared or unsupported operations raise when used.
+
+```luau
+local environment = Roblox.testEnvironment()
+local folder = environment.createInstance("Folder", { Name = "Example" })
+folder:Destroy()
+assert(environment.liveConnections() == 0)
+```
+
+### `Roblox.isInstance`
+
+Source: [src/roblox/environment.luau](../src/roblox/environment.luau).
+
+`isInstance(value: unknown) -> boolean`
+
+Returns: True for a registered simulated Instance, including a destroyed one.
+
+Failures: Other values return false.
+
+```luau
+assert(Roblox.isInstance(environment.root))
+```
+
+### `Roblox.assertInstance`
+
+Source: [src/roblox/environment.luau](../src/roblox/environment.luau).
+
+`assertInstance(value: unknown) -> Instance`
+
+Returns: The same registered simulated Instance.
+
+Failures: Native instances, lookalikes and Object-only values raise.
+
+```luau
+local instance = Roblox.assertInstance(environment.root)
+```
+
+### `Roblox.typeName`
+
+Source: [src/roblox/environment.luau](../src/roblox/environment.luau).
+
+`typeName(value: unknown) -> string`
+
+Returns: A simulated datatype or instance type name, or the host type name.
+
+Failures: It does not validate a class contract.
+
+```luau
+assert(Roblox.typeName(environment.root) == "Instance")
+```
+
+### `Roblox.datatypes`
+
+Source: [src/roblox/datatypes/init.luau](../src/roblox/datatypes/init.luau).
+
+`create(catalog: Catalog) -> Library`; `typeName(value) -> string?`; `typeof(value) -> string`; `enumType(item) -> string?`; `readCFrame(value) -> twelve numbers`
+
+Returns: A catalog-bound datatype library or type/component observations. Constructors listed above return simulated datatype values.
+
+Failures: Invalid components and unknown strict catalog members raise. Catalog-dependent operations fail without a catalog.
+
+```luau
+local vector = Roblox.datatypes.Vector3.new(1, 2, 3)
+assert(Roblox.datatypes.typeof(vector) == "Vector3")
+```
+
+### `Roblox.value`
+
+Source: [src/roblox/value.luau](../src/roblox/value.luau).
+
+`value(item: unknown) -> Value`; `read(value: Value, key: unknown) -> Value`; `write(value: Value, key: unknown, item: Value) -> ()`; `invoke(value: Value, ...unknown) -> ...Value`
+
+Returns: VM values and the results of table reads or function invocation.
+
+Failures: Invalid VM operations and invoked function errors propagate.
+
+```luau
+local wrapped = Roblox.value.value({ count = 1 })
+Roblox.value.write(wrapped, "count", Roblox.value.value(2))
+local count = Roblox.value.read(wrapped, "count")
+```
 
 ## Reflection and explicit UI fakes
 
@@ -885,14 +2296,8 @@ Each module runs in its own environment:
 The loader loads each file once and keeps the resolved paths. A require cycle, a missing module and an unknown alias raise with the module named. A file under a prefix in `options.hostPaths` loads with `options.requireHost(module)` instead, as an ordinary host module. `module` is the path without `.luau` or `/init.luau`.
 
 ```luau
-local loader = Lute.loader.new {
-	aliases = { repo = "" },
-	hostPaths = { "tools/vendor/" },
-	requireHost = function(module: string): unknown
-		return (require :: (string) -> unknown)("../../" .. module)
-	end,
-}
-local Package = loader.require "src"
+local loader = Lute.loader.new { aliases = { verify = "src" } }
+local Package = loader.require "src/core"
 ```
 
 #### Studio probes
@@ -917,7 +2322,7 @@ The first styled read sets the initial value. Later target changes interpolate o
 
 The double interpolates numbers, `Color3`, `UDim`, `UDim2`, `Vector2`, `Vector2int16`, `Vector3`, `Rect` and `CFrame`. Booleans and enum items switch at eased progress 0.5. Other types snap. All easing styles and directions are supported. Removing a rule, tag or sheet uses the transition left in the cascade, or snaps when none is left. Invalid transitions and unresolved tokens raise `unsupported_ui_style`. Retargeting, discrete switching and removal timing are model choices until native conformance covers them.
 
-Relevant nested rules, state selectors and query selectors raise `unsupported_ui_style`. Implicit space combinators, named or nested phantoms and derived sheets also raise this error. The same applies to multiple links at one scope, equal-priority conflicts, other selector arguments and nonzero transitions. Unsupported selectors do not block properties that their rules cannot affect. This is bounded model coverage. Shared Studio Client and double assertions check hierarchy selectors, name/tag/parent mutations, compound selectors and phantom modifiers. Native conformance does not prove rendering.
+Relevant nested rules, state selectors and query selectors raise `unsupported_ui_style`. Implicit space combinators, named or nested phantoms and derived sheets also raise this error. The same applies to multiple links at one scope, equal-priority conflicts and other selector arguments. Unsupported selectors do not block properties that their rules cannot affect. This is bounded model coverage. Shared Studio Client and double assertions check hierarchy selectors, name/tag/parent mutations, compound selectors and phantom modifiers. Native conformance does not prove rendering.
 
 
 #### Rejected selection
@@ -948,9 +2353,295 @@ Measurement providers are required for measurement claims. Keep the controller a
 
 ---
 
+### `Roblox.environmentEngine`
+
+Source: [src/roblox/environment-engine.luau](../src/roblox/environment-engine.luau).
+
+`environmentEngine(environment: Environment, library: Library?) -> Engine`
+
+Returns: A structural engine over the same instances, signals, virtual clock and datatype library.
+
+Failures: Unsupported environment operations still raise. It supplies no renderer.
+
+```luau
+local engine = Roblox.environmentEngine(environment)
+```
+
+### `Roblox.reflection`
+
+Source: [src/roblox/reflection.luau](../src/roblox/reflection.luau).
+
+`create(options: Options) -> Environment`
+
+Returns: A simulated environment with reflection defaults, member restrictions and datatype validation.
+
+Failures: Invalid metadata or unsupported member use raises. Reflection supplies no method implementation.
+
+```luau
+local environment = Roblox.reflection.create { database = database, typeName = Roblox.typeName }
+```
+
+### `Roblox.reflectionSnapshot`
+
+Source: [src/roblox/reflection-snapshot.luau](../src/roblox/reflection-snapshot.luau).
+
+`decode(value: unknown) -> Snapshot`; `library(snapshot) -> Library`; `database(snapshot) -> Database`; `engineLibrary(library) -> Library`; `bridge(snapshot, options?) -> Bridge`; `SCHEMA_VERSION: number`
+
+Returns: Validated snapshot data, bound constructors, reflection metadata or a fixture bridge.
+
+Failures: Invalid snapshots, tagged defaults and unknown enum values raise.
+
+```luau
+local snapshot = Lute.fixture.load()
+local types = Roblox.reflectionSnapshot.library(snapshot)
+local database = Roblox.reflectionSnapshot.database(snapshot)
+```
+
+### `Roblox.fixtureBridge`
+
+Source: [src/roblox/fixture-bridge.luau](../src/roblox/fixture-bridge.luau).
+
+`fixtureBridge(options: Options) -> FixtureBridge`
+
+Returns: One environment with reflection, UI and layout controllers, engine binding and accounting.
+
+Failures: Invalid options and unsupported metadata or geometry raise. Call `close()` to release controllers.
+
+```luau
+local bridge = Roblox.fixtureBridge { database = database, typeName = Roblox.typeName }
+bridge.close()
+```
+
+### `Roblox.uiFakes`
+
+Source: [src/roblox/ui-fakes.luau](../src/roblox/ui-fakes.luau).
+
+`attach(environment, options?, selection?) -> Controller`; `selection(options?) -> Selection`; `validateProperty(className, property, value, operation) -> ()`; `classes: { [string]: ClassSpec }`
+
+Returns: A UI controller or selection policy. `classes` supplies optional class overlays.
+
+Failures: Unsupported style, focus or measurement operations raise. Selection behavior follows the selected policy.
+
+```luau
+local controller = Roblox.uiFakes.attach(environment)
+controller.close()
+```
+
+### `Roblox.teleportFakes`
+
+Source: [src/roblox/init.luau](../src/roblox/init.luau).
+
+`setJoinData(environment, player, dictionary) -> ()`; `setLocalPlayerTeleportData(environment, teleportService, value) -> ()`
+
+Returns: No value. Each setter installs independent arrival facts. Nil clears local arrival data.
+
+Failures: Invalid players, services and nonportable payloads raise before state changes.
+
+```luau
+Roblox.teleportFakes.setJoinData(environment, player, { TeleportData = { stage = "ready" } })
+```
+
+TeleportOptions SetTeleportData/GetTeleportData, Player GetJoinData and TeleportService GetLocalPlayerTeleportData are registered automatically in the engine double. Options start with nil data; players start with an empty join dictionary and client arrival data starts nil. Options store independent copies, return copies, and retain data on Clone. False is data; nil clears it. Payloads accept finite primitives, value datatypes supported by the double and nested arrays or dictionaries. Cycles, mixed keys, sparse arrays and engine-state references raise before state changes. No teleport operation, transport, credential or source-authentication guarantee is simulated.
+
+`setJoinData(environment, player, dictionary)` supplies independent server arrival facts for a live Player. `setLocalPlayerTeleportData(environment, teleportService, value)` supplies client arrival data separately; nil clears it. Both copy their inputs, and reads return fresh copies. These fixtures do not enforce server/client execution context or derive arrivals from TeleportOptions. Consumers choose which facts each actor receives.
+
+### `Roblox.deviceFakes`
+
+Source: [src/roblox/device-fakes.luau](../src/roblox/device-fakes.luau).
+
+`configure(engine: Engine, options: Options) -> ()`
+
+Returns: No value. It applies validated capabilities, preferred input and inset facts.
+
+Failures: Invalid capabilities, enum families or geometry raise before publication.
+
+```luau
+Roblox.deviceFakes.configure(placeEngine, deviceOptions)
+```
+
+`configure(engine, { preferredInput, touch, keyboard, mouse, gamepad, topLeft, bottomRight, topbar })` applies a device preset to the place engine's UserInputService and GuiService instances. PreferredInput is an Enum.PreferredInput item; capability flags are booleans. Its preferred input must have an enabled capability. Insets are finite nonnegative Vector2 values; topbar is a finite Rect. Validation precedes publication. Property changes publish ordinary changed signals, including PreferredBinding updates on InputActions. GetGuiInset returns the supplied corners, so camera screen projection uses the same inset. TopbarInset publishes the supplied Rect. Mutating the options table afterward does not change installed state.
+
+The preset installs an all-buttons-up baseline for GetKeysPressed, GetMouseButtonsPressed, IsKeyDown, IsMouseButtonPressed and IsGamepadButtonDown. Input-host operations can override it with live simulated state. This helper invents no device dimensions and does not advance physical input. For captured Studio device profiles, viewport changes and ScreenGui layout areas, use createPlaceRuntime and StudioDeviceSimulatorService as documented above.
+
+### `Roblox.instanceHost`
+
+Source: [src/roblox/instance-host.luau](../src/roblox/instance-host.luau).
+
+`simulated(actor, environment?) -> Simulated`; `native(actor, borrowed?, codec?) -> Host`; `registry(options) -> Registry`; `property(decode) -> Operation`; `attribute(decode) -> Operation`
+
+Returns: Instance operations and host bindings. `create`, `parent`, `destroy`, `setProperty`, `setAttribute` and `inspect` are typed operations.
+
+Failures: Unknown handles, invalid values and unavailable members raise. Native access requires a Roblox engine.
+
+```luau
+local instanceHost = Roblox.instanceHost.simulated("client", environment)
+instanceHost.host.close()
+```
+
+### `Roblox.inputHost`
+
+Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).
+
+`simulated(environment, options: SimulatedOptions) -> Simulated`; `native() -> Backend?`; `registry(backend) -> Registry`; `screenCenter(target: GuiTarget) -> { x, y }`
+
+Returns: An input binding, native backend when available, operation registry or screen point. `key`, `pointer` and `text` are typed operations.
+
+Failures: Unsupported native input returns nil. Invalid input or unsupported simulated geometry raises.
+`screenCenter` needs native `GuiService:GetGuiInset()` and a positive rendered target area.
+
+```luau
+local point = Roblox.inputHost.screenCenter(guiTarget)
+```
+
+
+When `TouchEnabled` is true and `MouseEnabled` is false, virtual mouse input creates touch contacts. Each press creates one InputObject that persists through movement and release. The host emits GUI contact events, the general input events, and TouchStarted, TouchMoved and TouchEnded. It uses the device's `GetInsetArea(None)` origin for touch coordinates. Shared native cases check entry, movement, exit, release, button activation and UIDragDetector capture with TranslatePlane and CustomOffset. Long press begins after 0.5 virtual seconds; movement of five pixels or more before recognition cancels it. Recognized movement emits Change and release emits End. GUI long-press positions include the GUI inset; service positions match the InputObject. Other gestures, simultaneous contacts and native touch scrolling remain unmodeled.
+
+Pointer focus passes through Frames and TextLabels, stops at buttons, and can focus a read-only TextBox. ClearTextOnFocus clears before caret placement. Trailing caret placement supports alignment and physical padding; an existing edit also supports a leading click. Interior, wrapped and rotated placement remains unsupported. Cursor positions use byte offsets. Text input replaces the selection in either direction; Backspace removes the selection or one complete UTF-8 codepoint. IsMouseButtonPressed reports the modeled left button state.
+
+Directional selection prioritizes overlapping perpendicular rectangle spans. The shared geometry fixture checks wide controls, span boundaries and group escape/stop. Selection between overlapping targets along the travel axis remains uncalibrated. Destroying an InputAction or its context retains its last PreferredBinding without a replacement notification; live binding unparenting and reparenting still notify.
+
+`simulated` accepts `virtualController = true` to route keyboard keys through the default Studio controller mappings. Button, trigger and stick events update the same objects returned by `GetGamepadState`. Trigger changes precede button transitions. Opposing stick keys cancel an axis. Unmapped keys produce no keyboard events in this mode. The default keeps keyboard input.
+
+With a selected GuiObject, D-pad input moves selection and repeats while held. Button A activates the selected button on release. These inputs report `gameProcessedEvent = true`; activation precedes the release event. Button B leaves selection unchanged and reports an unprocessed event. The left thumbstick moves selection once per cardinal direction until released. The right thumbstick leaves selection unchanged and reports an unprocessed event. Diagonal thumbstick selection remains unsupported. The shared `tests/fixtures/input-controller-selection.luau` case checks these events in the double and in Studio with Controller Emulator enabled.
+
+Controller emulation sets `GamepadEnabled` and `PreferredInput` to gamepad. It preserves the viewport and keyboard and mouse availability. Closing the input host restores the previous gamepad and preferred-input values.
+
+`connectGamepad()` starts controller emulation on an open host, as when a player connects a pad. It sets `GamepadEnabled`, fires `GamepadConnected` with `Gamepad1` and answers `GetConnectedGamepads` and `GetGamepadConnected`. It does not change `PreferredInput`. `disconnectGamepad()` stops emulation, restores the values from before the connection and fires `GamepadDisconnected`. Keys then reach the keyboard again. A second connection or a disconnection without a pad is unsupported. In either mode, gamepad input sets `PreferredInput` to gamepad. Keyboard and mouse input do not change `PreferredInput` back.
+
+Repeated thumbstick key presses accumulate axis values, including values outside -1 to 1. Each release subtracts one press. The system menu remains unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
+
+### `Roblox.playerHost`
+
+Source: [src/roblox/player-host.luau](../src/roblox/player-host.luau).
+
+`native(actor: string) -> CaseHost`; `registry(backend: Backend) -> Registry`
+
+Returns: Player bindings. `move`, `jump`, `equip` and `inspect` are typed operations.
+
+Failures: Missing native services, invalid payloads and unsupported player operations raise.
+
+```luau
+local registry = Roblox.playerHost.registry(playerBackend)
+```
+
+### `Roblox.experienceHost`
+
+Source: [src/roblox/experience-host.luau](../src/roblox/experience-host.luau).
+
+`create(options: Options) -> CaseHost`; `endpoint(decode, body, requires?) -> Endpoint`; `respond(registry, capabilities, now, actor, value) -> Response`; `remoteTransport(context, remote, actors, playerFor?) -> Transport`; `remoteResponder(registry, capabilities, now, actor, authorize) -> handler`; `nativeEngine() -> Engine`
+
+Returns: A case host, endpoint, response or transport over explicit operations.
+
+Failures: Invalid requests, missing capabilities and authorization refusals remain failed responses or raise at the host boundary.
+
+```luau
+local host = Roblox.experienceHost.create(experienceOptions)
+```
+
+### `Roblox.multiplayer`
+
+Source: [src/roblox/multiplayer.luau](../src/roblox/multiplayer.luau).
+
+`server(context: Context, options: ServerOptions) -> CaseHost`; `client(options: ClientOptions) -> () -> ()`
+
+Returns: A coordinated server host or a client disconnect function.
+
+Failures: Missing roles, refused requests and expired deadlines fail. The caller supplies role authorization.
+
+```luau
+local disconnect = Roblox.multiplayer.client(multiplayerClientOptions)
+disconnect()
+```
+
+### `Roblox.network`
+
+Source: [src/roblox/network.luau](../src/roblox/network.luau).
+
+`create(options: Options) -> Network`
+
+Returns: A deterministic message network with explicit channels, payload limits and delivery behavior.
+
+Failures: Invalid options raise. Unsupported payloads and exceeded limits return refusals.
+
+```luau
+local network = Roblox.network.create(networkOptions)
+```
+
+### `Roblox.performance`
+
+Source: [src/roblox/performance.luau](../src/roblox/performance.luau).
+
+`collect(options: Options) -> Collector`
+
+Returns: A collector with sample input for Core performance evaluation.
+
+Failures: Invalid sampling bounds raise. Missing observations cannot prove performance.
+
+```luau
+local collector = Roblox.performance.collect(performanceOptions)
+```
+
+### `Roblox.reportChannel`
+
+Source: [src/roblox/report-channel.luau](../src/roblox/report-channel.luau).
+
+`envelope(runId, report) -> Envelope`; `receive(value, runId) -> Report`; `publish(runId, report, encode, emit) -> ()`; `collect(bytes, runId, decode) -> Report`
+
+Returns: Run-bound report envelopes, emitted lines or validated received reports.
+
+Failures: Wrong run identity, invalid reports and incomplete/conflicting chunks raise.
+
+```luau
+local envelope = Roblox.reportChannel.envelope("run-1", report)
+local received = Roblox.reportChannel.receive(envelope, "run-1")
+```
+
+### `Roblox.progressChannel`
+
+Source: [src/roblox/progress-channel.luau](../src/roblox/progress-channel.luau).
+
+`publisher(runId, token, emit) -> RunProgress`; `collect(rows, token, runId) -> Collected`; `read: string`; `readPage(token, afterSequence) -> string`; `LOGGER: string`
+
+Returns: A publisher, validated log events, or Studio source for a log read.
+
+Failures: Invalid run tokens and log fields fail validation. Collection preserves diagnostics for refused events.
+
+```luau
+local source = Roblox.progressChannel.readPage("token", 0)
+```
+
+### `Roblox.uiAudit`
+
+Source: [src/roblox/init.luau](../src/roblox/init.luau).
+
+`collect(options?) -> Dump`; `decode(value: unknown) -> Dump`; `analyze(dump, options?) -> Report`; `contrastRatio(left, right) -> number`; `isAbove(dump, left, right) -> boolean`; `SCHEMA_VERSION: number`; `RULES: { [string]: Severity }`
+
+Returns: UI facts, a validated dump, rule findings, contrast or ordering observations.
+
+Failures: Invalid dumps and options raise. Collection needs native or explicitly supplied UI facts. Findings do not replace visual review.
+
+```luau
+local contrast = Roblox.uiAudit.contrastRatio({ r = 0, g = 0, b = 0 }, { r = 1, g = 1, b = 1 })
+assert(contrast == 21)
+```
+
 ## Native content facts
 
 ### `Roblox.contentFacts`
+
+Source: [src/roblox/content-facts.luau](../src/roblox/content-facts.luau).
+
+`requests(value: unknown) -> { Request }`; `validate(value: unknown) -> Capture`; `attach(environment: Environment, capture: unknown, library: DatatypeLibrary?) -> ()`
+
+Returns: Validated requests, a validated capture, or no value after installing captured-content fakes.
+
+Failures: Invalid IDs, schemas and captured fields raise. Missing IDs and captured refusals raise during a load.
+Partial reconstruction destroys its objects before it raises.
+
+```luau
+local requests = Roblox.contentFacts.requests { { kind = "model", key = "item", version = 123 } }
+assert(#requests == 1)
+```
 
 `Roblox.contentFacts.requests(value)` checks a nonempty request array. Each request has a unique `key` and a `kind`. Use `{ kind = "model", key = "item", version = 123 }` for a pinned asset version. Use `{ kind = "mesh", key = "item", id = 123 }` for a mesh. Use `{ kind = "animation", key = "item", id = 123 }` for an animation or keyframe sequence. IDs must be positive safe integers. A model request cannot use an asset ID.
 
@@ -987,669 +2678,512 @@ Captured bounds stay in the fact file. Model methods use the engine double's geo
 
 ## Consumer diagnostics
 
-`Consumer.scan(contents, path, ruleset)`, `scanTree` and `scanProductionPaths` inspect portable specifications and production graphs. Choose a ruleset: `Consumer.generic` or `Consumer.roblox`. [Consumer diagnostics](lint.md) describes the rules and their limits.
-
-## Shape predicates
-
-`Core.shape` exposes predicates over unknown values without coercion:
-
-- `finite(value)` accepts numbers other than NaN and infinities.
-- `finiteNonnegative(value)` also requires a value at least zero.
-- `nonnegativeInteger(value)` also requires a whole number.
-- `denseRows(value, count)` requires a metatable-free array of the exact length. It permits userdata marker keys used by JSON encoders.
-
-Consumers keep their field sets, identifiers and acceptance policy.
-
-## Named case collections
-
-`Core.runCases(cases, options, now, ids?)` executes ordinary named cases with exact selection. The [run guide](running.md) describes selection, entry modules and host execution.
-
-`Core.waitUntil(spec, ops)` polls to a limit. It returns the terminal reason, last observation and elapsed time. `Core.awaitValue(predicate, seconds, poll, ops)` waits for a value other than nil. The value can be false. It returns nil on timeout or cancellation. Probe failures raise errors. Set the optional final `truthy` argument to true to ignore false as well as nil. The caller gives the clock, sleep function and optional cancellation function.
-
-## Package export index
-
-Each heading names one runtime export. Table exports group the operations described in the relevant contract. Type-only exports remain declared in each entry point.
-
-### `AgentEval.SCHEMA_VERSION`
-
-Schema version accepted by the evaluation suite decoder.
-
-### `AgentEval.adapters`
-
-Adapters that bind declared evaluation services to a run.
-
-### `AgentEval.base64`
-
-Base64 encoding and decoding for evaluation payloads.
-
-### `AgentEval.cli`
-
-Command line entry point for evaluation runs.
-
-### `AgentEval.decodeSuite`
-
-Validate an unknown evaluation suite before planning it.
-
-### `AgentEval.judge`
-
-Judge backends, rubric defaults, verdict decoding and calibration.
-
-### `AgentEval.load`
-
-Load an evaluation suite from its source.
-
-### `AgentEval.lute`
-
-Lute operations used by the evaluation runner.
-
-### `AgentEval.plan`
-
-Build an evaluation plan from a decoded suite.
-
-### `AgentEval.random`
-
-Seeded random values for reproducible evaluation inputs.
-
-### `AgentEval.report`
-
-Decode thresholds, build reports and determine verdicts.
-
-### `AgentEval.result`
-
-Evaluation result constructors and validation.
-
-### `AgentEval.run`
-
-Execute an evaluation plan with explicit services.
-
-### `AgentEval.scopedMcp`
-
-MCP service scoped to the evaluation's authorized operations.
-
-### `AgentEval.stats`
-
-Statistical comparisons used by evaluation reports.
-
-### `AgentEval.transcript`
-
-Decode and inspect agent transcripts.
-
-### `Bdd.counts`
-
-Summarize result counts by status.
-
-### `Bdd.formatFailures`
-
-Format failed results and their details.
-
-### `Bdd.formatResults`
-
-Format all case results and summary counts.
-
-### `Bdd.surface`
-
-Build the BDD registration surface over a harness.
-
-### `Benchmark.case`
-
-Construct a named benchmark case.
-
-### `Benchmark.check`
-
-Validate benchmark results against limits.
-
-### `Benchmark.checkCollection`
-
-Validate a collection of benchmark reports.
-
-### `Benchmark.collect`
-
-Collect benchmark measurements using the given host.
-
-### `Benchmark.collection`
-
-Construct a benchmark collection.
-
-### `Benchmark.compare`
-
-Compare benchmark measurements.
-
-### `Benchmark.decode`
-
-Decode an unknown benchmark report.
-
-### `Benchmark.limits`
-
-Benchmark limit constructors and validation.
-
-### `Benchmark.run`
-
-Run benchmark cases with the given timing options.
-
-### `Benchmark.spread`
-
-Calculate measurement spread.
-
-### `Benchmark.store`
-
-Benchmark report persistence operations.
-
-### `Benchmark.storeReport`
-
-Store a benchmark report through the given store.
-
-### `Codec.base64`
-
-`encode(bytes) -> string` writes standard Base64. `decode(text) -> string?` returns nil for malformed input.
-
-### `Codec.image`
-
-`mediaType(bytes) -> string?` names a PNG, JPEG, GIF or WebP image from its leading bytes. `pngSize(bytes) -> (width?, height?)` reads a PNG header.
-
-### `Codec.xml`
-
-`parse(source) -> Element` parses a document. `children(parent, tag)` lists the direct children with that tag, and `first(parent, tag)` returns the first one or nil.
+These functions report findings. The caller selects a ruleset and decides whether to fail.
+The [lint policy](lint.md) describes adoption.
 
 ### `Consumer.generic`
 
-Generic consumer diagnostic ruleset.
+Source: [src/consumer/init.luau](../src/consumer/init.luau).
+
+`generic: Ruleset`
+
+Returns: The frozen portable specification ruleset.
+
+Failures: The value grants no host authority.
+
+```luau
+local findings = Consumer.scan("return {}", "case.verify.luau", Consumer.generic)
+```
 
 ### `Consumer.roblox`
 
-Roblox consumer diagnostic ruleset.
+Source: [src/consumer/init.luau](../src/consumer/init.luau).
+
+`roblox: Ruleset`
+
+Returns: The frozen ruleset with Roblox host-global and external-mutation rules.
+
+Failures: The value grants no permission for an external operation.
+
+```luau
+local findings = Consumer.scan('game:GetService("Players")', "case.verify.luau", Consumer.roblox)
+assert(#findings > 0)
+```
 
 ### `Consumer.scan`
 
-Scan a source string with the selected diagnostic rules.
+Source: [src/consumer/init.luau](../src/consumer/init.luau).
+
+`scan(contents: string, path: string, ruleset: Ruleset) -> { Finding }`
+
+Returns: Ordered findings with code, source offset, reason and fix.
+
+Failures: A malformed ruleset raises. Findings do not stop the process.
+
+```luau
+local findings = Consumer.scan("task.wait()", "case.verify.luau", Consumer.generic)
+assert(#findings == 1)
+```
 
 ### `Consumer.scanProductionPaths`
 
-Check production paths for test framework leakage.
+Source: [src/consumer/init.luau](../src/consumer/init.luau).
+
+`scanProductionPaths(paths: { string }) -> { ProductionFinding }`
+
+Returns: Findings for verification code in a production graph.
+
+Failures: It expects a path array. It does not discover the graph itself.
+
+```luau
+local findings = Consumer.scanProductionPaths({ "src/check.verify.luau" })
+assert(#findings == 1)
+```
 
 ### `Consumer.scanTree`
 
-Scan a tree using caller-given file operations.
+Source: [src/consumer/init.luau](../src/consumer/init.luau).
 
-### `Core.SCHEMA_VERSION`
+`scanTree(root: string, options: TreeOptions) -> TreeReport`
 
-Current report schema version.
+Returns: Specification findings and production-path findings from supplied file operations.
 
-### `Core.awaitValue`
+Failures: An empty root, missing file operations or malformed ruleset raises. File errors propagate.
 
-Wait for a given reader to return the required value within a bound.
+```luau
+local findings = Consumer.scanTree(specRoot, treeOptions)
+```
 
-### `Core.bindOperation`
+## Agent evaluation
 
-Bind an operation descriptor to an implementation.
+Use explicit services to plan agent runs, retain their evidence and compare outcomes.
+The [agent evaluation guide](agent-eval.md) owns the workflow.
 
-### `Core.compose`
+### `AgentEval.SCHEMA_VERSION`
 
-Compose reports with validated provenance.
+Source: [src/agent-eval/model.luau](../src/agent-eval/model.luau).
 
-### `Core.decode`
+`SCHEMA_VERSION: number`
 
-Decode unknown data as a validated report.
+Returns: `1`, the evaluation suite schema version.
 
-Report records must be plain tables. Records with metatables fail validation before their fields are read.
+Failures: Reading the constant cannot fail.
 
-### `Core.execute`
+```luau
+assert(AgentEval.SCHEMA_VERSION == 1)
+```
 
-Execute an explicit plan with given executors.
+### `AgentEval.decodeSuite`
 
-A host must return a plain batch outcome. Verify records a malformed outcome as an execution fault.
+Source: [src/agent-eval/model.luau](../src/agent-eval/model.luau).
 
-### `Core.extract`
+`decodeSuite(value: unknown, path: string, loader: Loader) -> Suite`
 
-Extract framed report records from host output.
+Returns: A validated suite with resolved task data and file manifests.
 
-### `Core.float32`
+Failures: Invalid schema, budgets, arms, task references or loader reads raise.
 
-Round a number to its float32 representation for comparisons.
+```luau
+local suite = AgentEval.decodeSuite(suiteData, suitePath, evalLoader)
+```
 
-### `Core.format`
+### `AgentEval.plan`
 
-Format a report for human inspection.
+Source: [src/agent-eval/model.luau](../src/agent-eval/model.luau).
 
-### `Core.frame`
+`plan(suite: Suite, loader: Loader, selection: Selection?) -> { RunSpec }`
 
-Frame a report for transport through host output.
+Returns: Deterministic selected task, arm, agent and seed combinations with input digests.
 
-### `Core.memorySink`
+Failures: Invalid selection or missing files raise.
 
-Create an in-memory evidence sink.
+```luau
+local runs = AgentEval.plan(suite, evalLoader)
+```
 
-### `Core.merge`
+### `AgentEval.run`
 
-Merge compatible report results.
+Source: [src/agent-eval/judging.luau](../src/agent-eval/judging.luau).
 
-### `Core.observationParity`
+`run(options: RunOptions) -> RunSummary`
 
-Compare observations across reports.
+Returns: Accounted evaluation runs, checks and evidence paths. The supplied services own host operations.
 
-### `Core.operation`
+Failures: Invalid configuration raises. Agent and check failures remain in run results.
 
-Construct an operation descriptor.
+```luau
+local summary = AgentEval.run(evalOptions)
+```
 
-### `Core.performance`
+### `AgentEval.load`
 
-Performance observation and budget helpers.
+Source: [src/agent-eval/judging.luau](../src/agent-eval/judging.luau).
 
-### `Core.progress`
+`load(evidence: string, files: Files, decode: (string) -> unknown) -> { RunResult }`
 
-Progress event validation and construction.
+Returns: Validated saved runs in the evidence directory.
 
-### `Core.reassemble`
+Failures: Missing files, invalid JSON or result schema errors raise.
 
-Reassemble transported report records.
+```luau
+local results = AgentEval.load(evidenceDirectory, evalFiles, Lute.parse)
+```
 
-### `Core.reassembleSegments`
+### `AgentEval.adapters`
 
-Reassemble segmented reports.
+Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
 
-### `Core.receipt`
+`claudeCode(decode) -> Adapter`; `codex(decode) -> Adapter`; `command(options) -> Adapter`; `replay(options) -> Adapter`; `fixture(decode) -> Adapter`; `claudeArguments(request) -> { string }`; `codexArguments(request, mcp?, decode) -> { string }`; `parseStamped(text) -> { Line }`
 
-Create a transport receipt.
+Returns: Adapters, command argument arrays or timestamped transcript lines.
 
-### `Core.runCase`
+Failures: Invalid options and argument formats raise. Process limits and tool failures remain adapter outcomes.
 
-Run one named case with explicit options and clock.
+```luau
+local adapter = AgentEval.adapters.replay(replayOptions)
+```
 
-### `Core.runCases`
+### `AgentEval.transcript`
 
-Run a validated named case collection with explicit selection.
+Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
 
-### `Core.segment`
+`parseClaudeStream(lines, decode) -> Transcript`; `parseCodexStream(lines, decode) -> Transcript`; `total(usage: Usage) -> number`
 
-Split a report into transport segments.
+Returns: Parsed events, usage, timings and failures, or the total token usage.
 
-### `Core.shape`
+Failures: Malformed stream entries become parse failures where supported. Decoder errors follow the parser contract.
 
-Predicates for finite numbers, nonnegative numbers, integers and dense rows.
+```luau
+local transcript = AgentEval.transcript.parseClaudeStream({}, Lute.parse)
+```
 
-### `Core.syntheticReport`
+### `AgentEval.base64`
 
-Construct a report for an execution-level result.
+Source: [src/codec/base64.luau](../src/codec/base64.luau).
 
-### `Core.waitUntil`
+`encode(bytes: string) -> string`; `decode(text: string) -> string?`
 
-Wait for a predicate with explicit clock and timing bounds.
+Returns: The same codec as `Codec.base64`.
 
-### `Evidence.bindReview`
+Failures: Invalid padded base64 returns nil.
 
-Bind a review to the exact sealed evidence it judges.
+```luau
+assert(AgentEval.base64.decode("aGk=") == "hi")
+```
 
-### `Evidence.expand`
+### `AgentEval.random`
 
-Expand evidence requirements for validation.
+Source: [src/core/random.luau](../src/core/random.luau).
 
-### `Evidence.explain`
+`hash(value: string) -> number`; `derive(seed: number, label: string) -> number`; `generator(seed: number) -> Generator`
 
-Explain evidence validation findings.
+Returns: Deterministic hashes, derived seeds or a stream with `next`, `integer` and `clone`.
 
-### `Evidence.seal`
+Failures: Nonfinite or unsafe seeds and reversed integer ranges raise. This is not a cryptographic generator.
 
-Seal evidence content with its provenance and digest.
+```luau
+local random = AgentEval.random.generator(42)
+local copy = random.clone()
+assert(random.integer(1, 10) == copy.integer(1, 10))
+```
 
-### `Evidence.validate`
+### `AgentEval.stats`
 
-Validate evidence integrity, freshness, reviews and coverage.
+Source: [src/agent-eval/stats.luau](../src/agent-eval/stats.luau).
 
-### `Gate.SCHEMA_VERSION`
+`mean(values) -> number?`; `median(values) -> number?`; `percentile(values, rank) -> number?`; `bootstrap<T>(options: BootstrapOptions<T>) -> Interval`
 
-Current gate schema version.
+Returns: Statistics or seeded confidence bounds. Empty inputs have no estimate.
 
-### `Gate.define`
+Failures: Invalid percentile rank, confidence or resample count raises. Statistic callback errors propagate.
 
-Validate a producer draft and define the gate.
+```luau
+assert(AgentEval.stats.median({ 1, 3 }) == 2)
+```
 
-### `Gate.explain`
+### `AgentEval.result`
 
-Explain producer selection and outcome.
+Source: [src/agent-eval/result.luau](../src/agent-eval/result.luau).
 
-### `Gate.format`
+`decode(value: unknown) -> RunResult`; `SCHEMA_VERSION: number`
 
-Format a gate outcome.
+Returns: A validated saved run with check, capture, timing and usage fields.
 
-### `Gate.list`
+Failures: Invalid result fields, status or schema raise.
 
-List the gate's producers.
+```luau
+local result = AgentEval.result.decode(savedRun)
+```
 
-### `Gate.rerun`
+### `AgentEval.report`
 
-Select previously unsuccessful producers for another run.
+Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
 
-### `Gate.run`
+`decodeThresholds(value) -> Thresholds`; `build(suite, results, judgments, thresholds, calibration?) -> EvalReport`; `markdown(report) -> string`; `verdict(report) -> Report`; `METRICS: { MetricSpec }`
 
-Run selected producers through explicit execution operations.
+Returns: Thresholds, aggregate evaluation data, readable Markdown or a standard acceptance report.
 
-### `Gate.testCases`
+Failures: Invalid thresholds raise. Missing evidence and unmet thresholds remain nonpassing verdicts.
 
-Expose gate producers as named cases.
+```luau
+local evaluation = AgentEval.report.build("suite", results, judgments, thresholds)
+print(AgentEval.report.markdown(evaluation))
+```
 
-### `Lute.attachments`
+### `AgentEval.judge`
 
-Attachment sinks for writing case artifacts.
+Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
 
-### `Lute.bounded`
+`compare(comparison, options) -> Judgment`; `parseVerdict(text, rubric, decode) -> (Verdict?, string?)`; `anthropic(options) -> Transport`; `claudeCli(options) -> Transport`; `codexCli(options) -> Transport`
 
-Run a host process with a deadline. `run(argv, seconds, runner?, options?) -> Result` stops the process, and its process tree where the host supports it, when the deadline passes. `runWith` takes explicit settings. `capabilities(settings?)` names the stop mechanism.
+`comparisons(suite, results) -> { Comparison }`; `run(options) -> { Judgment }`; `load(evidence, files, decode) -> { Judgment }`; `decodeLabels(value) -> { Label }`; `decodeRubric(value, label) -> Rubric?`; `calibrate(judgments, labels) -> Calibration`
 
-### `Lute.chunk`
+Returns: Blinded comparisons, bounded transport bindings, saved judgments or calibration. `DEFAULT_MODEL`, `DEFAULT_CODEX_MODEL`, `DEFAULT_CODEX_EFFORT` and `DEFAULT_RUBRIC` supply defaults.
 
-Chunked source loading helpers.
+Failures: Invalid rubric and label input raises. Invalid verdict text returns nil and a reason. Transport refusal cannot establish a judgment.
 
-### `Lute.corpus`
+```luau
+local comparisons = AgentEval.judge.comparisons(suite, results)
+```
 
-Deterministic source discovery, queries and lock parsing.
+### `AgentEval.scopedMcp`
 
-### `Lute.decode`
+Source: [src/agent-eval/scoped-mcp.luau](../src/agent-eval/scoped-mcp.luau).
 
-Decode a worker wire record.
+`create(studio: { id: string, name: string }, backend: Backend, encode: (unknown) -> string) -> Scope`
 
-### `Lute.decodeBatch`
+Returns: A dispatcher limited to one Studio and a `close()` function.
 
-Decode a batch of worker results.
+Failures: An empty Studio ID, unknown tool, wrong target or closed scope refuses dispatch. Backend failures raise.
 
-### `Lute.encode`
+```luau
+local scope = AgentEval.scopedMcp.create(studioIdentity, mcpBackend, Lute.encode)
+scope.close()
+```
 
-Encode a worker wire record.
+### `AgentEval.lute`
 
-### `Lute.evidence`
+Source: [src/agent-eval/lute.luau](../src/agent-eval/lute.luau).
 
-Host evidence collection and validation helpers.
+`services(options?) -> Services`; `loader() -> Loader`; `encode(value) -> string`; `decode(text) -> unknown`; `absolute(path) -> string`; `sha256(bytes) -> string`; `files: Files`; `STAMP: string`
 
-### `Lute.evidenceStore`
+Returns: Lute host bindings for evaluation, filesystem access and serialization.
 
-Filesystem evidence sealing and validation.
+Failures: File, process and JSON failures follow the supplied services. These bindings grant no external authority.
 
-### `Lute.fixture`
+```luau
+local evalLoader = AgentEval.lute.loader()
+local services = AgentEval.lute.services()
+```
 
-Create simulated host fixtures and run exported probes.
+### `AgentEval.cli`
 
-`bridge(snapshot?, options?)` accepts `content` providers in addition to the reflection and UI options:
+Source: [src/agent-eval/cli.luau](../src/agent-eval/cli.luau).
 
-- `content.assetVersion(versionId)` returns a live, archivable Model template created in this bridge's environment, or nil for unavailable content. `InsertService:LoadAssetVersion` validates the version ID, clones the template on each call and parents the result to InsertService. Missing providers, unavailable versions and invalid templates raise. The provider owns fixture acquisition and version mapping; the double performs no network fetch and invents no geometry.
-- `content.terrainMaterialColor(material)` provides a captured Color3 for an unset terrain material. `Terrain:SetMaterialColor` stores per-terrain overrides and `GetMaterialColor` returns them before consulting the provider. Air, Water, other enum families and invalid colors raise. An unset material without a provider raises rather than inventing a default palette.
+`cli(args: { string }, context: CliContext) -> number`
 
-`placeEngine().record` keeps diagnostics and sends virtual timestamps and message types to LogService history and MessageOut. History returns independent tables. It keeps the newest 512 entries in order. ClearOutput clears history but keeps diagnostics. Structured Logger context is outside this simulation.
+Returns: An exit code for plan, run, judge, report or audit commands.
 
-Sound Play, Pause, Resume and Stop update playback state and emit the corresponding events. Virtual time advances TimePosition at PlaybackSpeed. A positive TimeLength permits completion and loops. The simulator does not load sound media, find durations or prove audible playback. AudioPlayer Play sets IsPlaying (including planned playback before readiness), and Stop clears it while preserving TimePosition. AudioTextToSpeech Play sets IsPlaying only when IsLoaded; Pause clears it and preserves TimePosition. Readiness remains a host-supplied fact. Scheduled audio timestamps raise before state changes. Modern audio controls do not advance TimePosition, synthesize media or emit completion; use explicit duration/event facts for those observations. AudioPlayer has no Pause method and AudioTextToSpeech has no Stop method in the engine reference.
+Failures: Invalid flags return a usage failure. Command failures return nonzero; host failures can raise.
 
-`TweenService:Create(instance, tweenInfo, goals)` returns a Tween with `Instance`, `TweenInfo` and `PlaybackState`. Play, Pause and Cancel follow the engine states Begin, Delayed, Playing, Paused, Cancelled and Completed. Virtual time advances a playing tween. When `DelayTime` plus `Time` elapses, the tween writes each goal value once and fires `Completed` with `Enum.PlaybackState.Completed`. A tween that is within 1e-6 seconds of its end is complete. The tween writes no intermediate values, because the engine interpolates natively. Cancel resets progress, writes no goal and fires `Completed` with `Enum.PlaybackState.Cancelled`. Destroying a playing tween stops it. `RepeatCount` other than 0 and `Reverses` raise. The simulator does not prove easing curves or rendered motion.
-
-TextChatService.OnIncomingMessage uses write-only callback storage. A host can inspect and invoke it through propertyOf. This does not prove filtered chat delivery.
-
-Font faces without captured facts still raise errors. Give measured `ui.measureBounds`, `ui.truncateBounds` and `ui.measureText` adapters for the required operations. You can also capture facts with the [native text tool](running.md#capture-native-text-metrics). Verify never substitutes an unrelated face.
-
-Exact measured strings can supplement a face's token grammar. Their native bounds use their captured pixel grid. Their characters do not become composable tokens: an uncaptured combination containing a character outside the original grammar still raises `unsupported_text_metrics`.
-
-Uniform RichText weights use the captured face selected by `<b>` or `<font weight="...">`. Weight names are case insensitive; quoted numeric weights use 100 through 900. Native captures establish that Heavy selects Bold for BuilderSans and Regular for Fondamento and Michroma. Other weights need their own captured facts. Text that changes effective weights between runs still raises `unsupported_text_metrics`.
-
-`measureBounds`, `truncateBounds` and `measureLineHeight` receive `Gui = true` for GUI observations. Service parameters omit it. For the captured missing family `rbxasset://fonts/families/DoesNotExist.json`, service measurement raises `Temp read failed.` while GUI measurement uses SourceSansPro. Its Heavy GUI weight selects Bold. Other uncaptured families still raise `unsupported_text_metrics`.
-
-Truncation compares the rendered prefix and ellipsis with the available width, including fractional widths. An exact fit is accepted. The combined raster width is converted to a float32 result once. The shared Studio case checks widths on both sides of these boundaries.
-
-When `SplitWord` ends at a space boundary, its bounds include the trailing space instead of an ellipsis. Wrapped truncation also retains the natural width of the last visible line. The shared boundary fixture checks both rules with wrapped and unwrapped labels at several widths and heights.
-
-`AtEnd` keeps a word boundary when the prefix and ellipsis fill at least half the available width. Otherwise it cuts within the word. A cut within a word keeps the glyph spacing from the following character in the original text. The shared truncation fixture checks the threshold and the spacing with repeated letters.
-
-Wrapping splits an oversized word across measured characters while retaining kerning and the rounding of cumulative run positions. A fragment keeps an unavoidable rounded glyph advance even when it exceeds the constraint or that glyph's isolated width. Without trailing whitespace, its width is bounded by the larger of the constraint and the largest required rounded advance. Retained trailing spaces can extend this bound. Wrapping prefers whitespace between words and preserves independent paragraph bounds. TextScaled selects a font size at which whole words fit before it checks the wrapped height.
-
-TextScaled supports AutomaticSize. An automatic X axis measures without a width constraint; an automatic Y axis permits the measured height to grow. Automatic XY selects the largest permitted size. Authored dimensions remain minimum bounds, and UITextSizeConstraint still limits the selected size.
-
-### `Lute.gate`
-
-Run the gate command line with bounded producer processes.
-
-### `Lute.host`
-
-Create a Lute worker host.
-
-### `Lute.loader`
-
-Load a mounted module tree into an explicit environment.
-
-### `Lute.memory`
-
-Collect heap observations through an explicit memory host.
-
-### `Lute.model`
-
-Read and write model source representations.
-
-### `Lute.openCloud`
-
-Submit, observe and reconcile authorized Open Cloud execution.
-
-### `Lute.parse`
-
-Parse worker wire output.
-
-### `Lute.place`
-
-Build or bundle mounted source trees into XML fixtures.
-
-### `Lute.platform`
-
-Dispatch a case entry to the selected simulator or native host.
-
-### `Lute.player`
-
-Run cases through a caller-selected Player backend.
-
-### `Lute.selfRegisteringWorker`
-
-Run worker modules that register their own cases.
-
-### `Lute.sha256`
-
-`sha256(bytes) -> string` returns the lowercase hexadecimal SHA-256 digest.
-
-### `Lute.studio`
-
-Launch or attach Studio execution sessions.
-
-### `Lute.typePolicy`
-
-Find explicit `any` annotations (`explicitAny`) and files that weaken strict typing (`nonStrict`). Consumers use it for type budgets.
-
-### `Lute.worker`
-
-Run the worker protocol over registered sources.
-
-### `Roblox.assertInstance`
-
-Assert that a value is a simulated instance.
-
-### `Roblox.bootPlace`
-
-Boot a place using explicit engine operations and mounted sources.
-
-### `Roblox.buildPlaceTree`
-
-Build the simulated instance tree for a mounted place.
-
-### `Roblox.createPlaceCache`
-
-Create a cache for mounted place sources.
-
-### `Roblox.createPlaceRuntime`
-
-Create a place runtime with explicit engine bindings.
-
-### `Roblox.datatypes`
-
-Simulated Roblox datatype constructors and catalog.
-
-### `Roblox.environmentEngine`
-
-Adapt a simulated environment to the place engine contract.
-
-### `Roblox.experienceHost`
-
-Coordinate experience observations through explicit host operations.
-
-### `Roblox.fixtureBridge`
-
-Bridge reflection facts and behavior adapters into a fixture.
-
-### `Roblox.inputHost`
-
-Host adapter for explicit input observations.
-
-When `TouchEnabled` is true and `MouseEnabled` is false, virtual mouse input creates touch contacts. Each press creates one InputObject that persists through movement and release. The host emits GUI contact events, the general input events, and TouchStarted, TouchMoved and TouchEnded. It uses the device's `GetInsetArea(None)` origin for touch coordinates. Shared native cases check entry, movement, exit, release, button activation and UIDragDetector capture with TranslatePlane and CustomOffset. Long press begins after 0.5 virtual seconds; movement of five pixels or more before recognition cancels it. Recognized movement emits Change and release emits End. GUI long-press positions include the GUI inset; service positions match the InputObject. Other gestures, simultaneous contacts and native touch scrolling remain unmodeled.
-
-Pointer focus passes through Frames and TextLabels, stops at buttons, and can focus a read-only TextBox. ClearTextOnFocus clears before caret placement. Trailing caret placement supports alignment and physical padding; an existing edit also supports a leading click. Interior, wrapped and rotated placement remains unsupported. Cursor positions use byte offsets. Text input replaces the selection in either direction; Backspace removes the selection or one complete UTF-8 codepoint. IsMouseButtonPressed reports the modeled left button state.
-
-Directional selection prioritizes overlapping perpendicular rectangle spans. The shared geometry fixture checks wide controls, span boundaries and group escape/stop. Selection between overlapping targets along the travel axis remains uncalibrated. Destroying an InputAction or its context retains its last PreferredBinding without a replacement notification; live binding unparenting and reparenting still notify.
-
-`simulated` accepts `virtualController = true` to route keyboard keys through the default Studio controller mappings. Button, trigger and stick events update the same objects returned by `GetGamepadState`. Trigger changes precede button transitions. Opposing stick keys cancel an axis. Unmapped keys produce no keyboard events in this mode. The default keeps keyboard input.
-
-With a selected GuiObject, D-pad input moves selection and repeats while held. Button A activates the selected button on release. These inputs report `gameProcessedEvent = true`; activation precedes the release event. Button B leaves selection unchanged and reports an unprocessed event. The left thumbstick moves selection once per cardinal direction until released. The right thumbstick leaves selection unchanged and reports an unprocessed event. Diagonal thumbstick selection remains unsupported. The shared `tests/fixtures/input-controller-selection.luau` case checks these events in the double and in Studio with Controller Emulator enabled.
-
-Controller emulation sets `GamepadEnabled` and `PreferredInput` to gamepad. It preserves the viewport and keyboard and mouse availability. Closing the input host restores the previous gamepad and preferred-input values.
-
-`connectGamepad()` starts controller emulation on an open host, as when a player connects a pad. It sets `GamepadEnabled`, fires `GamepadConnected` with `Gamepad1` and answers `GetConnectedGamepads` and `GetGamepadConnected`. It does not change `PreferredInput`. `disconnectGamepad()` stops emulation, restores the values from before the connection and fires `GamepadDisconnected`. Keys then reach the keyboard again. A second connection or a disconnection without a pad is unsupported. In either mode, gamepad input sets `PreferredInput` to gamepad. Keyboard and mouse input do not change `PreferredInput` back.
-
-Repeated thumbstick key presses accumulate axis values, including values outside -1 to 1. Each release subtracts one press. The system menu remains unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
-
-### `Roblox.instanceHost`
-
-Host adapter for instance observations.
-
-### `Roblox.isInstance`
-
-Test whether a value is a simulated instance.
-
-### `Roblox.multiplayer`
-
-Coordinate declared multiplayer roles and observations.
-
-### `Roblox.network`
-
-Network observation and validation helpers.
-
-### `Roblox.performance`
-
-Roblox performance observation helpers.
-
-### `Roblox.playerHost`
-
-Host adapter for player observations.
-
-### `Roblox.progressChannel`
-
-Transport progress events between host contexts.
-
-### `Roblox.reflection`
-
-Decode and query reflection facts.
-
-### `Roblox.reflectionSnapshot`
-
-Build and inspect frozen reflection snapshots.
-
-### `Roblox.reportChannel`
-
-Transport reports between host contexts.
-
-### `Roblox.teleportFakes`
-
-TeleportOptions SetTeleportData/GetTeleportData, Player GetJoinData and TeleportService GetLocalPlayerTeleportData are registered automatically in the engine double. Options start with nil data; players start with an empty join dictionary and client arrival data starts nil. Options store independent copies, return copies, and retain data on Clone. False is data; nil clears it. Payloads accept finite primitives, value datatypes supported by the double and nested arrays or dictionaries. Cycles, mixed keys, sparse arrays and engine-state references raise before state changes. No teleport operation, transport, credential or source-authentication guarantee is simulated.
-
-`setJoinData(environment, player, dictionary)` supplies independent server arrival facts for a live Player. `setLocalPlayerTeleportData(environment, teleportService, value)` supplies client arrival data separately; nil clears it. Both copy their inputs, and reads return fresh copies. These fixtures do not enforce server/client execution context or derive arrivals from TeleportOptions. Consumers choose which facts each actor receives.
-
-### `Roblox.deviceFakes`
-
-`configure(engine, { preferredInput, touch, keyboard, mouse, gamepad, topLeft, bottomRight, topbar })` applies a device preset to the place engine's UserInputService and GuiService instances. PreferredInput is an Enum.PreferredInput item; capability flags are booleans. Its preferred input must have an enabled capability. Insets are finite nonnegative Vector2 values; topbar is a finite Rect. Validation precedes publication. Property changes publish ordinary changed signals, including PreferredBinding updates on InputActions. GetGuiInset returns the supplied corners, so camera screen projection uses the same inset. TopbarInset publishes the supplied Rect. Mutating the options table afterward does not change installed state.
-
-The preset installs an all-buttons-up baseline for GetKeysPressed, GetMouseButtonsPressed, IsKeyDown, IsMouseButtonPressed and IsGamepadButtonDown. Input-host operations can override it with live simulated state. This helper invents no device dimensions and does not advance physical input. For captured Studio device profiles, viewport changes and ScreenGui layout areas, use createPlaceRuntime and StudioDeviceSimulatorService as documented above.
-
-### Simulated messaging
-
-MessagingService SubscribeAsync/PublishAsync are registered automatically through Roblox.testEnvironment and the reflected fixture bridge. Topics contain 1–80 bytes. SubscribeAsync returns a disconnectable connection; PublishAsync snapshots a finite primitive/table payload and defers local delivery through the virtual scheduler. Each current subscriber receives an independent `{ Data, Sent }` envelope. Sent is whole seconds since the virtual Unix epoch zero, captured at publication. Disconnection or service destruction suppresses queued delivery. New subscriptions receive future publications only. Cycles, mixed keys, sparse arrays, functions and engine-state values raise even when a topic has no subscribers.
-
-This deterministic local fake does not simulate cross-server transport, backend yields, quotas, payload byte limits, best-effort loss or script destruction. Consumers needing those outcomes supply explicit failure fakes or use a native host.
-
-### `Roblox.testEnvironment`
-
-Create an isolated simulated environment.
-
-### `Roblox.typeName`
-
-Return a simulated value's Roblox type name.
-
-### `Roblox.uiAudit`
-
-Collect, decode and analyze UI facts with explicit rules.
-
-### `Roblox.uiFakes`
-
-Explicit UI behavior doubles used with reflection facts.
-
-### `Roblox.value`
-
-Move values across the engine double's VM boundary without casts. `value(item)` wraps a host value, `read(value, key)` and `write(value, key, item)` access a VM table, and `invoke(value, ...)` calls a VM function.
+```luau
+local exitCode = AgentEval.cli({ "plan", "--suite", suitePath }, cliContext)
+```
 
 ## Repository checks
 
-The Lute-only `src/checks` package returns findings without exiting. Configuration, behavior and contract falsifiers are defined in [repository checks](checks.md).
+The Lute-only `Checks` package returns findings without exiting.
+[Repository checks](checks.md) owns configuration fields and contract falsifiers.
+Paths are relative to the working directory unless that configuration states otherwise.
 
 ### `Checks.walk`
 
-Sorted file traversal, subtree exclusion and source line lookup.
+Source: [src/checks/walk.luau](../src/checks/walk.luau).
+
+`paths(root, suffixes, into?) -> { string }`; `pathsSkipping(root, suffixes, skip) -> { string }`; `files(root, suffixes) -> { File }`; `filesSkipping(root, suffixes, skip) -> { File }`; `lineOf(source, offset) -> number`
+
+Returns: Sorted paths, file contents or a one-based source line. Missing roots return no files.
+
+Failures: Filesystem read errors propagate.
+
+```luau
+assert(Checks.walk.lineOf("first\nsecond", 7) == 2)
+```
 
 ### `Checks.temporaryDirectory`
 
-Unique scoped temporary directories with cleanup on return or error.
+Source: [src/checks/temporary-directory.luau](../src/checks/temporary-directory.luau).
+
+`root() -> string`; `run<T>(parent: string, prefix: string, body: (string) -> T) -> T`
+
+Returns: The temporary root or the body result after removing its unique directory.
+
+Failures: Invalid prefixes, allocation failures, body errors and cleanup failures raise. Cleanup also runs when the body raises.
+
+```luau
+local result = Checks.temporaryDirectory.run(Checks.temporaryDirectory.root(), "docs", function(path) return path ~= "" end)
+assert(result)
+```
 
 ### `Checks.denylist`
 
-Parameterized rule scanning with exact path exemptions and literal allowances.
+Source: [src/checks/denylist.luau](../src/checks/denylist.luau).
+
+`scan(path: string, source: string, rules: { Rule }, allowedLiterals: Allowances?) -> { string }`
+
+Returns: Findings for the caller rules and exact path allowances.
+
+Failures: Invalid Luau patterns raise. Allowances preserve source line positions.
+
+```luau
+local findings = Checks.denylist.scan("sample", "blocked", { { pattern = "blocked", plain = true, why = "example rule" } })
+assert(#findings == 1)
+```
 
 ### `Checks.boundary`
 
-Check source roots against configured host/domain rules.
+Source: [src/checks/repository.luau](../src/checks/repository.luau).
+
+`boundary(config: Config) -> { string }`
+
+Returns: Source-boundary findings. An empty array passes. The check does not exit the process.
+
+Failures: Invalid or missing discovery roots raise unless the configuration permits them.
+
+```luau
+local findings = Checks.boundary { root = "src/core", rules = {} }
+```
 
 ### `Checks.leakage`
 
-Check Git-selected repository files against configured leakage rules.
+Source: [src/checks/repository.luau](../src/checks/repository.luau).
+
+`leakage(config: Config) -> { string }`
+
+Returns: Findings over Git-selected files. An empty array passes. The check does not exit the process.
+
+Failures: Failed Git enumeration and unreadable files raise.
+
+```luau
+local findings = Checks.leakage { rules = {} }
+```
 
 ### `Checks.noAny`
 
-Require strict maintained `.luau` and `.lua` files and reject explicit `any` and every type assertion (`::`), including concrete casts. Malformed source fails closed.
+Source: [src/checks/repository.luau](../src/checks/repository.luau).
+
+`noAny(config: Config) -> { string }`
+
+Returns: Strict-type policy findings. An empty array passes. The check does not exit the process.
+
+Failures: Malformed source fails closed. Git and file errors raise.
+
+```luau
+local findings = Checks.noAny { include = { "src/core" } }
+```
 
 ### `Checks.specStyle`
 
-Reject colon case registration, context expectations and dotted `Test.it`, `Test.expect` or `Test.describe` calls in `*.verify.luau` files, so specs declare `describe`, `it` and `expect` once. Takes the same selection as `Checks.noAny`; `exclude` names files whose subject is the raw harness API.
+Source: [src/checks/repository.luau](../src/checks/repository.luau).
+
+`specStyle(config: Config) -> { string }`
+
+Returns: Specification-style findings. An empty array passes. The check does not exit the process.
+
+Failures: Git and file errors raise. Exclusions are exact paths.
+
+```luau
+local findings = Checks.specStyle { include = { "tests" } }
+```
 
 ### `Checks.testManifest`
 
-Compare or write a manifest against configured corpus discovery.
+Source: [src/checks/manifest.luau](../src/checks/manifest.luau).
+
+`testManifest(config: Config) -> { string }`
+
+Returns: Manifest findings, or no findings after a successful write. An empty array passes. The check does not exit the process.
+
+Failures: Discovery, load, write and formatter failures raise.
+
+```luau
+local findings = Checks.testManifest(manifestConfig)
+```
 
 ### `Checks.publicSurface`
 
-Compare caller-loaded public exports with configured API documentation.
+Source: [src/checks/surface.luau](../src/checks/surface.luau).
+
+`publicSurface(config: Config) -> { string }`
+
+Returns: Missing or stale API entries. An empty array passes. The check does not exit the process.
+
+Failures: Unreadable documentation raises. Missing entries and failed package loads produce findings.
+
+```luau
+local findings = Checks.publicSurface(surfaceConfig)
+```
 
 ### `Checks.comments`
 
-Check or rewrite prohibited source/config comments with explicit allowances.
+Source: [src/checks/comments.luau](../src/checks/comments.luau).
+
+`comments(config: Config) -> { string }`
+
+Returns: Comment-policy findings, or no findings after a successful rewrite. An empty array passes. The check does not exit the process.
+
+Failures: Parser, read and write errors raise.
+
+```luau
+local findings = Checks.comments { files = { "src/bdd.luau" }, allowed = { "^%-%-!" } }
+```
 
 ### `Checks.provenance`
 
-Validate license text, dependency provenance and configured source/notice policy.
+Source: [src/checks/provenance.luau](../src/checks/provenance.luau).
+
+`provenance(config: Config) -> { string }`
+
+Returns: License and source-provenance findings. An empty array passes. The check does not exit the process.
+
+Failures: Unreadable required files and failed host operations cannot pass.
+
+```luau
+local findings = Checks.provenance(provenanceConfig)
+```
 
 ### `Checks.cleanClone`
 
-Require clean HEAD and run a configured gate in a disposable exact-HEAD clone.
+Source: [src/checks/clean-clone.luau](../src/checks/clean-clone.luau).
+
+`cleanClone(config: Config) -> { string }`
+
+Returns: Clean-HEAD and clone-command findings. An empty array passes. The check does not exit the process.
+
+Failures: Dirty HEAD and command failures produce findings. Git or cleanup failures cannot pass.
+
+```luau
+local findings = Checks.cleanClone(cloneConfig)
+```
 
 ### `Checks.lintRules`
 
-Lute rules for shared globals, misplaced type comparisons and invalid string escapes.
+Source: [src/checks/init.luau](../src/checks/init.luau).
 
-See the [terms](README.md#terms) for shared technical names.
+`globalTableUsage: Rule`; `typeCheckInsideCall: Rule`; `badStringEscape: Rule`
+
+Returns: Lute lint rules with `name` and `lint` fields. Configure their paths in a Lute lint configuration.
+
+Failures: Lint findings use the Lute diagnostic route. Invalid host configuration can raise.
+
+```luau
+local rule = Checks.lintRules.badStringEscape
+assert(type(rule.lint) == "function")
+```
 
 ## Type imports
 
-Types are defined beside their implementation. For example, `src/lute/studio.luau` exports `Options` and `HostOptions`. `src/roblox/fixture-bridge.luau` exports `Options`. Root packages expose selected aliases. Use the defining module for other types.
-
+Types are declared beside their implementation. Root packages expose selected aliases.
+For example, `Lute` exports `PlatformOptions`; `src/lute/studio.luau` declares `Options` and `HostOptions`.
+Use a defining module only when its type is absent from the public root.
+See the [terms](README.md#terms) for shared technical names.
