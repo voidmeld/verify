@@ -29,7 +29,7 @@ local function attach(environment: Environment.Environment)
 		end
 	)
 	local entries: { [Instance]: Entry } = {}
-	setmetatable(entries, { __mode = "k" })
+	setmetatable(entries, { __mode = "ks" })
 	local active: { [Instance]: boolean } = {}
 	local heartbeat: Environment.Connection? = nil
 	local function idle()

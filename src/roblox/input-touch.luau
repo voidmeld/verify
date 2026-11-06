@@ -35,7 +35,7 @@ local function create(env: Environment.Environment, options: Options)
 	local activations: { [Instance]: { released: number, count: number } } = {}
 	do
 		local weak = activations
-		setmetatable(weak, { __mode = "k" })
+		setmetatable(weak, { __mode = "ks" })
 	end
 	local function update(object: Instance, at: Point, state: unknown, moving: boolean)
 		env.poke(object, "UserInputState", state)

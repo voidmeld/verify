@@ -219,7 +219,7 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local activations: { [Instance]: Activation } = {}
 	do
 		local weak = activations
-		setmetatable(weak, { __mode = "k" })
+		setmetatable(weak, { __mode = "ks" })
 	end
 	local owned: { Environment.Object } = {}
 	local registrations: { () -> () } = {}

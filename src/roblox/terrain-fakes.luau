@@ -130,7 +130,7 @@ local function interval(edit: Edit, origin: Vector, direction: Vector): Span?
 end
 
 local function attach(environment: Environment.Environment): Controller
-	local edits: { [Instance]: { Edit } } = setmetatable({}, { __mode = "k" })
+	local edits: { [Instance]: { Edit } } = setmetatable({}, { __mode = "ks" })
 	local air, water = D.Enum.Material.Air, D.Enum.Material.Water
 	local function append(terrain: Instance, edit: Edit)
 		local rows = edits[terrain] or {}

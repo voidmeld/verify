@@ -68,7 +68,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		return object:IsA "TextLabel" or object:IsA "TextButton" or object:IsA "TextBox"
 	end
 	local projected: { [Instance]: Projection.Area | false } = {}
-	setmetatable(projected, { __mode = "k" })
+	setmetatable(projected, { __mode = "ks" })
 	local function validate(object: Instance)
 		if object:IsA "BillboardGui" then
 			projected[object] = Projection.resolve(object, read, options.projection) or false
@@ -318,7 +318,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		}
 	end
 	local bases: { [Instance]: { width: number, height: number } } = {}
-	setmetatable(bases, { __mode = "k" })
+	setmetatable(bases, { __mode = "ks" })
 	type BasisWrite = { object: Instance, value: { width: number, height: number }? }
 	type Measurement = {
 		width: number,
@@ -649,11 +649,11 @@ local function attach(environment: Environment.Environment, options: Options): C
 		writes: { BasisWrite },
 	}
 	local keptSizes: { [Instance]: { stamp: number, epoch: number, entries: { KeptSize } } } = {}
-	setmetatable(keptSizes, { __mode = "k" })
+	setmetatable(keptSizes, { __mode = "ks" })
 	local measuredTrees: { [Instance]: { unknown } } = {}
-	setmetatable(measuredTrees, { __mode = "k" })
+	setmetatable(measuredTrees, { __mode = "ks" })
 	local placedTrees: { [Instance]: { unknown } } = {}
-	setmetatable(placedTrees, { __mode = "k" })
+	setmetatable(placedTrees, { __mode = "ks" })
 	local function unchangedSince(
 		store: { [Instance]: { unknown } },
 		object: Instance,
@@ -792,7 +792,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 		return value
 	end
 	local turns: { [Instance]: { Turn } } = {}
-	setmetatable(turns, { __mode = "k" })
+	setmetatable(turns, { __mode = "ks" })
 	local frames: { [Instance]: Rectangle } = {}
 	local step: () -> ()
 	local attached: Controller
@@ -801,10 +801,10 @@ local function attach(environment: Environment.Environment, options: Options): C
 	end, function()
 		step()
 	end)
-	setmetatable(frames, { __mode = "k" })
+	setmetatable(frames, { __mode = "ks" })
 	local scrollingProperties = { "AbsoluteSize", "AbsoluteWindowSize", "AbsoluteCanvasSize" }
 	local scrollingGeometry: { [Instance]: { [string]: Vector } } = {}
-	setmetatable(scrollingGeometry, { __mode = "k" })
+	setmetatable(scrollingGeometry, { __mode = "ks" })
 	local function scrollingBounds(object: Instance): { [string]: Vector }
 		local bounds: { [string]: Vector } = {}
 		for _, property in scrollingProperties do

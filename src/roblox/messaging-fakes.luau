@@ -10,7 +10,7 @@ local function topicName(topic: string)
 end
 
 local function attach(environment: Environment.Environment)
-	local services: { [Environment.Instance]: { [string]: { Subscription } } } = setmetatable({}, { __mode = "k" })
+	local services: { [Environment.Instance]: { [string]: { Subscription } } } = setmetatable({}, { __mode = "ks" })
 	environment.fake(
 		"MessagingService.SubscribeAsync",
 		function(service: Environment.Instance, topic: string, receive: (unknown) -> ()): Environment.Connection

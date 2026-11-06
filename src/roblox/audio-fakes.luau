@@ -10,7 +10,7 @@ type Curve = { [number]: number }
 
 local function attach(environment: Environment.Environment)
 	local seeks: { [Instance]: number } = {}
-	setmetatable(seeks, { __mode = "k" })
+	setmetatable(seeks, { __mode = "ks" })
 	local active: { [Instance]: number } = {}
 	local heartbeat: Environment.Connection? = nil
 	local function idle()
@@ -109,7 +109,7 @@ local function attach(environment: Environment.Environment)
 		)
 	end
 	local curves: { [Instance]: Curve } = {}
-	setmetatable(curves, { __mode = "k" })
+	setmetatable(curves, { __mode = "ks" })
 	environment.fake("AudioEmitter.SetDistanceAttenuation", function(object: Instance, curve: { [unknown]: unknown }?)
 		local nextCurve: Curve = {}
 		local count = 0
