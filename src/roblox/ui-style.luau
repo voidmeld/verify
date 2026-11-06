@@ -14,7 +14,7 @@ export type Controller = {
 	step: () -> (),
 	cached: (() -> ()) -> (),
 	close: () -> (),
-	invalidate: () -> (),
+	invalidate: (Instance?) -> (),
 	animating: (boolean?) -> boolean,
 }
 type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
@@ -80,7 +80,7 @@ local function create(
 		end
 	end
 	local writes: Environment.Connection? = nil
-	local function mark(subtree: Instance?)
+	local function mark(subtree: Instance?, within: ((Instance) -> boolean)?)
 		styleGeneration += 1
 		local now = env.now()
 		staleSince = staleSince or now
@@ -97,6 +97,12 @@ local function create(
 		while #pending > 0 do
 			local object = table.remove(pending)
 			assert(object ~= nil)
+			if within then
+				if not within(object) then
+					continue
+				end
+				env.stampLayout(object)
+			end
 			keptValues[object] = nil
 			keptScopes[object] = nil
 			local entries = animated[object]
@@ -113,9 +119,9 @@ local function create(
 			end
 		end
 	end
-	local function dirty(subtree: Instance?)
+	local function dirty(subtree: Instance?, within: ((Instance) -> boolean)?)
 		pendingAt = nil
-		mark(subtree)
+		mark(subtree, within)
 	end
 	local watches: { [Instance]: { [string]: Watch } } = {}
 	setmetatable(watches, { __mode = "ks" })
@@ -139,18 +145,12 @@ local function create(
 			end
 		end
 	end
-	local function invalidate()
-		env.invalidateLayout()
-		for sheet in indexes do
-			forget(sheet)
-		end
-		refresh(true)
-		dirty()
-	end
 	local frameScopes: { [Instance]: { sheet: Instance? } }? = nil
 	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
 	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
 	local frameMatches: { [Instance]: { [Instance]: { [string]: boolean } } }? = nil
+	local scopeRoots: { [Instance]: Instance } = {}
+	setmetatable(scopeRoots, { __mode = "k" })
 	local function ownSheet(object: Instance): Instance?
 		local link = env.childWhichIsA(object, "StyleLink")
 		if link then
@@ -163,10 +163,83 @@ local function create(
 			if sheet ~= nil then
 				local instance = Environment.assertInstance(sheet)
 				assert(instance:IsA "StyleSheet", "StyleLink requires a StyleSheet")
+				scopeRoots[object] = instance
 				return instance
 			end
 		end
 		return nil
+	end
+	local function owningSheet(object: Instance): Instance?
+		local current: Instance? = object
+		while current do
+			if env.isA(current, "StyleSheet") then
+				return current
+			end
+			current = env.parentOf(current)
+		end
+		return nil
+	end
+	local function dependsOn(sheet: Instance, target: Instance, seen: { [Instance]: boolean }): boolean
+		if sheet == target then
+			return true
+		end
+		if seen[sheet] then
+			return false
+		end
+		seen[sheet] = true
+		for _, base in derives[sheet] or {} do
+			if dependsOn(base, target, seen) then
+				return true
+			end
+		end
+		for _, child in env.childrenOf(sheet) do
+			if env.isA(child, "StyleDerive") then
+				local base = env.propertyOf(child, "StyleSheet")
+				if Environment.isInstance(base) and dependsOn(Environment.assertInstance(base), target, seen) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+	local function invalidate(object: Instance?)
+		if object == nil then
+			env.invalidateLayout()
+			for sheet in indexes do
+				forget(sheet)
+			end
+			refresh(true)
+			dirty()
+			return
+		end
+		if env.isA(object, "StyleLink") then
+			local parent = env.parentOf(object)
+			if parent then
+				scopeRoots[parent] = nil
+				refresh(true)
+				dirty(parent)
+				env.invalidateLayout(parent)
+			end
+			return
+		end
+		local sheet = owningSheet(object)
+		if sheet == nil then
+			return
+		end
+		forget(sheet)
+		for root, linked in scopeRoots do
+			if not env.isAlive(root) then
+				scopeRoots[root] = nil
+				continue
+			end
+			if dependsOn(linked, sheet, {}) then
+				refresh(true)
+				dirty(root, function(descendant: Instance): boolean
+					local nested = scopeRoots[descendant]
+					return nested == nil or dependsOn(nested, sheet, {})
+				end)
+			end
+		end
 	end
 	local function scope(object: Instance): Instance?
 		local scopes = if observed ~= nil then keptScopes else frameScopes
@@ -224,8 +297,7 @@ local function create(
 		end
 		local index: Index = { rules = {}, byProperty = {}, candidates = {}, nested = {}, connections = {} }
 		local function drop()
-			dirty()
-			forget(sheet)
+			invalidate(sheet)
 		end
 		table.insert(index.connections, sheet.ChildAdded:Connect(drop))
 		table.insert(index.connections, sheet.ChildRemoved:Connect(drop))
@@ -471,26 +543,26 @@ local function create(
 		end
 		observed = env.observe(function(event: Environment.Event)
 			local object = event.object
-			local subtree: Instance? = nil
+			if
+				env.isA(object, "StyleRule")
+				or env.isA(object, "StyleSheet")
+				or env.isA(object, "StyleLink")
+				or env.isA(object, "StyleDerive")
+			then
+				invalidate(object)
+				return
+			end
+			local operation = event.operation
 			if
 				not (
-					env.isA(object, "StyleRule")
-					or env.isA(object, "StyleSheet")
-					or env.isA(object, "StyleLink")
-					or env.isA(object, "StyleDerive")
-				)
-			then
-				local operation = event.operation
-				if
 					operation == "setParent"
 					or operation == "destroy" and watches[object] ~= nil
-					or (operation == "setProperty" and STYLE_MEMBERS[event.member or ""])
-				then
-					subtree = object
-				else
-					return
-				end
+					or operation == "setProperty" and STYLE_MEMBERS[event.member or ""]
+				)
+			then
+				return
 			end
+			local subtree = object
 			local now = env.now()
 			if pendingAt == now then
 				mark(subtree)
@@ -500,11 +572,23 @@ local function create(
 			dirty(subtree)
 			pendingAt = now
 		end)
-		writes = env.onMemberWrite({ "Name", "GuiState", "Interactable", "Parent" }, function(object: Instance)
-			if env.isAlive(object) then
-				forgetKept(object)
+		writes = env.onMemberWrite(
+			{ "Name", "GuiState", "Interactable", "Parent", "Selector", "Priority", "StyleSheet" },
+			function(object: Instance)
+				if env.isAlive(object) then
+					if
+						env.isA(object, "StyleRule")
+						or env.isA(object, "StyleSheet")
+						or env.isA(object, "StyleLink")
+						or env.isA(object, "StyleDerive")
+					then
+						invalidate(object)
+					else
+						forgetKept(object)
+					end
+				end
 			end
-		end)
+		)
 		tags = env.tagChanged:Connect(function(object: Instance, tag: string, present: boolean)
 			previousTag = { object = object, tag = tag, present = not present }
 			refresh(true)
@@ -584,6 +668,7 @@ local function create(
 		end
 		table.clear(keptValues)
 		table.clear(keptScopes)
+		table.clear(scopeRoots)
 		for object in pairs(animated) do
 			animated[object] = nil
 		end
