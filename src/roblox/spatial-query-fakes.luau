@@ -8,6 +8,7 @@ local Names = require "./datatypes/names"
 local Environment = require "./environment-types"
 local Geometry = require "./query-geometry"
 local Terrain = require "./terrain-fakes"
+local Index = require "./spatial-query-index"
 
 type Instance = Environment.Instance
 type Vector = D.Vector3Value
@@ -62,7 +63,7 @@ local function ball(position: Vector, radius: number): Shape
 	return { frame = D.CFrame.new(position), half = V.one * radius, radius = radius }
 end
 
-local function attach(environment: Environment.Environment)
+local function attach(environment: Environment.Environment, selectOverride: ((Index.Select) -> Index.Select)?)
 	local terrain = Terrain.attach(environment)
 	local function listed(part: Instance, filter: { unknown }): boolean
 		for _, candidate in filter do
@@ -172,9 +173,21 @@ local function attach(environment: Environment.Environment)
 		end
 		return nil
 	end
-	local function candidates(world: Instance, params: Filter, skip: Instance?): { Instance }
+	local select = Index.attach(environment, function(part: Instance): Shape
+		return shape(part, false)
+	end, owningWorld)
+	if selectOverride then
+		select = selectOverride(select)
+	end
+	local function candidates(
+		world: Instance,
+		params: Filter,
+		skip: Instance?,
+		source: Shape,
+		direction: Vector
+	): { Instance }
 		local found = {}
-		for _, part in world:GetDescendants() do
+		for _, part in select(world, source, direction) do
 			if part == skip or not (part:IsA "BasePart" or part:IsA "Terrain") or owningWorld(part) ~= world then
 				continue
 			end
@@ -234,7 +247,7 @@ local function attach(environment: Environment.Environment)
 			)
 		end
 		local nearest: Result? = nil
-		for _, part in candidates(world, params, skip) do
+		for _, part in candidates(world, params, skip, source, direction) do
 			local t: number?, normal: Vector?, position: Vector?, hitMaterial: unknown
 			if part:IsA "Terrain" and terrain.authored(part) then
 				assert(isRay, "unsupported_content: authored terrain supports rays only")
@@ -294,7 +307,7 @@ local function attach(environment: Environment.Environment)
 		assert(params.MaxParts >= 0, "MaxParts must be nonnegative")
 		assert(params.Tolerance == 0, "unsupported: nonzero overlap Tolerance")
 		local found = {}
-		for _, part in candidates(world, params, skip) do
+		for _, part in candidates(world, params, skip, source, V.zero) do
 			if Geometry.overlaps(source, shape(part, bounds)) then
 				table.insert(found, part)
 			end

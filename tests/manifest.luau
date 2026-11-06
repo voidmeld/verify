@@ -87,6 +87,7 @@ return table.freeze {
 	"tests/semantic-execution.lute.verify.luau",
 	"tests/shape.verify.luau",
 	"tests/spatial-query-fakes.lute.verify.luau",
+	"tests/spatial-query-index.lute.verify.luau",
 	"tests/studio-attach.lute.verify.luau",
 	"tests/studio-identity.lute.verify.luau",
 	"tests/studio-install.lute.verify.luau",
