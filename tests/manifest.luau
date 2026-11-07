@@ -64,6 +64,7 @@ return table.freeze {
 	"tests/native-contract.lute.verify.luau",
 	"tests/open-cloud.lute.verify.luau",
 	"tests/operation-deadline.verify.luau",
+	"tests/pathfinding-host.lute.verify.luau",
 	"tests/performance.verify.luau",
 	"tests/place-bridge.lute.verify.luau",
 	"tests/place-cache.lute.verify.luau",

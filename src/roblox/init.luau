@@ -17,6 +17,7 @@ local ReflectionSnapshot = require "@self/reflection-snapshot"
 local Multiplayer = require "@self/multiplayer"
 local InputHost = require "@self/input-host"
 local ControllerHost = require "@self/controller-host"
+local PathfindingHost = require "@self/pathfinding-host"
 local ProgressChannel = require "@self/progress-channel"
 local ReportChannel = require "@self/report-channel"
 local InstanceHost = require "@self/instance-host"
@@ -98,6 +99,7 @@ return {
 	multiplayer = Multiplayer,
 	inputHost = InputHost,
 	controllerHost = ControllerHost,
+	pathfindingHost = PathfindingHost,
 	reportChannel = ReportChannel,
 	progressChannel = ProgressChannel,
 	instanceHost = InstanceHost,
