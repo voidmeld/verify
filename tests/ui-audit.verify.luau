@@ -119,6 +119,7 @@ type Fake = { [string]: unknown, Parent: Fake? }
 local HIERARCHY: { [string]: { string } } = {
 	ScreenGui = { "ScreenGui", "LayerCollector", "GuiBase2d", "Instance" },
 	Frame = { "Frame", "GuiObject", "GuiBase2d", "Instance" },
+	CanvasGroup = { "CanvasGroup", "GuiObject", "GuiBase2d", "Instance" },
 	TextLabel = { "TextLabel", "GuiObject", "GuiBase2d", "Instance" },
 	TextButton = { "TextButton", "GuiButton", "GuiObject", "GuiBase2d", "Instance" },
 	ScrollingFrame = { "ScrollingFrame", "GuiObject", "GuiBase2d", "Instance" },
@@ -193,6 +194,65 @@ local function gui(x: number, y: number, width: number, height: number, extra: O
 end
 
 describe("ui audit analyzer", function()
+	it("projects nested group opacity after flattening each group", function()
+		local outer = label(1, { class = "CanvasGroup", groupTransparency = 0.5, text = nil })
+		outer.text = nil
+		local inner = label(2, { class = "CanvasGroup", parent = 1, groupTransparency = 0.5 })
+		inner.text = nil
+		local text = label(3, { parent = 2 })
+		local value = dump({ outer, inner, text }, {})
+		expect(value.elements[1].opacity):toBe(0.5)
+		expect(value.elements[3].opacity):toBe(0.25)
+		local report = Audit.analyze(value)
+		expect(count(report, "contrast-low")):toBe(1)
+		expect(report.metrics.contrastUnknown):toBe(0)
+		inner.groupTransparency = 0
+		outer.groupTransparency = 0
+		expect(count(Audit.analyze(dump({ outer, inner, text }, {})), "contrast-low")):toBe(0)
+	end)
+	it("flattens opaque child backgrounds before fading the group", function()
+		local group = label(
+			1,
+			{ class = "CanvasGroup", groupTransparency = 0.5, background = { color = WHITE, transparency = 0 } }
+		)
+		group.text = nil
+		local value = dump({ group, label(2, { parent = 1 }) }, {})
+		local report = Audit.analyze(value)
+		expect(count(report, "contrast-low")):toBe(0)
+		expect(report.metrics.contrastUnknown):toBe(1)
+	end)
+	it("excludes fully faded text without disabling group hit targets", function()
+		local group = label(1, { class = "CanvasGroup", groupTransparency = 1 })
+		group.text = nil
+		local value = dump(
+			{ group, button(2, 100, 300, { parent = 1 }), label(3, { parent = 1, rect = rect(100, 300, 1, 1) }) },
+			{}
+		)
+		local report = Audit.analyze(value)
+		expect(report.metrics.texts):toBe(0)
+		expect(report.metrics.interactive):toBe(1)
+		expect(count(report, "text-truncated")):toBe(0)
+		expect(count(report, "text-overlap")):toBe(0)
+		expect(count(report, "contrast-low")):toBe(0)
+	end)
+	it("rejects contradictory or invalid opacity evidence", function()
+		for _, extra in
+			{ { opacity = 0.5 }, { groupTransparency = 0.5 }, { class = "CanvasGroup", groupTransparency = 2 } }
+		do
+			local ok = pcall(dump, { label(1, extra) }, {})
+			expect(ok):toBe(false)
+		end
+	end)
+	it("ignores fully faded sibling paint when resolving contrast", function()
+		local parent = label(1, { class = "Frame" })
+		parent.text = nil
+		local sibling = label(2, { class = "CanvasGroup", parent = 1, groupTransparency = 1 })
+		sibling.text = nil
+		local text = label(3, { parent = 1, background = { color = BLACK, transparency = 1 } })
+		local report = Audit.analyze(dump({ parent, sibling, text }, {}))
+		expect(count(report, "contrast-low")):toBe(0)
+		expect(report.metrics.contrastUnknown):toBe(0)
+	end)
 	it("reports each named failure attribute as a high control-failed finding", function()
 		local value = dump({}, {})
 		value.failures = { { path = "Gui.Shop", attribute = "Failure", message = "the grid needs a horizontal list" } }
@@ -816,6 +876,23 @@ describe("ui audit analyzer", function()
 end)
 
 describe("ui audit collector", function()
+	it("collects styled group transparency including ancestors of a selected root", function()
+		local text = instance("TextLabel", "Text", gui(0, 0, 100, 30, { Text = "Text" }))
+		local nested = instance("CanvasGroup", "Nested", gui(0, 0, 100, 30, { GroupTransparency = 0 }), { text })
+		nested.GetStyled = function(_self: unknown, key: string): unknown
+			assert(key == "GroupTransparency")
+			return 0.5
+		end
+		local root = instance("CanvasGroup", "Root", gui(0, 0, 100, 30, { GroupTransparency = 0.5 }), { nested })
+		local ancestor = instance("CanvasGroup", "Ancestor", gui(0, 0, 100, 30, { GroupTransparency = 0.5 }), { root })
+		local collected = Collect.collect { roots = { root }, game = {} }
+		expect(ancestor.Name):toBe "Ancestor"
+		expect(collected.roots[1].opacity):toBe(0.25)
+		expect(collected.elements[1].groupTransparency):toBe(0.5)
+		expect(collected.elements[2].opacity):toBe(0.125)
+		local decoded = Audit.decode(collected)
+		expect(decoded.elements[2].opacity):toBe(0.125)
+	end)
 	it("dumps an injected instance tree with screen-space geometry", function()
 		local other =
 			instance("TextButton", "Other", gui(300, 60, 60, 48, { Selectable = true, AutoButtonColor = true }))

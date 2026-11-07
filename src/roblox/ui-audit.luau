@@ -156,14 +156,6 @@ local function ratio(left: Color, right: Color): number
 	return (light + 0.05) / (dark + 0.05)
 end
 
-local function blend(top: Color, alpha: number, bottom: Color): Color
-	return {
-		r = top.r * alpha + bottom.r * (1 - alpha),
-		g = top.g * alpha + bottom.g * (1 - alpha),
-		b = top.b * alpha + bottom.b * (1 - alpha),
-	}
-end
-
 local function round(value: number): number
 	return math.floor(value + 0.5)
 end
@@ -276,7 +268,7 @@ local function analyze(dump: Dump, options: Options?): Report
 		if element.interactive then
 			metrics.interactive += 1
 		end
-		if element.text ~= nil and element.text.content ~= "" then
+		if element.text ~= nil and element.text.content ~= "" and (element.opacity or 1) > 0 then
 			metrics.texts += 1
 		end
 	end
@@ -357,7 +349,7 @@ local function analyze(dump: Dump, options: Options?): Report
 				if element.interactive then
 					metrics.interactive -= 1
 				end
-				if element.text ~= nil and element.text.content ~= "" then
+				if element.text ~= nil and element.text.content ~= "" and (element.opacity or 1) > 0 then
 					metrics.texts -= 1
 				end
 				break
@@ -377,6 +369,7 @@ local function analyze(dump: Dump, options: Options?): Report
 			if
 				(other.zIndex < element.zIndex or (other.zIndex == element.zIndex and other.order < element.order))
 				and other.background.transparency < 1
+				and (other.opacity or 1) > 0
 				and visibleRects[other.index] ~= nil
 				and other.index ~= cursor.index
 				and not ancestorOf(other.index, element)
@@ -397,41 +390,45 @@ local function analyze(dump: Dump, options: Options?): Report
 		return found
 	end
 
-	local function background(element: Element): (Color?, Color?)
-		local layers: { { color: Color, alpha: number } } = {}
+	local function project(element: Element, foreground: Color?, foregroundAlpha: number): (Color?, Color?)
+		local alpha = foregroundAlpha
+		local premult: Color = if foreground ~= nil
+			then { r = foreground.r * alpha, g = foreground.g * alpha, b = foreground.b * alpha }
+			else { r = 0, g = 0, b = 0 }
+		local function under(color: Color, amount: number)
+			local contribution = amount * (1 - alpha)
+			premult.r += color.r * contribution
+			premult.g += color.g * contribution
+			premult.b += color.b * contribution
+			alpha += contribution
+		end
 		local cursor: Element? = element
-		local unknown = false
 		while cursor ~= nil do
-			local alpha = 1 - cursor.background.transparency
-			if cursor.image ~= nil and cursor.image.transparency < 1 then
-				unknown = true
-				break
+			if alpha < 1 and cursor.image ~= nil and cursor.image.transparency < 1 then
+				return nil, nil
 			end
-			if alpha > 0 then
-				table.insert(layers, { color = cursor.background.color, alpha = alpha })
-			end
-			if alpha >= 1 then
-				break
-			end
+			under(cursor.background.color, 1 - cursor.background.transparency)
+			local groupOpacity = 1 - (cursor.groupTransparency or 0)
+			alpha *= groupOpacity
+			premult.r *= groupOpacity
+			premult.g *= groupOpacity
+			premult.b *= groupOpacity
 			local fill = behind(element, cursor)
-			if fill ~= nil then
-				table.insert(layers, { color = fill.background.color, alpha = 1 - fill.background.transparency })
-				if fill.background.transparency <= 0 then
-					break
+			if fill ~= nil and alpha < 1 then
+				if (fill.opacity or 1) < (cursor.opacity or 1) then
+					return nil, nil
 				end
+				under(fill.background.color, 1 - fill.background.transparency)
 			end
 			cursor = if cursor.parent ~= nil then dump.elements[cursor.parent] else nil
 		end
-		if unknown then
-			return nil, nil
-		end
-		local overBlack: Color = { r = 0, g = 0, b = 0 }
-		local overWhite: Color = { r = 1, g = 1, b = 1 }
-		for index = #layers, 1, -1 do
-			overBlack = blend(layers[index].color, layers[index].alpha, overBlack)
-			overWhite = blend(layers[index].color, layers[index].alpha, overWhite)
-		end
-		return overBlack, overWhite
+		local root = roots[element.root]
+		local opacity = if root ~= nil then root.opacity or 1 else 1
+		return { r = premult.r * opacity, g = premult.g * opacity, b = premult.b * opacity }, {
+			r = premult.r * opacity + 1 - alpha * opacity,
+			g = premult.g * opacity + 1 - alpha * opacity,
+			b = premult.b * opacity + 1 - alpha * opacity,
+		}
 	end
 
 	local typeSizes: { [number]: boolean } = {}
@@ -449,7 +446,12 @@ local function analyze(dump: Dump, options: Options?): Report
 		end
 		local screenSpace = onScreen(element)
 		local textValue = element.text
-		if textValue ~= nil and textValue.content ~= "" and textValue.transparency < 1 then
+		if
+			textValue ~= nil
+			and textValue.content ~= ""
+			and textValue.transparency < 1
+			and (element.opacity or 1) > 0
+		then
 			local overflows = not textValue.scaled
 				and (
 					textValue.bounds.width > element.rect.width + EDGE
@@ -476,14 +478,14 @@ local function analyze(dump: Dump, options: Options?): Report
 			if not textValue.scaled then
 				typeSizes[round(textValue.size)] = true
 			end
-			local overBlack, overWhite = background(element)
+			local overBlack, overWhite = project(element, nil, 0)
+			local inkBlack, inkWhite = project(element, textValue.color, 1 - textValue.transparency)
 			local inactive = element.interactive and not canInteract(element)
-			if overBlack == nil or overWhite == nil then
+			if overBlack == nil or overWhite == nil or inkBlack == nil or inkWhite == nil then
 				metrics.contrastUnknown += 1
 			elseif not inactive then
-				local alpha = 1 - textValue.transparency
-				local lowBlack = ratio(blend(textValue.color, alpha, overBlack), overBlack)
-				local lowWhite = ratio(blend(textValue.color, alpha, overWhite), overWhite)
+				local lowBlack = ratio(inkBlack, overBlack)
+				local lowWhite = ratio(inkWhite, overWhite)
 				local large = textValue.size >= resolved.largeTextSize * dump.screen.scale
 					or (textValue.bold and textValue.size >= resolved.largeBoldTextSize * dump.screen.scale)
 				local required = if large then resolved.largeContrast else resolved.contrast
@@ -616,7 +618,7 @@ local function analyze(dump: Dump, options: Options?): Report
 	local interactive: { Element } = {}
 	local function ink(element: Element): Rect?
 		local text = element.text
-		if text == nil or text.content == "" or text.transparency >= 1 then
+		if text == nil or text.content == "" or text.transparency >= 1 or (element.opacity or 1) <= 0 then
 			return nil
 		end
 		local box = element.rect

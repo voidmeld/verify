@@ -16,6 +16,7 @@ export type Screen = {
 }
 
 export type Root = {
+	opacity: number?,
 	index: number,
 	class: string,
 	path: string,
@@ -57,6 +58,8 @@ export type Link = { direction: string, index: number?, path: string }
 export type Layout = { kind: string, padding: number?, direction: string? }
 
 export type Element = {
+	groupTransparency: number?,
+	opacity: number?,
 	index: number,
 	parent: number?,
 	root: number,
@@ -249,6 +252,7 @@ local function decode(value: unknown): Dump
 		local where = ("roots[%d]"):format(index)
 		local entry = object(item, where)
 		table.insert(roots, {
+			opacity = math.clamp(optionalNumber(entry.opacity, where .. ".opacity") or 1, 0, 1),
 			index = number(entry.index, where .. ".index"),
 			class = text(entry.class, where .. ".class"),
 			path = text(entry.path, where .. ".path"),
@@ -346,10 +350,27 @@ local function decode(value: unknown): Dump
 		if parent ~= nil and (parent < 1 or parent >= index or parent % 1 ~= 0) then
 			fail(where .. ".parent", "must name an earlier element")
 		end
+		local root = number(entry.root, where .. ".root")
+		local groupTransparency = optionalNumber(entry.groupTransparency, where .. ".groupTransparency")
+		if groupTransparency ~= nil then
+			if entry.class ~= "CanvasGroup" or groupTransparency < 0 or groupTransparency > 1 then
+				fail(where .. ".groupTransparency", "must be between zero and one on a CanvasGroup")
+			end
+		end
+		local inherited = if parent ~= nil
+			then elements[parent].opacity
+			else if roots[root] ~= nil then roots[root].opacity else 1
+		local opacity = (inherited or 1) * (1 - (groupTransparency or 0))
+		local projected = optionalNumber(entry.opacity, where .. ".opacity")
+		if projected ~= nil and math.abs(projected - opacity) > 1e-6 then
+			fail(where .. ".opacity", "must equal inherited CanvasGroup opacity")
+		end
 		table.insert(elements, {
+			groupTransparency = groupTransparency,
+			opacity = opacity,
 			index = index,
 			parent = parent,
-			root = number(entry.root, where .. ".root"),
+			root = root,
 			class = text(entry.class, where .. ".class"),
 			path = text(entry.path, where .. ".path"),
 			rect = rect(entry.rect, where .. ".rect"),

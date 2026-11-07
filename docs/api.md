@@ -2548,6 +2548,8 @@ Source: [src/roblox/init.luau](../src/roblox/init.luau).
 
 Returns: UI facts, a validated dump, rule findings, contrast or ordering observations.
 
+CanvasGroup elements record styled `groupTransparency` and cumulative `opacity`. Roots record opacity inherited from the selected root and its ancestors. Decoding derives descendant opacity and rejects contradictory projections. Missing opacity fields default to opaque. Contrast flattens each group's contents before applying its transparency; unknown image paint remains unproved. Fully transparent groups contribute no text findings, but their input targets remain active.
+
 Failures: Invalid dumps and options raise. Collection needs native or explicitly supplied UI facts. Findings do not replace visual review.
 
 ```luau
