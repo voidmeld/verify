@@ -33,6 +33,41 @@ local function controller(env: Environment.Environment, root: Environment.Instan
 end
 
 describe("simulated GUI layout", function()
+	it("can explicitly exclude decorative world layers while refusing interactive world controls", function()
+		local env = fixture()
+		env.defineClass("LayerCollector", { super = "Instance", properties = { Enabled = true } })
+		env.defineClass("BillboardGui", { super = "LayerCollector" })
+		env.defineClass("GuiButton", { super = "GuiObject" })
+		env.defineClass("InteractiveControl", { super = "GuiButton" })
+		local root = env.createInstance "Folder"
+		local screen = env.createInstance("ScreenGui", { Parent = root })
+		local button = env.createInstance("TextButton", { Parent = screen, Size = Types.UDim2.fromOffset(100, 100) })
+		local billboard = env.createInstance("BillboardGui", { Parent = root, Enabled = true })
+		local decoration = env.createInstance("Frame", { Parent = billboard, Active = false, Selectable = false })
+		local layout = Layout.attach(env, {
+			roots = function()
+				return { screen }
+			end,
+			viewport = function()
+				return { X = 800, Y = 600 }
+			end,
+			ignoreDecorativeWorldGui = true,
+		})
+		layout.step()
+		expect(billboard.Enabled):toBe(true)
+		expect(layout.objectsAtPosition(root, 20, 20)):toEqual { button }
+		decoration.Active = true
+		expect(function()
+			layout.objectsAtPosition(root, 20, 20)
+		end):toThrow "requires BillboardGui"
+		decoration.Active = false
+		local control = env.createInstance("InteractiveControl", { Parent = decoration })
+		expect(function()
+			layout.objectsAtPosition(root, 20, 20)
+		end):toThrow "requires BillboardGui"
+		control.Visible = false
+		expect(layout.objectsAtPosition(root, 20, 20)):toEqual { button }
+	end)
 	it("excludes disabled world GUI layers but refuses enabled unsupported input", function()
 		local env = fixture()
 		env.defineClass("LayerCollector", { super = "Instance", properties = { Enabled = true } })
