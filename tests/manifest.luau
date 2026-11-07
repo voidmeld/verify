@@ -16,6 +16,7 @@ return table.freeze {
 	"tests/bounded.lute.verify.luau",
 	"tests/camera-projection.lute.verify.luau",
 	"tests/cframe-matrix.verify.luau",
+	"tests/character-loading.lute.verify.luau",
 	"tests/checks.lute.verify.luau",
 	"tests/codec.verify.luau",
 	"tests/consumer-surface.lute.verify.luau",

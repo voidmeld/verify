@@ -1,4 +1,5 @@
 --!strict
+local CharacterFakes = require "./character-fakes"
 local Vm = require "./value"
 
 local Types = require "./place-types"
@@ -316,6 +317,11 @@ local function install<B>(
 				if client then
 					apply(DeviceCatalog.desktop(client.viewport.x, client.viewport.y, client.displaySize))
 				end
+			end,
+		}
+		overrides.Player = {
+			LoadCharacterAsync = function(player: Instance)
+				CharacterFakes.load(engine, player)
 			end,
 		}
 		overrides.Players = {

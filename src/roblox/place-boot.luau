@@ -690,10 +690,14 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	runtime.step(frameSeconds)
 	reachedStage "viewport"
 
-	local character = makeCharacter(engine, tostring(player.Name))
-	character.Parent = workspace
-	engine.environment.poke(player, "Character", character)
-	engine.environment.fire(player, "CharacterAdded", character)
+	local character = player.Character
+	if character == nil then
+		character = makeCharacter(engine, tostring(player.Name))
+		character.Parent = workspace
+		engine.environment.poke(player, "Character", character)
+		engine.environment.fire(player, "CharacterAdded", character)
+	end
+	assert(engine.isInstance(character), "player character must be an instance")
 
 	runtime.step(frameSeconds)
 	reachedStage "character"
