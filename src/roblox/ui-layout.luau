@@ -151,6 +151,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 		)
 	end
 	local function inset(object: Instance, rectangle: Rectangle): Rectangle
+		if not object:IsA "GuiObject" and not object:IsA "LayerCollector" then
+			return rectangle
+		end
 		local padding = paddingValue(object, "PaddingLeft")
 		if padding == nil then
 			return rectangle
