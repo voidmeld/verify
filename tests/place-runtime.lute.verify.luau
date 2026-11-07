@@ -1184,4 +1184,66 @@ it("boot frame cadence and staged viewports remain explicit and reject invalid f
 	expect(created):toBe(before)
 end)
 
+it("remote event acknowledgements arrive after the sender records its packet and preserve nil arguments", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local binding = bridge.placeEngine()
+	local fixture = sourceFixture(
+		{},
+		{ "DataModel", "RunService", "HttpService", "RemoteEvent", "UnreliableRemoteEvent" },
+		{
+			engine = binding,
+			client = { name = "Sender", userId = 7, viewport = { x = 800, y = 600 } },
+		}
+	)
+	local result: unknown = nil
+	binding.environment.scheduler.spawnTagged({ context = "client", source = "remote-order" }, function()
+		result = Lute.chunk.load(
+			[[
+local log = {}
+for _, class in { "RemoteEvent", "UnreliableRemoteEvent" } do
+ local remote = Instance.new(class)
+ remote.Parent = game:GetService("ReplicatedStorage")
+ local pending = false
+ local acknowledged = false
+ remote.OnServerEvent:Connect(function(player, ...)
+  table.insert(log, class .. ":server:" .. tostring(select("#", ...)))
+  remote:FireClient(player, ...)
+ end)
+ remote.OnClientEvent:Connect(function(...)
+  local sequence, gap, tail = ...
+  table.insert(log, class .. ":client:" .. tostring(pending) .. ":" .. tostring(select("#", ...)) .. ":" .. tostring(sequence) .. ":" .. tostring(gap) .. ":" .. tostring(tail))
+  acknowledged = true
+ end)
+ remote:FireServer(1, nil, "tail")
+ pending = true
+ table.insert(log, class .. ":sent")
+ for _ = 1, 100 do
+  if acknowledged then break end
+  task.wait(0.01)
+ end
+ remote:Destroy()
+end
+return log
+]],
+			{ environment = fixture.runtime.globals }
+		)()
+	end)
+	for _ = 1, 10 do
+		fixture.runtime.step(0.1)
+		if result ~= nil then
+			break
+		end
+	end
+	expect(binding.environment.scheduler.failures):toEqual {}
+	expect(result):toEqual {
+		"RemoteEvent:sent",
+		"RemoteEvent:server:3",
+		"RemoteEvent:client:true:3:1:nil:tail",
+		"UnreliableRemoteEvent:sent",
+		"UnreliableRemoteEvent:server:3",
+		"UnreliableRemoteEvent:client:true:3:1:nil:tail",
+	}
+end)
+
 return nil

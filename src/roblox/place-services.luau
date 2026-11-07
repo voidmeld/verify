@@ -370,13 +370,25 @@ local function install<B>(
 		end
 		overrides.RemoteEvent = {
 			FireServer = function(object: Instance, ...: unknown)
-				signalOn(object, "OnServerEvent"):Fire(runtime.localPlayer, ...)
+				local signal = signalOn(object, "OnServerEvent")
+				local arguments = table.pack(...)
+				environment.scheduler.defer(function()
+					signal:Fire(runtime.localPlayer, table.unpack(arguments, 1, arguments.n))
+				end)
 			end,
 			FireClient = function(object: Instance, _player: unknown, ...: unknown)
-				signalOn(object, "OnClientEvent"):Fire(...)
+				local signal = signalOn(object, "OnClientEvent")
+				local arguments = table.pack(...)
+				environment.scheduler.defer(function()
+					signal:Fire(table.unpack(arguments, 1, arguments.n))
+				end)
 			end,
 			FireAllClients = function(object: Instance, ...: unknown)
-				signalOn(object, "OnClientEvent"):Fire(...)
+				local signal = signalOn(object, "OnClientEvent")
+				local arguments = table.pack(...)
+				environment.scheduler.defer(function()
+					signal:Fire(table.unpack(arguments, 1, arguments.n))
+				end)
 			end,
 		}
 		overrides.UnreliableRemoteEvent = overrides.RemoteEvent
