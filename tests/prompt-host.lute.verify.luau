@@ -66,6 +66,11 @@ end
 
 Test.it("configured prompt visibility respects distance, service state and host visibility", function(own)
 	local f = fixture(own)
+	local defaults = f.engine.newInstance "ProximityPrompt"
+	Test.expect(defaults.Enabled):toBe(true)
+	Test.expect(defaults.RequiresLineOfSight):toBe(true)
+	Test.expect(defaults.MaxActivationDistance):toBe(10)
+	Test.expect(defaults.KeyboardKeyCode):toBe(f.engine.datatypes.Enum.KeyCode.E)
 	Test.expect(f.engine.service("ProximityPromptService").Enabled):toBe(true)
 	f.step(0)
 	Test.expect(f.events):toEqual { "PromptShown" }
