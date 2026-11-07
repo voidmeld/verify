@@ -7,21 +7,13 @@ local AgentEval = require "../src/agent-eval"
 local Fakes = require "./agent-eval-fakes"
 local Lute = require "../src/lute"
 
-local function request(): AgentEval.AgentRequest
+local Codex = require "../src/agent-eval/codex"
+
+local function request(): Codex.Request
 	return {
-		run = "r",
-		task = "t",
-		arm = "a",
 		workspace = "/w",
-		directory = "/e",
-		suiteDirectory = "/s",
-		prompt = "brief",
-		promptFile = "/e/prompt.md",
 		instructions = 'Use "the guide".\nKeep\tit short.',
-		env = {},
 		model = "model-a",
-		seed = 1,
-		budgets = { wallSeconds = 600 },
 		options = { effort = "medium", arguments = { "--approve-for-me" } },
 	}
 end
@@ -102,7 +94,7 @@ end
 
 describe("agent evaluation Codex adapter", function()
 	it("builds the Codex command with the instructions as a TOML string", function()
-		expect(AgentEval.adapters.codexArguments(request(), nil, Lute.parse)):toEqual {
+		expect(Codex.arguments(request(), nil, Lute.parse)):toEqual {
 			"codex",
 			"exec",
 			"--json",
@@ -131,7 +123,7 @@ describe("agent evaluation Codex adapter", function()
 		local given = request()
 		given.instructions = nil
 		given.options = { sandbox = "workspace-write", persistSession = true, config = { "a.b=1" } }
-		expect(AgentEval.adapters.codexArguments(given, mcp, Lute.parse)):toEqual {
+		expect(Codex.arguments(given, mcp, Lute.parse)):toEqual {
 			"codex",
 			"exec",
 			"--json",
@@ -160,12 +152,12 @@ describe("agent evaluation Codex adapter", function()
 		local given = request()
 		given.allowedTools = { "Read" }
 		expect(function()
-			AgentEval.adapters.codexArguments(given, nil, Lute.parse)
+			Codex.arguments(given, nil, Lute.parse)
 		end):toThrow "cannot restrict tools"
 		local other = request()
 		other.options = { maxTurns = 3 }
 		expect(function()
-			AgentEval.adapters.codexArguments(other, nil, Lute.parse)
+			Codex.arguments(other, nil, Lute.parse)
 		end):toThrow 'unknown field "maxTurns"'
 	end)
 
@@ -306,106 +298,6 @@ describe("agent evaluation Codex adapter", function()
 			{ at = 23, text = Fakes.json { type = "turn.failed", error = { message = "failed final turn" } } }
 		)
 		expect(AgentEval.transcript.parseCodexStream(lines, Lute.parse).status):toBe "error"
-	end)
-
-	it("fails terminal author errors even when the process exits successfully", function()
-		local failed = stream()
-		table.remove(failed)
-		table.insert(
-			failed,
-			{ at = 9, text = Fakes.json { type = "error", message = "Selected model is at capacity." } }
-		)
-		table.insert(failed, {
-			at = 9.1,
-			text = Fakes.json { type = "turn.failed", error = { message = "Selected model is at capacity." } },
-		})
-		local recovered = stream()
-		local completion = table.remove(recovered)
-		table.insert(recovered, { at = 8.1, text = Fakes.json { type = "error", message = "retrying request" } })
-		assert(completion ~= nil)
-		table.insert(recovered, completion)
-		local truncated = stream()
-		table.remove(truncated)
-		local terminal = stream()
-		table.insert(terminal, { at = 9, text = Fakes.json { type = "error", message = "stream disconnected" } })
-		local cases: { { lines: { AgentEval.Line }, code: number, expected: string, timedOut: boolean?, unsupported: boolean? } } =
-			{
-				{ lines = failed, code = 0, expected = "failed" },
-				{ lines = failed, code = 1, expected = "failed" },
-				{ lines = truncated, code = 0, expected = "failed" },
-				{ lines = stream(), code = 1, expected = "failed" },
-				{ lines = recovered, code = 0, expected = "completed" },
-				{ lines = terminal, code = 0, expected = "failed" },
-				{ lines = failed, code = 1, timedOut = true, expected = "timed_out" },
-				{ lines = failed, code = 1, timedOut = true, unsupported = true, expected = "unsupported" },
-			}
-		for _, case in cases do
-			local memory = Fakes.memory()
-			local services = Fakes.services(memory.files)
-			services.execute = function(_command: AgentEval.Command): AgentEval.Execution
-				return {
-					started = true,
-					exitcode = case.code,
-					timedOut = case.timedOut == true,
-					unsupported = case.unsupported == true,
-					stdout = "",
-					stderr = "",
-					lines = case.lines,
-					seconds = 10,
-				}
-			end
-			local outcome = AgentEval.adapters.codex(Lute.parse).run(request(), services)
-			expect(outcome.status):toBe(case.expected)
-			if case.lines == failed and case.expected == "failed" then
-				expect(string.find(outcome.detail or "", "at capacity", 1, true) ~= nil):toBe(true)
-				expect(outcome.transcript.toolCalls):toBe(3)
-			end
-			if case.unsupported ~= true then
-				local replay = AgentEval.adapters
-					.replay({
-						decode = Lute.parse,
-						parse = AgentEval.transcript.parseCodexStream,
-						respond = function(): AgentEval.ReplayResponse
-							return {
-								lines = case.lines,
-								exitcode = case.code,
-								timedOut = case.timedOut,
-								seconds = 10,
-							}
-						end,
-					})
-					.run(request(), services)
-				expect(replay.status):toBe(case.expected)
-			end
-		end
-	end)
-
-	it("runs the Codex adapter through an injected executor", function()
-		local memory = Fakes.memory()
-		local services = Fakes.services(memory.files)
-		local seen: { AgentEval.Command } = {}
-		services.execute = function(command: AgentEval.Command): AgentEval.Execution
-			table.insert(seen, command)
-			return {
-				started = true,
-				exitcode = 0,
-				timedOut = false,
-				unsupported = false,
-				stdout = "",
-				stderr = "",
-				lines = stream(),
-				seconds = 9,
-			}
-		end
-		local adapter = AgentEval.adapters.codex(Lute.parse)
-		local outcome = adapter.run(request(), services)
-		expect(adapter.id):toBe "codex"
-		expect(outcome.status):toBe "completed"
-		expect(outcome.transcript.model):toBe "model-a"
-		expect(seen[1].input):toBe "/e/prompt.md"
-		expect(seen[1].stamp):toBe(true)
-		expect(seen[1].cwd):toBe "/w"
-		expect(seen[1].deadlineSeconds):toBe(600)
 	end)
 end)
 

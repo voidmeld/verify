@@ -17,7 +17,7 @@ local function runBackend(context: "Server" | "Client", code: string, finalCaptu
 	Place.build {
 		output = place,
 		roots = { "src/core", "src/roblox" },
-		modules = { "examples/instance-case.luau", "examples/player-case.luau" },
+		modules = { "examples/instance-case.luau" },
 		rootName = "VerifySemanticFixture",
 		request = code,
 		logCollectors = true,
@@ -56,27 +56,6 @@ local parity = Core.observationParity(simulated, report)
 print(Core.format(report))
 assert(parity.status == "passed", "native observation parity failed")
 
-local player = runBackend(
-	"Client",
-	[[
-local root = game:GetService('ReplicatedStorage'):WaitForChild('VerifySemanticFixture')
-local Core = require(root.src.core)
-local Roblox = require(root.src.roblox)
-local player = game:GetService('Players').LocalPlayer
-local rig = player.Character or player.CharacterAdded:Wait()
-rig:WaitForChild('HumanoidRootPart')
-task.wait(2)
-local report = Core.runCase(require(root.examples['player-case']), Roblox.playerHost.native('client'))
-return game:GetService('HttpService'):JSONEncode(Roblox.reportChannel.envelope(runId, report))
-]],
-	true
-)
-assert(player.status == "returned", player.detail)
-local playerReport = Core.decode(player.report)
-print(Core.format(playerReport))
-assert(playerReport.total == 1 and playerReport.passed == 1, "native player motion failed")
-assert(#playerReport.results[1].artifacts > 0, "native final capture missing")
-
 local timeout = Lute.studio.run {
 	place = place,
 	worker = "tools/studio-worker.luau",
@@ -84,8 +63,6 @@ local timeout = Lute.studio.run {
 	code = "while true do end",
 }
 assert(timeout.status == "timed_out", "wedged engine must time out: " .. tostring(timeout.detail))
-print "native conformance: server parity, defect detection, client physics and enforced timeout passed"
+print "native conformance: server parity, defect detection and enforced timeout passed"
 
 require "./native-logs"()
-
-require "./native-scoped-mcp"()

@@ -87,32 +87,6 @@ Opt in to these test endpoints only in an authorized development or staging sess
 
 The [native visibility example](../examples/roblox-experience.luau) binds an injected target and optional collectors. The [hierarchy conformance example](../examples/hierarchy-experience.luau) accepts a native Folder factory or the simulated environment and checks the same authored observations.
 
-## Player actions
-
-`Roblox.playerHost` declares the typed operations `move`, `jump`, `equip` and `inspect`. `native(actor)` binds the Humanoid, backpack and character of the live local player.
-
-- `move` accepts a unit direction.
-- `equip` requires one uniquely named backpack Tool.
-- `inspect` returns position, velocity, health and the equipped tool.
-- Cleanup stops movement.
-
-These operations are semantic character controls. They do not prove the behavior of keyboard, touch, gamepad or UI input. Those need input-specific host operations and tests.
-
-`registry(backend)` binds the same vocabulary to injected functions for deterministic tests. Such a fixture does not advertise native physics. The [player example](../examples/player-case.luau) requires `native-physics` and observes an actual jump and landing. It is unsupported on a host that only simulates.
-
-## Simulated networking
-
-`Roblox.network.create({ clients, latency?, environment? })` gives each declared client and the server a separate simulated environment.
-
-- `send` queues cloned plain-data messages. `onMessage` receives them.
-- `advance(seconds)` delivers the ready snapshot in due-time and sequence order.
-- A message that is sent during delivery waits for another advance.
-- Payloads refuse nonfinite numbers, cycles, metatables, sparse arrays and mixed array and dictionary keys. Outcomes name refusals explicitly.
-- The network clock advances independently of the scheduler of each environment.
-- `disconnect(client)` drops queued messages in both directions and disconnects its receiving handlers.
-
-This tests authored message handling and isolation. It provides no native replication, physics or rendering parity. See the [network tests](../tests/network.verify.luau).
-
 ## Performance observations
 
 `Core.performance.summarize({ samples, unit, context, threshold?, percentiles?, series? })` validates dense samples that are finite and nonnegative. It keeps the environment, the signal and the timing label (`observed` or `simulated`). It computes count, mean, extrema and nearest-rank p50, p95 and p99 in the given unit. An empty observation keeps absent metrics. An optional threshold counts the samples that are strictly above it.
@@ -130,22 +104,6 @@ This tests authored message handling and isolation. It provides no native replic
 - Caller labels do not authenticate timing. A real frame-performance claim needs samples from the actual consumer surface.
 
 [Performance tests](../tests/performance.verify.luau) prove the calculations and refusals. `context.measure(actor, name, input, limits)` records the evaluation in the case evidence and requires a passed result through the shared harness.
-
-`Roblox.performance.collect({ connect, environment, signal, maximumSamples })` bounds collection from an injected interval signal. Give the current `environmentLabel` and a owned by the caller `sampleLimit`:
-
-```luau
-local collector = Roblox.performance.collect {
-    environment = environmentLabel,
-    signal = "RenderStepped",
-    maximumSamples = sampleLimit,
-    connect = function(sample)
-        local connection = game:GetService("RunService").RenderStepped:Connect(sample)
-        return function() connection:Disconnect() end
-    end,
-}
-```
-
-Exercise the consumer, then call `collector.finish()` during cleanup. `finish` disconnects once and returns cloned `Performance.Input` samples in `ms`, labeled `observed`. An invalid interval refuses after cleanup. The cap stops the retention of new samples. `finish` still releases the connection. The caller must connect the actual signal and bind the run and source identity. Injected callback tests establish fixture coverage. They do not establish an observed native frame-performance result.
 
 ## Coordinated native clients
 
@@ -169,7 +127,7 @@ The [runnable example](../examples/multiplayer.luau) clicks UI in one client and
 - Pointer coordinates are screen pixels.
 - Roblox still rejects reserved keys and interactions with protected CoreGui.
 
-The native backend uses real virtual input. It is distinct from the character motion operations in `playerHost`.
+The native backend uses real virtual input.
 
 `simulated(environment, { playerGui, inputService, layout, inset, library, read? })` returns the same backend interface over the existing simulated environment. It also binds `GetGuiObjectsAtPosition`, `CreateVirtualInput`, `GetMouseLocation` and `GetLastInputType` on the given instances. `layout` is the fixture's layout controller. `inset()` provides the current captured profile inset; there is no built-in top-bar constant. `library` provides the reflection-bound datatypes. `activationWindowSeconds` is a finite positive interval given by the caller. Repeated activation counts use release-to-release time and separate history for each target. A Windows Studio Client capture on 2026-10-22, version `0.744.0.7441077`, counted releases 0.495 seconds apart together and reset after 0.518 seconds. Its tests use a 0.5-second modeled interval. This capture does not establish a universal platform interval. Styled scenes require the same effective-property reader for layout and input.
 

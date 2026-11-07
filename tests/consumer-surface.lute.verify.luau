@@ -7,8 +7,6 @@ local Roblox = require "../src/roblox"
 local Core = require "../src/core"
 local Eval = require "../src/agent-eval"
 local Consumer = require "../src/consumer"
-local Network = require "../src/roblox/network"
-local Environment = require "../src/roblox/environment"
 
 type ConsumerTypes = {
 	instance: Lute.ModelInstance?,
@@ -64,31 +62,6 @@ describe("matcher runtime input validation", function()
 			pcall(Lute.chunk.load("Core.expect(true):toBeTrue()", { environment = { Core = Core } }))
 		assert(not ok)
 		expect(tostring(thrown)):toContain 'unknown matcher "toBeTrue"'
-	end)
-end)
-
-describe("network runtime input validation", function()
-	it("invalid payloads and clocks refuse without queuing or advancing", function()
-		local network = Network.create { clients = { "first" } }
-		local invalid: { unknown } = { math.huge, function() end, { [2] = "sparse" }, { [1] = "mixed", key = "mixed" } }
-		local cycle: { [string]: unknown } = {}
-		cycle.self = cycle
-		table.insert(invalid, cycle)
-		table.insert(invalid, setmetatable({}, {}))
-		table.insert(invalid, network.server.environment.root)
-		for _, payload in invalid do
-			local outcome = Lute.chunk.load('return send { channel = "test", payload = payload }', {
-				environment = { send = network.clients.first.send, payload = payload },
-			})()
-			expect(Environment.read(outcome, "ok")):toEqual(false)
-			expect(Environment.read(outcome, "reason")):toEqual "invalid_payload"
-		end
-		expect(Environment.read(network.clients.first.send({ channel = "test", payload = "ok" }, -1), "reason")):toEqual "invalid_latency"
-		expect(Environment.read(network.clients.first.send { channel = "", payload = "ok" }, "reason")):toEqual "invalid_channel"
-		expect(Environment.read(network.advance(-1), "reason")):toEqual "invalid_step"
-		expect(Environment.read(network.advance(math.huge), "reason")):toEqual "invalid_step"
-		expect(network.now()):toEqual(0)
-		expect(network.pending()):toEqual(0)
 	end)
 end)
 

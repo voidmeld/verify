@@ -1531,11 +1531,11 @@ local sink = Lute.evidenceStore.localDirectory(outputDirectory)
 
 Source: [src/lute/fixture.luau](../src/lute/fixture.luau).
 
-`load(source: string?) -> Snapshot`; `bridge(snapshot: (string | Snapshot)?, options: Options?) -> Bridge`; `save(path, snapshot) -> ()`; `serialize(snapshot) -> string`; `exportStudio(execute, options?) -> Snapshot`; `probeStudio(execute, probes) -> ProbeResults`; `probeLocal(environment, probes) -> { [string]: string }`
+`load(source: string?) -> Snapshot`; `bridge(snapshot: (string | Snapshot)?, options: Options?) -> Bridge`
 
-Returns: Snapshot, bridge, serialized bytes or probe results. `host` and `files` provide frozen filesystem, compilation and project traversal operations.
+Returns: Snapshot or bridge. `host` and `files` provide frozen filesystem, compilation and project traversal operations.
 
-Failures: Invalid snapshots, missing files and unsupported reflected behavior raise. A probe records its own expression failure.
+Failures: Invalid snapshots, missing files and unsupported reflected behavior raise.
 
 ```luau
 local bridge = Lute.fixture.bridge()
@@ -1683,9 +1683,9 @@ local expression = Lute.place.moduleExpression("src/core")
 
 Source: [src/lute/platform.luau](../src/lute/platform.luau).
 
-`run(options: PlatformOptions) -> { report, directory, reportPath }`; `buildPublished(options: Published.Options) -> ()`
+`run(options: PlatformOptions) -> { report, directory, reportPath }`
 
-Returns: A standard host report and saved paths, or a published-fixture file.
+Returns: A standard host report and saved paths.
 
 Failures: Invalid options raise. Host, evidence and attachment failures become failed or unsupported results.
 
@@ -2228,30 +2228,6 @@ Under Lute, a serialized reflection snapshot provides the reflection database at
 | `fonts` | For each `Enum.Font` item that `Font.fromEnum` accepts: `{ family, weight, style }`. |
 | `engineVersion` | The Studio version that wrote the file. |
 
-#### Export from Studio
-
-```sh
-lute run tools/export-studio-reflection.luau <out.json> (--studio-id <id> | --studio-name <name>) [--classes A,B,...]... [--enums A,B,...]... [--services] [--mcp <StudioMCP>] [--framework <directory>]
-```
-
-The command uses an open Studio through the official Studio MCP. See [attached Studio](execution.md#attached-studio). Its `authorize` hook permits only the Studio listing and `execute_luau` in the `Edit` data model. The capture reads `ReflectionService`, `Enum`, `BrickColor` and `Font`, and it creates instances that it never parents. It lists classes with the current security capabilities and the `Plugin` capability, so the export includes plugin classes such as `PluginGui` and `DockWidgetPluginGui`. It reads the members of a plugin class with the same capabilities, and the members of every other class with the current capabilities only. It does not change, save or publish the place. The default transport of `Lute.studio.attach` must work on the host. See [platform support](running.md#platform-support).
-
-- Without `--classes`, the command exports every class. With `--classes`, it exports the named classes and their superclasses.
-- Without `--classes` and `--enums`, it exports every enum.
-  Otherwise it exports the enums that the exported properties and defaults name, the enums in `--enums`, and the enums that the datatypes need.
-  The datatypes need ContentSourceType, EasingDirection, EasingStyle, Font, FontStyle, FontWeight, KeyInterpolationMode and RaycastFilterType.
-- Datatypes use the database names `Bool`, `Float32`, `Float64`, `Int32`, `Int64`, `String`, `CFrame`, `OptionalCFrame`, `Rect`, `Ref` and `Enum.<family>`. Other types keep the engine name.
-- Scriptability comes from the read and write permits. A property that scripts can read but not write has the tag `ReadOnly`.
-  A property with no permit has the scriptability `None` and the tag `NotScriptable`. A deprecated member has the tag `Deprecated`.
-- A class without a `New` permit has the tag `NotCreatable`. A class with a `GetService` permit also has the tag `Service`.
-- The defaults are the readable property values of `Instance.new(className)`, inherited properties included, for each creatable class.
-  A service has no defaults. `--services` records the values of the open place instead. Those values describe that place, not the engine.
-- A superclass that Studio does not list as a class, such as `Object` above `Instance`, is omitted.
-- The full export of Studio 0.742 has 681 classes and 648 enums in about 600 KB.
-
-From code, `Lute.fixture.exportStudio(execute, options?)` returns the snapshot. `execute(code)` runs the code in the `Edit` data model and returns its text, for example through `session.execute("Edit", code)`. `options` is `{ classes?, enums?, services?, batchSize?, framework? }`. `batchSize` (default 25) bounds the classes for each request. `framework` is the Verify checkout that holds `src/roblox/reflection-capture.luau`. `Lute.fixture.save(path, snapshot)` writes the file with sorted keys.
-
-
 #### Use a snapshot
 
 - `Lute.fixture.load(path?)` reads a snapshot file. Without a path, it loads the bundled Studio 0.744.0.7441077 capture from 2026-10-22. This capture contains 933 classes and 652 enums from ReflectionService, with instance defaults and no place-specific service values.
@@ -2271,7 +2247,7 @@ label.Size = types.UDim2.fromOffset(10, 20) + types.UDim2.fromScale(0.5, 0)
 label.TextXAlignment = types.Enum.TextXAlignment.Left
 ```
 
-`tests/reflection-snapshot.lute.verify.luau` builds bridges from both fixture files. `tests/studio-reflection.lute.verify.luau` runs the generated Studio code against a fake engine. After a Roblox API update, regenerate a committed snapshot.
+`tests/reflection-snapshot.lute.verify.luau` builds bridges from both committed fixture files. Their recorded engine versions bound the captured metadata.
 
 #### Run code under test with the library
 
@@ -2299,10 +2275,6 @@ The loader loads each file once and keeps the resolved paths. A require cycle, a
 local loader = Lute.loader.new { aliases = { verify = "src" } }
 local Package = loader.require "src/core"
 ```
-
-#### Studio probes
-
-`Lute.fixture.probeStudio(execute, probes)` runs each `{ name, source, tolerance? }` probe in Studio and returns `{ engineVersion, results }`. `Lute.fixture.probeLocal(environment, probes)` runs the same probes with `Lute.chunk.load`. Each result is `ok: ` and the `tostring` of the returned value, or `error: ` and the message without its location. Record the Studio results in a file. Compare the local results with that file in a test. A probe proves only the expression that it runs.
 
 ### UI fakes
 
@@ -2510,20 +2482,6 @@ Controller emulation sets `GamepadEnabled` and `PreferredInput` to gamepad. It p
 
 Repeated thumbstick key presses accumulate axis values, including values outside -1 to 1. Each release subtracts one press. The system menu remains unsupported. The mode supports raw input and boolean action bindings. It does not model the character controller or its processed-input flags.
 
-### `Roblox.playerHost`
-
-Source: [src/roblox/player-host.luau](../src/roblox/player-host.luau).
-
-`native(actor: string) -> CaseHost`; `registry(backend: Backend) -> Registry`
-
-Returns: Player bindings. `move`, `jump`, `equip` and `inspect` are typed operations.
-
-Failures: Missing native services, invalid payloads and unsupported player operations raise.
-
-```luau
-local registry = Roblox.playerHost.registry(playerBackend)
-```
-
 ### `Roblox.experienceHost`
 
 Source: [src/roblox/experience-host.luau](../src/roblox/experience-host.luau).
@@ -2551,34 +2509,6 @@ Failures: Missing roles, refused requests and expired deadlines fail. The caller
 ```luau
 local disconnect = Roblox.multiplayer.client(multiplayerClientOptions)
 disconnect()
-```
-
-### `Roblox.network`
-
-Source: [src/roblox/network.luau](../src/roblox/network.luau).
-
-`create(options: Options) -> Network`
-
-Returns: A deterministic message network with explicit channels, payload limits and delivery behavior.
-
-Failures: Invalid options raise. Unsupported payloads and exceeded limits return refusals.
-
-```luau
-local network = Roblox.network.create(networkOptions)
-```
-
-### `Roblox.performance`
-
-Source: [src/roblox/performance.luau](../src/roblox/performance.luau).
-
-`collect(options: Options) -> Collector`
-
-Returns: A collector with sample input for Core performance evaluation.
-
-Failures: Invalid sampling bounds raise. Missing observations cannot prove performance.
-
-```luau
-local collector = Roblox.performance.collect(performanceOptions)
 ```
 
 ### `Roblox.reportChannel`
@@ -2645,11 +2575,7 @@ assert(#requests == 1)
 
 `Roblox.contentFacts.requests(value)` checks a nonempty request array. Each request has a unique `key` and a `kind`. Use `{ kind = "model", key = "item", version = 123 }` for a pinned asset version. Use `{ kind = "mesh", key = "item", id = 123 }` for a mesh. Use `{ kind = "animation", key = "item", id = 123 }` for an animation or keyframe sequence. IDs must be positive safe integers. A model request cannot use an asset ID.
 
-Run `lute run tools/capture-native-content.luau request.json facts.json` from the Verify checkout. The request file contains `{ "requests": [...] }`. It can also contain `"identity": { "placeId": 123, "universeId": 456 }`. The caller owns permission to use that identity and to load each asset. The command uses the text metrics place builder, Studio worker and report route. It starts a local server harness. It refuses an existing output file.
-
-The command writes facts to `facts.json` and the native report to `facts.json.report.json`. It shares an attachment writer and disk reader with `tools/capture-text-metrics.luau`. The writer splits every attachment before it reaches the harness. Each part is less than 1 MiB and ends at a UTF-8 boundary. A manifest records the byte count and SHA-256 of each part and complete file. The reader refuses missing, duplicate, extra or mismatched parts. It verifies all files before it writes them to `facts.json.attachments`, then reads each file back and checks its bytes and SHA-256. The tools refuse existing output, report or attachment destinations. The capture route permits at most 4096 parts and 256 MiB in a report; it keeps the harness limit of 1 MiB per attachment. These limits do not change the defaults for other cases.
-
-The command checks the schema, request list and optional place identity before it writes facts. It does not print the facts to the console. Keep the report, attachment directory and facts together. A load refusal is a recorded result. Inspect each row before you accept a capture.
+Load caller-supplied captures with the schema below. Verify retains captured facts and reconstruction; capture generation belongs to the caller.
 
 `Roblox.contentFacts.validate(value)` checks a decoded capture and returns it. Use `Lute.fixture.host.decodeJson(text)` to decode a file into plain tables. Schema version 1 has `schemaVersion`, `engineVersion`, `placeId`, `placeVersion`, `gameId` and `rows`. Each row has `request`, `ok` and either `facts` or `refusal`. Successful facts are an array of nodes. A node has `className`, `name` and an optional `parent` index. The root has no parent. Each parent precedes its children. Reference indices point into the same array.
 
@@ -2801,20 +2727,6 @@ Failures: Invalid selection or missing files raise.
 local runs = AgentEval.plan(suite, evalLoader)
 ```
 
-### `AgentEval.run`
-
-Source: [src/agent-eval/judging.luau](../src/agent-eval/judging.luau).
-
-`run(options: RunOptions) -> RunSummary`
-
-Returns: Accounted evaluation runs, checks and evidence paths. The supplied services own host operations.
-
-Failures: Invalid configuration raises. Agent and check failures remain in run results.
-
-```luau
-local summary = AgentEval.run(evalOptions)
-```
-
 ### `AgentEval.load`
 
 Source: [src/agent-eval/judging.luau](../src/agent-eval/judging.luau).
@@ -2831,16 +2743,15 @@ local results = AgentEval.load(evidenceDirectory, evalFiles, Lute.parse)
 
 ### `AgentEval.adapters`
 
-Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
+Source: [src/agent-eval/adapters.luau](../src/agent-eval/adapters.luau).
 
-`claudeCode(decode) -> Adapter`; `codex(decode) -> Adapter`; `command(options) -> Adapter`; `replay(options) -> Adapter`; `fixture(decode) -> Adapter`; `claudeArguments(request) -> { string }`; `codexArguments(request, mcp?, decode) -> { string }`; `parseStamped(text) -> { Line }`
+`parseStamped(text: string) -> { Line }`
 
-Returns: Adapters, command argument arrays or timestamped transcript lines.
-
-Failures: Invalid options and argument formats raise. Process limits and tool failures remain adapter outcomes.
+Returns: Output lines with optional arrival timestamps. Plain lines keep an absent timestamp.
 
 ```luau
-local adapter = AgentEval.adapters.replay(replayOptions)
+local lines = AgentEval.adapters.parseStamped("1.25\tready\nplain\n")
+assert(lines[1].at == 1.25)
 ```
 
 ### `AgentEval.transcript`
@@ -2915,21 +2826,6 @@ Failures: Invalid result fields, status or schema raise.
 local result = AgentEval.result.decode(savedRun)
 ```
 
-### `AgentEval.report`
-
-Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
-
-`decodeThresholds(value) -> Thresholds`; `build(suite, results, judgments, thresholds, calibration?) -> EvalReport`; `markdown(report) -> string`; `verdict(report) -> Report`; `METRICS: { MetricSpec }`
-
-Returns: Thresholds, aggregate evaluation data, readable Markdown or a standard acceptance report.
-
-Failures: Invalid thresholds raise. Missing evidence and unmet thresholds remain nonpassing verdicts.
-
-```luau
-local evaluation = AgentEval.report.build("suite", results, judgments, thresholds)
-print(AgentEval.report.markdown(evaluation))
-```
-
 ### `AgentEval.judge`
 
 Source: [src/agent-eval/init.luau](../src/agent-eval/init.luau).
@@ -2946,21 +2842,6 @@ Failures: Invalid rubric and label input raises. Invalid verdict text returns ni
 local comparisons = AgentEval.judge.comparisons(suite, results)
 ```
 
-### `AgentEval.scopedMcp`
-
-Source: [src/agent-eval/scoped-mcp.luau](../src/agent-eval/scoped-mcp.luau).
-
-`create(studio: { id: string, name: string }, backend: Backend, encode: (unknown) -> string) -> Scope`
-
-Returns: A dispatcher limited to one Studio and a `close()` function.
-
-Failures: An empty Studio ID, unknown tool, wrong target or closed scope refuses dispatch. Backend failures raise.
-
-```luau
-local scope = AgentEval.scopedMcp.create(studioIdentity, mcpBackend, Lute.encode)
-scope.close()
-```
-
 ### `AgentEval.lute`
 
 Source: [src/agent-eval/lute.luau](../src/agent-eval/lute.luau).
@@ -2974,20 +2855,6 @@ Failures: File, process and JSON failures follow the supplied services. These bi
 ```luau
 local evalLoader = AgentEval.lute.loader()
 local services = AgentEval.lute.services()
-```
-
-### `AgentEval.cli`
-
-Source: [src/agent-eval/cli.luau](../src/agent-eval/cli.luau).
-
-`cli(args: { string }, context: CliContext) -> number`
-
-Returns: An exit code for plan, run, judge, report or audit commands.
-
-Failures: Invalid flags return a usage failure. Command failures return nonzero; host failures can raise.
-
-```luau
-local exitCode = AgentEval.cli({ "plan", "--suite", suitePath }, cliContext)
 ```
 
 ## Repository checks
