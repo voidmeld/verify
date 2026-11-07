@@ -22,6 +22,7 @@ export type Options = {
 	origin: (() -> Vector)?,
 	screenArea: ((Instance) -> { x: number, y: number, width: number, height: number })?,
 	projection: Projection.Host?,
+	ignoreDecorativeWorldGui: boolean?,
 	read: ((Instance, string) -> unknown)?,
 	component: ((Instance, string, string) -> unknown)?,
 	vector: ((number, number) -> unknown)?,
@@ -38,7 +39,41 @@ export type Controller = {
 }
 
 local function attach(environment: Environment.Environment, options: Options): Controller
-	local read: (Instance, string) -> unknown = options.read or environment.propertyOf
+	local originalRead: (Instance, string) -> unknown = options.read or environment.propertyOf
+	local function interactive(object: Instance): boolean
+		if object:IsA "GuiObject" then
+			if originalRead(object, "Visible") == false then
+				return false
+			end
+			if
+				object:IsA "GuiButton"
+				or originalRead(object, "Active") == true
+				or originalRead(object, "Selectable") == true
+			then
+				return true
+			end
+		elseif object:IsA "UIDragDetector" and originalRead(object, "Enabled") ~= false then
+			return true
+		end
+		for _, child in object:GetChildren() do
+			if interactive(child) then
+				return true
+			end
+		end
+		return false
+	end
+	local function read(object: Instance, property: string): unknown
+		if
+			property == "Enabled"
+			and options.ignoreDecorativeWorldGui == true
+			and object:IsA "LayerCollector"
+			and not object:IsA "ScreenGui"
+			and not interactive(object)
+		then
+			return false
+		end
+		return originalRead(object, property)
+	end
 	local vector: (number, number) -> unknown = options.vector or Datatypes.Vector2.new
 	local function enum(object: Instance, property: string, fallback: string): string
 		local value = read(object, property)
@@ -1338,6 +1373,7 @@ local function attach(environment: Environment.Environment, options: Options): C
 			return size.X > 0 and size.Y > 0 and x >= at.X and y >= at.Y and x <= at.X + size.X and y <= at.Y + size.Y
 		end
 		local visit: (Instance, Instance?, { Order }, number, boolean) -> ()
+
 		visit = function(object: Instance, screen: Instance?, path: { Order }, sibling: number, clipped: boolean)
 			if object:IsA "ScreenGui" then
 				if read(object, "Enabled") == false then
