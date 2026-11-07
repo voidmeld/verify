@@ -2468,6 +2468,10 @@ and retargets existing joints. Avatar scaling and mesh deformation remain native
 It supplies fixed deltas to callbacks. It does not model rollback or native property synchronization restrictions.
 `Stats.FrameTime` reports the supplied virtual frame duration, never native performance.
 
+### `Roblox.pathfindingHost`
+
+`Roblox.pathfindingHost.install(engine, compute)` opts into configured `CreatePath`, `ComputeAsync` and `GetWaypoints` behavior. `compute(origin, destination, parameters)` receives finite Vector3 endpoints and a copy of the path parameters. Return a list of finite positions including both endpoints, or nil for `NoPath`. Successful results expose copied Walk waypoints; a later miss clears them. The consumer supplies routing topology. This host does not build a native navmesh or simulate collision avoidance or jumps.
+
 ### `Roblox.inputHost`
 
 Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).
