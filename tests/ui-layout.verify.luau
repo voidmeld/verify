@@ -33,6 +33,25 @@ local function controller(env: Environment.Environment, root: Environment.Instan
 end
 
 describe("simulated GUI layout", function()
+	it("excludes disabled world GUI layers but refuses enabled unsupported input", function()
+		local env = fixture()
+		env.defineClass("LayerCollector", { super = "Instance", properties = { Enabled = true } })
+		env.defineClass("BillboardGui", { super = "LayerCollector", properties = { Enabled = false } })
+		local root = env.createInstance "Folder"
+		local screen = env.createInstance("ScreenGui", { Parent = root })
+		local button = env.createInstance("TextButton", { Parent = screen, Size = Types.UDim2.fromOffset(100, 100) })
+		local billboard = env.createInstance("BillboardGui", { Parent = root, Enabled = false })
+		env.createInstance("TextButton", { Parent = billboard, Size = Types.UDim2.fromOffset(100, 100) })
+		local layout = controller(env, screen)
+		layout.step()
+		expect(layout.objectsAtPosition(root, 20, 20)):toEqual { button }
+		expect(layout.objectsAtPosition(root, 20, 20, { button })):toEqual { button }
+		billboard.Enabled = true
+		expect(function()
+			layout.objectsAtPosition(root, 20, 20)
+		end):toThrow "requires BillboardGui"
+	end)
+
 	it("gradient offsets keep layout cached while callback geometry writes reflow", function()
 		local env = fixture()
 		env.defineClass("UIGradient", { super = "Instance", properties = { Offset = Types.Vector2.zero } })
