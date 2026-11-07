@@ -369,6 +369,7 @@ local function analyze(dump: Dump, options: Options?): Report
 			if
 				(other.zIndex < element.zIndex or (other.zIndex == element.zIndex and other.order < element.order))
 				and other.background.transparency < 1
+				and (other.opacity or 1) > 0
 				and visibleRects[other.index] ~= nil
 				and other.index ~= cursor.index
 				and not ancestorOf(other.index, element)

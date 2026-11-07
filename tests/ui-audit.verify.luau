@@ -243,6 +243,16 @@ describe("ui audit analyzer", function()
 			expect(ok):toBe(false)
 		end
 	end)
+	it("ignores fully faded sibling paint when resolving contrast", function()
+		local parent = label(1, { class = "Frame" })
+		parent.text = nil
+		local sibling = label(2, { class = "CanvasGroup", parent = 1, groupTransparency = 1 })
+		sibling.text = nil
+		local text = label(3, { parent = 1, background = { color = BLACK, transparency = 1 } })
+		local report = Audit.analyze(dump({ parent, sibling, text }, {}))
+		expect(count(report, "contrast-low")):toBe(0)
+		expect(report.metrics.contrastUnknown):toBe(0)
+	end)
 	it("reports each named failure attribute as a high control-failed finding", function()
 		local value = dump({}, {})
 		value.failures = { { path = "Gui.Shop", attribute = "Failure", message = "the grid needs a horizontal list" } }
