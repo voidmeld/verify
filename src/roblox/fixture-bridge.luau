@@ -13,6 +13,7 @@ local ContentFakes = require "./content-fakes"
 local LocalizationFakes = require "./localization-fakes"
 local LogFakes = require "./log-fakes"
 local TextContent = require "./text-content"
+local AttachmentFakes = require "./attachment-fakes"
 
 local SERVICE_DEFAULTS: { [string]: { [string]: unknown } } = {
 	GuiService = {
@@ -127,6 +128,17 @@ local function create(options: Options): Bridge
 	local serviceClasses: { [string]: boolean } = {}
 	local resolveService: ((string) -> Environment.Instance)? = nil
 	local computed: { [string]: Environment.Computed } = table.clone(settings.computed or {})
+	if computed["Attachment.WorldCFrame"] == nil then
+		computed["Attachment.WorldCFrame"] = { get = AttachmentFakes.worldFrame, writable = true }
+	end
+	if computed["Attachment.WorldPosition"] == nil then
+		computed["Attachment.WorldPosition"] = {
+			get = function(object: Environment.Instance): unknown
+				return AttachmentFakes.worldFrame(object).Position
+			end,
+			writable = true,
+		}
+	end
 	local readLayout: ((Environment.Instance, string) -> unknown)? = nil
 	if settings.layout then
 		local layoutProperties: { [string]: { string } } = {
