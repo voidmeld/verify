@@ -19,9 +19,6 @@ local Paths = require "../core/path"
 local Powershell = require "../lute/powershell"
 local Services = require "./services"
 local Wire = require "../lute/wire"
-local Studio = require "../lute/studio"
-local Install = require "../lute/studio-install"
-local Reply = require "../lute/studio-reply"
 
 export type Options = {
 	workspaces: string?,
@@ -346,98 +343,12 @@ local function decode(text: string): unknown
 	return Wire.parse(text)
 end
 
-local function studio(
-	workspace: string,
-	directory: string,
-	place: string,
-	build: { string },
-	seconds: number,
-	device: string?
-): { config: string, close: (keep: boolean?) -> () }
-	assert(#build > 0, "scoped Studio requires a build command")
-	local built = execute(if system.win32 then nil else "sh") {
-		argv = build,
-		cwd = workspace,
-		deadlineSeconds = math.min(seconds, 300),
-	}
-	assert(built.started and built.exitcode == 0 and not built.timedOut, "Studio build failed: " .. built.stderr)
-	local installed, missing = Install.locate()
-	assert(installed ~= nil, missing)
-	local launched, problem =
-		Studio.launch { place = place, directory = directory .. "/studio", runSeconds = seconds + 300 }
-	assert(launched ~= nil, problem)
-	local opened = launched
-	if device ~= nil then
-		assert(string.match(device, "^[%w_]+$") ~= nil, "Studio device must be a simulator device id such as hd_1080")
-		local configured = opened.session.execute(
-			"Edit",
-			"local simulator = game:GetService('StudioDeviceSimulatorService')\nsimulator:SetDeviceAsync("
-				.. string.format("%q", device)
-				.. ")\nreturn 'verify-studio-device:' .. tostring(simulator:GetDeviceAsync())"
-		)
-		if
-			not configured.ok
-			or not string.find(Reply.texts(configured.result), "verify-studio-device:" .. device, 1, true)
-		then
-			opened.close()
-			error("Studio did not acknowledge device " .. device, 0)
-		end
-	end
-	local scopeFile = directory .. "/studio-scope.json"
-	local config = directory .. "/mcp.json"
-	local script = absolute(Paths.join(moduleDirectory(), "../../tools/scoped-studio-mcp.luau"))
-	local ok, reason = pcall(function()
-		files.write(
-			scopeFile,
-			encode {
-				studio = opened.session.studio,
-				executable = installed.mcp,
-				directory = directory .. "/studio-proxy",
-				seconds = seconds,
-			}
-		)
-		files.write(
-			config,
-			encode { mcpServers = { studio = { command = "lute", args = { "run", script, scopeFile } } } }
-		)
-	end)
-	if not ok then
-		opened.close()
-		error(reason, 0)
-	end
-	return {
-		config = config,
-		close = function(keep: boolean?)
-			if keep then
-				local stopped = opened.session.play(false)
-				assert(stopped.ok, stopped.detail)
-				local released = opened.session.close()
-				assert(released.acknowledged and released.restored, "scoped Studio release failed")
-				files.write(
-					directory .. "/studio-place.json",
-					encode {
-						studio = opened.session.studio,
-						place = opened.place,
-						pid = opened.pid,
-					}
-				)
-				files.remove(scopeFile)
-				return
-			end
-			local closed = opened.close()
-			files.remove(scopeFile)
-			assert(#closed.survivors == 0 and closed.session.acknowledged, "scoped Studio cleanup failed")
-		end,
-	}
-end
-
 local function services(options: Options?): Services.Services
 	local given: Options = options or {}
 	local workspaces =
 		absolute(given.workspaces or Paths.join(Paths.normalize(tostring(system.tmpdir())), "verify-agent-eval"))
 	local started = time.now()
 	return {
-		studio = studio,
 		files = files,
 		execute = execute(given.shell or (if system.win32 then nil else "sh")),
 		checks = checks,

@@ -76,7 +76,17 @@ describe("Roblox datatypes compared with Studio", function()
 	it("every probe gives the result that Studio recorded", function()
 		local recorded = recorded()
 		expect(type(recorded.engineVersion)):toBe "string"
-		local local_ = Lute.fixture.probeLocal(environment(library()), probes)
+		local globals = environment(library())
+		local local_: { [string]: string } = {}
+		for _, probe in probes do
+			local ok, value = pcall(function(): unknown
+				local result = Lute.chunk.load(probe.source, { name = "probe", environment = globals })()
+				return result
+			end)
+			local_[probe.name] = if ok
+				then "ok: " .. tostring(value)
+				else "error: " .. (string.gsub(tostring(value), "^[^%s:]+:%d+: ", "", 1))
+		end
 		local mismatches: { string } = {}
 		for _, probe in probes do
 			local expected = recorded.results[probe.name]

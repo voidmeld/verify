@@ -5,10 +5,8 @@ local fs = require "@std/fs"
 local Path = require "@std/path"
 local luau = require "@lute/luau"
 local PlaceBoot = require "../roblox/place-boot"
-local Encoding = require "../roblox/reflection-encoding"
 local FixtureBridge = require "../roblox/fixture-bridge"
 local Snapshot = require "../roblox/reflection-snapshot"
-local StudioReflection = require "./studio-reflection"
 local Wire = require "./wire"
 local TextMetrics = require "./text-metrics"
 local UiFakes = require "../roblox/ui-fakes"
@@ -17,10 +15,6 @@ local Values = require "../roblox/ui-values"
 
 export type Options = Snapshot.Options
 export type Snapshot = Snapshot.Snapshot
-export type ExportOptions = StudioReflection.Options
-export type Execute = StudioReflection.Execute
-export type Probe = StudioReflection.Probe
-export type ProbeResults = StudioReflection.ProbeResults
 export type PlaceHost = PlaceBoot.Host<luau.Bytecode, () -> VM.Value>
 
 local loadBytecode: (luau.Bytecode, string, { [string]: unknown }) -> () -> VM.Value = luau.load
@@ -100,18 +94,9 @@ local function bridge(snapshot: (string | Snapshot.Snapshot)?, options: Options?
 	return Snapshot.bridge(captured, settings)
 end
 
-local function save(path: string, snapshot: unknown)
-	fs.writeStringToFile(path, Encoding.serialize(snapshot) .. "\n")
-end
-
 return {
 	host = table.freeze(host),
 	files = table.freeze(files),
 	load = load,
 	bridge = bridge,
-	save = save,
-	exportStudio = StudioReflection.export,
-	probeStudio = StudioReflection.probeStudio,
-	probeLocal = StudioReflection.probeLocal,
-	serialize = Encoding.serialize,
 }

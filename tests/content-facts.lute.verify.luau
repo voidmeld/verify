@@ -111,10 +111,4 @@ it("failed content reconstruction releases partial objects", function()
 	expect(engine.environment.liveObjects()):toBe(count)
 end)
 
-it("native content harness source compiles before a Studio launch", function()
-	local luau = require "@lute/luau"
-	local source = require "../tools/lib/capture-native-content"
-	expect(pcall(luau.compile, source)):toBe(true)
-end)
-
 return nil

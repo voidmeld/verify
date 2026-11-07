@@ -33,12 +33,12 @@ Follow these rules:
 | Write a case | [API](../../../docs/api.md) |
 | Build a plan, host, worker, retry, fixture or selection policy | [Execution](../../../docs/execution.md) |
 | Run the same case locally and in Roblox | [One case model](../../../docs/experience.md#one-case-model). Do not create a second case authoring model. |
-| Test Roblox UI or engine code under Lute | [Reflection snapshots](../../../docs/api.md#reflection-snapshots) and [datatypes](../../../docs/api.md#datatypes). Export and commit a snapshot from Studio. Load code under test with `Lute.loader`, which gives it the datatype `typeof`. |
+| Test Roblox UI or engine code under Lute | [Reflection snapshots](../../../docs/api.md#reflection-snapshots) and [datatypes](../../../docs/api.md#datatypes). Supply a captured snapshot from Studio. Load code under test with `Lute.loader`, which gives it the datatype `typeof`. |
 | Assert on a built model or place | [Model files](../../../docs/api.md#lutemodel). Build the XML format. |
 | Implement a host | [Host boundary](../../../docs/execution.md#host-boundary) |
 | Seal or judge host observations | [Host observations](../../../docs/api.md#host-observations) and [evidence provenance](../../../docs/api.md#evidence-provenance) |
 | Read a report or its claim | [API](../../../docs/api.md) and [laws](../../../docs/laws.md) |
-| Evaluate coding agents or audit a Roblox interface | [Agent evaluation](../../../docs/agent-eval.md). Supply the tasks, arms, hidden checks and thresholds. Do not add a second runner or report. |
+| Evaluate coding agents or audit a Roblox interface | [Agent evaluation](../../../docs/agent-eval.md). Supply the tasks, arms, hidden checks and thresholds. Own execution and acceptance in the consumer. |
 
 ## Finish
 
@@ -52,7 +52,7 @@ A passing count alone does not prove a complete claim.
 
 ## Evaluate agents
 
-1. Write the suite file, one task directory for each task and the thresholds file. The [agent evaluation](../../../docs/agent-eval.md) document gives each schema.
+1. Write the suite file, one task directory for each task and the thresholds file. Use the [agent evaluation](../../../docs/agent-eval.md) workflow and the public suite decoder to validate the inputs.
 2. Keep hidden checks in the task directory. Write screenshots to `{captures}/<device>/<screen>.png` and interface dumps from `Roblox.uiAudit.collect` to `{outputs}`.
-3. Run `plan`, then `run`, `judge` and `report`. Commit the thresholds before the first `run`.
+3. Decode and plan the suite, execute it in the consumer, then load saved runs and judgments. Commit the thresholds before execution.
 4. Report the verdict, the paired task count, the calibration and the limitations. A `PASS` covers the corpus, not every task.

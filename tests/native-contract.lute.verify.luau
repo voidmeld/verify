@@ -84,62 +84,6 @@ return {
 		expect(Core.decode(report).results[1].missingCapabilities):toEqual { "native-renderer" }
 		expect(cleaned):toBe(1)
 	end)
-	it("player operations validate both sides without claiming simulated physics", function()
-		local moved = { x = 0, y = 0, z = 0 }
-		local jumped = false
-		local equipped: string? = nil
-		local bound = Roblox.playerHost.registry {
-			move = function(value)
-				moved = value
-			end,
-			jump = function()
-				jumped = true
-			end,
-			equip = function(value)
-				equipped = value
-			end,
-			state = function()
-				return {
-					position = moved,
-					velocity = { x = 0, y = 0, z = 0 },
-					health = 100,
-					maximumHealth = 100,
-					equipped = equipped,
-				}
-			end,
-		}
-		local host: Core.CaseHost = {
-			name = "player-fixture",
-			capabilities = {
-				"action:player.move",
-				"action:player.jump",
-				"action:player.equip",
-				"query:player.state",
-			},
-			environment = {},
-			now = function()
-				return 0
-			end,
-			invoke = function(request)
-				local endpoints = if request.kind == "action" then bound.actions else bound.queries
-				return endpoints[request.name].run(request.payload, request)
-			end,
-		}
-		local report = Core.runCase({
-			id = "player",
-			name = "player vocabulary",
-			run = function(context: Core.Context)
-				context:perform("client", Roblox.playerHost.move, { x = 1, y = 0, z = 0 })
-				context:perform("client", Roblox.playerHost.jump, nil)
-				context:perform("client", Roblox.playerHost.equip, "FixtureTool")
-				context:expect(context:perform("client", Roblox.playerHost.inspect, nil).equipped):toBe "FixtureTool"
-			end,
-		}, host)
-		expect(report.passed):toBe(1)
-		expect(jumped):toBe(true)
-		local nativeCase = require "../examples/player-case"
-		expect(Core.runCase(nativeCase, host).unsupported):toBe(1)
-	end)
 end)
 
 return nil

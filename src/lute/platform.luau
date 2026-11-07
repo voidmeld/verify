@@ -11,7 +11,6 @@ local Files = require "./files"
 local Place = require "./place"
 local ProgressFile = require "./progress-file"
 local Player = require "./player"
-local Published = require "./published-source"
 local Studio = require "./studio"
 local Attach = require "./studio-attach"
 local Wire = require "./wire"
@@ -380,4 +379,4 @@ local function run(options: Options): Result
 	return { report = report, directory = directory, reportPath = evidence.reportPath, cloud = cloud }
 end
 
-return { run = run, buildPublished = Published.build }
+return { run = run }

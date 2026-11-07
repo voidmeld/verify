@@ -364,9 +364,7 @@ Service limits that the caller faces: a task has a cap of five minutes, and a pl
 
 ## Published Player execution
 
-Build the authorized test place with `Lute.platform.buildPublished`, then run the same entry through `--host player`. [Run cases](running.md#published-player) describes the workflow.
-
-The builder supports two modes: server execution with client report relay, or client execution after server authorization. The server checks the actual joined UserId, the entry identity and the selected case IDs. Launch data is correlation, not authorization. Each player can execute only one request per join.
+The consumer supplies and publishes a test place that authorizes the actual joined player, runs the selected entry and emits the run-bound report. Verify does not build published Player fixtures. [Run cases](running.md#published-player) describes launching that prepared place.
 
 `Lute.player.run { placeId, runId, entry?, caseIds?, logPath?, deadlineSeconds? }` is the lower-level call. It opens the documented Roblox deep link with the signed-in account.
 

@@ -16,13 +16,10 @@ local FixtureBridge = require "@self/fixture-bridge"
 local ReflectionSnapshot = require "@self/reflection-snapshot"
 local Multiplayer = require "@self/multiplayer"
 local InputHost = require "@self/input-host"
-local PlayerHost = require "@self/player-host"
 local ProgressChannel = require "@self/progress-channel"
 local ReportChannel = require "@self/report-channel"
 local InstanceHost = require "@self/instance-host"
 
-local Performance = require "@self/performance"
-local Network = require "@self/network"
 local ExperienceHost = require "@self/experience-host"
 
 local Datatypes = require "@self/datatypes"
@@ -51,8 +48,6 @@ export type FixtureBridge = FixtureBridge.Bridge
 export type ReflectionSnapshot = ReflectionSnapshot.Snapshot
 export type ReflectionSnapshotClass = ReflectionSnapshot.ClassEntry
 export type ReflectionSnapshotOptions = ReflectionSnapshot.Options
-
-export type Network = Network.Network
 
 export type EnvironmentOptions<P = { [string]: unknown }, M = { [string]: unknown }, F = { [string]: unknown }> =
 	Environment.Options<P, M, F>
@@ -103,10 +98,7 @@ return {
 	inputHost = InputHost,
 	reportChannel = ReportChannel,
 	progressChannel = ProgressChannel,
-	playerHost = PlayerHost,
 	instanceHost = InstanceHost,
-	performance = Performance,
-	network = Network,
 	experienceHost = ExperienceHost,
 	testEnvironment = Environment.create,
 	datatypes = Datatypes,

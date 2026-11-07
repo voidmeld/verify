@@ -13,7 +13,6 @@ local productMaterial: { Rule } = {
 
 local allowedLiterals: Denylist.Allowances = {
 	["src/roblox/content-facts.luau"] = { "rbxassetid://(%d+)$" },
-	["tools/lib/capture-native-content.luau"] = { 'rbxassetid://" .. request.id' },
 	["tests/fixtures/content-facts.json"] = { 'rbxassetid://43"', 'rbxassetid://50"' },
 	["tests/content-facts.lute.verify.luau"] = { 'rbxassetid://44"', 'rbxassetid://99"', 'rbxassetid://50"' },
 	["docs/api.md"] = { "`rbxassetid://`" },

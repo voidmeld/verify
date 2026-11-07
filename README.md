@@ -25,7 +25,7 @@ First, run one case with the [quickstart](docs/quickstart.md).
 | Reports | One report shape, validation, combining reports, moving them between hosts | [Reports and transport](docs/api.md#reports-and-transport) |
 | Execution plans | Splitting cases across workers and hosts, with deadlines and capabilities | [Execution plans](docs/api.md#execution-plans) |
 | Simulated engine | Instances, properties, signals, datatypes, reflection, UI layout and style, input and spatial queries, with no Roblox process | [Simulated environment](docs/api.md#simulated-environment) |
-| Roblox hosts | Running cases in Studio, Player and Open Cloud, and capturing native models and meshes for the simulator | [Host adapters](docs/api.md#host-adapters) |
+| Roblox hosts | Running cases in Studio and Open Cloud, and launching caller-prepared published Player tests | [Host adapters](docs/api.md#host-adapters) |
 | Gates and evidence | Declarative gates with verdicts, and evidence that records its source, host and review | [Declarative gates](docs/api.md#declarative-gates), [Evidence provenance](docs/api.md#evidence-provenance) |
 | Benchmarks | Benchmark cases, samples and paired comparisons for time and retained memory | [Benchmarks](docs/api.md#benchmarks) |
 | Memory | Retained-heap measurement that is stable across garbage collector timing | [`Lute.memory`](docs/api.md#lutememory) |
@@ -69,7 +69,7 @@ in Studio through a Roblox host and produce the same report shape.
 | `Evidence` | [`src/evidence`](src/evidence) | Host side | Evidence provenance, sinks and reviews |
 | `Benchmark` | [`src/benchmark.luau`](src/benchmark.luau) | Host side | Benchmark cases, samples and comparisons |
 | `Consumer` | [`src/consumer`](src/consumer) | Any Luau | Diagnostics for a consumer's specifications |
-| `AgentEval` | [`src/agent-eval`](src/agent-eval) | Lute | Coding-agent evaluation |
+| `AgentEval` | [`src/agent-eval`](src/agent-eval) | Lute | Saved coding-agent runs, transcripts and judging |
 | `Checks` | [`src/checks`](src/checks) | Lute | Repository checks |
 
 Require one of these roots. Modules under `src` that the API reference does not list are
@@ -97,7 +97,6 @@ To work on this repository, install the tools with `rokit install`.
 | Configure repository checks | [Repository checks](docs/checks.md) |
 | Check consumer code | [Lint policy](docs/lint.md) |
 | Evaluate coding agents | [Agent evaluation](docs/agent-eval.md) |
-| Give an agent access to one Studio | [Studio tools for an agent run](docs/scoped-studio-mcp.md) |
 | Add Verify to a repository | [Consumer skill](.agents/skills/verify/SKILL.md) |
 | Change this repository | [Contributor guide](AGENTS.md) and [contributing](CONTRIBUTING.md) |
 

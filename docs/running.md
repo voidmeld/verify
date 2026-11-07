@@ -131,9 +131,7 @@ Run `lute run examples/multiplayer.luau simulator` or `lute run examples/multipl
 
 ## Published Player
 
-Build a test fixture with `Lute.platform.buildPublished`. Give `{ output, entry, authorizedUserIds, context = "Server" | "Client" }`. Publish that output through the publishing workflow that you authorize. Run `lute run tools/run.luau --entry examples/platform-entry.luau --host player --place-id YOUR_TEST_PLACE_ID`.
-
-The server authorizes the actual player. It validates entry and selection from join data and permits one run per connection. `Client` runs the entry on that client. The default is `Server`. Both modes print the framed report in the owning client. Keep account IDs in consumer configuration. Launch data grants no authority or experience access. After mounted source changes, rebuild and publish again. Player uses published code. See [Player execution](execution.md#published-player-execution).
+Prepare and publish an authorized test place in the consumer. It must run the requested entry and selection, then emit the framed report in the owning client. Launch it with `lute run tools/run.luau --entry examples/platform-entry.luau --host player --place-id YOUR_TEST_PLACE_ID`. Keep account authorization and published source in consumer configuration. Launch data grants no authority. See [Player execution](execution.md#published-player-execution).
 
 ## Open Cloud
 
@@ -182,10 +180,10 @@ The reference Player launcher supports macOS only. Windows launches several proc
 
 ## Capture native text metrics
 
-Run `lute run tools/capture-text-metrics.luau <out.json> <font-family> [weight] [style]` with a Studio host. Give a full family URL, such as `rbxasset://fonts/families/BuilderSans.json`. The tool captures sizes 1–100, checks unseen text against the native service, saves `<out.json>.report.json` and writes facts only if comparisons pass. The native gate compares each face with the current service and runs shared layout assertions. Coverage is limited to the declared text grammar and layout cases.
+The committed text measurements retain their engine version and font face. The native gate compares each face with the current service and runs shared layout assertions. Coverage is limited to the declared text grammar and layout cases. New captures must be supplied by the consumer.
 
-The smallest positive token width at size 1 sets `pixelScale` (default 1 for older facts). Capture converts widths to raster pixels before computing advances, pair adjustments and boundary corrections. RobotoMono Regular/Normal uses fractional advances with nearest-pixel rounding and no boundary corrections. Other faces round raster width up. The model multiplies the rounded width by `pixelScale` and returns float32. Each size retains its native line height. Validation requires exact native widths. Failure keeps the report and complete attachment manifest without writing facts.
+The smallest positive token width at size 1 sets `pixelScale` (default 1 for older facts). Capture converts widths to raster pixels before computing advances, pair adjustments and boundary corrections. RobotoMono Regular/Normal uses fractional advances with nearest-pixel rounding and no boundary corrections. Other faces round raster width up. The model multiplies the rounded width by `pixelScale` and returns float32. Each size retains its native line height. Validation requires exact native widths.
 
-To add exact symbol strings to an existing face, append `symbols base.json` after the weight and style. This captures the declared symbols at every size from 1 through 100. The new `measurements` map and `measurementHeights` store direct native bounds, with `measurementEngineVersion` identifying their engine. It adds no inferred advances or pairs. See the [measured text contract](api.md#lutefixture) for the grammar limits.
+Caller-supplied exact symbol measurements cover the declared strings at every captured size. The new `measurements` map and `measurementHeights` store direct native bounds, with `measurementEngineVersion` identifying their engine. It adds no inferred advances or pairs. See the [measured text contract](api.md#lutefixture) for the grammar limits.
 
 To update the default fixtures, put the validated capture JSON files in one directory, then run `lute run tools/pack-text-metrics.luau <out.json> <capture-directory>`. Replace `src/lute/fixtures/text/metrics.json` with the output. The archive shares identical columns across sizes and faces without rounding values. It retains tokens, pairs, heights, scale and capture metadata. Keep font source and outlines out of fixtures.
