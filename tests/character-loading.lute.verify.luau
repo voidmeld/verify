@@ -91,7 +91,7 @@ Test.it("place boot preserves a character loaded during player admission", funct
 		firstViewport = { x = 1, y = 1 },
 		finalViewport = { x = 640, y = 480 },
 		frames = 1,
-		engineProvidedInput = false,
+		engineProvidedInput = true,
 		observe = function(stage, view)
 			if stage == "player" then
 				local player = assert(view.player)
@@ -122,6 +122,9 @@ Test.it("place boot preserves a character loaded during player admission", funct
 		},
 	})
 	Test.expect(report.player.Character):toBe(loaded)
+	local camera = report.engine.environment.assertInstance(report.engine.service("Workspace").CurrentCamera)
+	Test.expect(camera.CameraType):toBe(report.engine.datatypes.Enum.CameraType.Custom)
+	Test.expect(camera.CameraSubject):toBe(assert(loaded):FindFirstChildOfClass "Humanoid")
 	Test.expect(#report.diagnostics):toBe(0)
 end)
 
