@@ -7,6 +7,7 @@ return table.freeze {
 	"tests/agent-eval-lute.lute.verify.luau",
 	"tests/agent-eval-model.lute.verify.luau",
 	"tests/agent-eval-report.lute.verify.luau",
+	"tests/attachment-transforms.lute.verify.luau",
 	"tests/attachments.lute.verify.luau",
 	"tests/audio-fakes.lute.verify.luau",
 	"tests/bdd.verify.luau",

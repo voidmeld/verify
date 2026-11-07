@@ -12,6 +12,7 @@ local createSignals = require "./environment-signals"
 local Types = require "./environment-types"
 local Vm = require "./value"
 local SpatialFakes = require "./spatial-fakes"
+local AttachmentFakes = require "./attachment-fakes"
 local AudioFakes = require "./audio-fakes"
 local MessagingFakes = require "./messaging-fakes"
 local TeleportFakes = require "./teleport-fakes"
@@ -297,10 +298,23 @@ local function create(options: Options?): Environment
 	end
 
 	local function assign(object: Instance, state: State, key: string, value: unknown)
+		if isA(state.className, "Attachment") and (key == "WorldCFrame" or key == "WorldPosition") then
+			local basis = AttachmentFakes.basis(object)
+			local localFrame = if key == "WorldCFrame"
+				then basis:Inverse() * FrameTypes.expect(value, 1)
+				else FrameTypes.expect(state.values.CFrame, 1)
+			if key == "WorldPosition" then
+				local destination = basis:PointToObjectSpace(VectorTypes.expect3(value, 1))
+				localFrame += destination - localFrame.Position
+			end
+			assign(object, state, "CFrame", localFrame)
+			changed(object, state, key)
+			return
+		end
 		local selecting = key == "SelectedObject" and state.className == "GuiService"
 		local previous = if selecting then state.values[key] else nil
 		local coupled: string? = nil
-		if isA(state.className, "BasePart") then
+		if isA(state.className, "BasePart") or isA(state.className, "Attachment") then
 			if key == "CFrame" and Names.of(value) == "CFrame" and state.class.properties.Position ~= nil then
 				local position = FrameTypes.expect(value, 1).Position
 				if VectorTypes.find3(state.values.Position) ~= position then

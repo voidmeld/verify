@@ -58,6 +58,10 @@ local animationTrackProperties: { [string]: unknown } = {
 }
 
 local classes: { [string]: Types.ClassSpec } = {
+	Attachment = {
+		super = "Instance",
+		properties = { CFrame = Datatypes.CFrame.identity, Position = Datatypes.Vector3.zero },
+	},
 	ProximityPrompt = {
 		super = "Instance",
 		properties = {
