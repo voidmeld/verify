@@ -237,7 +237,8 @@ local function collect(options: Options?): Audit.Dump
 		parent: number?,
 		shown: boolean,
 		clip: Audit.Rect?,
-		scrollClip: Audit.Rect?
+		scrollClip: Audit.Rect?,
+		opacity: number
 	)
 		for _, child in children(object) do
 			instances += 1
@@ -248,7 +249,13 @@ local function collect(options: Options?): Audit.Dump
 				end
 				local rect = rectOf(child, world)
 				local visible = shown and read(child, "Visible") ~= false
+				local groupTransparency = if isA(child, "CanvasGroup")
+					then math.clamp(numberOf(styled(child, "GroupTransparency"), 0), 0, 1)
+					else nil
+				local childOpacity = opacity * (1 - (groupTransparency or 0))
 				local element: Audit.Element = {
+					groupTransparency = groupTransparency,
+					opacity = childOpacity,
 					index = #elements + 1,
 					parent = parent,
 					root = rootIndex,
@@ -346,7 +353,7 @@ local function collect(options: Options?): Audit.Dump
 				elseif read(child, "ClipsDescendants") == true or isA(child, "CanvasGroup") then
 					innerClip = intersect(clip, rect)
 				end
-				visit(child, rootIndex, world, element.index, visible, innerClip, innerScroll)
+				visit(child, rootIndex, world, element.index, visible, innerClip, innerScroll, childOpacity)
 			elseif parent ~= nil and isA(child, "UIPadding") then
 				local owner = elements[parent]
 				owner.padding = {
@@ -372,7 +379,7 @@ local function collect(options: Options?): Audit.Dump
 					direction = enumName(read(child, "FillDirection")),
 				}
 			elseif not isA(child, "UIComponent") then
-				visit(child, rootIndex, world, parent, shown, clip, scrollClip)
+				visit(child, rootIndex, world, parent, shown, clip, scrollClip, opacity)
 			end
 		end
 	end
@@ -383,7 +390,16 @@ local function collect(options: Options?): Audit.Dump
 		local enabled = read(root, "Enabled") ~= false
 		local ignoreGuiInset = read(root, "IgnoreGuiInset")
 		local rect = rectOf(root, world)
+		local opacity = 1
+		local ancestor: unknown = root
+		while ancestor ~= nil do
+			if isA(ancestor, "CanvasGroup") then
+				opacity *= 1 - math.clamp(numberOf(styled(ancestor, "GroupTransparency"), 0), 0, 1)
+			end
+			ancestor = read(ancestor, "Parent")
+		end
 		table.insert(dumpRoots, {
+			opacity = opacity,
 			index = index,
 			class = textOf(read(root, "ClassName")) or "LayerCollector",
 			path = fullName(root),
@@ -396,7 +412,7 @@ local function collect(options: Options?): Audit.Dump
 			rect = rect,
 		})
 		instances += 1
-		visit(root, index, world, nil, enabled, nil, nil)
+		visit(root, index, world, nil, enabled, nil, nil, opacity)
 	end
 
 	for _, entry in pending do
