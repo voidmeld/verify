@@ -541,6 +541,19 @@ local function install<B>(
 				end)
 			end,
 		}
+		overrides.ParticleEmitter = {
+			Emit = function(_object: Instance, requested: unknown)
+				local count = if requested == nil then 16 else requested
+				assert(
+					type(count) == "number" and count >= 0 and count < math.huge and count % 1 == 0,
+					"particle count must be a finite nonnegative integer"
+				)
+				engine.record("effect", "ParticleEmitter.Emit count=" .. tostring(count), engine.currentSource())
+			end,
+			Clear = function(_object: Instance)
+				engine.record("effect", "ParticleEmitter.Clear", engine.currentSource())
+			end,
+		}
 		overrides.ContentProvider = {
 			PreloadAsync = function(
 				_service: Instance,

@@ -1246,4 +1246,35 @@ return log
 	}
 end)
 
+it("particle requests validate counts and record metadata without claiming rendered particles", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(bridge.close)
+	local binding = bridge.placeEngine()
+	local fixture = sourceFixture({}, { "ParticleEmitter" }, { engine = binding })
+	Lute.chunk.load(
+		[[
+local emitter = Instance.new("ParticleEmitter")
+emitter:Emit()
+emitter:Emit(0)
+emitter:Emit(3)
+emitter:Clear()
+for _, count in { -1, 0.5, math.huge } do
+ assert(not pcall(function() emitter:Emit(count) end))
+end
+]],
+		{ environment = fixture.runtime.globals }
+	)()
+	local texts: { string } = {}
+	for _, diagnostic in binding.diagnostics do
+		expect(diagnostic.kind):toBe "effect"
+		table.insert(texts, diagnostic.text)
+	end
+	expect(texts):toEqual {
+		"ParticleEmitter.Emit count=16",
+		"ParticleEmitter.Emit count=0",
+		"ParticleEmitter.Emit count=3",
+		"ParticleEmitter.Clear",
+	}
+end)
+
 return nil
