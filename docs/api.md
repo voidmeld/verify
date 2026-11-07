@@ -2477,6 +2477,7 @@ Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).
 Returns: An input binding, native backend when available, operation registry or screen point. `key`, `pointer` and `text` are typed operations.
 
 Failures: Unsupported native input returns nil. Invalid input or unsupported simulated geometry raises.
+Virtual mouse-button input uses its explicit coordinates without requiring a preceding pointer move.
 `screenCenter` needs native `GuiService:GetGuiInset()` and a positive rendered target area.
 
 ```luau

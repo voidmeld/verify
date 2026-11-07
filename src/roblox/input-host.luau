@@ -1261,9 +1261,6 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 				if count ~= nil and (type(count) ~= "number" or count < 0 or count % 1 ~= 0) then
 					unsupported "non-integer activation count"
 				end
-				if at.X ~= position.X or at.Y ~= position.Y then
-					unsupported "button coordinates without prior pointer movement"
-				end
 				if touchMode() then
 					touch.press(touchPoint(at), down)
 				else
