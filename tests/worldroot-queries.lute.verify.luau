@@ -457,7 +457,9 @@ it("cylinder mesh union and terrain proxies use authored bounds and water filter
 		params.IgnoreWater = true
 		local hit = cast(engine.environment, world, "Raycast")(world, origin, direction, params)
 		expect(if hit then hit.Instance else nil):toBe(if class == "Terrain" then nil else target)
-		expect(#overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.zero, 1)):toBe(1)
+		expect(#overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.zero, 1)):toBe(
+			if class == "Terrain" then 0 else 1
+		)
 		target:Destroy()
 	end
 end)
@@ -502,7 +504,7 @@ it("refuses invalid cast geometry and unsupported source content before returnin
 	end, "unsupported")
 end)
 
-it("unconfigured terrain refuses even after an overlap limit could have been satisfied", function()
+it("part overlaps exclude terrain while raycasts refuse unconfigured terrain", function()
 	local engine = Lute.fixture.bridge().placeEngine()
 	local world = engine.service "Workspace"
 	local part = engine.newInstance "Part"
@@ -514,9 +516,12 @@ it("unconfigured terrain refuses even after an overlap limit could have been sat
 	end, "unsupported_content")
 	local params = D.OverlapParams.new()
 	params.MaxParts = 1
-	refused(function()
-		overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.identity, V.one, params)
-	end, "unsupported_content")
+	expect(overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.identity, V.one, params)):toEqual { part }
+	expect(overlap(engine.environment, world, "GetPartBoundsInRadius")(world, V.zero, 2, params)):toEqual { part }
+	local source = engine.newInstance "Part"
+	source.Parent = world
+	expect(overlap(engine.environment, world, "GetPartsInPart")(world, source, params)):toEqual { part }
+	source.Parent = nil
 	params.ExcludeInstances = { terrain }
 	expect(#overlap(engine.environment, world, "GetPartBoundsInBox")(world, CF.identity, V.one, params)):toBe(1)
 end)

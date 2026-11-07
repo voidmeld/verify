@@ -308,6 +308,9 @@ local function attach(environment: Environment.Environment, selectOverride: ((In
 		assert(params.Tolerance == 0, "unsupported: nonzero overlap Tolerance")
 		local found = {}
 		for _, part in candidates(world, params, skip, source, V.zero) do
+			if part:IsA "Terrain" then
+				continue
+			end
 			if Geometry.overlaps(source, shape(part, bounds)) then
 				table.insert(found, part)
 			end
