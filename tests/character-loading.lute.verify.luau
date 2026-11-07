@@ -85,7 +85,7 @@ Test.it("place boot preserves a character loaded during player admission", funct
 	local loaded: Roblox.Instance? = nil
 	local report = Roblox.bootPlace({
 		projectPath = "empty.json",
-		identity = { universeId = 1, placeId = 2, placeVersion = 3 },
+		identity = { universeId = 0, placeId = 0, placeVersion = 0 },
 		subject = { name = "Witness", userId = 4, jobId = "test" },
 		aliases = {},
 		firstViewport = { x = 1, y = 1 },
