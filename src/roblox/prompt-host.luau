@@ -87,7 +87,8 @@ local function simulated(engine: Types.Engine, options: Options): Environment.Co
 			type(range) == "number" and range >= 0 and range < math.huge,
 			"prompt range must be finite and nonnegative"
 		)
-		return (origin - target).Magnitude <= range and options.visible(prompt, origin, target)
+		local x, y, z = origin.X - target.X, origin.Y - target.Y, origin.Z - target.Z
+		return math.sqrt(x * x + y * y + z * z) <= range and options.visible(prompt, origin, target)
 	end
 	local function refresh()
 		for _, prompt in prompts do

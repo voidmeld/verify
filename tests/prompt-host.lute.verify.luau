@@ -6,7 +6,9 @@ local Roblox = require "../src/roblox"
 
 local function fixture(own: (() -> ()) -> ())
 	local bridge = Lute.fixture.bridge()
-	own(bridge.close)
+	own(function()
+		bridge.close()
+	end)
 	local engine = bridge.placeEngine()
 	local env = engine.environment
 	local player = engine.newInstance("Player", true)
