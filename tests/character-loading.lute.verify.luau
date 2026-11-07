@@ -3,6 +3,7 @@
 local Test = require "./harness"
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
+local Environment = require "../src/roblox/environment"
 
 local function fixture(own: (() -> ()) -> ())
 	local bridge = Lute.fixture.bridge()
@@ -40,7 +41,7 @@ Test.it("loads and replaces a connected player character at its selected spawn",
 	Test.expect(first.Parent):toBe(engine.service "Workspace")
 	Test.expect(first:FindFirstChildOfClass "Humanoid" ~= nil):toBe(true)
 	Test.expect(first:FindFirstChild "HumanoidRootPart" ~= nil):toBe(true)
-	Test.expect(first:GetPivot()):toEqual(engine.datatypes.CFrame.new(10, 23, 30))
+	Test.expect(engine.environment.method(first, "GetPivot")(first)):toEqual(engine.datatypes.CFrame.new(10, 23, 30))
 	load(player)
 	Test.expect(player.Character == first):toBe(false)
 	Test.expect(first.Parent):toBeNil()
@@ -72,10 +73,15 @@ Test.it("clones the configured starter character and refuses a malformed templat
 end)
 
 Test.it("place boot preserves a character loaded during player admission", function(own)
-	local host = table.clone(Lute.fixture.host)
-	host.readFile = function(): string
-		return '{"tree":{}}'
-	end
+	local host = {
+		readFile = function(): string
+			return '{"tree":{}}'
+		end,
+		compile = Lute.fixture.host.compile,
+		load = Lute.fixture.host.load,
+		encodeJson = Lute.fixture.host.encodeJson,
+		decodeJson = Lute.fixture.host.decodeJson,
+	}
 	local loaded: Roblox.Instance? = nil
 	local report = Roblox.bootPlace({
 		projectPath = "empty.json",
@@ -117,6 +123,42 @@ Test.it("place boot preserves a character loaded during player admission", funct
 	})
 	Test.expect(report.player.Character):toBe(loaded)
 	Test.expect(#report.diagnostics):toBe(0)
+end)
+
+Test.it("fixed simulation respects cadence, priority, disconnect and disabled worlds", function(own)
+	local engine, runtime = fixture(own)
+	local run = engine.service "RunService"
+	local bind = engine.environment.method(run, "BindToSimulation")
+	Test.expect(function()
+		bind(run, function() end)
+	end):toThrow "requires fixed simulation"
+	engine.environment.poke(
+		engine.service "Workspace",
+		"UseFixedSimulation",
+		engine.datatypes.Enum.RolloutState.Enabled
+	)
+	local events: { string } = {}
+	local function callback(name: string): (number) -> ()
+		return function(delta: number)
+			table.insert(events, name .. ":" .. tostring(math.round(delta * 60)))
+		end
+	end
+	local first = bind(run, callback "late", nil, 20)
+	bind(run, callback "early", engine.datatypes.Enum.StepFrequency.Hz30, 10)
+	bind(run, callback "fast", engine.datatypes.Enum.StepFrequency.Hz60, 30)
+	runtime.step(1 / 30)
+	Test.expect(events):toEqual { "fast:1", "early:2", "late:2", "fast:1" }
+	assert(type(first) == "table" and type(first.Disconnect) == "function")
+	Environment.invoke(first.Disconnect, first)
+	table.clear(events)
+	runtime.step(1 / 30)
+	Test.expect(events):toEqual { "fast:1", "early:2", "fast:1" }
+	Test.expect(function()
+		bind(run, function() end, engine.datatypes.Enum.KeyCode.A)
+	end):toThrow "StepFrequency"
+	Test.expect(function()
+		bind(run, function() end, nil, 0.5)
+	end):toThrow "finite integer"
 end)
 
 return nil

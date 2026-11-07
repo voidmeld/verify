@@ -42,7 +42,7 @@ local function load(engine: Types.Engine, player: Instance): Instance
 		assert(location:IsA "SpawnLocation", "RespawnLocation must be a SpawnLocation")
 		environment.method(character, "PivotTo")(
 			character,
-			Frames.expect(location.CFrame) * engine.datatypes.CFrame.new(0, 3, 0)
+			Frames.expect(location.CFrame, 2) * engine.datatypes.CFrame.new(0, 3, 0)
 		)
 	end
 	character.Parent = engine.service "Workspace"

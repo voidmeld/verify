@@ -1,5 +1,6 @@
 --!strict
 local CharacterFakes = require "./character-fakes"
+local SimulationFakes = require "./simulation-fakes"
 local Vm = require "./value"
 
 local Types = require "./place-types"
@@ -159,6 +160,7 @@ local function install<B>(
 			end,
 		}
 		overrides.RunService = {
+			BindToSimulation = SimulationFakes.create(engine),
 			IsServer = function(): boolean
 				return context() == "server"
 			end,
