@@ -1,6 +1,7 @@
 --!strict
 
 local Types = require "./place-types"
+local Frames = require "./datatypes/cframe"
 type Instance = Types.Instance
 
 local function load(engine: Types.Engine, player: Instance): Instance
@@ -11,9 +12,9 @@ local function load(engine: Types.Engine, player: Instance): Instance
 	local environment = engine.environment
 	local previous = player.Character
 	if previous ~= nil then
-		assert(engine.isInstance(previous), "player character must be an instance")
-		environment.fire(player, "CharacterRemoving", previous)
-		previous:Destroy()
+		local old = environment.assertInstance(previous)
+		environment.fire(player, "CharacterRemoving", old)
+		old:Destroy()
 	end
 	local template = engine.service("StarterPlayer"):FindFirstChild "StarterCharacter"
 	local character: Instance
@@ -37,8 +38,12 @@ local function load(engine: Types.Engine, player: Instance): Instance
 	character.PrimaryPart = root
 	local spawn = player.RespawnLocation
 	if spawn ~= nil then
-		assert(engine.isInstance(spawn) and spawn:IsA "SpawnLocation", "RespawnLocation must be a SpawnLocation")
-		character:PivotTo(spawn.CFrame * engine.datatypes.CFrame.new(0, 3, 0))
+		local location = environment.assertInstance(spawn)
+		assert(location:IsA "SpawnLocation", "RespawnLocation must be a SpawnLocation")
+		environment.method(character, "PivotTo")(
+			character,
+			Frames.expect(location.CFrame) * engine.datatypes.CFrame.new(0, 3, 0)
+		)
 	end
 	character.Parent = engine.service "Workspace"
 	environment.poke(player, "Character", character)
