@@ -686,11 +686,11 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 	local function codeName(value: unknown): string
 		return (tostring(value):match "([^%.]+)$" or tostring(value))
 	end
-	local function boundActions(code: string, kind: string?): { BoundAction }
+	local function boundActions(code: string, kind: string?, property: string?): { BoundAction }
 		local root = gui:FindFirstAncestorWhichIsA "DataModel" or gui
 		local found: { BoundAction } = {}
 		for _, binding in root:GetDescendants() do
-			if not binding:IsA "InputBinding" or codeName(env.propertyOf(binding, "KeyCode")) ~= code then
+			if not binding:IsA "InputBinding" or codeName(env.propertyOf(binding, property or "KeyCode")) ~= code then
 				continue
 			end
 			local matched = true
@@ -740,7 +740,61 @@ local function simulated(env: Environment.Environment, options: SimulatedOptions
 		end)
 		return found
 	end
+	local function deliverComposite(code: string)
+		local found: { BoundAction } = {}
+		local seen: { [Instance]: boolean } = {}
+		for _, property in { "Up", "Down", "Left", "Right" } do
+			for _, entry in boundActions(code, "Direction2D", property) do
+				if not seen[entry.action] then
+					seen[entry.action] = true
+					table.insert(found, entry)
+				end
+			end
+		end
+		table.sort(found, function(left, right)
+			return Values.number(env.propertyOf(left.context, "Priority"))
+				> Values.number(env.propertyOf(right.context, "Priority"))
+		end)
+		local sunk: number? = nil
+		for _, entry in found do
+			local priority = Values.number(env.propertyOf(entry.context, "Priority"))
+			if sunk and priority < sunk then
+				break
+			end
+			local x, y = 0, 0
+			for _, binding in entry.action:GetChildren() do
+				if not binding:IsA "InputBinding" then
+					continue
+				end
+				local function held(property: string): number
+					return if heldKeys[codeName(env.propertyOf(binding, property))] then 1 else 0
+				end
+				local modifiers = true
+				for _, property in MODIFIERS do
+					local key = env.propertyOf(binding, property)
+					if key ~= nil and key ~= none and key ~= unknownKey and not heldKeys[codeName(key)] then
+						modifiers = false
+					end
+				end
+				if modifiers then
+					local scale = Values.vector(env.propertyOf(binding, "Vector2Scale"))
+					local dx = (held "Right" - held "Left") * scale.X
+					local dy = (held "Up" - held "Down") * scale.Y
+					local magnitude = math.sqrt(dx * dx + dy * dy)
+					if env.propertyOf(binding, "ClampMagnitudeToOne") == true and magnitude > 1 then
+						dx, dy = dx / magnitude, dy / magnitude
+					end
+					x, y = x + dx, y + dy
+				end
+			end
+			env.method(entry.action, "Fire")(entry.action, library.Vector2.new(x, y))
+			if env.propertyOf(entry.context, "Sink") == true then
+				sunk = priority
+			end
+		end
+	end
 	local function deliverActions(code: string, down: boolean)
+		deliverComposite(code)
 		if not down then
 			for key, actions in keyActions do
 				for _, entry in actions do
