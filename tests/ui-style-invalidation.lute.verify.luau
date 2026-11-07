@@ -546,4 +546,15 @@ it("unread sheet edits coalesce scope work and reads reopen invalidation", funct
 	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(500, 300))
 end)
 
+it("lays out a styled tree whose folder holds padding without reading folder geometry", function(own)
+	local f = fixture(own)
+	local a = f.mount()
+	local folder = f.env.createInstance("Folder", { Name = "StateTags", Parent = a.frame })
+	f.env.createInstance("UIPadding", { Parent = folder, PaddingLeft = f.types.UDim.new(0, 12) })
+	local child = f.env.createInstance("Frame", { Parent = a.frame })
+	f.layout.step()
+	expect(a.frame.AbsoluteSize):toEqual(f.types.Vector2.new(200, 100))
+	expect(child.AbsolutePosition):toEqual(a.frame.AbsolutePosition)
+end)
+
 return nil
