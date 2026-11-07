@@ -128,6 +128,9 @@ local function install<B>(
 			return humanoidStates[object] or engine.datatypes.Enum.HumanoidStateType.Running
 		end
 		overrides.Humanoid = {
+			ReplaceBodyPartR15 = function(humanoid: Instance, bodyPart: unknown, replacement: Instance): boolean
+				return CharacterFakes.replace(engine, humanoid, bodyPart, replacement)
+			end,
 			GetState = humanoidState,
 			GetStateEnabled = function(object: Instance, state: Datatypes.EnumMember): boolean
 				validateHumanoidState(state)

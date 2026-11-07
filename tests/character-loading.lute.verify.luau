@@ -28,14 +28,22 @@ Test.it("loads and replaces a connected player character at its selected spawn",
 	spawn.Parent, player.RespawnLocation = engine.service "Workspace", spawn
 	local events: { string } = {}
 	local added = engine.environment.event(player, "CharacterAdded")
-	added:Connect(function()
+	local beforeParent = false
+	local appearanceReady = false
+	added:Connect(function(character)
+		beforeParent = engine.environment.assertInstance(character).Parent == nil
 		table.insert(events, "added")
+	end)
+	engine.environment.event(player, "CharacterAppearanceLoaded"):Connect(function(character)
+		appearanceReady = engine.environment.assertInstance(character).Parent == nil
 	end)
 	engine.environment.event(player, "CharacterRemoving"):Connect(function()
 		table.insert(events, "removing")
 	end)
 	local load = engine.environment.method(player, "LoadCharacterAsync")
 	load(player)
+	Test.expect(beforeParent):toBe(true)
+	Test.expect(appearanceReady):toBe(true)
 	local first = engine.environment.assertInstance(player.Character)
 	Test.expect(first.Name):toBe "Witness"
 	Test.expect(first.Parent):toBe(engine.service "Workspace")
@@ -150,6 +158,7 @@ Test.it("fixed simulation respects cadence, priority, disconnect and disabled wo
 	bind(run, callback "early", engine.datatypes.Enum.StepFrequency.Hz30, 10)
 	bind(run, callback "fast", engine.datatypes.Enum.StepFrequency.Hz60, 30)
 	runtime.step(1 / 30)
+	Test.expect(engine.service("Stats").FrameTime):toBe(1 / 30)
 	Test.expect(events):toEqual { "fast:1", "early:2", "late:2", "fast:1" }
 	assert(type(first) == "table" and type(first.Disconnect) == "function")
 	Environment.invoke(first.Disconnect, first)
@@ -162,6 +171,31 @@ Test.it("fixed simulation respects cadence, priority, disconnect and disabled wo
 	Test.expect(function()
 		bind(run, function() end, nil, 0.5)
 	end):toThrow "finite integer"
+end)
+
+Test.it("R15 replacement preserves placement and retargets existing joints", function(own)
+	local engine = fixture(own)
+	local model = engine.newInstance "Model"
+	local humanoid = engine.newInstance "Humanoid"
+	humanoid.Parent = model
+	local previous = engine.newInstance "Part"
+	previous.Name, previous.Parent = "Head", model
+	previous.CFrame = engine.datatypes.CFrame.new(1, 2, 3)
+	local joint = engine.newInstance "Motor6D"
+	joint.Part1, joint.Parent = previous, model
+	local replacement = engine.newInstance "Part"
+	replacement.Name = "Head"
+	local replace = engine.environment.method(humanoid, "ReplaceBodyPartR15")
+	Test.expect(replace(humanoid, engine.datatypes.Enum.BodyPartR15.Head, replacement)):toBe(true)
+	Test.expect(previous.Parent):toBeNil()
+	Test.expect(replacement.Parent):toBe(model)
+	Test.expect(replacement.CFrame):toEqual(engine.datatypes.CFrame.new(1, 2, 3))
+	Test.expect(joint.Part1):toBe(replacement)
+	Test.expect(replace(humanoid, engine.datatypes.Enum.BodyPartR15.LeftHand, replacement)):toBe(false)
+	Test.expect(replace(humanoid, engine.datatypes.Enum.BodyPartR15.Unknown, replacement)):toBe(false)
+	Test.expect(function()
+		replace(humanoid, engine.datatypes.Enum.KeyCode.A, replacement)
+	end):toThrow "BodyPartR15"
 end)
 
 return nil

@@ -2462,8 +2462,11 @@ This host proves controller wiring and game logic. It simulates no wall collisio
 
 Place runtimes simulate `Player.LoadCharacterAsync` for connected players, including replacement events,
 `StarterCharacter` cloning and selected spawn placement. Place boot retains a character loaded during admission.
+Character-added and appearance-ready events precede workspace parenting. R15 part replacement retains placement
+and retargets existing joints. Avatar scaling and mesh deformation remain native-only.
 `RunService.BindToSimulation` requires fixed simulation and supports the declared frequencies, priorities and disconnect.
 It supplies fixed deltas to callbacks. It does not model rollback or native property synchronization restrictions.
+`Stats.FrameTime` reports the supplied virtual frame duration, never native performance.
 
 ### `Roblox.inputHost`
 
