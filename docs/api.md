@@ -2476,6 +2476,10 @@ It supplies fixed deltas to callbacks. It does not model rollback or native prop
 
 `Roblox.pathfindingHost.install(engine, compute)` opts into configured `CreatePath`, `ComputeAsync` and `GetWaypoints` behavior. `compute(origin, destination, parameters)` receives finite Vector3 endpoints and a copy of the path parameters. Return a list of finite positions including both endpoints, or nil for `NoPath`. Successful results expose copied Walk waypoints; a later miss clears them. The consumer supplies routing topology. This host does not build a native navmesh or simulate collision avoidance or jumps.
 
+### `Roblox.promptHost`
+
+`Roblox.promptHost.simulated(engine, { player, visible })` opts into distance-gated prompt events and holds. `visible(prompt, origin, target)` supplies visibility and selection policy; this host does not infer native camera visibility, line of sight or exclusivity. Prompts must be enabled under Workspace, within `MaxActivationDistance` of the player's HumanoidRootPart, and parented to a BasePart, Attachment or Model with a PrimaryPart. The service must be enabled. Heartbeats emit prompt and service shown/hidden events. Public keyboard events and `InputHoldBegin`/`InputHoldEnd` share cancellable holds; a completed hold emits Triggered once. Removal, range loss, disabling and disconnect cancel pending holds. The returned connection disconnects the host. No rendering or native input acceptance is proved. Fixture services start with ProximityPromptService.Enabled true. Prompt defaults include Enabled and RequiresLineOfSight true, HoldDuration zero, MaxActivationDistance ten, keyboard E and gamepad ButtonX.
+
 ### `Roblox.inputHost`
 
 Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).

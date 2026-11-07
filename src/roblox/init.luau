@@ -18,6 +18,7 @@ local Multiplayer = require "@self/multiplayer"
 local InputHost = require "@self/input-host"
 local ControllerHost = require "@self/controller-host"
 local PathfindingHost = require "@self/pathfinding-host"
+local PromptHost = require "@self/prompt-host"
 local ProgressChannel = require "@self/progress-channel"
 local ReportChannel = require "@self/report-channel"
 local InstanceHost = require "@self/instance-host"
@@ -100,6 +101,7 @@ return {
 	inputHost = InputHost,
 	controllerHost = ControllerHost,
 	pathfindingHost = PathfindingHost,
+	promptHost = PromptHost,
 	reportChannel = ReportChannel,
 	progressChannel = ProgressChannel,
 	instanceHost = InstanceHost,

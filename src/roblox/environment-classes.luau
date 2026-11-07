@@ -58,6 +58,17 @@ local animationTrackProperties: { [string]: unknown } = {
 }
 
 local classes: { [string]: Types.ClassSpec } = {
+	ProximityPrompt = {
+		super = "Instance",
+		properties = {
+			Enabled = true,
+			RequiresLineOfSight = true,
+			HoldDuration = 0,
+			MaxActivationDistance = 10,
+			KeyboardKeyCode = Datatypes.Enum.KeyCode.E,
+			GamepadKeyCode = Datatypes.Enum.KeyCode.ButtonX,
+		},
+	},
 	Object = { creatable = false },
 	Instance = { super = "Object", creatable = false },
 	Folder = { super = "Instance" },

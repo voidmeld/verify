@@ -75,6 +75,7 @@ return table.freeze {
 	"tests/player-launcher.lute.verify.luau",
 	"tests/powershell.lute.verify.luau",
 	"tests/progress.lute.verify.luau",
+	"tests/prompt-host.lute.verify.luau",
 	"tests/random-datatype.lute.verify.luau",
 	"tests/reflection-snapshot.lute.verify.luau",
 	"tests/reflection.verify.luau",
