@@ -1346,6 +1346,9 @@ local function attach(environment: Environment.Environment, options: Options): C
 				screen = object
 				path = {}
 			elseif object:IsA "LayerCollector" then
+				if read(object, "Enabled") == false then
+					return
+				end
 				unsupported(object, object.ClassName .. " hit testing")
 			end
 			if object:IsA "GuiObject" then
