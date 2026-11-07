@@ -2450,6 +2450,21 @@ local instanceHost = Roblox.instanceHost.simulated("client", environment)
 instanceHost.host.close()
 ```
 
+### `Roblox.controllerHost`
+
+Source: [src/roblox/controller-host.luau](../src/roblox/controller-host.luau).
+
+`Roblox.controllerHost.simulated(engine)` opts a place engine into kinematic controller motion.
+It integrates `ControllerManager.MovingDirection`, `BaseMoveSpeed` and the active controller's `MoveSpeedFactor`.
+Ground sensors use the configured `Workspace.Raycast` host and `GroundOffset`. Manual sensors remain caller-owned.
+Disconnect the returned connection to stop motion and release the instance observer.
+This host proves controller wiring and game logic. It simulates no wall collision, gravity, native physics or rendering.
+
+Place runtimes simulate `Player.LoadCharacterAsync` for connected players, including replacement events,
+`StarterCharacter` cloning and selected spawn placement. Place boot retains a character loaded during admission.
+`RunService.BindToSimulation` requires fixed simulation and supports the declared frequencies, priorities and disconnect.
+It supplies fixed deltas to callbacks. It does not model rollback or native property synchronization restrictions.
+
 ### `Roblox.inputHost`
 
 Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).

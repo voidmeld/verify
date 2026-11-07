@@ -22,6 +22,7 @@ return table.freeze {
 	"tests/consumer-surface.lute.verify.luau",
 	"tests/consumer.verify.luau",
 	"tests/content-facts.lute.verify.luau",
+	"tests/controller-host.lute.verify.luau",
 	"tests/core.verify.luau",
 	"tests/corpus.lute.verify.luau",
 	"tests/datatypes.lute.verify.luau",
