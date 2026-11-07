@@ -25,6 +25,7 @@ local SERVICE_DEFAULTS: { [string]: { [string]: unknown } } = {
 		IsWindows = false,
 	},
 	UserInputService = { MouseIconEnabled = true, MouseDeltaSensitivity = 1, ModalEnabled = false },
+	ProximityPromptService = { Enabled = true },
 }
 
 type Vector2 = Adapter.Vector2
