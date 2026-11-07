@@ -105,7 +105,7 @@ local STUDIO = {
 	"none=",
 }
 
-it("simulated keyboard input matches the Studio event order", function(own)
+local function runProbe(own: (() -> ()) -> (), source: string): { string }
 	local roots: { Roblox.Instance } = {}
 	local snapshot = Lute.fixture.load()
 	local bridge = Lute.fixture.bridge(snapshot, {
@@ -152,7 +152,7 @@ it("simulated keyboard input matches the Studio event order", function(own)
 	local log: { string }? = nil
 	local scheduler = bridge.environment.scheduler
 	local thread = scheduler.spawnTagged({ context = "client", source = "input-keyboard" }, function()
-		local result = Lute.chunk.load(probe, { environment = runtime.globals })()
+		local result = Lute.chunk.load(source, { environment = runtime.globals })()
 		assert(type(result) == "table")
 		local captured: { string } = {}
 		for _, item in result do
@@ -172,7 +172,54 @@ it("simulated keyboard input matches the Studio event order", function(own)
 	end
 	expect(scheduler.failures):toEqual {}
 	expect(engine.diagnostics):toEqual {}
-	expect(table.concat(log or {}, " | ")):toBe(table.concat(STUDIO, " | "))
+	return assert(log)
+end
+
+it("simulated keyboard input matches the Studio event order", function(own)
+	expect(table.concat(runProbe(own, probe), " | ")):toBe(table.concat(STUDIO, " | "))
+end)
+
+it("composite directional keyboard bindings combine held keys and cancel opposite directions", function(own)
+	local captured = runProbe(
+		own,
+		[[
+local player = game:GetService("Players").LocalPlayer
+local context = Instance.new("InputContext")
+context.Enabled, context.Parent = true, player
+local action = Instance.new("InputAction")
+action.Type, action.Parent = Enum.InputActionType.Direction2D, context
+local binding = Instance.new("InputBinding")
+binding.ClampMagnitudeToOne = false
+binding.Up, binding.Down, binding.Left, binding.Right = Enum.KeyCode.W, Enum.KeyCode.S, Enum.KeyCode.A, Enum.KeyCode.D
+binding.Parent = action
+local virtual = game:GetService("UserInputService"):CreateVirtualInput()
+local log = {}
+local function send(code, down)
+ virtual:SendKey(down, code, false)
+ task.wait(0.05)
+ local state = action:GetState()
+ table.insert(log, tostring(state.X) .. "," .. tostring(state.Y))
+end
+send(Enum.KeyCode.W, true)
+send(Enum.KeyCode.D, true)
+send(Enum.KeyCode.S, true)
+send(Enum.KeyCode.W, false)
+send(Enum.KeyCode.D, false)
+send(Enum.KeyCode.S, false)
+binding.ClampMagnitudeToOne = true
+send(Enum.KeyCode.W, true)
+virtual:SendKey(true, Enum.KeyCode.D, false)
+task.wait(0.05)
+table.insert(log, tostring(math.abs(action:GetState().Magnitude - 1) < 0.0001))
+send(Enum.KeyCode.W, false)
+send(Enum.KeyCode.D, false)
+context.Enabled = false
+send(Enum.KeyCode.W, true)
+context:Destroy()
+return log
+]]
+	)
+	expect(captured):toEqual { "0,1", "1,1", "1,0", "1,-1", "0,-1", "0,0", "0,1", "true", "1,0", "0,0", "0,0" }
 end)
 
 return nil
