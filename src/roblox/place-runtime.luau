@@ -411,6 +411,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	end
 	function runtime.step(seconds: number)
 		assert(seconds >= 0 and seconds < math.huge, "frame duration must be finite and nonnegative")
+		environment.poke(engine.service "Stats", "FrameTime", seconds)
 		local run = engine.service "RunService"
 		scheduler.advance(seconds)
 		scheduler.drain(64)

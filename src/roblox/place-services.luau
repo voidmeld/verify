@@ -1,4 +1,6 @@
 --!strict
+local CharacterFakes = require "./character-fakes"
+local SimulationFakes = require "./simulation-fakes"
 local Vm = require "./value"
 
 local Types = require "./place-types"
@@ -126,6 +128,9 @@ local function install<B>(
 			return humanoidStates[object] or engine.datatypes.Enum.HumanoidStateType.Running
 		end
 		overrides.Humanoid = {
+			ReplaceBodyPartR15 = function(humanoid: Instance, bodyPart: unknown, replacement: Instance): boolean
+				return CharacterFakes.replace(engine, humanoid, bodyPart, replacement)
+			end,
 			GetState = humanoidState,
 			GetStateEnabled = function(object: Instance, state: Datatypes.EnumMember): boolean
 				validateHumanoidState(state)
@@ -158,6 +163,7 @@ local function install<B>(
 			end,
 		}
 		overrides.RunService = {
+			BindToSimulation = SimulationFakes.create(engine),
 			IsServer = function(): boolean
 				return context() == "server"
 			end,
@@ -316,6 +322,11 @@ local function install<B>(
 				if client then
 					apply(DeviceCatalog.desktop(client.viewport.x, client.viewport.y, client.displaySize))
 				end
+			end,
+		}
+		overrides.Player = {
+			LoadCharacterAsync = function(player: Instance)
+				CharacterFakes.load(engine, player)
 			end,
 		}
 		overrides.Players = {

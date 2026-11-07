@@ -16,6 +16,7 @@ local FixtureBridge = require "@self/fixture-bridge"
 local ReflectionSnapshot = require "@self/reflection-snapshot"
 local Multiplayer = require "@self/multiplayer"
 local InputHost = require "@self/input-host"
+local ControllerHost = require "@self/controller-host"
 local ProgressChannel = require "@self/progress-channel"
 local ReportChannel = require "@self/report-channel"
 local InstanceHost = require "@self/instance-host"
@@ -96,6 +97,7 @@ return {
 	reflectionSnapshot = ReflectionSnapshot,
 	multiplayer = Multiplayer,
 	inputHost = InputHost,
+	controllerHost = ControllerHost,
 	reportChannel = ReportChannel,
 	progressChannel = ProgressChannel,
 	instanceHost = InstanceHost,

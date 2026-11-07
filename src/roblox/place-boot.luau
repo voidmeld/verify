@@ -595,6 +595,9 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	local starterPlayer = engine.service "StarterPlayer"
 
 	local camera = engine.newInstance("Camera", true)
+	if config.engineProvidedInput then
+		engine.environment.poke(camera, "CameraType", engine.datatypes.Enum.CameraType.Custom)
+	end
 	engine.environment.poke(camera, "Name", "Camera")
 	engine.environment.poke(
 		camera,
@@ -690,10 +693,21 @@ local function run<B>(config: Config, deps: Deps<B>): Report
 	runtime.step(frameSeconds)
 	reachedStage "viewport"
 
-	local character = makeCharacter(engine, tostring(player.Name))
-	character.Parent = workspace
-	engine.environment.poke(player, "Character", character)
-	engine.environment.fire(player, "CharacterAdded", character)
+	local loadedCharacter = player.Character
+	if loadedCharacter == nil then
+		local made = makeCharacter(engine, tostring(player.Name))
+		made.Parent = workspace
+		engine.environment.poke(player, "Character", made)
+		engine.environment.fire(player, "CharacterAdded", made)
+		loadedCharacter = made
+	end
+	local character = engine.environment.assertInstance(loadedCharacter)
+	if config.engineProvidedInput then
+		local humanoid = character:FindFirstChildOfClass "Humanoid"
+		if humanoid ~= nil then
+			engine.environment.poke(camera, "CameraSubject", humanoid)
+		end
+	end
 
 	runtime.step(frameSeconds)
 	reachedStage "character"

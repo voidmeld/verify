@@ -2450,6 +2450,24 @@ local instanceHost = Roblox.instanceHost.simulated("client", environment)
 instanceHost.host.close()
 ```
 
+### `Roblox.controllerHost`
+
+Source: [src/roblox/controller-host.luau](../src/roblox/controller-host.luau).
+
+`Roblox.controllerHost.simulated(engine)` opts a place engine into kinematic controller motion.
+It integrates `ControllerManager.MovingDirection`, `BaseMoveSpeed` and the active controller's `MoveSpeedFactor`.
+Ground sensors use the configured `Workspace.Raycast` host and `GroundOffset`. Manual sensors remain caller-owned.
+Disconnect the returned connection to stop motion and release the instance observer.
+This host proves controller wiring and game logic. It simulates no wall collision, gravity, native physics or rendering.
+
+Place runtimes simulate `Player.LoadCharacterAsync` for connected players, including replacement events,
+`StarterCharacter` cloning and selected spawn placement. Place boot retains a character loaded during admission.
+Character-added and appearance-ready events precede workspace parenting. R15 part replacement retains placement
+and retargets existing joints. Avatar scaling and mesh deformation remain native-only.
+`RunService.BindToSimulation` requires fixed simulation and supports the declared frequencies, priorities and disconnect.
+It supplies fixed deltas to callbacks. It does not model rollback or native property synchronization restrictions.
+`Stats.FrameTime` reports the supplied virtual frame duration, never native performance.
+
 ### `Roblox.inputHost`
 
 Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).
@@ -2459,6 +2477,7 @@ Source: [src/roblox/input-host.luau](../src/roblox/input-host.luau).
 Returns: An input binding, native backend when available, operation registry or screen point. `key`, `pointer` and `text` are typed operations.
 
 Failures: Unsupported native input returns nil. Invalid input or unsupported simulated geometry raises.
+Virtual mouse-button input uses its explicit coordinates without requiring a preceding pointer move.
 `screenCenter` needs native `GuiService:GetGuiInset()` and a positive rendered target area.
 
 ```luau

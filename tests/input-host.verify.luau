@@ -276,6 +276,22 @@ describe("semantic input adapter", function()
 		end
 		expect(f.env.errors):toEqual {}
 	end)
+	it("VirtualInput clicks the specified coordinates without a preceding mouse move", function(own)
+		local f = pointerFixture()
+		own(f.cleanup)
+		local activations = 0
+		f.env.event(f.base, "Activated"):Connect(function()
+			activations += 1
+		end)
+		local virtual = Environment.assertObject(f.env.method(f.service, "CreateVirtualInput")(f.service))
+		local send = f.env.method(virtual, "SendMouseButton")
+		local at = f.library.Vector2.new(200, 140)
+		local button = f.library.Enum.UserInputType.MouseButton1
+		send(virtual, at, button, true, 0)
+		send(virtual, at, button, false, 0)
+		expect(activations):toBe(1)
+		expect(f.env.errors):toEqual {}
+	end)
 	it("VirtualInput accepts omitted and explicit click counts and keeps window counting", function(own)
 		local f = pointerFixture()
 		own(f.cleanup)
