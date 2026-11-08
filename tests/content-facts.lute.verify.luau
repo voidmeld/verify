@@ -40,6 +40,8 @@ it("content records reconstruct independent hierarchies references and native fi
 	local first, second = load(service, 42), load(service, 42)
 	local body = child(first, "Body")
 	expect(Environment.read(body, "MeshSize")):toEqual(Types.Vector3.new(1, 2, 3))
+	expect(Environment.read(body, "HasSkinnedMesh")):toBe(true)
+	expect(Environment.read(child(second, "Body"), "HasSkinnedMesh")):toBe(true)
 	expect(Environment.read(first, "PrimaryPart")):toBe(body)
 	expect(Environment.read(child(body, "Motor"), "Part0")):toBe(body)
 	expect(Environment.read(child(body, "Constraint"), "Attachment1")):toBe(child(body, "Bone"))
@@ -56,6 +58,14 @@ it("content records reconstruct independent hierarchies references and native fi
 	engine.environment.failNext "setParent"
 	expect(pcall(load, service, 42)):toBe(false)
 	expect(engine.environment.liveObjects()):toBe(count)
+end)
+
+it("a mesh record without a skinned-mesh fact leaves HasSkinnedMesh false", function()
+	local engine = Lute.fixture.bridge(nil, { content = { facts = copy() } }).placeEngine()
+	local service = engine.service "AssetService"
+	local create = engine.environment.method(service, "CreateMeshPartAsync")
+	local mesh = create(service, Types.Content.fromAssetId(43), nil)
+	expect(Environment.read(mesh, "HasSkinnedMesh")):toBe(false)
 end)
 
 it("mesh and animation records answer only captured IDs and supported options", function()
