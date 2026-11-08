@@ -37,6 +37,7 @@ export type CaseEntryFactory = CaseEntry.Factory
 export type CaseHostName = CaseEntry.Host
 export type MultiplayerConnection = Multiplayer.Connection
 export type MultiplayerPlayer = Multiplayer.Player
+export type MultiplayerDeliveryReason = Multiplayer.DeliveryReason
 export type EnvironmentEvent = Environment.Event
 export type EnvironmentObserveFilter = Environment.ObserveFilter
 export type EnvironmentClass<P = { [string]: unknown }, M = { [string]: unknown }> = Environment.ClassSpec<P, M>

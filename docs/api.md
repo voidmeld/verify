@@ -2536,15 +2536,20 @@ local host = Roblox.experienceHost.create(experienceOptions)
 
 Source: [src/roblox/multiplayer.luau](../src/roblox/multiplayer.luau).
 
-`server(context: Context, options: ServerOptions) -> CaseHost`; `client(options: ClientOptions) -> () -> ()`
+`server(context: Context, options: ServerOptions) -> CaseHost`; `client(options: ClientOptions) -> () -> ()`; `undeliverable(storage: DeliveryStorage, reason: DeliveryReason, detail: string) -> boolean`; `DELIVERY_CHANNEL: string`
 
-Returns: A coordinated server host or a client disconnect function.
+Returns: A coordinated server host, a client disconnect function, or whether a delivery report was sent.
 
 Failures: Missing roles, refused requests and expired deadlines fail. The caller supplies role authorization.
+
+`undeliverable` fires `reason` (`request_missing`, `run_id_mismatch` or `remote_missing`) and `detail` through the `VerifyDelivery` channel that the server runner creates for a `players` run. It returns `false` when the channel is absent. The server runner ends the run with the first report. `ClientOptions.undeliverable` is called once when the client receives a message for a different run, with `run_id_mismatch`.
 
 ```luau
 local disconnect = Roblox.multiplayer.client(multiplayerClientOptions)
 disconnect()
+if not remote then
+	Roblox.multiplayer.undeliverable(game:GetService("ReplicatedStorage"), "remote_missing", "no session remote")
+end
 ```
 
 ### `Roblox.reportChannel`

@@ -150,6 +150,14 @@ local function runnerSource(rootName: string): string
 		.. [==[
 
 local context = if game:GetService('RunService'):IsServer() then 'Server' else 'Client'
+local DELIVERY = 'VerifyDelivery'
+local ended = false
+local function finish(result)
+	if not ended then
+		ended = true
+		game:GetService('StudioTestService'):EndTest(result)
+	end
+end
 local function readRequest()
 	local holder = RS:FindFirstChild(REQUEST)
 	if holder ~= nil and holder:IsA('StringValue') then
@@ -167,7 +175,12 @@ if type(text) ~= 'string' then
 	if context == 'Server' then
 		error('Verify run request was not delivered to the server within 10 seconds')
 	end
-	return
+	local message = 'Verify run request was not delivered to the client within 10 seconds'
+	local channel = RS:WaitForChild(DELIVERY, 5)
+	if channel ~= nil then
+		channel:FireServer('request_missing', message)
+	end
+	error(message)
 end
 local request = game:GetService('HttpService'):JSONDecode(text)
 local function work(input)
@@ -175,8 +188,17 @@ local function work(input)
 end
 if request.context == 'Multiplayer' then
 	if context == 'Server' then
+		local channel = Instance.new('RemoteEvent')
+		channel.Name = DELIVERY
+		channel.OnServerEvent:Connect(function(player, reason, detail)
+			if ended or type(reason) ~= 'string' then
+				return
+			end
+			finish({ error = string.sub('client delivery failed: ' .. string.sub(reason, 1, 40) .. ': ' .. string.sub(tostring(detail), 1, 400) .. ' (' .. tostring(player.Name) .. ')', 1, 600) })
+		end)
+		channel.Parent = RS
 		local ok, result = pcall(work)
-		game:GetService('StudioTestService'):EndTest(if ok then result else { error = tostring(result) })
+		finish(if ok then result else { error = tostring(result) })
 	end
 	return
 end
