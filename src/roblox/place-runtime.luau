@@ -5,6 +5,7 @@ local Types = require "./place-types"
 local installServices = require "./place-services"
 local Scheduler = require "./scheduler"
 local Environment = require "./environment"
+local Utf8Library = require "./utf8-library"
 
 export type Chunk = Types.Chunk
 export type Instance = Types.Instance
@@ -346,7 +347,7 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	globals.math = math
 	globals.coroutine = coroutine
 	globals.bit32 = bit32
-	globals.utf8 = utf8
+	globals.utf8 = Utf8Library.create()
 	globals.buffer = buffer
 	local runtimeDebug: { [string]: unknown } = { info = debug.info, traceback = debug.traceback }
 	runtimeDebug.profilebegin = function(label: string)

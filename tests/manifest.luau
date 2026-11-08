@@ -148,6 +148,7 @@ return table.freeze {
 	"tests/ui-truncation-lines.lute.verify.luau",
 	"tests/ui-wrap-interactions.lute.verify.luau",
 	"tests/ui-wrap-mutations.lute.verify.luau",
+	"tests/utf8-graphemes.lute.verify.luau",
 	"tests/wait.lute.verify.luau",
 	"tests/worker.lute.verify.luau",
 	"tests/worldroot-queries.lute.verify.luau",
