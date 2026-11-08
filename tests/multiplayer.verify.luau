@@ -317,4 +317,69 @@ describe("multiplayer transport", function()
 	end)
 end)
 
+describe("delivery diagnostics", function()
+	it("reports an undeliverable run through the delivery channel when it exists", function()
+		local received: { string } = {}
+		local channel: Multi.DeliveryChannel = {
+			FireServer = function(_, reason: string, detail: string)
+				table.insert(received, reason .. "|" .. detail)
+			end,
+		}
+		local present: Multi.DeliveryStorage = {
+			FindFirstChild = function(_, name: string): Multi.DeliveryChannel?
+				expect(name):toBe(Multi.DELIVERY_CHANNEL)
+				return channel
+			end,
+		}
+		expect(Multi.undeliverable(present, "remote_missing", "no session remote")):toBe(true)
+		expect(received):toEqual { "remote_missing|no session remote" }
+		local absent: Multi.DeliveryStorage = {
+			FindFirstChild = function(): Multi.DeliveryChannel?
+				return nil
+			end,
+		}
+		expect(Multi.undeliverable(absent, "remote_missing", "no session remote")):toBe(false)
+	end)
+
+	it("tells the client owner once when a message belongs to another run", function()
+		local reports: { string } = {}
+		local listener: { callback: ((unknown) -> ())? } = {}
+		local remote: Multi.Remote = {
+			FireClient = function() end,
+			FireServer = function() end,
+			OnServerEvent = {
+				Connect = function()
+					return { Disconnect = function() end }
+				end,
+			},
+			OnClientEvent = {
+				Connect = function(_, callback)
+					listener.callback = callback
+					return { Disconnect = function() end }
+				end,
+			},
+		}
+		Multi.client {
+			remote = remote,
+			runId = "expected",
+			now = function()
+				return 0
+			end,
+			spawn = function(callback)
+				callback()
+			end,
+			registry = { actions = {}, queries = {} },
+			capabilities = {},
+			undeliverable = function(reason, detail)
+				table.insert(reports, reason .. "|" .. detail)
+			end,
+		}
+		local callback = listener.callback
+		assert(callback, "client never listened")
+		callback { runId = "other", kind = "welcome", actor = "client-1" }
+		callback { runId = "another", kind = "welcome", actor = "client-1" }
+		expect(reports):toEqual { "run_id_mismatch|expected run expected but received other" }
+	end)
+end)
+
 return nil

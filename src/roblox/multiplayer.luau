@@ -23,8 +23,12 @@ export type ServerOptions = {
 	deadlineSeconds: number,
 	armed: (() -> ())?,
 }
+export type DeliveryReason = "request_missing" | "run_id_mismatch" | "remote_missing"
+export type DeliveryChannel = { FireServer: (DeliveryChannel, string, string) -> () }
+export type DeliveryStorage = { FindFirstChild: (DeliveryStorage, string) -> DeliveryChannel? }
 export type ClientOptions = {
 	remote: Remote,
+	undeliverable: ((DeliveryReason, string) -> ())?,
 	runId: string,
 	registry: Native.Registry,
 	capabilities: { string },
@@ -33,6 +37,17 @@ export type ClientOptions = {
 	close: (() -> ())?,
 	spawn: (() -> ()) -> (),
 }
+
+local DELIVERY_CHANNEL = "VerifyDelivery"
+
+local function undeliverable(storage: DeliveryStorage, reason: DeliveryReason, detail: string): boolean
+	local channel = storage:FindFirstChild(DELIVERY_CHANNEL)
+	if channel == nil then
+		return false
+	end
+	channel:FireServer(reason, detail)
+	return true
+end
 
 local function record(value: unknown): { [string]: unknown }
 	assert(type(value) == "table", "session message must be a record")
@@ -244,6 +259,7 @@ local function client(options: ClientOptions): () -> ()
 	assert(options.runId ~= "", "client requires a run identity")
 	local actor: string? = nil
 	local closed = false
+	local mismatched = false
 	local connection: Connection? = nil
 	local capabilities = table.clone(options.capabilities)
 	local registry: Native.Registry =
@@ -276,6 +292,13 @@ local function client(options: ClientOptions): () -> ()
 		end
 		local fields = record(value)
 		if fields.runId ~= options.runId then
+			if options.undeliverable and not mismatched then
+				mismatched = true
+				options.undeliverable(
+					"run_id_mismatch",
+					"expected run " .. options.runId .. " but received " .. tostring(fields.runId)
+				)
+			end
 			return
 		end
 		if fields.kind == "welcome" then
@@ -316,4 +339,4 @@ local function client(options: ClientOptions): () -> ()
 	return close
 end
 
-return { server = server, client = client }
+return { server = server, client = client, undeliverable = undeliverable, DELIVERY_CHANNEL = DELIVERY_CHANNEL }

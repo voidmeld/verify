@@ -18,6 +18,7 @@ local task = require "@std/task"
 local sha256 = require "../src/lute/hash"
 local Verify = require "../src/core"
 local Channel = require "../src/roblox/report-channel"
+local Shape = require "../src/core/shape"
 local StudioEngine = require "./studio-engine"
 local Detached = require "../src/lute/studio-detached"
 local Files = require "../src/lute/files"
@@ -810,6 +811,182 @@ end
 		local ok, failure = pcall(engine.run, "Server", Detached.runnerSource "VerifyModules")
 		expect(ok):toBe(false)
 		expect(string.find(tostring(failure), "was not delivered to the server", 1, true) ~= nil):toBe(true)
+	end)
+
+	local function errorOf(result: unknown): string?
+		if type(result) ~= "table" then
+			return nil
+		end
+		local fields = Shape.record(result, "end test result")
+		local message = fields.error
+		return if type(message) == "string" then message else nil
+	end
+
+	local function waitless()
+		return {
+			spawn = function(callback: () -> ()): () end,
+			wait = function(seconds: number?): number
+				return 100
+			end,
+		}
+	end
+
+	local function storage(children: { [string]: unknown }): { [string]: unknown }
+		return {
+			FindFirstChild = function(_self: unknown, name: string): unknown
+				return children[name]
+			end,
+			WaitForChild = function(_self: unknown, name: string): unknown
+				return children[name]
+			end,
+		}
+	end
+
+	it("raises the delivery error on a client and reports it through the delivery channel", function()
+		local reports: { string } = {}
+		local channel = {
+			FireServer = function(_self: unknown, reason: string, detail: string)
+				table.insert(reports, reason .. "|" .. detail)
+			end,
+		}
+		local engine = StudioEngine.new({ task = waitless() }, {
+			RunService = {
+				IsServer = function(_self: unknown): boolean
+					return false
+				end,
+			},
+			ReplicatedStorage = storage { VerifyDelivery = channel },
+		})
+		local ok, failure = pcall(engine.run, "Client", Detached.runnerSource "VerifyModules")
+		expect(ok):toBe(false)
+		local message = "Verify run request was not delivered to the client within 10 seconds"
+		expect(string.find(tostring(failure), message, 1, true) ~= nil):toBe(true)
+		expect(reports):toEqual { "request_missing|" .. message }
+	end)
+
+	it("still raises on a client when the delivery channel is absent", function()
+		local engine = StudioEngine.new({ task = waitless() }, {
+			RunService = {
+				IsServer = function(_self: unknown): boolean
+					return false
+				end,
+			},
+			ReplicatedStorage = storage {},
+		})
+		local ok, failure = pcall(engine.run, "Client", Detached.runnerSource "VerifyModules")
+		expect(ok):toBe(false)
+		expect(string.find(tostring(failure), "was not delivered to the client", 1, true) ~= nil):toBe(true)
+	end)
+
+	it("ends a multiplayer run at once with the first client delivery report", function()
+		local ended: { unknown } = {}
+		local handlers: { (unknown, unknown, unknown) -> () } = {}
+		local created: { [string]: unknown } = {}
+		local request = { context = "Multiplayer", runId = "run-1", progressToken = "token-1" }
+		local holder = {
+			IsA = function(_self: unknown, class: string): boolean
+				return class == "StringValue"
+			end,
+			Value = "{}",
+		}
+		local engine = StudioEngine.new({
+			task = waitless(),
+			Instance = {
+				new = function(class: string): unknown
+					expect(class):toBe "RemoteEvent"
+					local fake = {
+						OnServerEvent = {
+							Connect = function(_self: unknown, handler: (unknown, unknown, unknown) -> ())
+								table.insert(handlers, handler)
+							end,
+						},
+					}
+					created.channel = fake
+					return fake
+				end,
+			},
+			require = function(_module: unknown): unknown
+				return function(): string
+					for _, handler in handlers do
+						handler({ Name = "player-one" }, "request_missing", "no request for this client")
+					end
+					return "finished"
+				end
+			end,
+		}, {
+			RunService = {
+				IsServer = function(_self: unknown): boolean
+					return true
+				end,
+			},
+			HttpService = {
+				JSONDecode = function(_self: unknown, _text: string): unknown
+					return request
+				end,
+			},
+			StudioTestService = {
+				EndTest = function(_self: unknown, result: unknown)
+					table.insert(ended, result)
+				end,
+			},
+			ReplicatedStorage = storage {
+				VerifyRequest = holder,
+				VerifyModules = storage { VerifyRequest = storage {} },
+			},
+		})
+		engine.run("Server", Detached.runnerSource "VerifyModules")
+		expect(#ended):toBe(1)
+		local reported = errorOf(ended[1])
+		expect(reported):toBe "client delivery failed: request_missing: no request for this client (player-one)"
+		expect(created.channel ~= nil):toBe(true)
+	end)
+
+	it("keeps a normal multiplayer result when no client reports a delivery failure", function()
+		local ended: { unknown } = {}
+		local engine = StudioEngine.new({
+			task = waitless(),
+			Instance = {
+				new = function(_class: string): unknown
+					return {
+						OnServerEvent = {
+							Connect = function() end,
+						},
+					}
+				end,
+			},
+			require = function(_module: unknown): unknown
+				return function(): string
+					return "finished"
+				end
+			end,
+		}, {
+			RunService = {
+				IsServer = function(_self: unknown): boolean
+					return true
+				end,
+			},
+			HttpService = {
+				JSONDecode = function(_self: unknown, _text: string): unknown
+					return { context = "Multiplayer", runId = "run-1", progressToken = "token-1" }
+				end,
+			},
+			StudioTestService = {
+				EndTest = function(_self: unknown, result: unknown)
+					table.insert(ended, result)
+				end,
+			},
+			ReplicatedStorage = storage {
+				VerifyRequest = {
+					IsA = function(_self: unknown, class: string): boolean
+						return class == "StringValue"
+					end,
+					Value = "{}",
+				},
+				VerifyModules = storage { VerifyRequest = storage {} },
+			},
+		})
+		engine.run("Server", Detached.runnerSource "VerifyModules")
+		expect(ended):toEqual { "finished" }
 	end)
 
 	it("reads a run that the place runner owns and ignores a request for another context", function()
