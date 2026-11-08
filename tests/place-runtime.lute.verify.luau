@@ -844,6 +844,7 @@ it("ModuleScript repeats runtime and compile errors without leaving a loading ca
 		end
 		expect(errors[1]):toBe(errors[2])
 		expect(errors[1]):toContain "Requested module experienced an error while loading"
+		expect(errors[1]):toContain(if name == "failure" then "module fixture failure" else "syntax")
 	end
 	expect(#fixture.engine.diagnostics):toBe(2)
 	expect(fixture.engine.diagnostics[1].source):toBe "failure.luau"

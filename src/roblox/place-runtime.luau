@@ -248,6 +248,9 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 			return cache.load(path, environmentFor(object))()
 		end)
 		local failure = "Requested module experienced an error while loading"
+		if not ok then
+			failure ..= ": " .. tostring(value)
+		end
 		settle(entry, if ok then "done" else "failed", if ok then value else failure)
 		if not ok then
 			engine.record("error", tostring(value), path)
