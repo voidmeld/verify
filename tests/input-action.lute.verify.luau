@@ -5,6 +5,33 @@ local it, expect = Test.it, Test.expect
 local Lute = require "../src/lute"
 local Roblox = require "../src/roblox"
 
+it("a scriptable input binding feeds its action and refuses other binding types", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(function()
+		bridge.close()
+	end)
+	local env = bridge.environment
+	local action = env.createInstance "InputAction"
+	action.Parent = bridge.placeEngine().game
+	local scripted = env.createInstance "InputBinding"
+	scripted.Type = Roblox.datatypes.Enum.InputBindingType.Scriptable
+	scripted.Parent = action
+	local automatic = env.createInstance "InputBinding"
+	automatic.Parent = action
+	local state = env.method(action, "GetState")
+	env.method(scripted, "Fire")(scripted, true)
+	expect(state(action)):toBe(true)
+	expect(function()
+		env.method(scripted, "Fire")(scripted, 1)
+	end):toThrow()
+	expect(function()
+		env.method(automatic, "Fire")(automatic, false)
+	end):toThrow()
+	action.Enabled = false
+	env.method(scripted, "Fire")(scripted, false)
+	expect(state(action)):toBe(false)
+end)
+
 it("scripted input actions retain state and suppress duplicate transitions", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(function()

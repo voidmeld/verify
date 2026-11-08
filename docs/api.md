@@ -2033,6 +2033,7 @@ The simulated input host repeats held arrow-key selection after 0.5 seconds, the
 ### Input action state
 
 `InputAction:Fire(value)` and `GetState()` share state with simulated keyboard dispatch. The value must match the action type: boolean, number, Vector2 or Vector3. Repeated values emit no event. Boolean transitions emit `Pressed` or `Released` before `StateChanged`. Other types emit only `StateChanged`.
+`InputBinding:Fire(value)` on a Scriptable binding feeds its parent InputAction with the same type and enabled rules as `InputAction:Fire`. It raises for any other binding type.
 
 An action must belong to a DataModel and be enabled. Its nearest InputContext must also be enabled. Disabling either resets the state. A parent change resets affected actions, and a type change publishes the new zero state. Clones start at zero. The shared Studio sequence checks these transitions, duplicate suppression and destruction. This model does not establish physical input delivery.
 
