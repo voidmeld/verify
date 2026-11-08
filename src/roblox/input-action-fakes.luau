@@ -111,6 +111,22 @@ local function attach(environment: Environment.Environment)
 		end
 		update(action, current, value)
 	end)
+	environment.fake("InputBinding.Fire", function(binding: Instance, value: unknown)
+		assert(
+			tostring(environment.propertyOf(binding, "Type")):match "([^%.]+)$" == "Scriptable",
+			"InputBinding:Fire requires a Scriptable binding"
+		)
+		local action = binding.Parent
+		if action == nil or not action:IsA "InputAction" then
+			return
+		end
+		local current = state(action)
+		assert(Datatypes.typeof(value) == types[current.kind], "InputBinding:Fire state must match the action Type")
+		if not enabled(action) then
+			return
+		end
+		update(action, current, value)
+	end)
 	local function changed(object: Instance, property: string, hasChildren: boolean)
 		if
 			property ~= "Parent"
