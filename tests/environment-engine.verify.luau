@@ -6,6 +6,30 @@ local Environment = require "../src/roblox/environment"
 local Adapter = require "../src/roblox/environment-engine"
 local Datatypes = require "../src/roblox/datatypes"
 describe("environment engine adapter", function()
+	it("runs a Once listener a single time and lets it be disconnected first", function()
+		local env = Environment.create()
+		local engine = Adapter.create(env)
+		local object = engine.new "Part"
+		local calls = 0
+		local connection = object.Destroying:Once(function()
+			calls += 1
+		end)
+		expect(connection.Connected):toEqual(true)
+		local skipped = 0
+		object
+			:GetPropertyChangedSignal("Name")
+			:Once(function()
+				skipped += 1
+			end)
+			:Disconnect()
+		object.Name = "renamed"
+		env.step(0.1)
+		expect(skipped):toEqual(0)
+		object:Destroy()
+		env.step(0.1)
+		expect(calls):toEqual(1)
+		expect(connection.Connected):toEqual(false)
+	end)
 	it("preserves instance and signal identity with live mutations", function()
 		local env = Environment.create()
 		local engine = Adapter.create(env)

@@ -157,6 +157,14 @@ local function create(scheduler: Scheduler.Scheduler, errors: { string }, raisin
 				return attach(handler)
 			end,
 			Wait = typedWait,
+			Once = function(_self: Signal<A...>, handler: (A...) -> ()): Connection
+				local connection: Connection
+				connection = attach(function(...: A...)
+					connection:Disconnect()
+					handler(...)
+				end)
+				return connection
+			end,
 			Fire = operation(dispatch),
 			DisconnectAll = disconnectAll,
 		}

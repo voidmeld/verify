@@ -11,6 +11,7 @@ export type Connection = {
 export type Signal<A... = ...unknown> = {
 	Connect: (self: Signal<A...>, handler: (A...) -> ()) -> Connection,
 	Wait: (self: Signal<A...>) -> A...,
+	Once: (self: Signal<A...>, handler: (A...) -> ()) -> Connection,
 	Fire: (self: Signal<A...>, A...) -> (),
 	DisconnectAll: (self: Signal<A...>) -> (),
 }
