@@ -76,6 +76,7 @@ local function pointerFixture(raiseErrors: boolean?)
 				super = "Instance",
 				properties = { Enabled = true, Type = library.Enum.InputActionType.Bool },
 				events = { "Pressed", "Released", "StateChanged" },
+				methods = { Fire = true },
 			},
 			InputBinding = {
 				super = "Instance",
@@ -227,18 +228,14 @@ describe("semantic input adapter", function()
 		expect(clicks):toBe(8)
 		expect(f.env.errors):toEqual {}
 	end)
-	it("relevant automatic mouse and UIButton bindings still refuse input before dispatch", function(own)
-		for _, bindingKind in { "MouseLeftButton", "MousePosition", "UIButton" } do
+	it("relevant automatic mouse bindings still refuse input before dispatch", function(own)
+		for _, bindingKind in { "MouseLeftButton", "MousePosition" } do
 			local f = pointerFixture(true)
 			own(f.cleanup)
 			local context = f.env.createInstance("InputContext", { Parent = f.gui })
 			local action = f.env.createInstance("InputAction", { Parent = context })
 			local binding = f.env.createInstance("InputBinding", { Parent = action })
-			if bindingKind == "UIButton" then
-				binding.UIButton = f.base
-			else
-				binding.KeyCode = f.library.Enum.KeyCode[bindingKind]
-			end
+			binding.KeyCode = f.library.Enum.KeyCode[bindingKind]
 			local events = 0
 			(f.env.event(f.service, "InputBegan")):Connect(function()
 				events += 1
@@ -248,6 +245,26 @@ describe("semantic input adapter", function()
 			end):toThrow()
 			expect(events):toBe(0)
 		end
+	end)
+	it("a pointer press on a UIButton binding drives its Bool action", function(own)
+		local f = pointerFixture(true)
+		own(f.cleanup)
+		local context = f.env.createInstance("InputContext", { Parent = f.gui })
+		local action = f.env.createInstance("InputAction", { Parent = context })
+		f.env.createInstance("InputBinding", { Parent = action, UIButton = f.base })
+		local fired: { boolean } = {}
+		f.env.fake("InputAction.Fire", function(_target: unknown, value: boolean)
+			table.insert(fired, value)
+		end)
+		f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+		f.env.step(0.01)
+		f.backend.pointer { x = 200, y = 140, button = "left", down = false }
+		f.env.step(0.01)
+		expect(fired):toEqual { true, false }
+		action.Enabled = false
+		f.backend.pointer { x = 200, y = 140, button = "left", down = true }
+		f.backend.pointer { x = 200, y = 140, button = "left", down = false }
+		expect(#fired):toBe(2)
 	end)
 	it("mouse binding validation follows source and enabled hardware participation", function(own)
 		local f = pointerFixture(true)
