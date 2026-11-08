@@ -64,7 +64,7 @@ it("a mesh record without a skinned-mesh fact leaves HasSkinnedMesh false", func
 	local engine = Lute.fixture.bridge(nil, { content = { facts = copy() } }).placeEngine()
 	local service = engine.service "AssetService"
 	local create = engine.environment.method(service, "CreateMeshPartAsync")
-	local mesh = create(service, engine.datatypes.Content.fromUri "rbxassetid://43")
+	local mesh = create(service, Types.Content.fromAssetId(43), nil)
 	expect(Environment.read(mesh, "HasSkinnedMesh")):toBe(false)
 end)
 
