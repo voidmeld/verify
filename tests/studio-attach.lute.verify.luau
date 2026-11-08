@@ -795,6 +795,23 @@ end
 		expect(outcome.text):toEqual(expected)
 	end)
 
+	it("raises a clear error when the server runner never receives its request", function()
+		local engine = StudioEngine.new({
+			require = function(_module: unknown): unknown
+				return nil
+			end,
+		}, {
+			RunService = {
+				IsServer = function(_self: unknown): boolean
+					return true
+				end,
+			},
+		})
+		local ok, failure = pcall(engine.run, "Server", Detached.runnerSource "VerifyModules")
+		expect(ok):toBe(false)
+		expect(string.find(tostring(failure), "was not delivered to the server", 1, true) ~= nil):toBe(true)
+	end)
+
 	it("reads a run that the place runner owns and ignores a request for another context", function()
 		local function engineFor(runId: string, context: string): StudioEngine.Engine
 			local request = Wire.parse(Detached.request(runId, context, "token-1"))
@@ -825,7 +842,7 @@ end
 			})
 			engine.run(
 				"Server",
-				"local RS = game:GetService('ReplicatedStorage'); local root = Instance.new('Folder'); root.Name = 'VerifyModules'; root.Parent = RS; local module = Instance.new('Folder'); module.Name = 'VerifyRequest'; module.Parent = root; RS:SetAttribute('VerifyRequest', 'r')"
+				"local RS = game:GetService('ReplicatedStorage'); local root = Instance.new('Folder'); root.Name = 'VerifyModules'; root.Parent = RS; local module = Instance.new('Folder'); module.Name = 'VerifyRequest'; module.Parent = root; local holder = Instance.new('StringValue'); holder.Name = 'VerifyRequest'; holder.Value = string.rep('r', 40000); holder.Parent = RS"
 			)
 			engine.run("Server", Detached.runnerSource "VerifyModules")
 			return engine
@@ -849,7 +866,12 @@ end
 			expect(string.find(code, "the runner owns the code", 1, true)):toBeNil()
 		end
 		local other = engineFor("runner-2", "Client")
-		expect(other.run("Server", "return #game:GetService('ReplicatedStorage'):GetChildren()")):toBe "1"
+		expect(
+			other.run(
+				"Server",
+				"local n = 0; for _, child in game:GetService('ReplicatedStorage'):GetChildren() do if child.Name ~= 'VerifyModules' and child.Name ~= 'VerifyRequest' then n += 1 end end; return n"
+			)
+		):toBe "0"
 	end)
 
 	it("fails closed on a corrupted, missing, repeated or mismatched segment", function()
