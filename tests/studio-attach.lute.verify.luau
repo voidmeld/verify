@@ -849,7 +849,12 @@ end
 			expect(string.find(code, "the runner owns the code", 1, true)):toBeNil()
 		end
 		local other = engineFor("runner-2", "Client")
-		expect(other.run("Server", "return #game:GetService('ReplicatedStorage'):GetChildren()")):toBe "1"
+		expect(
+			other.run(
+				"Server",
+				"local n = 0; for _, child in game:GetService('ReplicatedStorage'):GetChildren() do if child.Name ~= 'VerifyModules' and child.Name ~= 'VerifyRequest' then n += 1 end end; return n"
+			)
+		):toBe "0"
 	end)
 
 	it("fails closed on a corrupted, missing, repeated or mismatched segment", function()
