@@ -825,7 +825,7 @@ end
 			})
 			engine.run(
 				"Server",
-				"local RS = game:GetService('ReplicatedStorage'); local root = Instance.new('Folder'); root.Name = 'VerifyModules'; root.Parent = RS; local module = Instance.new('Folder'); module.Name = 'VerifyRequest'; module.Parent = root; RS:SetAttribute('VerifyRequest', 'r')"
+				"local RS = game:GetService('ReplicatedStorage'); local root = Instance.new('Folder'); root.Name = 'VerifyModules'; root.Parent = RS; local module = Instance.new('Folder'); module.Name = 'VerifyRequest'; module.Parent = root; local holder = Instance.new('StringValue'); holder.Name = 'VerifyRequest'; holder.Value = string.rep('r', 40000); holder.Parent = RS"
 			)
 			engine.run("Server", Detached.runnerSource "VerifyModules")
 			return engine

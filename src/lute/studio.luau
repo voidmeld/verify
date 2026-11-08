@@ -74,18 +74,20 @@ local function worker(path: string)
 		local runner = fields.runner == true
 		local progressToken = Detached.tokenFor(runId)
 		local request = if runner
-			then "game:GetService('ReplicatedStorage'):SetAttribute("
-				.. string.format("%q", Detached.REQUEST)
-				.. ", "
-				.. string.format(
-					"%q",
-					Detached.request(
-						runId,
-						if fields.players ~= nil then "Multiplayer" else textField "context",
-						if type(fields.progressFile) == "string" then progressToken else nil
-					)
+			then "local RS = game:GetService('ReplicatedStorage'); local stale = RS:FindFirstChild(" .. string.format(
+				"%q",
+				Detached.REQUEST
+			) .. "); if stale then stale:Destroy() end; local holder = Instance.new('StringValue'); holder.Name = " .. string.format(
+				"%q",
+				Detached.REQUEST
+			) .. "; holder.Value = " .. string.format(
+				"%q",
+				Detached.request(
+					runId,
+					if fields.players ~= nil then "Multiplayer" else textField "context",
+					if type(fields.progressFile) == "string" then progressToken else nil
 				)
-				.. "); "
+			) .. "; holder.Parent = RS; "
 			else ""
 		local edit = Reply.texts(call("execute_luau", {
 			studio_id = id,

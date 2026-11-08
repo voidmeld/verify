@@ -150,11 +150,18 @@ local function runnerSource(rootName: string): string
 		.. [==[
 
 local context = if game:GetService('RunService'):IsServer() then 'Server' else 'Client'
-local text = RS:GetAttribute(REQUEST)
+local function readRequest()
+	local holder = RS:FindFirstChild(REQUEST)
+	if holder ~= nil and holder:IsA('StringValue') then
+		return holder.Value
+	end
+	return nil
+end
+local text = readRequest()
 local waited = 0
 while type(text) ~= 'string' and context == 'Client' and waited < 10 do
 	waited += task.wait(0.1)
-	text = RS:GetAttribute(REQUEST)
+	text = readRequest()
 end
 if type(text) ~= 'string' then
 	return
