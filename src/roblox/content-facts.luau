@@ -39,6 +39,7 @@ local scalars: { [string]: string } = {
 	canQuery = "CanQuery",
 	materialVariant = "MaterialVariant",
 	meshId = "MeshId",
+	hasSkinnedMesh = "HasSkinnedMesh",
 	textureId = "TextureID",
 	colorMap = "ColorMap",
 	normalMap = "NormalMap",
@@ -217,7 +218,12 @@ local function validate(value: unknown): Capture
 					elseif scalars[field] then
 						local expected = if field == "time" or field == "weight"
 							then "number"
-							elseif field == "canCollide" or field == "canQuery" or field == "loop" then "boolean"
+							elseif
+								field == "canCollide"
+								or field == "canQuery"
+								or field == "loop"
+								or field == "hasSkinnedMesh"
+							then "boolean"
 							else "string"
 						assert(type(item) == expected, "invalid content field: " .. field)
 						if expected == "number" then

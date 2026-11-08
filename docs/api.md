@@ -2621,7 +2621,7 @@ Load caller-supplied captures with the schema below. Verify retains captured fac
 | --- | --- |
 | Model | `pivot`, `box`, `size`, optional `primaryPart` |
 | BasePart | `cframe`, `pivotOffset`, `size`, `canCollide`, `canQuery`, `material`, `materialVariant` |
-| MeshPart | `meshId`, `textureId`, `meshSize`, `collisionFidelity` |
+| MeshPart | `meshId`, `textureId`, `meshSize`, `collisionFidelity`, optional `hasSkinnedMesh` |
 | SurfaceAppearance | `colorMap`, `normalMap`, `metalnessMap`, `roughnessMap`, `alphaMode` |
 | SpecialMesh | `meshId`, `textureId`, `scale`, `offset` |
 | Attachment | `cframe` |
@@ -2631,6 +2631,8 @@ Load caller-supplied captures with the schema below. Verify retains captured fac
 | KeyframeSequence | `loop`, `priority` |
 | Keyframe | `time` |
 | Pose | `cframe`, `weight`, `easingStyle`, `easingDirection` |
+
+An optional `hasSkinnedMesh` boolean on a MeshPart sets its read-only `HasSkinnedMesh`. A capture without it leaves `HasSkinnedMesh` false; Verify never infers it from bones.
 
 Vectors have three finite components. Frames have the twelve components from `CFrame:GetComponents()`. Enum fields use member names. Map fields contain durable URI strings. An empty string means no map. Mesh capture uses Box collision fidelity. It records native Size and MeshSize. Its part frame and Size define its bounds. Model `box` and `size` record the native bounding box. Animation parent indices retain nested poses. The capture loads sequences through KeyframeSequenceProvider. It does not sample playback.
 
