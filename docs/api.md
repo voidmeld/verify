@@ -1944,6 +1944,7 @@ The default library has no catalog. Its `Enum` is permissive: any family and any
 - Attributes have change signals. Property change signals fire only on change.
 - Signals start listeners in connect order on separate scheduler coroutines. A yielding listener does not suspend the emitter or other listeners. A connection that disconnects before its listener starts is skipped; a started listener may finish after disconnection.
 - `signal:Wait()` yields through the existing scheduler until the next fire and returns its complete argument tuple. It ignores previous fires. Resumption and task cancellation release the wait listener.
+- `signal:Once(handler)` connects a listener that disconnects before its first run and returns the connection. Disconnecting it earlier skips the listener.
 - `signalOf(object, event)` returns `{ fire, connections, fires }` for one event.
   A test can fire the event and count its live connections and fires.
 - `connectionsOf(signal)` and `firesOf(signal)` count any signal that the environment made.
