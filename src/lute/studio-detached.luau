@@ -159,11 +159,14 @@ local function readRequest()
 end
 local text = readRequest()
 local waited = 0
-while type(text) ~= 'string' and context == 'Client' and waited < 10 do
+while type(text) ~= 'string' and waited < 10 do
 	waited += task.wait(0.1)
 	text = readRequest()
 end
 if type(text) ~= 'string' then
+	if context == 'Server' then
+		error('Verify run request was not delivered to the server within 10 seconds')
+	end
 	return
 end
 local request = game:GetService('HttpService'):JSONDecode(text)

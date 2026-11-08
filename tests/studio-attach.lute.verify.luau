@@ -795,6 +795,23 @@ end
 		expect(outcome.text):toEqual(expected)
 	end)
 
+	it("raises a clear error when the server runner never receives its request", function()
+		local engine = StudioEngine.new({
+			require = function(_module: unknown): unknown
+				return nil
+			end,
+		}, {
+			RunService = {
+				IsServer = function(_self: unknown): boolean
+					return true
+				end,
+			},
+		})
+		local ok, failure = pcall(engine.run, "Server", Detached.runnerSource "VerifyModules")
+		expect(ok):toBe(false)
+		expect(string.find(tostring(failure), "was not delivered to the server", 1, true) ~= nil):toBe(true)
+	end)
+
 	it("reads a run that the place runner owns and ignores a request for another context", function()
 		local function engineFor(runId: string, context: string): StudioEngine.Engine
 			local request = Wire.parse(Detached.request(runId, context, "token-1"))
