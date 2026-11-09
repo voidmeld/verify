@@ -10,6 +10,7 @@ local Files = require "./files"
 local Powershell = require "./powershell"
 local Runtime = require "./runtime"
 local Reconnect = require "./studio-reconnect"
+local Tail = require "./studio-tail"
 local Operations = require "../core/operations"
 local Wire = require "./wire"
 
@@ -181,7 +182,8 @@ local function connectOnce(executable: string, directory: string, deadline: numb
 	local pipe = if system.win32
 		then windowsPipe(executable, directory, deadline)
 		else posixPipe(executable, directory, output, errors)
-	local closed, sequence, consumed = false, 0, 0
+	local closed, sequence = false, 0
+	local tail = Tail.create()
 	local function alive(): boolean
 		return not closed and pipe.alive()
 	end
@@ -214,19 +216,14 @@ local function connectOnce(executable: string, directory: string, deadline: numb
 		end
 		local checkedAt = os.clock()
 		while os.clock() < limit and not closed do
-			local bytes = if fs.exists(output) then fs.readFileToString(output) else ""
-			if #bytes > consumed then
-				local chunk = bytes:sub(consumed + 1)
-				for text in string.gmatch(chunk, "([^\n]+)\n") do
-					local parsed, value = pcall(Wire.parse, text)
-					if parsed and type(value) == "table" then
-						local fields = record(value)
-						if type(fields.id) == "number" then
-							answers[fields.id] = fields
-						end
+			for _, text in Tail.lines(output, tail) do
+				local parsed, value = pcall(Wire.parse, text)
+				if parsed and type(value) == "table" then
+					local fields = record(value)
+					if type(fields.id) == "number" then
+						answers[fields.id] = fields
 					end
 				end
-				consumed += string.find(chunk, "\n[^\n]*$") or 0
 			end
 			local fields = answers[id]
 			if fields ~= nil then
