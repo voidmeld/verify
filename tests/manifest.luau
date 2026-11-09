@@ -94,6 +94,7 @@ return table.freeze {
 	"tests/studio-logs.lute.verify.luau",
 	"tests/studio-processes.lute.verify.luau",
 	"tests/studio-reconnect.lute.verify.luau",
+	"tests/studio-tail.lute.verify.luau",
 	"tests/teleport-fakes.lute.verify.luau",
 	"tests/terrain-fakes.lute.verify.luau",
 	"tests/text-metrics-archive.lute.verify.luau",
