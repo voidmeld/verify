@@ -162,6 +162,8 @@ local function worker(path: string)
 		else
 			call("start_stop_play", { studio_id = id, is_start = true })
 			datamodel = textField "context"
+			local reachable = session.ready(datamodel, 30)
+			assert(reachable.ok, "Studio " .. datamodel .. " datamodel did not start: " .. tostring(reachable.detail))
 			code = "assert(game:GetService('ReplicatedStorage'):GetAttribute('VerifyRun') == "
 				.. attribute
 				.. ", 'wrong Verify run'); local runId = "

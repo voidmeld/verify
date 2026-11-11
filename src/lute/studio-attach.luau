@@ -85,6 +85,7 @@ export type Session = {
 	studios: { StudioInfo },
 	call: (tool: string, argumentsJson: string) -> Response,
 	execute: (datamodel: string, code: string) -> Response,
+	ready: (datamodel: string, seconds: number) -> Response,
 	play: (start: boolean) -> Response,
 	capture: (options: CaptureOptions?) -> Response,
 	console: () -> Response,
@@ -106,6 +107,7 @@ export type RunOptions = {
 
 local LIST = "list_roblox_studios"
 local EXECUTE = "execute_luau"
+local READY = "return 'verify-datamodel-ready'"
 local PLAY = "start_stop_play"
 local CAPTURE = "screen_capture"
 local CONSOLE_READ = "get_console_output"
@@ -369,6 +371,16 @@ local function attach(options: Options): (Session?, Refusal?)
 		)
 	end
 
+	local function ready(datamodel: string, seconds: number): Response
+		local limit = os.clock() + seconds
+		local response = execute(datamodel, READY, true)
+		while not response.ok and response.delivery == "answered" and os.clock() < limit do
+			task.wait(0.25)
+			response = execute(datamodel, READY, true)
+		end
+		return response
+	end
+
 	local function toggle(start: boolean, cleaning: boolean): Response
 		local response = dispatch(PLAY, argumentsFor(',"is_start":' .. tostring(start)), cleaning)
 		if response.ok then
@@ -495,6 +507,7 @@ local function attach(options: Options): (Session?, Refusal?)
 		execute = function(datamodel: string, code: string): Response
 			return execute(datamodel, code, nil)
 		end,
+		ready = ready,
 		play = function(start: boolean): Response
 			return toggle(start, false)
 		end,
