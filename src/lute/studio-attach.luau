@@ -14,7 +14,7 @@ local Reply = require "./studio-reply"
 local Wire = require "./wire"
 local Logs = require "./studio-logs"
 
-export type StudioInfo = { id: string, name: string }
+export type StudioInfo = { id: string, name: string, file: string? }
 
 export type Request = {
 	tool: string,
@@ -147,14 +147,19 @@ local function mcpTransport(executable: string, directory: string): Transport
 	}
 end
 local function discovered(text: string): { StudioInfo }
-	local seen: { [string]: string } = {}
+	local seen: { [string]: StudioInfo } = {}
 	local function visit(value: unknown)
 		if type(value) ~= "table" then
 			return
 		end
 		local fields = Wire.record(value)
-		if type(fields.id) == "string" and type(fields.name) == "string" then
-			seen[fields.id] = fields.name
+		local id, name, file = fields.id, fields.name, fields.file
+		if type(id) == "string" and type(name) == "string" then
+			if type(file) == "string" and file ~= "" then
+				seen[id] = { id = id, name = file, file = file }
+			else
+				seen[id] = { id = id, name = name }
+			end
 		end
 		for _, child in value do
 			visit(child)
@@ -162,8 +167,8 @@ local function discovered(text: string): { StudioInfo }
 	end
 	visit(Wire.parse(text))
 	local studios: { StudioInfo } = {}
-	for id, name in seen do
-		table.insert(studios, { id = id, name = name })
+	for _, studio in seen do
+		table.insert(studios, studio)
 	end
 	table.sort(studios, function(left: StudioInfo, right: StudioInfo)
 		return left.id < right.id

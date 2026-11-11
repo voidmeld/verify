@@ -251,7 +251,7 @@ For single-client runs, `finalCapture = true` saves the final active Studio view
 
 `Lute.studio.attach(options)` uses a Studio that the developer already has open, through the official Studio MCP. It returns `session, refusal`. `options` is `{ authorize, studioId?, match?, transport?, mcpExecutable?, directory?, mode?, callSeconds?, runSeconds?, cleanupSeconds? }`.
 
-Discovery lists the open Studios (`list_roblox_studios`). It selects the Studio with `studioId`, or the Studio for which `match({ id, name })` is true, or both. A missing selector, no match (`absent`) or several matches (`ambiguous`) is a refusal that names the candidates. Verify never picks implicitly.
+Discovery lists the open Studios (`list_roblox_studios`). It selects the Studio with `studioId`, or the Studio for which `match({ id, name, file })` is true, or both. `name` is the place file name when Studio reports one in `file`, and the name that Studio reports when it does not. Some Studio builds put the DataModel name in `name` and the place file name in `file`. A missing selector, no match (`absent`) or several matches (`ambiguous`) is a refusal that names the candidates. Verify never picks implicitly.
 
 `authorize(request)` is required. It returns `{ ok, reason? }`. It receives each request before any bytes leave: `{ tool, argumentsJson, fields, studioId, bytes, digest }`. `bytes` is `{"name":...,"arguments":...}` exactly as Verify sends it. `digest` is its SHA-256 hex. A refusal, a raise or a request that targets another Studio sends nothing. Verify defines no policy. The caller owns the grants, which place is open and whether the run can change it.
 

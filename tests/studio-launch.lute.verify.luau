@@ -144,6 +144,33 @@ describe("launched Studio sessions", function()
 		expect(session.close()):toBe(closed)
 	end)
 
+	it("selects the new Studio by its place file when the list names the DataModel", function()
+		local self = world()
+		table.insert(self.studios, { id = "cloud", name = "Game" })
+		local launched, problem = Lute.studio.launch {
+			place = placeFile(PLACE),
+			directory = ".lute/tmp/studio-launch",
+			transport = self.transport,
+			start = function(place: string, name: string, _deadline: number): number
+				table.insert(self.procs, {
+					pid = 4242,
+					ppid = 1,
+					command = STUDIO .. " -task EditFile -localPlaceFile " .. place,
+				})
+				table.insert(self.studios, { id = "launched-1", name = "Game", file = name })
+				return 4242
+			end,
+			processes = self.deps,
+			launchSeconds = 5,
+		}
+		expect(problem):toBe(nil)
+		local session = assert(launched, "the launch returned no session")
+		expect(session.session.studio.id):toBe "launched-1"
+		expect(session.session.studio.name):toBe(session.name)
+		expect(session.session.studio.file):toBe(session.name)
+		session.close()
+	end)
+
 	it("never selects or stops a Studio that was open before the launch", function()
 		local self = world()
 		table.insert(self.studios, { id = "other", name = "Verify-1-run.rbxlx" })
