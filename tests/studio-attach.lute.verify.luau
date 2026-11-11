@@ -389,6 +389,23 @@ describe("attach to an open Studio", function()
 		expect(failed.detail):toEqual "tool failed"
 	end)
 
+	it("waits for a datamodel that does not answer yet", function()
+		local self = fake(ONE)
+		local session = attached(self)
+		self.failTool.execute_luau = true
+		task.delay(0.4, function()
+			self.failTool.execute_luau = false
+		end)
+		local reached = session.ready("Client", 5)
+		expect(reached.ok):toEqual(true)
+		self.failTool.execute_luau = true
+		local began = os.clock()
+		local absent = session.ready("Client", 0.3)
+		expect(absent.ok):toEqual(false)
+		expect(absent.detail):toEqual "tool failed"
+		expect(os.clock() - began < 2):toEqual(true)
+	end)
+
 	it("starts and stops play and restores the prior mode on close without closing Studio", function()
 		local self = fake(ONE)
 		local session = attached(self)
