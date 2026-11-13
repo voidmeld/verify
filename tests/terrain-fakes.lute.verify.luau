@@ -120,4 +120,15 @@ it("voxel writes copy all layers and validate atomically before replacing terrai
 	expect(down()):toBe(nil)
 end)
 
+it("terrain reads a placement like every other BasePart while its size stays unauthored", function()
+	local engine, terrain = fixture()
+	local env, types = engine.environment, engine.datatypes
+	local V = types.Vector3
+	expect(env.propertyOf(terrain, "Position")):toEqual(V.zero)
+	expect(env.propertyOf(terrain, "CFrame")):toEqual(types.CFrame.identity)
+	expect(env.propertyOf(terrain, "Size")):toBe(nil)
+	terrain.Position = V.new(1, 2, 3)
+	expect(env.propertyOf(terrain, "CFrame")):toEqual(types.CFrame.new(1, 2, 3))
+end)
+
 return nil

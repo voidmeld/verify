@@ -38,6 +38,8 @@ type Resolved = {
 
 local resolvedDatabases: { [Database]: Resolved } = {}
 
+local TERRAIN_PLACEMENT = { "CFrame", "Position", "Orientation", "Rotation", "PivotOffset" }
+
 local function resolveDatabase(database: Database): Resolved
 	local cached = resolvedDatabases[database]
 	if cached ~= nil then
@@ -82,6 +84,14 @@ local function resolveDatabase(database: Database): Resolved
 		end
 		for key, value in class.DefaultProperties do
 			values[key] = value
+		end
+		if name == "Terrain" then
+			resolve "Part"
+			for _, key in TERRAIN_PLACEMENT do
+				if values[key] == nil then
+					values[key] = defaults.Part[key]
+				end
+			end
 		end
 		local methods: { [string]: unknown } = {}
 		local declaredMethods: { string } = class.Methods or {}
