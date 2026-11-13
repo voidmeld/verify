@@ -22,6 +22,7 @@ local Host = require "@self/host"
 local Wire = require "@self/wire"
 local Worker = require "@self/worker"
 local Launch = require "@self/studio-launch"
+local Processes = require "@self/studio-processes"
 local TypePolicy = require "@self/type-policy"
 local Hash = require "@self/hash"
 local Bounded = require "@self/bounded"
@@ -53,6 +54,9 @@ export type OpenCloudHostOptions = OpenCloud.HostOptions
 export type ModelInstance = Model.Instance
 export type GateOptions = Gate.Options
 export type StudioLaunched = Launch.Launched
+export type StudioProcess = Processes.Studio
+export type StudioProcessListing = Processes.Listing
+export type StudioProcessInventory = Processes.Inventory
 
 return {
 	platform = Platform,

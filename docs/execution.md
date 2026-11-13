@@ -305,6 +305,12 @@ An attached run accepts `progressFile`, and `onProgress` through `Lute.platform.
 
 If Studio fails to start, appears late or appears twice, `launched` is nil. `problem` names the cause. The launcher stops its owned processes. `transport`, `start` and `processes` replace the MCP transport, the process start and the process listing in tests. A reference run on Windows 11 used Studio MCP. Studio appeared after about 7 seconds. Play, client calls, capture and cleanup passed.
 
+## Studio processes
+
+`Lute.studio.processes(list?)` returns `{ status = "ok", studios }` or `{ status = "error", reason }`. It lists the running Studio executables, sorted by `pid`. A process whose first argument merely mentions Studio is not listed. `list` replaces the process listing in tests: `() -> (procs, reason?)`, where each proc is `{ pid, ppid, command }` and a `reason` marks the listing as failed.
+
+Each Studio is `{ pid, ppid, command, executable, arguments, flags, place }`. `arguments` follow the executable. A double-quoted argument keeps its spaces, and backslashes read as slashes. `flags[name]` is the argument after the first `-name` or `--name`. `place` is the decoded path of a `localPlaceFile:` launch URI argument, or nil.
+
 ## Open Cloud execution
 
 `Lute.openCloud.connect({ universeId, placeId, versionId, request, authorize, requestSeconds?, pollSeconds?, pollIntervalSeconds?, logPages?, logBytes?, now?, sleep? })` connects the host. It runs the entry as a Luau execution task on the exact published place version. It needs no local Studio and no Player.

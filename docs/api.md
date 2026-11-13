@@ -1717,11 +1717,11 @@ print(available, reason)
 
 Source: [src/lute/studio.luau](../src/lute/studio.luau).
 
-`run(options: Options) -> BatchOutcome`; `worker(path: string) -> ()`; `host(options: HostOptions) -> Host`; `attach(options) -> (Session?, Refusal?)`; `launch(options) -> (Launched?, string?)`
+`run(options: Options) -> BatchOutcome`; `worker(path: string) -> ()`; `host(options: HostOptions) -> Host`; `attach(options) -> (Session?, Refusal?)`; `launch(options) -> (Launched?, string?)`; `processes(list?: StudioProcessListing) -> StudioProcessInventory`
 
-Returns: A Studio outcome, worker execution, host, attached session or disposable launched session.
+Returns: A Studio outcome, worker execution, host, attached session, disposable launched session or Studio process inventory.
 
-Failures: Invalid options and unavailable Studio operations raise or return failed outcomes. Attach and launch return nil with a refusal or reason when they cannot open a session.
+Failures: Invalid options and unavailable Studio operations raise or return failed outcomes. Attach and launch return nil with a refusal or reason when they cannot open a session. `processes` returns `{ status = "error", reason }` when the process listing fails.
 Attach requires authorization and preserves the caller Studio.
 
 ```luau

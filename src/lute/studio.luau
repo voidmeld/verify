@@ -358,4 +358,11 @@ local function host(options: HostOptions): Core.Host
 	}
 end
 
-return { run = run, worker = worker, host = host, attach = Attach.attach, launch = Launch.launch }
+return {
+	run = run,
+	worker = worker,
+	host = host,
+	attach = Attach.attach,
+	launch = Launch.launch,
+	processes = Processes.inventory,
+}

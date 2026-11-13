@@ -19,7 +19,22 @@ export type Cleanup = { terminated: { number }, survivors: { number } }
 
 export type Options = { root: number?, markers: { string }?, termSeconds: number?, killSeconds: number? }
 
+export type Listing = () -> ({ Proc }, string?)
+
+export type Studio = {
+	pid: number,
+	ppid: number,
+	command: string,
+	executable: string,
+	arguments: { string },
+	flags: { [string]: string },
+	place: string?,
+}
+
+export type Inventory = { status: "ok", studios: { Studio } } | { status: "error", reason: string }
+
 local STUDIO = "RobloxStudio"
+local EXECUTABLE = if system.win32 then "RobloxStudioBeta.exe" else "/Contents/MacOS/RobloxStudio"
 
 local function studioProcs(procs: { Proc }): { Proc }
 	local found: { Proc } = {}
@@ -50,13 +65,20 @@ local function parse(text: string): { Proc }
 	return procs
 end
 
+local function listing(): ({ Proc }, string?)
+	local result = if system.win32
+		then process.run(Powershell.command(LISTING))
+		else process.run { "ps", "-A", "-ww", "-o", "pid=,ppid=,command=" }
+	if result.exitcode ~= 0 then
+		return {}, "Studio process inventory failed"
+	end
+	return parse(result.stdout), nil
+end
+
 local function defaults(): Deps
 	return {
 		list = function(): { Proc }
-			if system.win32 then
-				return parse(process.run(Powershell.command(LISTING)).stdout)
-			end
-			return parse(process.run({ "ps", "-Ao", "pid=,ppid=,command=" }).stdout)
+			return (listing())
 		end,
 		signal = function(pid: number, name: "TERM" | "KILL")
 			if system.win32 then
@@ -249,6 +271,85 @@ local function reap(before: { [number]: boolean }, options: Options?, injected: 
 	return { terminated = gone, survivors = remaining }
 end
 
+local function tokens(command: string): { string }
+	local values: { string } = {}
+	local position = 1
+	while true do
+		local start = string.find(command, "%S", position)
+		if start == nil then
+			break
+		end
+		local value: string
+		if string.sub(command, start, start) == '"' then
+			local close = string.find(command, '"', start + 1, true) or #command + 1
+			value = string.sub(command, start + 1, close - 1)
+			position = close + 1
+		else
+			local finish = string.find(command, "%s", start) or #command + 1
+			value = string.sub(command, start, finish - 1)
+			position = finish
+		end
+		table.insert(values, (string.gsub(value, "\\", "/")))
+	end
+	return values
+end
+
+local function percentDecode(value: string): string
+	return (
+		string.gsub(value, "%%(%x%x)", function(hex: string): string
+			return string.char(assert(tonumber(hex, 16)))
+		end)
+	)
+end
+
+local function describe(proc: Proc): Studio?
+	local argv = tokens(proc.command)
+	local executable = argv[1]
+	if executable == nil or string.sub(executable, -#EXECUTABLE) ~= EXECUTABLE then
+		return nil
+	end
+	table.remove(argv, 1)
+	local flags: { [string]: string } = {}
+	local place: string? = nil
+	for index, value in argv do
+		local name = string.match(value, "^%-%-?(.+)$")
+		if name ~= nil and flags[name] == nil and argv[index + 1] ~= nil then
+			flags[name] = argv[index + 1]
+		end
+		local encoded = string.match(value, "localPlaceFile:(.+)$")
+		if encoded ~= nil and place == nil then
+			place = percentDecode(encoded)
+		end
+	end
+	return {
+		pid = proc.pid,
+		ppid = proc.ppid,
+		command = proc.command,
+		executable = executable,
+		arguments = argv,
+		flags = flags,
+		place = place,
+	}
+end
+
+local function inventory(list: Listing?): Inventory
+	local procs, reason = (list or listing)()
+	if reason ~= nil then
+		return { status = "error", reason = reason }
+	end
+	local studios: { Studio } = {}
+	for _, proc in procs do
+		local studio = describe(proc)
+		if studio ~= nil then
+			table.insert(studios, studio)
+		end
+	end
+	table.sort(studios, function(left: Studio, right: Studio): boolean
+		return left.pid < right.pid
+	end)
+	return { status = "ok", studios = studios }
+end
+
 local function read(path: string): Cleanup?
 	local fs = require "@std/fs"
 	if not fs.exists(path) then
@@ -272,6 +373,7 @@ local function read(path: string): Cleanup?
 end
 
 return {
+	inventory = inventory,
 	read = read,
 	snapshot = snapshot,
 	reap = reap,
