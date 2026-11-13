@@ -195,4 +195,60 @@ function Start-Process {
 	end)
 end)
 
+describe("Studio process inventory", function()
+	local function listed(procs: { Processes.Proc }, reason: string?): Processes.Listing
+		return function(): ({ Processes.Proc }, string?)
+			return procs, reason
+		end
+	end
+
+	it("lists only Studio executables with their flags and launch URI place, sorted by pid", function()
+		local result = Processes.inventory(listed({
+			{ pid = 90, ppid = 1, command = "/usr/bin/grep " .. STUDIO },
+			{ pid = 30, ppid = 1, command = STUDIO .. " -task EditPlace -placeId 7 -universeId 8" },
+			{
+				pid = 12,
+				ppid = 1,
+				command = STUDIO
+					.. " --task EditFile -localPlaceFile /w/a%20b/x.rbxl roblox-studio:1+localPlaceFile:%2Ft%2Fy.rbxl",
+			},
+			{ pid = 13, ppid = 1, command = STUDIO .. " -placeId" },
+		}, nil))
+		assert(result.status == "ok")
+		expect(#result.studios):toBe(3)
+		expect(result.studios[1].pid):toBe(12)
+		expect(result.studios[1].flags.task):toBe "EditFile"
+		expect(result.studios[1].flags.localPlaceFile):toBe "/w/a%20b/x.rbxl"
+		expect(result.studios[1].place):toBe "/t/y.rbxl"
+		expect(result.studios[2].flags.placeId):toBeNil()
+		expect(result.studios[2].arguments):toEqual { "-placeId" }
+		expect(result.studios[3].flags.universeId):toBe "8"
+		expect(result.studios[3].place):toBeNil()
+		expect(result.studios[3].executable):toBe(STUDIO)
+	end)
+
+	it("keeps quoted arguments whole and reads Windows backslashes as slashes", function()
+		if system.win32 then
+			local command = '"C:\\Roblox\\RobloxStudioBeta.exe" -localPlaceFile "C:\\Game files\\a.rbxlx"'
+			local result = Processes.inventory(listed({ { pid = 5, ppid = 1, command = command } }, nil))
+			assert(result.status == "ok")
+			expect(result.studios[1].executable):toBe "C:/Roblox/RobloxStudioBeta.exe"
+			expect(result.studios[1].flags.localPlaceFile):toBe "C:/Game files/a.rbxlx"
+		else
+			local command =
+				'"/Applications/My Apps/RobloxStudio.app/Contents/MacOS/RobloxStudio" -localPlaceFile "/g/a b.rbxl"'
+			local result = Processes.inventory(listed({ { pid = 5, ppid = 1, command = command } }, nil))
+			assert(result.status == "ok")
+			expect(result.studios[1].executable):toBe "/Applications/My Apps/RobloxStudio.app/Contents/MacOS/RobloxStudio"
+			expect(result.studios[1].flags.localPlaceFile):toBe "/g/a b.rbxl"
+		end
+	end)
+
+	it("reports a failed listing as an error and lists this machine's processes by default", function()
+		local failed = Processes.inventory(listed({}, "Studio process inventory failed"))
+		expect(failed.status):toBe "error"
+		expect(Processes.inventory().status):toBe "ok"
+	end)
+end)
+
 return nil
