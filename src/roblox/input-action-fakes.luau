@@ -155,9 +155,9 @@ local function attach(environment: Environment.Environment)
 				preferred(action)
 			end
 		elseif property == "Parent" and hasChildren then
-			for action in actions do
-				if action:IsDescendantOf(object) then
-					preferred(action)
+			for _, descendant in object:GetDescendants() do
+				if actions[descendant] then
+					preferred(descendant)
 				end
 			end
 		end
@@ -180,9 +180,9 @@ local function attach(environment: Environment.Environment)
 				reset(object)
 			end
 			if hasChildren then
-				for action in pairs(states) do
-					if action ~= object and action:IsDescendantOf(object) then
-						reset(action)
+				for _, descendant in object:GetDescendants() do
+					if states[descendant] ~= nil then
+						reset(descendant)
 					end
 				end
 			end
@@ -203,9 +203,9 @@ local function attach(environment: Environment.Environment)
 			elseif #environment.childrenOf(object) == 0 then
 				return
 			end
-			for action in actions do
-				if action == object or action:IsDescendantOf(object) then
-					destroying[action] = true
+			for _, descendant in object:GetDescendants() do
+				if actions[descendant] then
+					destroying[descendant] = true
 				end
 			end
 		end,
