@@ -168,6 +168,35 @@ it("reparenting a container resets its pressed actions and ignores destroyed one
 	expect(released):toBe(settled)
 end)
 
+it("reparenting a container leaves actions outside it pressed", function(own)
+	local bridge = Lute.fixture.bridge()
+	own(function()
+		bridge.close()
+	end)
+	local env = bridge.environment
+	local root = bridge.placeEngine().game
+	local inside = env.createInstance "Folder"
+	inside.Parent = root
+	local outside = env.createInstance "Folder"
+	outside.Parent = root
+	local held = env.createInstance "InputAction"
+	held.Parent = inside
+	local bystander = env.createInstance "InputAction"
+	bystander.Parent = outside
+	local nested = env.createInstance "Folder"
+	nested.Parent = inside
+	local deep = env.createInstance "InputAction"
+	deep.Parent = nested
+	for _, action in { held, bystander, deep } do
+		env.method(action, "Fire")(action, true)
+	end
+	inside.Parent = nil
+	env.step(0)
+	expect(env.method(held, "GetState")(held)):toBe(false)
+	expect(env.method(deep, "GetState")(deep)):toBe(false)
+	expect(env.method(bystander, "GetState")(bystander)):toBe(true)
+end)
+
 it("preferred bindings follow the input device and binding reparenting", function(own)
 	local bridge = Lute.fixture.bridge()
 	own(bridge.close)
