@@ -916,11 +916,7 @@ it("mounts implicit project datatype values and attributes on roots, services an
 	Roblox.buildPlaceTree(engine, "fixture.project.json", {
 		host = host,
 		cache = Roblox.createPlaceCache(host),
-		files = {
-			exists = Lute.fixture.files.exists,
-			fileType = Lute.fixture.files.fileType,
-			listDirectory = Lute.fixture.files.listDirectory,
-		},
+		files = Lute.fixture.files,
 	})
 	local library = engine.datatypes
 	expect(engine.game:GetAttribute "rootMarker"):toBe "root"
@@ -977,11 +973,7 @@ it("mounts serialized legacy asset properties into their Content properties", fu
 	Roblox.buildPlaceTree(engine, "fixture.project.json", {
 		host = host,
 		cache = Roblox.createPlaceCache(host),
-		files = {
-			exists = Lute.fixture.files.exists,
-			fileType = Lute.fixture.files.fileType,
-			listDirectory = Lute.fixture.files.listDirectory,
-		},
+		files = Lute.fixture.files,
 	})
 	local folder = assert(engine.service("ReplicatedStorage"):FindFirstChild "Folder")
 	local surface = assert(assert(folder:FindFirstChild "SurfaceAppearance"):Clone())

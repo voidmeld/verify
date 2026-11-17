@@ -20,9 +20,9 @@ export type Cache<B = unknown, C = PlaceRuntime.Chunk> = PlaceRuntime.Cache<B, C
 export type Mounted = PlaceRuntime.Mounted
 
 export type Files = {
-	exists: (path: string) -> boolean,
-	fileType: (path: string) -> string,
-	listDirectory: (path: string) -> { { name: string, type: string } },
+	read exists: (path: string) -> boolean,
+	read fileType: (path: string) -> string,
+	read listDirectory: (path: string) -> { { name: string, type: string } },
 }
 
 export type Opaque = {
