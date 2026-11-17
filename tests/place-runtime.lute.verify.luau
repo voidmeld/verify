@@ -151,6 +151,52 @@ local function sourceFixture(
 	}
 end
 
+it("loads fixture source with the mounted anchor's existing module cache", function()
+	local bridge = Lute.fixture.bridge(nil, { handlerErrors = "raise" })
+	local fixture = sourceFixture(
+		{
+			["state.luau"] = "return {}",
+			["fixture.luau"] = 'assert(script.Name == "State"); return require("./State")',
+		},
+		nil,
+		{
+			engine = bridge.placeEngine(),
+			client = { name = "Fixture", userId = 7, viewport = { x = 640, y = 480 } },
+		}
+	)
+	local anchor = fixture.module("State", "state.luau")
+	local state = fixture.runtime.requireInstance(anchor)
+	expect(fixture.runtime.loadFixture("fixture.luau", anchor)):toBe(state)
+	expect(fixture.runtime.loadFixture("fixture.luau", anchor)):toBe(state)
+	local otherRoot = fixture.engine.newInstance "Folder"
+	otherRoot.Parent = fixture.engine.game
+	local otherAnchor = fixture.module("State", "state.luau", otherRoot)
+	local otherState = fixture.runtime.requireInstance(otherAnchor)
+	expect(otherState == state):toBe(false)
+	expect(fixture.runtime.loadFixture("fixture.luau", otherAnchor)):toBe(otherState)
+	local clientStates: { VM.Value } = {}
+	bridge.environment.scheduler.spawnTagged({ context = "client", source = "fixture.luau" }, function()
+		for _, mountedAnchor in { anchor, otherAnchor } do
+			local clientState = fixture.runtime.requireInstance(mountedAnchor)
+			expect(clientState == state or clientState == otherState):toBe(false)
+			expect(fixture.runtime.loadFixture("fixture.luau", mountedAnchor)):toBe(clientState)
+			table.insert(clientStates, clientState)
+		end
+	end)
+	fixture.runtime.step(1 / 60)
+	expect(#clientStates):toBe(2)
+	expect(clientStates[1] == clientStates[2]):toBe(false)
+	expect(#bridge.environment.errors):toBe(0)
+	expect(fixture.compilations()):toBe(2)
+	local unmounted = fixture.engine.newInstance "ModuleScript"
+	local ok, failure = pcall(fixture.runtime.loadFixture, "fixture.luau", unmounted)
+	expect(ok):toBe(false)
+	expect(tostring(failure)):toContain "fixture anchor is not mounted in this runtime"
+	for _, close in fixture.runtime.closeHandlers do
+		close()
+	end
+end)
+
 it("place tweens share progressive interpolation and easing with the engine", function()
 	local binding = Lute.fixture.bridge().placeEngine()
 	local fixture = sourceFixture({

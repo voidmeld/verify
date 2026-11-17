@@ -391,6 +391,11 @@ local function create<B>(engine: Engine, mounted: Mounted, options: Options<B>):
 	runtime.globals = globals
 	runtime.requireInstance = requireInstance
 
+	function runtime.loadFixture(path: string, anchor: Instance): Vm.Value
+		assert(mounted.sources[anchor] ~= nil, "fixture anchor is not mounted in this runtime")
+		return cache.load(path, environmentFor(anchor))()
+	end
+
 	function runtime.runScript(scriptInstance: Instance, scriptContext: string): thread?
 		local path = mounted.sources[scriptInstance]
 		if path == nil then
