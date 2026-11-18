@@ -45,6 +45,7 @@ export type ServiceRuntime = {
 export type Runtime = ServiceRuntime & {
 	globals: { [string]: unknown },
 	requireInstance: (unknown) -> Vm.Value,
+	loadFixture: (path: string, anchor: Instance) -> Vm.Value,
 	runScript: (Instance, string) -> thread?,
 	step: (seconds: number) -> (),
 	screenArea: (screen: Instance) -> { x: number, y: number, width: number, height: number },

@@ -1174,6 +1174,8 @@ Source: [src/roblox/place-boot.luau](../src/roblox/place-boot.luau).
 
 Returns: A runtime with separate client/server module caches, stepping, device facts and close handlers.
 
+`runtime.loadFixture(path, anchor)` runs fixture source with the place's engine globals and binds `script` to the mounted anchor. Relative imports resolve from that anchor and use the current context's ordinary module cache. Fixture execution returns a VM value and requires an anchor mounted in this runtime.
+
 Failures: Invalid bindings or unsupported operations raise. Module and compile failures stay cached.
 
 ```luau
