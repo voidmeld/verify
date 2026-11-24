@@ -1,0 +1,104 @@
+--!strict
+
+local Core = require "../src/core"
+local Lute = require "../src/lute"
+local Files = require "../src/lute/files"
+local NativeCode = require "./lib/native-code"
+local fixtures = {
+	{ name = "native projected layers", source = require "../tests/fixtures/ui-projected-layers" },
+	{ name = "native tween interpolation", source = require "../tests/fixtures/tween-interpolation" },
+	{ name = "native selection assignment", source = require "../tests/fixtures/ui-selection-assignment" },
+	{ name = "native text content", source = require "../tests/fixtures/ui-content-text" },
+	{ name = "native selection scrolling", source = require "../tests/fixtures/ui-selection-scroll" },
+	{ name = "native text focus events", source = require "../tests/fixtures/input-focus-events" },
+	{ name = "native pointer text focus", source = require "../tests/fixtures/input-pointer-focus" },
+	{ name = "native byte selection editing", source = require "../tests/fixtures/input-text-editing" },
+	{ name = "native directional rectangles", source = require "../tests/fixtures/input-selection-geometry" },
+	{ name = "native HTTP JSON values", source = require "../tests/fixtures/http-json-values" },
+	{ name = "native screen display order", source = require "../tests/fixtures/ui-screen-order" },
+	{ name = "native text service height limits", source = require "../tests/fixtures/ui-text-height-limits" },
+	{ name = "native rich text raster bounds", source = require "../tests/fixtures/ui-rich-text-raster" },
+	{ name = "native text line heights", source = require "../tests/fixtures/ui-text-line-height" },
+	{ name = "native truncation line bounds", source = require "../tests/fixtures/ui-truncation-lines" },
+	{ name = "native unwrapped text spacing", source = require "../tests/fixtures/ui-text-space-fit" },
+	{ name = "native wrapped text flex", source = require "../tests/fixtures/ui-wrapped-text-flex" },
+	{ name = "native rotated clipping", source = require "../tests/fixtures/ui-rotated-clipping" },
+	{ name = "native scroll bar gutters", source = require "../tests/fixtures/ui-scroll-gutter" },
+	{ name = "native wrapped grid text", source = require "../tests/fixtures/ui-grid-text" },
+	{ name = "native constrained grid cells", source = require "../tests/fixtures/ui-grid-constraints" },
+	{ name = "native oversized word wrapping", source = require "../tests/fixtures/ui-word-wrap" },
+	{ name = "native explicit GUI selection", source = require "../tests/fixtures/input-gui-select" },
+	{ name = "native truncation boundaries", source = require "../tests/fixtures/ui-truncation-boundary" },
+	{ name = "native idle gamepad state", source = require "../tests/fixtures/input-gamepad-state" },
+	{ name = "native held selection navigation", source = require "../tests/fixtures/input-selection-repeat" },
+	{ name = "native haptic effect requests", source = require "../tests/fixtures/haptic-effect" },
+	{ name = "native input action lifecycle", source = require "../tests/fixtures/input-action-probe" },
+	{ name = "native input action teardown", source = require "../tests/fixtures/input-action-teardown" },
+	{ name = "native bounded automatic parents", source = require "../tests/fixtures/ui-automatic-parent" },
+	{ name = "native style selectors and phantom modifiers", source = require "../tests/fixtures/ui-style-selectors" },
+	{ name = "native wrapped aspects", source = require "../tests/fixtures/ui-aspect-wrapped" },
+	{ name = "native wrapping mutations", source = require "../tests/fixtures/ui-wrap-mutations" },
+	{ name = "native aspect flex", source = require "../tests/fixtures/ui-aspect-flex" },
+	{ name = "native aspect layout", source = require "../tests/fixtures/ui-aspect-layout" },
+	{ name = "native size constraint axes", source = require "../tests/fixtures/ui-size-constraint" },
+	{ name = "native device display size", source = require "../tests/fixtures/device-display-size" },
+	{ name = "native aspect interactions", source = require "../tests/fixtures/ui-aspect-interactions" },
+	{ name = "native list wrapping", source = require "../tests/fixtures/ui-list-wrap" },
+	{ name = "native wrapping interactions", source = require "../tests/fixtures/ui-wrap-interactions" },
+	{ name = "native legacy text layout", source = require "../tests/fixtures/ui-legacy-text" },
+	{ name = "native text flex", source = require "../tests/fixtures/ui-text-flex" },
+	{ name = "native text clipping", source = require "../tests/fixtures/ui-text-clipping" },
+	{ name = "native automatic size constraints", source = require "../tests/fixtures/ui-auto-constraints" },
+	{ name = "native text layout", source = require "../tests/fixtures/ui-text-layout" },
+	{ name = "native text scaling properties", source = require "../tests/fixtures/ui-text-scale-properties" },
+	{ name = "native scaled text beneath UIScale", source = require "../tests/fixtures/ui-scaled-text" },
+	{ name = "native scaled automatic text", source = require "../tests/fixtures/ui-scaled-automatic-text" },
+	{ name = "native render layout reads", source = require "../tests/fixtures/ui-render-layout" },
+	{ name = "native list spacing", source = require "../tests/fixtures/ui-list-spacing" },
+	{ name = "native grid layout", source = require "../tests/fixtures/ui-grid-layout" },
+	{ name = "native style properties", source = require "../tests/fixtures/ui-style-properties" },
+	{ name = "native list flex", source = require "../tests/fixtures/ui-list-flex" },
+	{ name = "native scrolling flex", source = require "../tests/fixtures/ui-scrolling-flex" },
+	{ name = "native touch contacts", source = require "../tests/fixtures/input-touch-button" },
+	{ name = "native touch long press", source = require "../tests/fixtures/input-touch-long-press" },
+	{ name = "native touch drag capture", source = require "../tests/fixtures/input-touch-drag" },
+}
+
+return function()
+	local place = Files.temporary "Verify-UI-Layout.rbxlx"
+	Lute.place.build { output = place, roots = { "src/core", "src/roblox" }, rootName = "VerifyUILayout" }
+	local cases: { string } = {}
+	for _, fixture in fixtures do
+		table.insert(
+			cases,
+			string.format(
+				"harness:case(%q, function(check) local input = studioInput(); check:defer(function() input.close() end); print(%q); check:expect((function(...)\n%s\nend)(input, function(code) input:PressKey(code, 0.05) end)):toBe(true) end)",
+				fixture.name,
+				fixture.name,
+				fixture.source
+			)
+		)
+	end
+	local result = Lute.studio.run {
+		place = place,
+		worker = "tools/studio-worker.luau",
+		context = "Client",
+		device = "hd_1080",
+		deadlineSeconds = 420,
+		code = NativeCode("VerifyUILayout", [[
+local root = game:GetService("ReplicatedStorage").VerifyUILayout
+local Core = require(root.src.core)
+local Roblox = require(root.src.roblox)
+local harness = Core.createHarness { now = os.clock }
+]] .. table.concat(cases, "\n") .. [[
+return game:GetService("HttpService"):JSONEncode(Roblox.reportChannel.envelope(runId, harness:run {
+    executor = "native-ui-layout",
+    environment = { engineVersion = version() },
+}))
+]]),
+	}
+	assert(result.status == "returned", result.detail)
+	local report = Core.decode(result.report)
+	print(Core.format(report))
+	assert(report.total == #fixtures and report.passed == #fixtures, "native UI layout conformance failed")
+end

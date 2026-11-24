@@ -1,0 +1,424 @@
+--!strict
+
+export type Row = {
+	advances: { number },
+	adjustments: { number },
+	starts: { number }?,
+	ends: { number }?,
+	height: number?,
+}
+export type Face = {
+	tokens: { string },
+	pairs: { { number } },
+	sizes: { Row },
+	pixelScale: number?,
+	measurements: { [string]: { number } }?,
+	measurementHeights: { number }?,
+	rounding: string?,
+}
+export type Model = {
+	read width: (text: string, size: number) -> number,
+	read fit: (text: string, size: number, limit: number) -> (number, number),
+	read height: (size: number, lines: number?, spacing: number?, text: string?) -> number,
+	read wrap: (text: string, size: number, limit: number, trimOversized: boolean?) -> (number, number),
+	read truncate: (
+		text: string,
+		size: number,
+		limit: number,
+		lines: number,
+		mode: string,
+		wrapped: boolean
+	) -> number?,
+}
+
+local ACCENTED = {}
+for _, letter in
+	{
+		"é",
+		"á",
+		"í",
+		"ó",
+		"ú",
+		"ñ",
+		"ü",
+		"ö",
+		"ä",
+		"ç",
+		"è",
+		"à",
+		"ê",
+		"ô",
+		"ë",
+		"ß",
+		"É",
+		"ð",
+		"ĝ",
+		"ş",
+		"Ş",
+		"ţ",
+		"þ",
+		"ṽ",
+		"ĥ",
+	}
+do
+	ACCENTED[letter] = true
+end
+
+local function letter(token: string): boolean
+	return token:match "%a" ~= nil or ACCENTED[token] == true
+end
+
+local function create(face: Face): Model
+	assert(face.rounding == nil or face.rounding == "nearest", "unsupported text metric rounding")
+	local raster = if face.rounding == "nearest" then math.round else math.ceil
+	local pixelScale = face.pixelScale or 1
+	assert(pixelScale > 0 and pixelScale < math.huge, "invalid text metric pixel scale")
+	local slot = buffer.create(4)
+	local function rounded(value: number): number
+		buffer.writef32(slot, 0, value)
+		return buffer.readf32(slot, 0)
+	end
+	local function scaled(pixels: number): number
+		return rounded(pixels * pixelScale)
+	end
+	local indices: { [string]: number } = {}
+	local sequences: { [string]: { string } } = {}
+	for index, token in face.tokens do
+		indices[token] = index
+		local first = token:sub(1, 1)
+		local entries = sequences[first] or {}
+		table.insert(entries, token)
+		sequences[first] = entries
+	end
+	for _, entries in sequences do
+		table.sort(entries, function(left: string, right: string): boolean
+			return #left > #right
+		end)
+	end
+	local pairs: { [number]: { [number]: number } } = {}
+	for index, pair in face.pairs do
+		local row = pairs[pair[1]] or {}
+		row[pair[2]] = index
+		pairs[pair[1]] = row
+	end
+	local measured: { [number]: { [string]: number } } = {}
+	local measuredCount = 0
+	local exact: (string, number) -> number
+	local function remembered(text: string, size: number): number
+		local bySize = measured[size]
+		local known = if bySize then bySize[text] else nil
+		if known ~= nil then
+			return known
+		end
+		if measuredCount >= 8192 then
+			table.clear(measured)
+			measuredCount = 0
+		end
+		local value = exact(text, size)
+		local entries = measured[size] or {}
+		measured[size] = entries
+		entries[text] = value
+		measuredCount += 1
+		return value
+	end
+	function exact(text: string, size: number): number
+		local row = assert(face.sizes[math.clamp(math.floor(size), 1, 100)])
+		local cursor, total = 1, 0
+		local previous: number? = nil
+		local first: number? = nil
+		local latin = false
+		local latinBoundary = 0
+		while cursor <= #text do
+			local token: string? = nil
+			local entries: { string } = sequences[text:sub(cursor, cursor)] or {}
+			for _, sequence in entries do
+				if text:sub(cursor, cursor + #sequence - 1) == sequence then
+					token = sequence
+					break
+				end
+			end
+			if token == nil then
+				local ok, code = pcall(utf8.codepoint, text, cursor, cursor)
+				error(
+					string.format(
+						"unsupported_text_metrics: character U+%04X at byte %d",
+						if ok then code else string.byte(text, cursor),
+						cursor
+					),
+					0
+				)
+			end
+			local matched = assert(token)
+			local index = indices[matched]
+			first = first or index
+			total += row.advances[index]
+			local startsLatin = not latin and letter(matched)
+			if startsLatin and previous and row.starts then
+				latinBoundary = row.starts[index] + (if row.ends then row.ends[previous] else 0)
+			end
+			if previous and not startsLatin then
+				local pair = (pairs[previous] or {})[index]
+				if pair then
+					total += row.adjustments[pair]
+				end
+			end
+			latin = latin or startsLatin
+			previous = index
+			cursor += #matched
+		end
+		return total
+			+ (if first and row.starts then row.starts[first] else 0)
+			+ latinBoundary
+			+ (if previous and row.ends then row.ends[previous] else 0)
+			- (if previous and row.starts and letter(face.tokens[previous]) then row.starts[previous] else 0)
+	end
+	local function width(text: string, size: number): number
+		local widths = if face.measurements then face.measurements[text] else nil
+		if widths then
+			return widths[math.clamp(math.floor(size), 1, 100)]
+		end
+		return scaled(raster(remembered(text, size)))
+	end
+	local function fit(text: string, size: number, limit: number): (number, number)
+		local maximum, count = 0, 0
+		for _, paragraph in string.split(text, "\n") do
+			local measured = width(paragraph, size)
+			if measured > limit then
+				local _, gap = paragraph:match "^(.*[^ ])( +)[^ ]*$"
+				if gap then
+					local compact = scaled(math.ceil(remembered(paragraph, size) - remembered(gap, size)))
+					if compact <= limit then
+						measured = compact
+					end
+				end
+			end
+			maximum = math.max(maximum, measured)
+			count += 1
+		end
+		return maximum, count
+	end
+	local function wrap(text: string, size: number, limit: number, trimOversized: boolean?): (number, number)
+		local maximum, count = 0, 0
+		for _, paragraph in string.split(text, "\n") do
+			if limit <= 0 then
+				maximum = math.max(maximum, width(paragraph, size))
+				count += 1
+				continue
+			end
+			local line = paragraph:match "^ *" or ""
+			local advanceWidth: number? = nil
+			local contentWidth: number? = nil
+			local started = false
+			local function finish(trim: boolean)
+				local measured = advanceWidth or width(line, size)
+				if
+					line:match " +$"
+					and (trim or measured > limit and width(line:gsub(" +$", ""), size) <= limit)
+					and line:match "[^ ]"
+				then
+					measured = contentWidth or width(line:gsub(" +$", ""), size)
+				end
+				maximum = math.max(maximum, measured)
+				count += 1
+				started = true
+			end
+			local cursor = #line + 1
+			while cursor <= #paragraph do
+				local word, spaces = paragraph:match("^([^ ]+)( *)", cursor)
+				assert(word and spaces)
+				if width(word, size) > limit then
+					if line ~= "" then
+						finish(trimOversized == true)
+						line = ""
+					end
+					advanceWidth = 0
+					contentWidth = nil
+					local prefix = paragraph:sub(1, cursor - 1)
+					local function position(following: string?): number
+						if prefix == "" then
+							return 0
+						end
+						return if following
+							then scaled(raster(remembered(prefix .. following, size) - remembered(following, size)))
+							else width(prefix, size)
+					end
+					local previousWidth = position(utf8.char(utf8.codepoint(word)))
+					for at, codepoint in utf8.codes(word) do
+						local character = utf8.char(codepoint)
+						prefix ..= character
+						local following = if at + #character <= #word
+							then utf8.char(utf8.codepoint(word, at + #character))
+							elseif #spaces > 0 then " "
+							else nil
+						local nextWidth = position(following)
+						local advance = nextWidth - previousWidth
+						if advanceWidth + advance > limit and (line ~= "" or not started) then
+							finish(false)
+							line = ""
+							advanceWidth = 0
+						end
+						line ..= character
+						advanceWidth += advance
+						previousWidth = nextWidth
+					end
+					contentWidth = if #spaces > 0 then advanceWidth else nil
+					line ..= spaces
+					advanceWidth += width(prefix .. spaces, size) - previousWidth
+					cursor += #word + #spaces
+					continue
+				end
+				local joined = (advanceWidth or width(line, size)) + width(line .. word, size) - width(line, size)
+				if line ~= "" and joined > limit then
+					finish(true)
+					line = ""
+					advanceWidth = nil
+					contentWidth = nil
+				end
+				if advanceWidth ~= nil then
+					contentWidth = if #spaces > 0
+						then advanceWidth + width(line .. word, size) - width(line, size)
+						else nil
+					advanceWidth += width(line .. word .. spaces, size) - width(line, size)
+				end
+				line ..= word .. spaces
+				cursor += #word + #spaces
+			end
+			finish(false)
+		end
+		return maximum, count
+	end
+	local function cut(text: string, size: number, limit: number, mode: string): number?
+		local mark = remembered("…", size)
+		local function shown(prefix: string, following: string?): number
+			local advance = if following
+				then remembered(prefix .. following, size) - remembered(following, size)
+				else remembered(prefix, size)
+			return scaled(math.ceil(advance) + math.ceil(mark))
+		end
+		local function fits(prefix: string, following: string?): boolean
+			return shown(prefix, following) <= limit
+		end
+		if mode == "AtEnd" then
+			local best: string? = nil
+			for stop in text:gmatch "() " do
+				local prefix = text:sub(1, stop - 1):gsub(" +$", "")
+				if prefix ~= "" and fits(prefix) then
+					best = prefix
+				end
+			end
+			if best and shown(best) >= limit / 2 then
+				return shown(best)
+			end
+		end
+		local offsets: { number } = {}
+		local iterate, state = utf8.codes(text)
+		local previous = 0
+		while true do
+			local position = iterate(state, previous)
+			if position == nil then
+				break
+			end
+			table.insert(offsets, position)
+			previous = position
+		end
+		for index = #offsets, 2, -1 do
+			local prefix = text:sub(1, offsets[index] - 1)
+			local following = text:sub(offsets[index], (offsets[index + 1] or #text + 1) - 1)
+			if fits(prefix, following) then
+				if mode == "SplitWord" then
+					local gap = text:sub(offsets[index]):match "^ +"
+					if gap then
+						return width(prefix .. gap, size)
+					end
+				end
+				return shown(prefix, following)
+			end
+		end
+		return if mark * pixelScale <= limit then shown "" else 0
+	end
+	local function truncate(
+		text: string,
+		size: number,
+		limit: number,
+		lines: number,
+		mode: string,
+		wrapped: boolean
+	): number?
+		if text:find "\n" or lines < 1 then
+			error("unsupported_text_metrics: truncated multi-paragraph text", 0)
+		end
+		if not wrapped then
+			return cut(text, size, limit, mode)
+		end
+		local kept: { string } = {}
+		local line = text:match "^ *" or ""
+		local cursor = #line + 1
+		local rest = 1
+		while lines > 1 and cursor <= #text do
+			local word, spaces = text:match("^([^ ]+)( *)", cursor)
+			assert(word and spaces)
+			if width(word, size) > limit then
+				error("unsupported_text_metrics: word exceeds wrap width", 0)
+			end
+			if line ~= "" and width(line .. word, size) > limit then
+				table.insert(kept, (line:gsub(" +$", "")))
+				if #kept == lines - 1 then
+					rest = cursor
+					break
+				end
+				line = ""
+			end
+			line ..= word .. spaces
+			cursor += #word + #spaces
+		end
+		if #kept < lines - 1 or rest == 1 and lines > 1 then
+			return nil
+		end
+		local remainder = text:sub(rest)
+		local last = cut(remainder, size, limit, mode)
+		if last == nil then
+			return nil
+		end
+		local natural = remainder:match "^ *" or ""
+		for word, spaces in remainder:gmatch "([^ ]+)( *)" do
+			if width(natural .. word, size) > limit then
+				break
+			end
+			natural ..= word .. assert(spaces)
+		end
+		if mode == "AtEnd" or width(natural, size) > limit then
+			natural = natural:gsub(" +$", "")
+		end
+		last = math.max(last, width(natural, size))
+		local widest = last
+		for _, entry in kept do
+			widest = math.max(widest, width(entry, size))
+		end
+		return widest
+	end
+	local function height(size: number, lines: number?, spacing: number?, text: string?): number
+		local index = math.clamp(math.floor(size), 1, 100)
+		if text and face.measurements and face.measurements[text] and face.measurementHeights then
+			local strut = face.measurementHeights[index]
+			local total, step = strut, rounded(strut * rounded(spacing or 1))
+			for _ = 2, lines or 1 do
+				total = rounded(total + step)
+			end
+			return total
+		end
+		local strut = face.sizes[index].height or index
+		if lines == nil then
+			return strut
+		end
+		local pixels = math.round(strut / pixelScale)
+		local step = rounded(pixels * rounded(spacing or 1))
+		local total = pixels
+		for _ = 2, lines do
+			total = rounded(total + step)
+		end
+		return scaled(total)
+	end
+	return table.freeze { width = width, fit = fit, wrap = wrap, height = height, truncate = truncate }
+end
+
+return table.freeze { create = create }

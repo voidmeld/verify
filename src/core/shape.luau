@@ -1,0 +1,128 @@
+--!strict
+
+local function fingerprint(text: string): string
+	local hash = 2166136261
+	for index = 1, #text do
+		hash = bit32.bxor(hash, string.byte(text, index))
+		hash = bit32.band(hash * 16777619, 0xFFFFFFFF)
+	end
+	return ("%08x-%d"):format(hash, #text)
+end
+
+local function micros(seconds: number): number
+	return math.max(0, math.floor(seconds * 1e6 + 0.5))
+end
+
+local function sortedKeys<T>(map: { [string]: T }): { string }
+	local keys: { string } = {}
+	for key in map do
+		table.insert(keys, key)
+	end
+	table.sort(keys)
+	return keys
+end
+
+local function finite(value: unknown): boolean
+	return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+local function finiteNonnegative(value: unknown): boolean
+	return type(value) == "number" and finite(value) and value >= 0
+end
+
+local function nonnegativeInteger(value: unknown): boolean
+	return type(value) == "number" and finiteNonnegative(value) and value % 1 == 0
+end
+
+local function record(value: unknown, label: string): { [string]: unknown }
+	assert(type(value) == "table", label .. " must be a table")
+	assert(getmetatable(value) == nil, label .. " must be a plain table")
+	local result: { [string]: unknown } = {}
+	for key, item in value do
+		if type(key) == "string" then
+			result[key] = item
+		end
+	end
+	return result
+end
+
+local function denseRows(value: unknown, count: number): boolean
+	if type(value) ~= "table" then
+		return false
+	end
+	if getmetatable(value) ~= nil or #value ~= count then
+		return false
+	end
+	for key in value do
+		if type(key) == "userdata" then
+			continue
+		end
+		if type(key) ~= "number" or key < 1 or key > count or key % 1 ~= 0 then
+			return false
+		end
+	end
+	return true
+end
+
+local function exactKeys(value: unknown, fields: { [string]: boolean }): boolean
+	if type(value) ~= "table" then
+		return false
+	end
+	if getmetatable(value) ~= nil then
+		return false
+	end
+	local count = 0
+	for key in value do
+		if type(key) ~= "string" or fields[key] ~= true then
+			return false
+		end
+		count += 1
+	end
+	for _ in fields do
+		count -= 1
+	end
+	return count == 0
+end
+
+local function copyStrings(value: unknown, label: string): { string }
+	if type(value) ~= "table" then
+		error(label .. " must be an array", 3)
+	end
+	local result: { string } = {}
+	for index, item in value do
+		if type(index) ~= "number" or index ~= #result + 1 or type(item) ~= "string" then
+			error(label .. " must be a dense string array", 3)
+		end
+		table.insert(result, item)
+	end
+	return result
+end
+
+local function requiredString(value: unknown, label: string): string
+	if type(value) ~= "string" or value == "" then
+		error(label .. " must be a non-empty string", 3)
+	end
+	return value
+end
+
+local function nonnegativeNumber(value: unknown, label: string): number
+	if type(value) ~= "number" or value < 0 then
+		error(label .. " must be a non-negative number", 3)
+	end
+	return value
+end
+
+return {
+	fingerprint = fingerprint,
+	micros = micros,
+	record = record,
+	sortedKeys = sortedKeys,
+	copyStrings = copyStrings,
+	requiredString = requiredString,
+	nonnegativeNumber = nonnegativeNumber,
+	finite = finite,
+	finiteNonnegative = finiteNonnegative,
+	nonnegativeInteger = nonnegativeInteger,
+	denseRows = denseRows,
+	exact = exactKeys,
+}

@@ -1,0 +1,125 @@
+--!strict
+
+local TeleportFakes = require "@self/teleport-fakes"
+local DeviceFakes = require "@self/device-fakes"
+
+local PlaceBoot = require "@self/place-boot"
+local PlaceRuntime = require "@self/place-runtime"
+local ContentFacts = require "@self/content-facts"
+
+local CaseEntry = require "@self/case-entry"
+local EnvironmentEngineAdapter = require "@self/environment-engine"
+local Reflection = require "@self/reflection"
+local UiFakes = require "@self/ui-fakes"
+local UiLayout = require "@self/ui-layout"
+local FixtureBridge = require "@self/fixture-bridge"
+local ReflectionSnapshot = require "@self/reflection-snapshot"
+local Multiplayer = require "@self/multiplayer"
+local InputHost = require "@self/input-host"
+local ControllerHost = require "@self/controller-host"
+local PathfindingHost = require "@self/pathfinding-host"
+local PromptHost = require "@self/prompt-host"
+local ProgressChannel = require "@self/progress-channel"
+local ReportChannel = require "@self/report-channel"
+local InstanceHost = require "@self/instance-host"
+
+local ExperienceHost = require "@self/experience-host"
+
+local Datatypes = require "@self/datatypes"
+local Value = require "@self/value"
+local Environment = require "@self/environment"
+local Scheduler = require "@self/scheduler"
+local UiAudit = require "@self/ui-audit"
+local UiAuditCollect = require "@self/ui-audit-collect"
+
+export type CaseEntry = CaseEntry.Entry
+export type CaseEntryFactory = CaseEntry.Factory
+export type CaseHostName = CaseEntry.Host
+export type MultiplayerConnection = Multiplayer.Connection
+export type MultiplayerPlayer = Multiplayer.Player
+export type MultiplayerDeliveryReason = Multiplayer.DeliveryReason
+export type EnvironmentEvent = Environment.Event
+export type EnvironmentObserveFilter = Environment.ObserveFilter
+export type EnvironmentClass<P = { [string]: unknown }, M = { [string]: unknown }> = Environment.ClassSpec<P, M>
+export type MultiplayerRemote = Multiplayer.Remote
+export type InputGuiTarget = InputHost.GuiTarget
+export type UiLayoutOptions = UiLayout.Options
+export type UiProjectionHost = UiLayout.ProjectionHost
+export type UiLayoutController = UiLayout.Controller
+export type EnvironmentEngineVector3 = EnvironmentEngineAdapter.Vector3
+export type EnvironmentEngineCFrame = EnvironmentEngineAdapter.CFrame
+export type FixtureBridge = FixtureBridge.Bridge
+export type ReflectionSnapshot = ReflectionSnapshot.Snapshot
+export type ReflectionSnapshotClass = ReflectionSnapshot.ClassEntry
+export type ReflectionSnapshotOptions = ReflectionSnapshot.Options
+
+export type EnvironmentOptions<P = { [string]: unknown }, M = { [string]: unknown }, F = { [string]: unknown }> =
+	Environment.Options<P, M, F>
+export type EnvironmentDefineOptions = Environment.DefineOptions
+export type Environment = Environment.Environment
+export type Instance = Environment.Instance
+export type Object = Environment.Object
+export type EnvironmentSnapshot = Environment.Snapshot
+export type EnvironmentMethod = Environment.Method
+export type Signal<A... = ...unknown> = Environment.Signal<A...>
+export type Connection = Environment.Connection
+export type DatatypeVector3 = Datatypes.Vector3Value
+export type DatatypeCFrame = Datatypes.CFrameValue
+export type DatatypeColor3 = Datatypes.Color3Value
+export type DatatypeUDim2 = Datatypes.UDim2Value
+export type DatatypeEnumCategory = Datatypes.EnumCategory
+export type DatatypeFont = Datatypes.FontValue
+export type DatatypeCatalog = Datatypes.Catalog
+export type DatatypeLibrary = Datatypes.Library
+export type VirtualScheduler = Scheduler.Scheduler
+export type VirtualTask<A... = ...unknown, R... = ...unknown> = Scheduler.Task<A..., R...>
+export type VirtualCallback<A... = ...unknown, R... = ...unknown> = Scheduler.Callback<A..., R...>
+
+export type PlaceBootStage = PlaceBoot.Stage
+export type PlaceRuntimeEngine = PlaceRuntime.Engine
+export type PlaceRuntime = PlaceRuntime.Runtime
+export type PlaceBootEngine = PlaceBoot.Engine
+export type PlaceBootView = PlaceBoot.View
+export type PlaceBootHost<B = unknown, C = () -> unknown> = PlaceBoot.Host<B, C>
+
+return {
+	teleportFakes = {
+		setJoinData = TeleportFakes.setJoinData,
+		setLocalPlayerTeleportData = TeleportFakes.setLocalPlayerTeleportData,
+	},
+	deviceFakes = DeviceFakes,
+	contentFacts = ContentFacts,
+	bootPlace = PlaceBoot.run,
+	buildPlaceTree = PlaceBoot.buildTree,
+	createPlaceCache = PlaceBoot.createCache,
+	createPlaceRuntime = PlaceBoot.createRuntime,
+	environmentEngine = EnvironmentEngineAdapter.create,
+	reflection = Reflection,
+	uiFakes = UiFakes,
+	fixtureBridge = FixtureBridge.create,
+	reflectionSnapshot = ReflectionSnapshot,
+	multiplayer = Multiplayer,
+	inputHost = InputHost,
+	controllerHost = ControllerHost,
+	pathfindingHost = PathfindingHost,
+	promptHost = PromptHost,
+	reportChannel = ReportChannel,
+	progressChannel = ProgressChannel,
+	instanceHost = InstanceHost,
+	experienceHost = ExperienceHost,
+	testEnvironment = Environment.create,
+	datatypes = Datatypes,
+	value = Value,
+	isInstance = Environment.isInstance,
+	assertInstance = Environment.assertInstance,
+	typeName = Environment.typeName,
+	uiAudit = {
+		SCHEMA_VERSION = UiAudit.SCHEMA_VERSION,
+		RULES = UiAudit.RULES,
+		collect = UiAuditCollect.collect,
+		decode = UiAudit.decode,
+		analyze = UiAudit.analyze,
+		contrastRatio = UiAudit.contrastRatio,
+		isAbove = UiAudit.isAbove,
+	},
+}

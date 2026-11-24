@@ -1,0 +1,258 @@
+--!strict
+
+export type Callback<A... = ...unknown, R... = ...unknown> = (A...) -> R...
+export type Task<A... = ...unknown, R... = ...unknown> = Callback<A..., R...> | thread
+
+type Arguments = { [number]: unknown, n: number }
+type Timer = { at: number, thread: thread, owner: thread? }
+type Ready = { thread: thread, arguments: Arguments, depth: number }
+local pack: (...unknown) -> Arguments = table.pack
+
+local MAX_DEFER_DEPTH = 80
+
+export type Scheduler = {
+	clock: () -> number,
+	tag: (thread: thread, value: unknown) -> (),
+	onFailure: (handler: (string) -> ()) -> (),
+	context: () -> unknown,
+	spawn: <A..., R...>(callback: Task<A..., R...>, A...) -> thread,
+	spawnTagged: <A..., R...>(tag: unknown, callback: Callback<A..., R...>, A...) -> thread,
+	defer: <A..., R...>(callback: Task<A..., R...>, A...) -> thread,
+	delay: <A..., R...>(seconds: number, callback: Task<A..., R...>, A...) -> thread,
+	wait: (seconds: number?) -> number,
+	block: (register: (thread) -> ...unknown) -> ...unknown,
+	drain: (budget: number) -> (),
+	advance: (seconds: number) -> (),
+	resume: (thread: thread, ...unknown) -> (),
+	cancel: (thread: thread) -> (),
+	failures: { string },
+	pending: () -> number,
+}
+
+local WEAK_KEYS = table.freeze { __mode = "ks" }
+
+local function create(): Scheduler
+	local now = 0
+	local ready: { Ready } = {}
+	local running = 0
+	local timers: { Timer } = {}
+	local failures: { string } = {}
+	local tags: { [thread]: unknown } = {}
+	local cleanups: { [thread]: () -> () } = {}
+	setmetatable(tags, WEAK_KEYS)
+	local active: unknown = nil
+	local scheduler = {}
+	local onFailure: (string) -> () = function() end
+	local function record(message: string)
+		failures[#failures + 1] = message
+		onFailure(message)
+	end
+
+	local function release(thread: thread)
+		local cleanup = cleanups[thread]
+		if cleanup then
+			cleanups[thread] = nil
+			local ok, failure = pcall(function(): unknown
+				cleanup()
+				return nil
+			end)
+			if not ok then
+				record(tostring(failure))
+			end
+		end
+	end
+
+	local function describe(thread: thread, message: unknown): string
+		local ok, trace = pcall(function(): unknown
+			return debug.traceback(thread)
+		end)
+		if ok and type(trace) == "string" then
+			return tostring(message) .. "\n" .. trace
+		end
+		return tostring(message)
+	end
+
+	local function run(thread: thread, ...: unknown): (boolean, unknown)
+		release(thread)
+		local previous = active
+		active = tags[thread]
+		local ok, message = coroutine.resume(thread, ...)
+		active = previous
+		if coroutine.status(thread) == "dead" then
+			tags[thread] = nil
+		end
+		return ok, message
+	end
+
+	local function start(thread: thread, ...: unknown)
+		local ok, message = run(thread, ...)
+		if not ok then
+			record(describe(thread, message))
+		end
+	end
+
+	local function push(thread: thread, depth: number, ...: unknown)
+		ready[#ready + 1] = { thread = thread, arguments = pack(...), depth = depth }
+	end
+
+	local function step()
+		local batch = ready
+		ready = {}
+		for _, entry in batch do
+			if coroutine.status(entry.thread) == "dead" then
+				continue
+			end
+			local outer = running
+			running = entry.depth
+			start(entry.thread, table.unpack(entry.arguments, 1, entry.arguments.n))
+			running = outer
+		end
+	end
+
+	function scheduler.clock(): number
+		return now
+	end
+
+	function scheduler.resume(thread: thread, ...: unknown)
+		release(thread)
+		push(thread, 0, ...)
+	end
+
+	function scheduler.spawn<A..., R...>(callback: Task<A..., R...>, ...: A...): thread
+		local thread = if type(callback) == "thread" then callback else coroutine.create(callback)
+		if tags[thread] == nil then
+			tags[thread] = active
+		end
+		start(thread, ...)
+		return thread
+	end
+
+	function scheduler.spawnTagged<A..., R...>(tag: unknown, callback: Callback<A..., R...>, ...: A...): thread
+		local thread = coroutine.create(callback)
+		tags[thread] = tag
+		start(thread, ...)
+		return thread
+	end
+
+	function scheduler.defer<A..., R...>(callback: Task<A..., R...>, ...: A...): thread
+		local thread = if type(callback) == "thread" then callback else coroutine.create(callback)
+		local depth = running + 1
+		if depth > MAX_DEFER_DEPTH then
+			error(("Maximum re-entrancy depth (%d) exceeded calling task.defer"):format(MAX_DEFER_DEPTH), 2)
+		end
+		if tags[thread] == nil then
+			tags[thread] = active
+		end
+		push(thread, depth, ...)
+		return thread
+	end
+
+	function scheduler.delay<A..., R...>(seconds: number, callback: Task<A..., R...>, ...: A...): thread
+		local thread = if type(callback) == "thread" then callback else coroutine.create(callback)
+		local arguments = pack(...)
+		if tags[thread] == nil then
+			tags[thread] = active
+		end
+		local waiter = coroutine.create(function()
+			run(thread, table.unpack(arguments, 1, arguments.n))
+		end)
+		timers[#timers + 1] = { at = now + math.max(seconds, 0), thread = waiter, owner = thread }
+		return thread
+	end
+
+	function scheduler.onFailure(handler: (string) -> ())
+		onFailure = handler
+	end
+
+	function scheduler.tag(thread: thread, value: unknown)
+		tags[thread] = value
+	end
+
+	function scheduler.context(): unknown
+		return active
+	end
+
+	function scheduler.wait(seconds: number?): number
+		local thread = coroutine.running()
+		timers[#timers + 1] = { at = now + math.max(seconds or 0, 0), thread = thread }
+		coroutine.yield()
+		return seconds or 0
+	end
+
+	function scheduler.block(register: (thread) -> ...unknown): ...unknown
+		local thread = coroutine.running()
+		local cleanup = register(thread)
+		if type(cleanup) == "function" then
+			cleanups[thread] = cleanup
+		end
+		return coroutine.yield()
+	end
+
+	function scheduler.advance(seconds: number)
+		now += seconds
+		local due: { { at: number, thread: thread, order: number } } = {}
+		local keep: { Timer } = {}
+		for order, timer in timers do
+			if timer.at <= now then
+				due[#due + 1] = { at = timer.at, thread = timer.thread, order = order }
+			else
+				keep[#keep + 1] = timer
+			end
+		end
+		timers = keep
+		table.sort(
+			due,
+			function(
+				left: { at: number, thread: thread, order: number },
+				right: { at: number, thread: thread, order: number }
+			): boolean
+				if left.at ~= right.at then
+					return left.at < right.at
+				end
+				return left.order < right.order
+			end
+		)
+		for _, entry in due do
+			push(entry.thread, 0)
+		end
+	end
+
+	function scheduler.drain(budget: number)
+		local rounds = 0
+		while #ready > 0 and rounds < budget do
+			step()
+			rounds += 1
+		end
+	end
+
+	function scheduler.cancel(thread: thread)
+		release(thread)
+		tags[thread] = nil
+		local keptReady: { Ready } = {}
+		for _, entry in ready do
+			if entry.thread ~= thread then
+				table.insert(keptReady, entry)
+			end
+		end
+		ready = keptReady
+		local keptTimers: { Timer } = {}
+		for _, timer in timers do
+			if timer.thread ~= thread and timer.owner ~= thread then
+				table.insert(keptTimers, timer)
+			end
+		end
+		timers = keptTimers
+		if coroutine.status(thread) == "suspended" then
+			coroutine.close(thread)
+		end
+	end
+
+	function scheduler.pending(): number
+		return #ready + #timers
+	end
+
+	scheduler.failures = failures
+	return scheduler
+end
+
+return { create = create }

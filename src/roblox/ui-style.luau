@@ -1,0 +1,842 @@
+--!strict
+
+local Environment = require "./environment"
+local Selector = require "./ui-style-selector"
+local Values = require "./ui-values"
+local Transition = require "./ui-style-transition"
+
+type Instance = Environment.Instance
+export type Properties = { [Instance]: { [string]: unknown } }
+export type Controller = {
+	styled: (Instance, string, string?) -> unknown,
+	component: (Instance, string, string) -> unknown,
+	signal: (Instance, string) -> Environment.Signal<()>,
+	step: () -> (),
+	cached: (() -> ()) -> (),
+	close: () -> (),
+	invalidate: (Instance?) -> (),
+	animating: (boolean?) -> boolean,
+}
+type Scope = { sheet: Instance?, root: Instance? }
+type Resolved = { sheet: Instance?, value: unknown, present: boolean, transition: unknown }
+type Watch = { signal: Environment.Signal<()>, sheet: Instance?, value: unknown }
+type Animated = { property: string, phantom: string?, motion: Transition.Motion, dirty: number? }
+local PHANTOMS = { UIPadding = true, UICorner = true, UIStroke = true, UIGradient = true }
+local STYLE_MEMBERS: { [string]: boolean } = { Name = true, GuiState = true, Interactable = true }
+
+local function unsupported(detail: string): never
+	error("unsupported_ui_style: " .. detail, 0)
+end
+
+local function create(
+	env: Environment.Environment,
+	properties: Properties,
+	transitions: Properties,
+	derives: { [Instance]: { Instance } }
+): Controller
+	local animated: { [Instance]: { [string]: Animated } } = {}
+	setmetatable(animated, { __mode = "ks" })
+	local refresh: (boolean?) -> () = function() end
+	local observe: () -> () = function() end
+	local observed: Environment.Connection? = nil
+	local tags: Environment.Connection? = nil
+	local previousTag: { object: Instance, tag: string, present: boolean }? = nil
+	local function hasTag(object: Instance, tag: string): boolean
+		local previous = previousTag
+		return if previous
+				and previous.object == object
+				and previous.tag == tag
+			then previous.present
+			else env.hasTag(object, tag)
+	end
+	local pendingAt: number? = nil
+	local timed: { [Animated]: Instance } = {}
+	local transitioned: { [Animated]: Instance } = {}
+	setmetatable(transitioned, { __mode = "ks" })
+	setmetatable(timed, { __mode = "ks" })
+	local stale: { [Animated]: Instance } = {}
+	setmetatable(stale, { __mode = "ks" })
+	local staleSince: number? = nil
+	local dirtyReads: { [Instance]: boolean } = {}
+	local dirtyWatches: { [Instance]: boolean } = {}
+	setmetatable(dirtyReads, { __mode = "ks" })
+	setmetatable(dirtyWatches, { __mode = "ks" })
+	local controller: Controller
+	local keptValues: { [Instance]: { [string]: Resolved } } = {}
+	setmetatable(keptValues, { __mode = "ks" })
+	local keptScopes: { [Instance]: Scope } = {}
+	local dirtyScopes: { [Instance]: boolean } = {}
+	setmetatable(dirtyScopes, { __mode = "ks" })
+	setmetatable(keptScopes, { __mode = "ks" })
+	local function forgetKept(subtree: Instance)
+		local pending = { subtree }
+		while #pending > 0 do
+			local object = table.remove(pending)
+			assert(object ~= nil)
+			dirtyReads[object], dirtyWatches[object] = true, true
+			if keptValues[object] ~= nil or keptScopes[object] ~= nil then
+				keptValues[object] = nil
+				keptScopes[object] = nil
+			end
+			for _, child in env.childrenOf(object) do
+				table.insert(pending, child)
+			end
+		end
+	end
+	local watches: { [Instance]: { [string]: Watch } } = {}
+	setmetatable(watches, { __mode = "ks" })
+	local reads: { [Instance]: { [string]: { sheet: Instance?, value: unknown } } } = {}
+	setmetatable(reads, { __mode = "ks" })
+	local writes: Environment.Connection? = nil
+	local function mark(subtree: Instance?, within: ((Instance) -> boolean)?)
+		local now = env.now()
+		staleSince = staleSince or now
+		if subtree == nil then
+			table.clear(keptValues)
+			table.clear(keptScopes)
+			for object in reads do
+				dirtyReads[object] = true
+			end
+			for object in watches do
+				dirtyWatches[object] = true
+			end
+			for entry, object in pairs(transitioned) do
+				entry.dirty = entry.dirty or now
+				stale[entry] = object
+			end
+			return
+		end
+		local pending = { subtree }
+		while #pending > 0 do
+			local object = table.remove(pending)
+			assert(object ~= nil)
+			if within then
+				if not within(object) then
+					continue
+				end
+				env.stampLayout(object)
+			end
+			dirtyReads[object], dirtyWatches[object] = true, true
+			keptValues[object] = nil
+			keptScopes[object] = nil
+			local entries = animated[object]
+			if entries then
+				for _, entry in entries do
+					if transitioned[entry] then
+						entry.dirty = entry.dirty or now
+						stale[entry] = object
+					end
+				end
+			end
+			for _, child in env.childrenOf(object) do
+				table.insert(pending, child)
+			end
+		end
+	end
+	local function dirty(subtree: Instance?, within: ((Instance) -> boolean)?)
+		pendingAt = nil
+		mark(subtree, within)
+	end
+	local parsed: { [string]: Selector.Selector } = {}
+	type Index = {
+		rules: { Instance },
+		byProperty: { [string]: { Instance } },
+		candidates: { [string]: { Instance } },
+		nested: { [Instance]: boolean },
+		connections: { Environment.Connection },
+	}
+	local indexes: { [Instance]: Index } = {}
+	local function forget(sheet: Instance)
+		local index = indexes[sheet]
+		if index then
+			indexes[sheet] = nil
+			for _, connection in index.connections do
+				connection:Disconnect()
+			end
+		end
+	end
+	local frameScopes: { [Instance]: Scope }? = nil
+	local frameValues: { [Instance]: { [string]: Resolved } }? = nil
+	local frameStyled: { [Instance]: { [string]: { value: unknown } } }? = nil
+	local frameMatches: { [Instance]: { [Instance]: { [string]: boolean } } }? = nil
+	local scopeRoots: { [Instance]: Instance } = {}
+	setmetatable(scopeRoots, { __mode = "ks" })
+	local function ownSheet(object: Instance): Instance?
+		local link = env.childWhichIsA(object, "StyleLink")
+		if link then
+			for _, child in env.childrenOf(object) do
+				if child ~= link and env.isA(child, "StyleLink") then
+					unsupported "multiple StyleLinks"
+				end
+			end
+			local sheet = env.propertyOf(link, "StyleSheet")
+			if sheet ~= nil then
+				local instance = Environment.assertInstance(sheet)
+				assert(instance:IsA "StyleSheet", "StyleLink requires a StyleSheet")
+				scopeRoots[object] = instance
+				return instance
+			end
+		end
+		return nil
+	end
+	local function owningSheet(object: Instance): Instance?
+		local current: Instance? = object
+		while current do
+			if env.isA(current, "StyleSheet") then
+				return current
+			end
+			current = env.parentOf(current)
+		end
+		return nil
+	end
+	local function dependsOn(sheet: Instance, target: Instance, seen: { [Instance]: boolean }): boolean
+		if sheet == target then
+			return true
+		end
+		if seen[sheet] then
+			return false
+		end
+		seen[sheet] = true
+		for _, base in derives[sheet] or {} do
+			if dependsOn(base, target, seen) then
+				return true
+			end
+		end
+		for _, child in env.childrenOf(sheet) do
+			if env.isA(child, "StyleDerive") then
+				local base = env.propertyOf(child, "StyleSheet")
+				if Environment.isInstance(base) and dependsOn(Environment.assertInstance(base), target, seen) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+	local function invalidate(object: Instance?)
+		if object == nil then
+			env.invalidateLayout()
+			for sheet in indexes do
+				forget(sheet)
+			end
+			refresh(true)
+			dirty()
+			return
+		end
+		if env.isA(object, "StyleLink") then
+			local parent = env.parentOf(object)
+			if parent then
+				scopeRoots[parent] = nil
+				refresh(true)
+				dirty(parent)
+				env.invalidateLayout(parent)
+			end
+			return
+		end
+		local sheet = owningSheet(object)
+		if sheet == nil then
+			return
+		end
+		forget(sheet)
+		for root, linked in scopeRoots do
+			if not env.isAlive(root) then
+				scopeRoots[root] = nil
+				continue
+			end
+			if dependsOn(linked, sheet, {}) then
+				refresh(true)
+				if not dirtyScopes[root] then
+					dirty(root, function(descendant: Instance): boolean
+						local nested = scopeRoots[descendant]
+						return nested == nil or dependsOn(nested, sheet, {})
+					end)
+					dirtyScopes[root] = true
+				end
+			end
+		end
+	end
+	local function scope(object: Instance): Instance?
+		local scopes = if observed ~= nil then keptScopes else frameScopes
+		local walked: { Instance } = {}
+		local found: Instance? = nil
+		local root: Instance? = nil
+		local current: Instance? = object
+		while current do
+			local known = if scopes then scopes[current] else nil
+			if known then
+				found, root = known.sheet, known.root
+				break
+			end
+			table.insert(walked, current)
+			found = ownSheet(current)
+			if found then
+				root = current
+				break
+			end
+			current = env.parentOf(current)
+		end
+		if scopes then
+			for _, visited in walked do
+				scopes[visited] = { sheet = found, root = root }
+			end
+		end
+		if root then
+			dirtyScopes[root] = nil
+		end
+		return found
+	end
+	local function token(sheet: Instance, value: unknown): unknown
+		local seen: { [string]: boolean } = {}
+		while type(value) == "string" and value:sub(1, 1) == "$" do
+			local name = value:sub(2)
+			if seen[name] then
+				unsupported("cyclic token " .. name)
+			end
+			seen[name] = true
+			value = sheet:GetAttribute(name)
+			if value == nil then
+				unsupported("missing token " .. name)
+			end
+		end
+		return value
+	end
+	local function branches(rule: Instance): Selector.Selector
+		local source = Values.string(env.propertyOf(rule, "Selector"))
+		local result = parsed[source]
+		if result == nil then
+			result = Selector.parse(source)
+			parsed[source] = result
+		end
+		return result
+	end
+	local function indexOf(sheet: Instance): Index
+		local known = indexes[sheet]
+		if known then
+			return known
+		end
+		local index: Index = { rules = {}, byProperty = {}, candidates = {}, nested = {}, connections = {} }
+		local function drop()
+			invalidate(sheet)
+		end
+		table.insert(index.connections, sheet.ChildAdded:Connect(drop))
+		table.insert(index.connections, sheet.ChildRemoved:Connect(drop))
+		for _, candidate in sheet:GetChildren() do
+			if not candidate:IsA "StyleRule" then
+				continue
+			end
+			table.insert(index.rules, candidate)
+			index.nested[candidate] = #candidate:GetChildren() > 0
+			table.insert(index.connections, candidate:GetPropertyChangedSignal("Selector"):Connect(drop))
+			table.insert(index.connections, candidate:GetPropertyChangedSignal("Priority"):Connect(drop))
+			table.insert(index.connections, candidate.DescendantAdded:Connect(drop))
+			table.insert(index.connections, candidate.DescendantRemoving:Connect(drop))
+			local names: { [string]: boolean } = {}
+			local own = properties[candidate]
+			if own then
+				for name in own do
+					names[name] = true
+				end
+			end
+			for name in pairs(transitions[candidate] or {}) do
+				if name ~= "*" then
+					names[name] = true
+				end
+			end
+			for _, descendant in candidate:GetDescendants() do
+				if descendant:IsA "StyleRule" then
+					local nested = properties[descendant]
+					if nested then
+						for name in nested do
+							names[name] = true
+						end
+					end
+				end
+			end
+			for name in names do
+				local list = index.byProperty[name]
+				if list == nil then
+					list = {}
+					index.byProperty[name] = list
+				end
+				table.insert(list, candidate)
+			end
+		end
+		indexes[sheet] = index
+		return index
+	end
+	local resolveFresh: (Instance, string?, string?) -> (Instance?, unknown, boolean, unknown)
+	local function resolve(
+		object: Instance,
+		property: string?,
+		phantom: string?
+	): (Instance?, unknown, boolean, unknown)
+		local values = if observed ~= nil then keptValues else frameValues
+		if values == nil then
+			return resolveFresh(object, property, phantom)
+		end
+		local entries = values[object]
+		if entries == nil then
+			entries = {}
+			values[object] = entries
+		end
+		local key = (property or "") .. "|" .. (phantom or "")
+		local found = entries[key]
+		if found == nil then
+			local sheet, value, present, transition = resolveFresh(object, property, phantom)
+			found = { sheet = sheet, value = value, present = present, transition = transition }
+			entries[key] = found
+		end
+		return found.sheet, found.value, found.present, found.transition
+	end
+	function resolveFresh(object: Instance, property: string?, phantom: string?): (Instance?, unknown, boolean, unknown)
+		local sheet = scope(object)
+		local result: unknown = if phantom or property == nil then nil else env.defaultPropertyOf(object, property)
+		if sheet == nil then
+			return nil, result, false, nil
+		end
+		if #(derives[sheet] or {}) > 0 then
+			unsupported "StyleSheet derives"
+		end
+		local winning: number? = nil
+		local transitionPriority: number? = nil
+		local transition: unknown = nil
+		local present = false
+		local index = indexOf(sheet)
+		local candidates: { Instance } = index.rules
+		if property then
+			local known = index.candidates[property]
+			if known == nil then
+				known = table.clone(index.byProperty[property] or {})
+				for _, candidate in index.rules do
+					local candidateTransitions = transitions[candidate]
+					if
+						candidateTransitions ~= nil
+						and candidateTransitions["*"] ~= nil
+						and not table.find(known, candidate)
+					then
+						table.insert(known, candidate)
+					end
+				end
+				index.candidates[property] = known
+			end
+			candidates = known
+		end
+		for _, candidate in candidates do
+			local values = properties[candidate] or {}
+			if property == nil and phantom then
+				local source = Values.string(env.propertyOf(candidate, "Selector"))
+				if not source:find("::" .. phantom, 1, true) then
+					continue
+				end
+			end
+			local value = if property then values[property] else nil
+			if index.nested[candidate] then
+				unsupported "nested StyleRules"
+			end
+			local matches = false
+			local remembered = frameMatches
+			local byRule = if remembered then remembered[object] else nil
+			local byPhantom = if byRule then byRule[candidate] else nil
+			local phantomKey = phantom or ""
+			local known = if byPhantom then byPhantom[phantomKey] else nil
+			if known ~= nil then
+				matches = known
+			else
+				for _, branch in branches(candidate) do
+					if branch.phantom == phantom and Selector.matches(branch, object, hasTag, env) then
+						matches = true
+					end
+				end
+				if remembered then
+					if byRule == nil then
+						byRule = {}
+						remembered[object] = byRule
+					end
+					assert(byRule)
+					if byPhantom == nil then
+						byPhantom = {}
+						byRule[candidate] = byPhantom
+					end
+					assert(byPhantom)
+					byPhantom[phantomKey] = matches
+				end
+			end
+			if not matches then
+				continue
+			end
+			present = true
+			if property then
+				local candidateTransitions = transitions[candidate]
+				local parameters = if candidateTransitions
+					then candidateTransitions[property] or candidateTransitions["*"]
+					else nil
+				if parameters ~= nil then
+					local priority = Values.number(env.propertyOf(candidate, "Priority"))
+					if priority == transitionPriority then
+						unsupported("equal-priority transition " .. property)
+					end
+					if transitionPriority == nil or priority > transitionPriority then
+						transitionPriority, transition = priority, parameters
+					end
+				end
+			end
+			if value ~= nil and property then
+				local priority = Values.number(env.propertyOf(candidate, "Priority"))
+				if winning == priority then
+					unsupported("equal-priority property " .. property)
+				end
+				if winning == nil or priority > winning then
+					winning, result = priority, token(sheet, value)
+				end
+			end
+		end
+		return sheet, result, present, token(sheet, transition)
+	end
+	local function animatedValue(object: Instance, property: string, phantom: string?): (Instance?, unknown)
+		local sheet, target, _, parameters = resolve(object, property, phantom)
+		if target == nil and phantom then
+			target = env.defaultClassProperty(phantom, property)
+		end
+		if sheet == nil then
+			animated[object] = nil
+			return nil, target
+		end
+		local timing = Transition.timing(parameters)
+		local key = property .. "|" .. (phantom or "")
+		local entries = animated[object]
+		if entries == nil then
+			entries = {}
+			animated[object] = entries
+		end
+		local entry: Animated? = entries[key]
+		if entry == nil then
+			observe()
+			local created: Animated = {
+				property = property,
+				phantom = phantom,
+				motion = { target = target, origin = target, started = env.now() },
+			}
+			entry = created
+			entries[key] = created
+		else
+			local active: Animated = entry
+			Transition.retarget(active.motion, target, timing, active.dirty or env.now())
+			active.dirty = nil
+			stale[active] = nil
+		end
+		local current = assert(entry)
+		if timing ~= nil then
+			transitioned[current] = object
+		else
+			transitioned[current] = nil
+		end
+		if Transition.running(current.motion, env.now()) then
+			timed[current] = object
+		end
+		return sheet, Transition.sample(current.motion, env.now())
+	end
+	function refresh(quiet: boolean?)
+		local since = staleSince
+		if since == nil or quiet and since >= env.now() then
+			return
+		end
+		for entry, object in pairs(stale) do
+			if not env.isAlive(object) then
+				stale[entry] = nil
+				timed[entry] = nil
+				transitioned[entry] = nil
+				animated[object] = nil
+			elseif quiet then
+				pcall(animatedValue, object, entry.property, entry.phantom)
+			else
+				animatedValue(object, entry.property, entry.phantom)
+			end
+		end
+		staleSince = nil
+		for entry in pairs(stale) do
+			local at = entry.dirty
+			if at ~= nil and (staleSince == nil or at < staleSince) then
+				staleSince = at
+			end
+		end
+	end
+	function observe()
+		if observed ~= nil then
+			return
+		end
+		observed = env.observe(function(event: Environment.Event)
+			local object = event.object
+			if
+				env.isA(object, "StyleRule")
+				or env.isA(object, "StyleSheet")
+				or env.isA(object, "StyleLink")
+				or env.isA(object, "StyleDerive")
+			then
+				invalidate(object)
+				return
+			end
+			local operation = event.operation
+			if
+				not (
+					operation == "setParent"
+					or operation == "destroy" and watches[object] ~= nil
+					or operation == "setProperty" and STYLE_MEMBERS[event.member or ""]
+				)
+			then
+				return
+			end
+			local subtree = object
+			local now = env.now()
+			if pendingAt == now then
+				mark(subtree)
+				return
+			end
+			refresh(true)
+			dirty(subtree)
+			pendingAt = now
+		end)
+		writes = env.onMemberWrite(
+			{ "Name", "GuiState", "Interactable", "Parent", "Selector", "Priority", "StyleSheet" },
+			function(object: Instance)
+				if env.isAlive(object) then
+					if
+						env.isA(object, "StyleRule")
+						or env.isA(object, "StyleSheet")
+						or env.isA(object, "StyleLink")
+						or env.isA(object, "StyleDerive")
+					then
+						invalidate(object)
+					else
+						forgetKept(object)
+					end
+				end
+			end
+		)
+		tags = env.tagChanged:Connect(function(object: Instance, tag: string, present: boolean)
+			previousTag = { object = object, tag = tag, present = not present }
+			refresh(true)
+			previousTag = nil
+			dirty(object)
+			refresh(true)
+		end)
+	end
+	local function phantomValue(object: Instance, className: string, property: string): unknown
+		if not PHANTOMS[className] then
+			unsupported("phantom class " .. className)
+		end
+		local _, _, present = resolve(object, nil, className)
+		if not present then
+			return nil
+		end
+		local _, value = animatedValue(object, property, className)
+		return value
+	end
+	local function styled(object: Instance, property: string, selector: string?): unknown
+		if selector then
+			local className = selector:match "^::([%a_][%w_]*)$"
+			if className == nil then
+				unsupported "GetStyled selector argument"
+			end
+			assert(className ~= nil)
+			local value = phantomValue(object, className, property)
+			if value == nil then
+				error("GetStyled: phantom instance does not exist: " .. selector, 0)
+			end
+			return value
+		end
+		local memo = frameStyled
+		local memoEntries = if memo ~= nil then memo[object] else nil
+		local remembered = if memoEntries ~= nil then memoEntries[property] else nil
+		if remembered ~= nil then
+			return if env.isPropertyModified(object, property)
+				then env.propertyOf(object, property)
+				else remembered.value
+		end
+		local _, value = animatedValue(object, property, nil)
+		if memo ~= nil then
+			local entries = memo[object]
+			if entries == nil then
+				entries = {}
+				memo[object] = entries
+			end
+			entries[property] = { value = value }
+		end
+		local read = reads[object]
+		if read == nil then
+			read = {}
+			reads[object] = read
+		end
+		if read[property] == nil then
+			local ruleSheet, target = resolve(object, property, nil)
+			read[property] = { sheet = ruleSheet, value = target }
+			dirtyReads[object] = true
+			if ruleSheet ~= nil then
+				observe()
+			end
+		end
+		return if env.isPropertyModified(object, property) then env.propertyOf(object, property) else value
+	end
+	local function close()
+		if observed then
+			observed:Disconnect()
+			observed = nil
+		end
+		if tags then
+			tags:Disconnect()
+			tags = nil
+		end
+		if writes then
+			writes:Disconnect()
+			writes = nil
+		end
+		table.clear(keptValues)
+		table.clear(keptScopes)
+		table.clear(scopeRoots)
+		table.clear(dirtyScopes)
+		for object in pairs(animated) do
+			animated[object] = nil
+		end
+		invalidate()
+		for _, entries in pairs(watches) do
+			for _, watch in entries do
+				watch.signal:DisconnectAll()
+			end
+		end
+		for object in pairs(watches) do
+			watches[object] = nil
+		end
+		for object in pairs(reads) do
+			reads[object] = nil
+		end
+	end
+	local function affectsGeometry(entry: Animated, object: Instance): boolean
+		if entry.property:match "Color3$" or entry.property:match "Transparency$" then
+			return false
+		end
+		local component = entry.phantom or object.ClassName
+		return component ~= "UIGradient" and component ~= "UICorner" and component ~= "UIStroke"
+	end
+	controller = {
+		styled = styled,
+		component = function(object: Instance, className: string, property: string): unknown
+			local physical = env.childWhichIsA(object, className)
+			return if physical then styled(physical, property) else phantomValue(object, className, property)
+		end,
+		signal = function(object: Instance, property: string): Environment.Signal<()>
+			local entries = watches[object] or {}
+			watches[object] = entries
+			if entries[property] == nil then
+				local sheet, value = animatedValue(object, property, nil)
+				entries[property] = { signal = env.newSignal(), sheet = sheet, value = value }
+			end
+			return entries[property].signal
+		end,
+		step = function()
+			refresh()
+			local now = env.now()
+			for entry, object in pairs(timed) do
+				dirtyWatches[object] = true
+				if not (entry.property:match "Color3$" or entry.property:match "Transparency$") then
+					env.stampLayout(object)
+				end
+				if stale[entry] == nil and not Transition.running(entry.motion, now) then
+					timed[entry] = nil
+				end
+			end
+			if observed == nil then
+				for object in watches do
+					dirtyWatches[object] = true
+				end
+				for object in reads do
+					dirtyReads[object] = true
+				end
+			end
+			for object in table.clone(dirtyWatches) do
+				dirtyWatches[object] = nil
+				local entries = watches[object]
+				if entries == nil then
+					continue
+				end
+				if not env.isAlive(object) then
+					for _, watch in entries do
+						watch.signal:DisconnectAll()
+					end
+					watches[object] = nil
+				else
+					for property, watch in entries do
+						local ok, sheet, value = pcall(animatedValue, object, property, nil)
+						if not ok then
+							dirtyWatches[object] = true
+							error(sheet, 0)
+						end
+						if sheet ~= watch.sheet or value ~= watch.value then
+							watch.sheet, watch.value = sheet, value
+							watch.signal:Fire()
+						end
+					end
+				end
+			end
+			for object in table.clone(dirtyReads) do
+				dirtyReads[object] = nil
+				local properties = reads[object]
+				if properties == nil then
+					continue
+				end
+				if not env.isAlive(object) or env.signalOf(object, "StyledPropertiesChanged").connections() == 0 then
+					reads[object] = nil
+				else
+					local changed = false
+					for property, read in properties do
+						local ok, sheet, value = pcall(resolve, object, property, nil)
+						if not ok then
+							dirtyReads[object] = true
+							error(sheet, 0)
+						end
+						if sheet ~= read.sheet or value ~= read.value then
+							read.sheet, read.value = sheet, value
+							changed = true
+						end
+					end
+					if changed and env.isA(object, "GuiObject") then
+						env.fire(object, "StyledPropertiesChanged")
+					end
+				end
+			end
+		end,
+		cached = function(body: () -> ())
+			if frameValues ~= nil then
+				body()
+				return
+			end
+			frameScopes, frameValues, frameStyled, frameMatches = {}, {}, {}, {}
+			local outcome = table.pack(pcall(body))
+			frameScopes, frameValues, frameStyled, frameMatches = nil, nil, nil, nil
+			if not outcome[1] then
+				error(outcome[2], 0)
+			end
+		end,
+		close = close,
+		invalidate = invalidate,
+		animating = function(geometryOnly: boolean?): boolean
+			if not geometryOnly and next(stale) ~= nil then
+				return true
+			end
+			if geometryOnly then
+				for entry, object in pairs(stale) do
+					if affectsGeometry(entry, object) then
+						return true
+					end
+				end
+			end
+			local now = env.now()
+			for entry, object in pairs(timed) do
+				if (not geometryOnly or affectsGeometry(entry, object)) and Transition.running(entry.motion, now) then
+					return true
+				end
+			end
+			return false
+		end,
+	}
+	return controller
+end
+
+return { create = create }

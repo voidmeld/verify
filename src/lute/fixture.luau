@@ -1,0 +1,102 @@
+--!strict
+
+local VM = require "../roblox/value"
+local fs = require "@std/fs"
+local Path = require "@std/path"
+local luau = require "@lute/luau"
+local PlaceBoot = require "../roblox/place-boot"
+local FixtureBridge = require "../roblox/fixture-bridge"
+local Snapshot = require "../roblox/reflection-snapshot"
+local Wire = require "./wire"
+local TextMetrics = require "./text-metrics"
+local UiFakes = require "../roblox/ui-fakes"
+local Enum = require "../roblox/datatypes/enum"
+local Values = require "../roblox/ui-values"
+
+export type Options = Snapshot.Options
+export type Snapshot = Snapshot.Snapshot
+export type PlaceHost = PlaceBoot.Host<luau.Bytecode, () -> VM.Value>
+
+local loadBytecode: (luau.Bytecode, string, { [string]: unknown }) -> () -> VM.Value = luau.load
+local host: PlaceHost = {
+	readFile = fs.readFileToString,
+	compile = luau.compile,
+	load = loadBytecode,
+	encodeJson = Wire.encode,
+	decodeJson = Wire.parse,
+}
+
+local files: PlaceBoot.Files = {
+	exists = fs.exists,
+	fileType = fs.type,
+	listDirectory = function(path: string): { { name: string, type: string } }
+		local entries: { { name: string, type: string } } = {}
+		for _, entry in fs.listDirectory(path) do
+			local kind: string = entry.type
+			table.insert(entries, { name = entry.name, type = kind })
+		end
+		return entries
+	end,
+}
+
+local DEFAULT_PATH =
+	Path.format(Path.join(Path.dirname(Path.resolve(debug.info(1, "s"))), "fixtures/roblox-0.744.0.7441077.json"))
+
+local function load(source: string?): Snapshot.Snapshot
+	local path = source or DEFAULT_PATH
+	local decoded = Wire.parse(fs.readFileToString(path))
+	assert(type(decoded) == "table", "reflection snapshot is not a JSON object: " .. path)
+	return Snapshot.decode(decoded)
+end
+
+local function bridge(snapshot: (string | Snapshot.Snapshot)?, options: Options?): FixtureBridge.Bridge
+	local defaults: Options = {}
+	local settings = table.clone(options or defaults)
+	local captured = if type(snapshot) == "table" then snapshot else load(snapshot)
+	if settings.ui ~= false then
+		local defaultUi: UiFakes.Options = {}
+		local ui = table.clone(settings.ui or defaultUi)
+		if ui.measureBounds == nil then
+			ui.measureBounds = TextMetrics.create()
+			if ui.measureLineHeight == nil then
+				ui.measureLineHeight = TextMetrics.heights()
+			end
+			if ui.truncateBounds == nil then
+				ui.truncateBounds = TextMetrics.truncator()
+			end
+		end
+		if ui.measureText == nil then
+			local measure = TextMetrics.create()
+			local height = TextMetrics.heights()
+			local library = Snapshot.library(captured)
+			ui.measureText = function(text: string, size: number, value: Enum.EnumItem, bounds: Values.Vector): unknown
+				local parameters: Values.TextParameters = {
+					Text = text,
+					Size = size,
+					Font = Values.font(library.Font.fromEnum(value)),
+					Width = bounds.X,
+				}
+				local measured = Values.vector(measure(parameters))
+				local low, high = 1, math.round(measured.Y / height(parameters, 1, 1))
+				while low < high do
+					local middle = math.ceil((low + high) / 2)
+					if height(parameters, middle, 1) <= bounds.Y then
+						low = middle
+					else
+						high = middle - 1
+					end
+				end
+				return library.Vector2.new(measured.X, height(parameters, low, 1))
+			end
+		end
+		settings.ui = ui
+	end
+	return Snapshot.bridge(captured, settings)
+end
+
+return {
+	host = table.freeze(host),
+	files = table.freeze(files),
+	load = load,
+	bridge = bridge,
+}

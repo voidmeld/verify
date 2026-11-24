@@ -1,0 +1,108 @@
+--!strict
+
+export type Exchange = {
+	status: "answered" | "unsent" | "unanswered",
+	result: unknown?,
+	detail: string?,
+	lost: boolean?,
+}
+
+export type Connection = {
+	callRaw: (name: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Exchange,
+	close: () -> (),
+	alive: () -> boolean,
+}
+
+export type Recovering = {
+	callRaw: (name: string, argumentsJson: string, deadline: number, replaySafe: boolean?) -> Exchange,
+	close: () -> (),
+	alive: () -> boolean,
+	reset: () -> (),
+}
+
+export type Deps = {
+	open: (deadline: number) -> Connection,
+	now: () -> number,
+	wait: (seconds: number) -> (),
+}
+
+local function wrap(initial: Connection?, deps: Deps): Recovering
+	local active: Connection? = initial
+	local closed = false
+	local function drop()
+		local previous = active
+		active = nil
+		if previous ~= nil then
+			pcall(previous.close)
+		end
+	end
+	return {
+		alive = function(): boolean
+			return not closed and active ~= nil and (active).alive()
+		end,
+		close = function()
+			closed = true
+			drop()
+		end,
+		reset = drop,
+		callRaw = function(name, argumentsJson, deadline, replaySafe): Exchange
+			local last: Exchange = {
+				status = "unsent",
+				detail = if closed
+					then "Studio MCP connection is closed"
+					else "Studio MCP deadline expired before " .. name,
+			}
+			local uncertain = false
+			if closed then
+				return last
+			end
+			for attempt = 1, 3 do
+				if closed or deps.now() >= deadline then
+					break
+				end
+				if active == nil then
+					local opened, value = pcall(deps.open, deadline)
+					if opened then
+						local fresh = value
+						if closed then
+							pcall(fresh.close)
+							break
+						end
+						active = fresh
+					else
+						local failed: Exchange = { status = last.status, detail = tostring(value), lost = true }
+						last = failed
+					end
+				end
+				local current = active
+				if current ~= nil then
+					last = current.callRaw(name, argumentsJson, deadline)
+					uncertain = uncertain or last.status == "unanswered"
+					if last.lost ~= true then
+						if uncertain and last.status == "unsent" then
+							return { status = "unanswered", detail = last.detail, lost = last.lost }
+						end
+						return last
+					end
+					drop()
+					if last.status ~= "unsent" and not replaySafe then
+						return last
+					end
+				end
+				if attempt < 3 then
+					local remaining = deadline - deps.now()
+					if remaining > 0 then
+						deps.wait(math.min(0.25 * attempt, remaining))
+					end
+				end
+			end
+			if uncertain and last.status == "unsent" then
+				local unanswered: Exchange = { status = "unanswered", detail = last.detail, lost = last.lost }
+				last = unanswered
+			end
+			return last
+		end,
+	}
+end
+
+return { wrap = wrap }

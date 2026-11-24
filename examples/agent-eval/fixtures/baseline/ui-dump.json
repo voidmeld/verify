@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "screen": { "width": 844, "height": 390, "scale": 1, "guiInset": { "left": 0, "top": 36, "right": 0, "bottom": 0 }, "input": ["touch"], "device": "phone" },
+  "roots": [
+    { "index": 1, "class": "ScreenGui", "path": "Players.Player.PlayerGui.Counter", "enabled": true, "displayOrder": 0, "world": false, "rect": { "x": 0, "y": 36, "width": 844, "height": 354 } }
+  ],
+  "elements": [
+    { "index": 1, "root": 1, "class": "Frame", "path": "Players.Player.PlayerGui.Counter.Panel", "rect": { "x": 700, "y": 120, "width": 200, "height": 140 }, "visible": true, "background": { "color": { "r": 0.3, "g": 0.3, "b": 0.3 }, "transparency": 0 } },
+    { "index": 2, "parent": 1, "root": 1, "class": "TextLabel", "path": "Players.Player.PlayerGui.Counter.Panel.Value", "rect": { "x": 705, "y": 125, "width": 60, "height": 20 }, "visible": true, "background": { "color": { "r": 0, "g": 0, "b": 0 }, "transparency": 1 }, "text": { "content": "Count: 0", "size": 14, "bounds": { "width": 62, "height": 14 }, "fits": false, "scaled": false, "wrapped": false, "bold": false, "color": { "r": 0.45, "g": 0.45, "b": 0.45 }, "transparency": 0 } },
+    { "index": 3, "parent": 1, "root": 1, "class": "TextButton", "path": "Players.Player.PlayerGui.Counter.Panel.Add", "rect": { "x": 705, "y": 150, "width": 30, "height": 30 }, "visible": true, "interactive": true, "selectable": true, "active": true, "background": { "color": { "r": 0.2, "g": 0.2, "b": 0.2 }, "transparency": 0 }, "text": { "content": "+", "size": 14, "bounds": { "width": 8, "height": 14 }, "fits": true, "scaled": false, "wrapped": false, "bold": false, "color": { "r": 1, "g": 1, "b": 1 }, "transparency": 0 }, "focus": { "selectionImage": "default", "autoButtonColor": true, "hoverImage": false, "pressedImage": false, "stateStyled": false } }
+  ],
+  "instances": 6,
+  "truncated": false
+}
