@@ -3,11 +3,11 @@
 Verify follows [semantic versioning](https://semver.org). While the version is `0.x`, a minor
 release may change a public contract.
 
-## Unreleased
+## 0.1.1
 
-- Follow-up: `gate --rerun` must accept a producer of kind `build`. The gate-outcome parser
-  rejects it today, so a consumer with build producers cannot rerun an earlier outcome; `--only`
-  works.
+- The package publishes the consumer skill (`.agents/skills/verify`).
+- `gate --rerun` reads an earlier outcome that contains `build` or `benchmark` producers. The
+  outcome parser accepted only `command`, `tests` and `native`, so such a gate could not rerun.
 
 ## 0.1.0
 

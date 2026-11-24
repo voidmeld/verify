@@ -97,7 +97,8 @@ Run `lute pkg install --vendor`. It writes `pkg.lock.luau` and copies Verify int
 return { luau = { aliases = { verify = "./.lpm/verify@<commit>" } } }
 ```
 
-Then `require "@verify/src/core"`. Use `dev_dependencies` instead of `dependencies` when only
+Then `require "@verify/src/core"`. The consumer skill installs with the package at
+`.lpm/verify@<commit>/.agents/skills/verify/SKILL.md`. Use `dev_dependencies` instead of `dependencies` when only
 your specifications use Verify. The [consumer skill](.agents/skills/verify/SKILL.md) walks
 through adopting it in a repository. To work on this repository, install the tools with
 `rokit install`.

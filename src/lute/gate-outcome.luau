@@ -87,7 +87,7 @@ local function producer(value: unknown): Gate.Record
 	local log = if raw.log ~= nil then Wire.record(raw.log) else nil
 	return {
 		id = text(raw.id),
-		kind = choice(raw.kind, { "command", "tests", "native" }),
+		kind = choice(raw.kind, { "command", "tests", "build", "native", "benchmark" }),
 		tier = optionalText(raw.tier),
 		why = optionalText(raw.why),
 		status = choice(

@@ -616,6 +616,23 @@ describe("isolated sources, selection and the last outcome", function()
 		expect(reason):toContain "invalid"
 	end)
 
+	it("reruns a failed build producer from the last outcome", function()
+		local build: Gate.ProducerDraft = table.clone(sh("assemble", "false"))
+		build.kind = "build"
+		local gate = Gate.define { id = "rerun-build", producers = { build, sh("probe", "true") } }
+		local first = Lute.gate.run(gate, { directory = ROOT .. "/rerun-build", runId = "rerun-build-1" })
+		expect(recordOf(first, "assemble").kind):toEqual "build"
+		expect(recordOf(first, "assemble").status):toEqual "failed"
+		local last, reason = Lute.gate.last(gate, { directory = ROOT .. "/rerun-build" })
+		expect(reason):toEqual(nil)
+		local selection = assert(Gate.rerun(assert(last)))
+		expect(selection.ids):toEqual { "assemble" }
+		local again =
+			Lute.gate.run(gate, { directory = ROOT .. "/rerun-build", runId = "rerun-build-2", selection = selection })
+		expect(recordOf(again, "assemble").status):toEqual "failed"
+		expect(recordOf(again, "probe").status):toEqual "not_selected"
+	end)
+
 	it("keeps the last outcome for a rerun and refuses another gate's", function()
 		local bad = fixture(
 			"rerun-bad",

@@ -3,11 +3,12 @@
 return {
 	package = {
 		name = "voidmeld/verify",
-		version = "0.1.0",
+		version = "0.1.1",
 		files = {
 			"/src/**",
 			"/tools/**",
 			"/docs/**",
+			"/.agents/skills/verify/**",
 			"/README.md",
 			"/CHANGELOG.md",
 			"/LICENSE",
